@@ -1,0 +1,19 @@
+.gradle
+.gradle/*
+logs
+logs/*
+build/*
+tmp/*
+conf/local
+conf/local/*
+
+# ecforce check mock
+projects/java/apps/ecforce/check/mock_external_api/build/*
+projects/java/apps/ecforce/check/mock_external_api/front/*
+projects/java/apps/ecforce/check/mock_external_api/src/*
+
+# Mac
+.DS_Store
+
+# Docker
+*compose.override.yml
