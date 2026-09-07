@@ -228,8 +228,13 @@ class WsIntegrationTest {
 
 		assertTrue(opened.get().await(5, TimeUnit.SECONDS), "onOpen が来ていない");
 
-		ws.sendText("あ", true);
-		ws.sendText("い", true);
+		/*
+		 * JDK の WebSocket は、前の送信が終わる前に次を送ってはいけない
+		 * （終わっていないと IllegalStateException になり、送信は捨てられる）。
+		 * join() せずに2つ続けて送ると、たまに2つめが届かない。
+		 */
+		ws.sendText("あ", true).join();
+		ws.sendText("い", true).join();
 
 		assertTrue(recorder.latch.await(5, TimeUnit.SECONDS), recorder.messages.toString());
 
@@ -264,8 +269,9 @@ class WsIntegrationTest {
 
 		opened.get().await(5, TimeUnit.SECONDS);
 
-		ws.sendText("1", true);
-		ws.sendText("2", true);
+		// 前の送信が終わってから次を送る（echo() のコメント参照）
+		ws.sendText("1", true).join();
+		ws.sendText("2", true).join();
 
 		recorder.latch.await(5, TimeUnit.SECONDS);
 

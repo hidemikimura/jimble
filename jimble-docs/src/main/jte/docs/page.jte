@@ -27,7 +27,7 @@
 <a class="skip" href="#main">本文へ</a>
 
 <header class="top">
-	<a class="brand" href="index.html">jimble</a>
+	<a class="brand" href="./">jimble</a>
 	<div class="search">
 		<input type="search" id="q" placeholder="検索" autocomplete="off" aria-label="検索">
 		<ul id="results" hidden></ul>
@@ -35,7 +35,7 @@
 	@if(languages.size() > 1)
 		<nav class="lang">
 			@for(String item : languages)
-				<a href="../${item}/index.html"
+				<a href="../${item}/"
 					aria-current="${item.equals(language) ? "page" : "false"}">${languageNames.getOrDefault(item, item)}</a>
 			@endfor
 		</nav>
@@ -50,7 +50,7 @@
 			<ul>
 				@for(Page item : section.getValue())
 					<li>
-						<a href="${item.slug()}.html"
+						<a href="${item.slug()}"
 						   class="${item.slug().equals(page.slug()) ? "current" : ""}">${item.title()}</a>
 					</li>
 				@endfor

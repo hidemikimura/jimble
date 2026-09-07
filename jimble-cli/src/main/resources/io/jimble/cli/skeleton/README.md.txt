@@ -32,7 +32,7 @@ open http://localhost:9000/
 ```
 src/main/java/__PACKAGE_PATH__/App.java   ルート定義とエントリポイント
 src/main/jte/__PACKAGE_PATH__/            テンプレート（jte）
-src/main/resources/application.conf       設定
+conf/application.conf                     設定（jar にも入る。外のほうが優先される）
 ```
 
 **ルートは `App.java` の初期化ブロックに上から書く。**
@@ -42,7 +42,7 @@ src/main/resources/application.conf       設定
 
 1. `application.conf` の `db { ... }` のコメントを外す
 2. `build.gradle.kts` の `io.jimble.db` プラグインと JDBC ドライバのコメントを外す
-3. `src/main/resources/migration/<DB名>/001_xxx.sql` を書く
+3. `conf/migration/<DB名>/001_xxx.sql` を書く
 4. `App.main` の `Migration.install()` と `DBUtil.load(...)` のコメントを外す
 
 ```bash

@@ -5,6 +5,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.hash.PasswordUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import io.jimble.web.session.SessionConf;
@@ -22,7 +23,7 @@ import java.util.List;
  * </p>
  *
  * <pre>
- * jimble 構成: env=local / session=none / cache=db / redis=なし / db=[jimble_test] / migration=無効
+ * jimble 構成: env=local / session=none / cache=db / redis=なし / db=[jimble_test] / パスワード暗号化=なし
  * </pre>
  */
 public final class StartupReport {
@@ -43,15 +44,55 @@ public final class StartupReport {
 		fields.put("db", dataSourceNames());
 		fields.put("upload_max_file_size", UploadConf.maxFileSize());
 
-		Log.info("jimble 構成: env=%s / session=%s / cache=%s / redis=%s / db=%s".formatted(
+		/*
+		 * パスワードハッシュを暗号化するかは、明示していなければ
+		 * 「cipher.key があるかどうか」で決まる（PasswordUtil.isEncrypt）。
+		 * 状況で既定が変わるものは、何になったかを起動時に見せる。
+		 */
+		fields.put("password_encrypt", PasswordUtil.isEncrypt());
+
+		/*
+		 * jar の外の conf/ を読んだかどうか（要件 D-71）。
+		 * 「直したはずの設定が効いていない」の原因がここに出る。
+		 */
+		fields.put("conf_dir", Conf.confDir().getPath());
+		fields.put("conf_files", Conf.sources());
+
+		Log.info("jimble 構成: env=%s / session=%s / cache=%s / redis=%s / db=%s / パスワード暗号化=%s".formatted(
 			Conf.env()
 			, SessionConf.store()
 			, Cache.type()
 			, RedisClient.isConfigured() ? "あり" : "なし"
 			, dataSourceNames()
+			, PasswordUtil.isEncrypt() ? "あり" : "なし"
 		), fields);
 
+		logConfSources();
+
 		warnUnusableCombination();
+
+	}
+
+	/**
+	 * どの設定ファイルを読んだかを出す（要件 D-71）
+	 *
+	 * <p>
+	 * jar に同梱した設定と、jar の外の {@code conf/} の両方があるとき、
+	 * <b>どちらが効いているのかが分からない</b>のがいちばん困る。
+	 * 外のものを読んだならそれを、読んでいないならその旨を出す。
+	 * </p>
+	 */
+	private static void logConfSources () {
+
+		List<String> sources = Conf.sources();
+
+		if (sources.isEmpty()) {
+			Log.info("設定: クラスパスのみ（%s/ に application.conf はありません）"
+				.formatted(Conf.confDir().getPath()));
+			return;
+		}
+
+		Log.info("設定: %s（クラスパスより優先）".formatted(String.join(", ", sources)));
 
 	}
 

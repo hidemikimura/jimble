@@ -41,6 +41,18 @@ public final class Route {
 	/* タグ */
 	private final List<String> tags = new ArrayList<>();
 
+	/* 書かれた場所（フックのスコープ。要件 D-69） */
+	private Scope scope;
+
+	/* 確定した before（外側 → 内側） */
+	private List<Handler> beforeHooks = List.of();
+
+	/* 確定した after（内側 → 外側） */
+	private List<Handler> afterHooks = List.of();
+
+	/* 確定した error（内側 → 外側） */
+	private List<ErrorHandler> errorHooks = List.of();
+
 	/**
 	 * コンストラクタ
 	 *
@@ -163,6 +175,75 @@ public final class Route {
 		return List.copyOf(tags);
 
 	}
+
+
+	// region フック（要件 D-69）
+
+	/**
+	 * 書かれた場所を記録する
+	 *
+	 * @param scope	スコープ
+	 */
+	void scope (Scope scope) {
+
+		this.scope = scope;
+
+	}
+
+	/**
+	 * フックを確定する
+	 *
+	 * <p>
+	 * <b>起動時に1度だけ呼ぶ。</b>リクエストのたびに親を辿って集め直さない。
+	 * </p>
+	 */
+	void seal () {
+
+		if (scope == null) {
+			return;
+		}
+
+		beforeHooks = scope.resolveBefores();
+		afterHooks = scope.resolveAfters();
+		errorHooks = scope.resolveErrors();
+
+	}
+
+	/**
+	 * before（外側 → 内側）
+	 *
+	 * @return	before
+	 */
+	List<Handler> beforeHooks () {
+
+		return beforeHooks;
+
+	}
+
+	/**
+	 * after（内側 → 外側）
+	 *
+	 * @return	after
+	 */
+	List<Handler> afterHooks () {
+
+		return afterHooks;
+
+	}
+
+	/**
+	 * error（内側 → 外側）
+	 *
+	 * @return	error
+	 */
+	List<ErrorHandler> errorHooks () {
+
+		return errorHooks;
+
+	}
+
+	// endregion
+
 
 	/**
 	 * {@inheritDoc}

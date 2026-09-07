@@ -6,6 +6,51 @@ Java 製の Web アプリケーションフレームワーク。
 - **アノテーションと DI を使わない。**コードを上から辿れば処理が分かることを最優先にする
 - Web / バッチ / MQ を同じ `Context` で扱う
 
+**0.1.0 を Maven Central に公開している。ドキュメントは <https://jimble.io>。**
+
+```kotlin
+plugins {
+	application
+	// src/main/jte を compileJava の前に Java へ変換する
+	id("io.jimble.jte") version "0.1.0"
+	// 開発用のホットリロード（./gradlew jimbleRun）
+	id("io.jimble.run") version "0.1.0"
+}
+
+dependencies {
+	implementation("io.jimble:jimble-web:0.1.0")
+}
+```
+
+Gradle プラグインは **Plugin Portal ではなく Maven Central** から取る。
+`settings.gradle.kts` に1ブロック要る。
+
+```kotlin
+pluginManagement {
+	repositories {
+		mavenCentral()
+	}
+}
+```
+
+雛形を作るなら `jimble new` が上を全部書いた状態で出す。
+
+| アーティファクト | 中身 |
+|---|---|
+| `io.jimble:jimble-web` | Router / Request / Response / Session / SSE / WebSocket |
+| `io.jimble:jimble-db` | SQL ビルダー / DB / マイグレーション / コード生成 |
+| `io.jimble:jimble-util` | Data / Log / Conf / Dson / 各種ユーティリティ |
+| `io.jimble:jimble-core` | Context / Executor |
+| `io.jimble:jimble-batch` | バッチ / DB スケジューラ |
+| `io.jimble:jimble-mq` | MQ（DB キュー） |
+| `io.jimble:jimble-batch-manager` | バッチ管理画面 |
+| `io.jimble:jimble-mcp` | MCP サーバー |
+| `io.jimble:jimble-cli` | `jimble new` / migrate / codegen |
+
+`jimble-web` を入れれば `jimble-db` / `jimble-util` / `jimble-core` は付いてくる。
+
+---
+
 ドキュメントは `docs/` にある。
 
 > **このリポジトリには `docs/` を含めていない。**
@@ -25,7 +70,8 @@ Java 製の Web アプリケーションフレームワーク。
 | `docs/design-m6.md` | M6 設計・作業メモ（AsyncData） |
 | `docs/design-m7.md` | M7 設計・作業メモ（バッチ / MQ） |
 | `docs/design-m8.md` | M8 設計・作業メモ（棚卸し / CLI / Phase 1 の締め） |
-| `docs/design-m9.md` | M9 設計・作業メモ（SSE / MCP / WebSocket / ドキュメントサイト / Maven Central） |
+| `docs/design-m9.md` | M9 設計・作業メモ（SSE / MCP / WebSocket / ドキュメント / Maven Central / jimble.io） |
+| `docs/design-m10.md` | M10 設計・作業メモ（AsyncData の先読み） |
 | `docs/publishing.md` | **Maven Central への公開手順** |
 | `docs/design-protocols.md` | WebSocket / SSE / MCP / gRPC の検討書 |
 | `docs/site/` | **ドキュメントサイトの原稿**（`./gradlew :jimble-docs:site`） |
@@ -86,7 +132,7 @@ JIMBLE_TEST_DB_PASSWORD=jimble \
 
 ## マイグレーション
 
-SQL は `src/main/resources/migration/<スキーマ名>/` に置く。ファイル名の**自然順**に適用される。
+SQL は `conf/migration/<スキーマ名>/` に置く。ファイル名の**自然順**に適用される。
 
 ```sql
 # --- !Ups
@@ -345,9 +391,9 @@ Gradle 8 は Java 25 の上では動かない（ツールチェーンとして�
 
 ### 手元で試すとき
 
-jimble はまだどこにも公開していない（Maven Central は Phase 2）。
-生成したプロジェクトはローカルの Maven リポジトリを先に見るので、
-先に publish しておく。
+公開済みの版（0.1.0）でよければ、何も要らない。
+**手元で直した jimble を試すとき**は、生成したプロジェクトが
+ローカルの Maven リポジトリを先に見るので、先に publish しておく。
 
 ```bash
 ./gradlew publishToMavenLocal
@@ -521,8 +567,9 @@ public class ChatHandler implements WsHandler {
 
 ## 現在の状態
 
-**M1〜M8 完了 = Phase 1 完了。M9 は SSE / MCP / WebSocket / ドキュメントサイト / Maven Central のビルド整備まで完了。**
-`examples/hello` と `examples/blog` が動き、テスト 499 件（+ 実 DB / Redis 結合テスト 155 件）が通る。
+**M1〜M8 完了 = Phase 1 完了。M9（SSE / MCP / WebSocket / ドキュメント / Maven Central / jimble.io）完了。M10（AsyncData の先読み）完了。**
+**0.1.0 を Maven Central に公開済み。ドキュメントは <https://jimble.io> で公開済み。**
+`examples/hello` と `examples/blog` が動き、テスト 514 件（+ 実 DB / Redis 結合テスト 159 件）が通る。
 `jimble new` で作ったプロジェクトが、手を入れずにビルドして起動する。
 機能カバレッジ表（要件 10.2）は、Phase 2 に回した2行を除いてすべて「済」。
 機能カバレッジ表（要件 10.2）の「未」は解消した。
@@ -642,6 +689,9 @@ docs/site/
 
 英語（`docs/site/en/`）は原稿を置けば出る。中身がある言語だけ切り替えリンクが出る。
 
+出力は <https://github.com/hidemikimura/jimble-document> の `dist/` へ置き換えて push する。
+Cloudflare Workers がそれを配る。手順はあちらの README にある。
+
 ---
 
 ## Maven Central へ公開する
@@ -662,7 +712,7 @@ export JIMBLE_CENTRAL_PASSWORD='...'
 - 公開先は **Central Portal**。Sonatype に公式の Gradle プラグインが無いので、
   **REST API を直に叩いている**（外部プラグインを足さない。要件 D-60）
 - **鍵もトークンも環境変数だけ。**無い環境では署名を飛ばしてビルドが通る
-- `-Pjimble.version` を渡さないと `0.1.0-SNAPSHOT` になり、`centralUpload` は止まる
+- `-Pjimble.version` を渡さないと `0.1.1-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
   （Central は `-SNAPSHOT` を受け付けず、公開したものは消せない）
 - Gradle プラグインは **Maven Central のマーカー**で配る。Plugin Portal には出さない（D-22）
 
@@ -673,8 +723,7 @@ export JIMBLE_CENTRAL_PASSWORD='...'
 
 ### 次
 
-**Phase 2。**Central への実公開（アカウントと DNS TXT）/ jimble.io への公開 /
-英語版（NF-D-06）/ AsyncData の先読み。
+**Phase 2。**英語版（NF-D-06）/ ドキュメント反映の自動化 / レートリミット（F-R-15）。
 gRPC は入れない（依存が約5倍になるため。`docs/design-protocols.md`）。
 
 ---

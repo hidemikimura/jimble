@@ -52,6 +52,15 @@ class JimbleServerIntegrationTest {
 			get("/stream", context ->
 				context.response().send(new ByteArrayInputStream("streamed".getBytes(StandardCharsets.UTF_8))));
 
+			// JSON（Content-Type が付くか。要件 D-73）
+			get("/json", context -> context.response().json("ok", true));
+
+			// 自分で Content-Type を決めたら上書きしない
+			get("/json-custom", context -> {
+				context.response().setResponseHeader("Content-Type", "application/vnd.jimble+json");
+				context.response().json("ok", true);
+			});
+
 			get("/boom", context -> {
 				throw new IllegalStateException("boom");
 			});
@@ -116,6 +125,37 @@ class JimbleServerIntegrationTest {
 
 		assertEquals(200, response.statusCode());
 		assertEquals("streamed", response.body());
+
+	}
+
+	@Test
+	@DisplayName("D-73 JSON を返したら Content-Type も JSON になる")
+	void jsonContentType () throws Exception {
+
+		HttpResponse<String> response = request("GET", "/json");
+
+		assertEquals(200, response.statusCode());
+		assertEquals("{\"ok\":true}", response.body());
+
+		/*
+		 * ブラウザの fetch().json() は Content-Type を見ないので
+		 * 付いていなくても動いてしまう。付いていないと困るのは
+		 * curl | jq、プロキシ、Accept で振り分ける中継、他言語のクライアント。
+		 */
+		assertEquals("application/json; charset=UTF-8"
+			, response.headers().firstValue("content-type").orElse(""));
+
+	}
+
+	@Test
+	@DisplayName("D-73 自分で決めた Content-Type は上書きしない")
+	void jsonContentTypeNotOverwritten () throws Exception {
+
+		HttpResponse<String> response = request("GET", "/json-custom");
+
+		assertEquals(200, response.statusCode());
+		assertEquals("application/vnd.jimble+json"
+			, response.headers().firstValue("content-type").orElse(""));
 
 	}
 

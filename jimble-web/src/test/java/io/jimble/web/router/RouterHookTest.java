@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -180,6 +182,164 @@ class RouterHookTest {
 		assertEquals(1, match.variables().values().size(), "失敗した枝の変数 b が残ってはいけない: " + match.variables());
 
 	}
+
+	// region レキシカルスコープ（要件 D-69）
+
+	@Test
+	@DisplayName("D-69 同じパスでも、別のスコープで登録したルートには効かない")
+	void hooksDoNotLeakToAnotherScopeOnTheSamePath () throws Exception {
+
+		Router router = new Router();
+
+		// 認証つきの /admin
+		Router guarded = router.path("/admin");
+		guarded.before(record("auth"));
+		guarded.get("/users", context -> { });
+
+		// 認証なしの /admin（別のスコープ。ログイン画面など）
+		Router open = router.path("/admin");
+		open.get("/login", context -> { });
+
+		runHooks(router.match("GET", "/admin/users"));
+		assertEquals(List.of("auth", "--handler--"), log);
+
+		log.clear();
+
+		runHooks(router.match("GET", "/admin/login"));
+		assertEquals(List.of("--handler--"), log, "別のスコープの before が効いてはいけない");
+
+	}
+
+	@Test
+	@DisplayName("D-69 install した子コントローラの before は、親の他のルートに効かない")
+	void installedChildHooksDoNotLeakToSiblings () throws Exception {
+
+		class Guarded extends Controller {
+			{
+				path("/admin", () -> {
+					before(record("auth"));
+					get("/users", context -> { });
+				});
+			}
+		}
+
+		class Spa extends Controller {
+			{
+				get("/admin", context -> { });
+			}
+		}
+
+		class App extends Controller {
+			{
+				install(Guarded::new);
+				install(Spa::new);
+			}
+		}
+
+		Router router = new App().router();
+
+		runHooks(router.match("GET", "/admin/users"));
+		assertEquals(List.of("auth", "--handler--"), log);
+
+		log.clear();
+
+		runHooks(router.match("GET", "/admin"));
+		assertEquals(List.of("--handler--"), log, "SPA のほうに認証が効いてはいけない");
+
+	}
+
+	@Test
+	@DisplayName("D-69 install した子の error は 404 には効かない（一番外側だけ）")
+	void installedChildErrorIsNotUsedForUnmatched () {
+
+		class Child extends Controller {
+			{
+				error(recordError("error:child"));
+				get("/child", context -> { });
+			}
+		}
+
+		class App extends Controller {
+			{
+				error(recordError("error:app"));
+				install(Child::new);
+			}
+		}
+
+		Router router = new App().router();
+
+		assertEquals(2, router.match("GET", "/child").errorHooks().size(), "子のルートには両方効く");
+		assertEquals(1, router.match("GET", "/nope").errorHooks().size(), "404 は一番外側だけ");
+
+	}
+
+	@Test
+	@DisplayName("D-69 スコープの中なら、書いた順は問わない")
+	void orderInsideScopeDoesNotMatter () throws Exception {
+
+		Router router = new Router();
+
+		Router admin = router.path("/admin");
+		admin.get("/users", context -> { });
+		admin.before(record("auth"));		// ルートより後に書いても効く
+
+		runHooks(router.match("GET", "/admin/users"));
+
+		assertEquals(List.of("auth", "--handler--"), log);
+
+	}
+
+	@Test
+	@DisplayName("D-69 フックはルートごとに1度だけ組み立てる（毎回作り直さない）")
+	void hooksAreResolvedOnce () {
+
+		Router router = new Router();
+		router.before(record("root"));
+		router.get("/x", context -> { });
+
+		List<Handler> first = router.match("GET", "/x").beforeHooks();
+		List<Handler> second = router.match("GET", "/x").beforeHooks();
+
+		assertSame(first, second, "リクエストのたびに組み立て直している");
+
+	}
+
+	@Test
+	@DisplayName("D-69 確定した後にフックを足したら落ちる（足したのに効かない、を作らない）")
+	void addingHookAfterSealThrows () {
+
+		Router router = new Router();
+		router.get("/x", context -> { });
+
+		router.match("GET", "/x");
+
+		IllegalStateException ex = assertThrows(
+			IllegalStateException.class, () -> router.before(record("late")));
+
+		assertTrue(ex.getMessage().contains("before"), ex.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("D-69 同じコントローラを2か所に install したら落ちる")
+	void installingSameInstanceTwiceThrows () {
+
+		class Child extends Controller {
+			{
+				get("/x", context -> { });
+			}
+		}
+
+		Child child = new Child();
+
+		Router router = new Router();
+		router.merge(child.router());
+
+		assertThrows(IllegalStateException.class, () -> router.path("/other").merge(child.router()));
+
+	}
+
+	// endregion
 
 	@Test
 	@DisplayName("F-R-09b 未マッチでもトップレベルの error は適用される")

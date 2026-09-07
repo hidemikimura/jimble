@@ -34,6 +34,25 @@ jimble {
 	autoGenerate = providers.gradleProperty("jimble.autoGenerate").map(String::toBoolean).orElse(false)
 }
 
+/*
+ * 設定とマイグレーションは conf/ に置く（移送元と同じ）。
+ *
+ * リソースとして足すので、conf/ の中身は<b>そのまま jar に入る</b>。
+ * 配った jar だけで動くし、codegen / migrate / jimbleRun / テストも
+ * クラスパスから見つけられる。
+ *
+ * そのうえで、実行時は jimble が<b>jar の外の conf/ を先に読む</b>（jimble D-71）。
+ * conf/application.conf を書き換えればビルドし直さずに効き、
+ * jar の中身は「外に conf/ が無かったときの値」になる。
+ */
+sourceSets {
+	main {
+		resources {
+			srcDir("conf")
+		}
+	}
+}
+
 application {
 	mainClass = "blog.BlogApp"
 	applicationDefaultJvmArgs = listOf("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")

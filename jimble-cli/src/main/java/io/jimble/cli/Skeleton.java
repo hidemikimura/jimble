@@ -36,13 +36,13 @@ final class Skeleton {
 		, new Entry("README.md.txt", "README.md")
 		, new Entry("App.java.txt", "src/main/java/__PACKAGE_PATH__/App.java")
 		, new Entry("index.jte.txt", "src/main/jte/__PACKAGE_PATH__/index.jte")
-		, new Entry("application.conf.txt", "src/main/resources/application.conf")
+		, new Entry("application.conf.txt", "conf/application.conf")
 		/*
 		 * マイグレーションは「DB を使うようになったら」なので、
 		 * 拡張子を .sql にしないでおく。
 		 * 置いただけで流れると、DB を使わない人が驚く。
 		 */
-		, new Entry("migration.sql.txt", "src/main/resources/migration/__DB__/001_create_note.sql.example")
+		, new Entry("migration.sql.txt", "conf/migration/__DB__/001_create_note.sql.example")
 	);
 
 	private Skeleton () {}

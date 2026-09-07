@@ -42,6 +42,9 @@ public final class DocsBuilder {
 	/** 既定の言語 */
 	private static final String DEFAULT_LANGUAGE = "ja";
 
+	/** 公開先。sitemap と canonical に使う */
+	private static final String SITE_URL = "https://jimble.io";
+
 	/** まとまりの並び */
 	private static final List<String> SECTIONS = List.of(
 		"はじめに", "基本", "データベース", "実行基盤", "プロトコル", "開発", "そのほか"
@@ -165,16 +168,25 @@ public final class DocsBuilder {
 			<html lang="%1$s">
 			<head>
 			<meta charset="utf-8">
-			<meta http-equiv="refresh" content="0; url=./%1$s/index.html">
-			<link rel="canonical" href="./%1$s/index.html">
+			<meta http-equiv="refresh" content="0; url=./%1$s/">
+			<link rel="canonical" href="./%1$s/">
 			<title>jimble</title>
 			</head>
-			<body><a href="./%1$s/index.html">jimble</a></body>
+			<body><a href="./%1$s/">jimble</a></body>
 			</html>
 			""".formatted(DEFAULT_LANGUAGE), StandardCharsets.UTF_8);
 
+		writeHosting(out, byLanguage);
+
 		System.out.println("できました: %s（%d ページ / %dms）"
 			.formatted(out.toAbsolutePath(), total, System.currentTimeMillis() - start));
+
+		/*
+		 * リンクは拡張子なし（/ja/routing）である。Cloudflare Pages がそれを
+		 * ja/routing.html に対応させる。ファイルを直接開くとリンクが辿れないので、
+		 * 手元で見るときはサーバー越しにする。
+		 */
+		System.out.println("手元で見る: cd %s && python3 -m http.server 8080".formatted(out));
 
 	}
 
@@ -343,6 +355,110 @@ public final class DocsBuilder {
 	 * @param to	先
 	 * @throws IOException	写せなかった場合
 	 */
+	/**
+	 * 配る側が要るものを書く
+	 *
+	 * <p>
+	 * Cloudflare Pages（要件 NF-D-01）に載せる前提のファイルを一緒に出す。
+	 * <b>手で足さない。</b>手で足すと、生成し直すたびに消えて、
+	 * 「なぜか転送されない」「なぜか検索に出ない」が起きる。
+	 * </p>
+	 *
+	 * <ul>
+	 *   <li>{@code _redirects} … / を既定の言語へ送る</li>
+	 *   <li>{@code _headers} … 安全側のヘッダとキャッシュ。*.pages.dev は検索避け</li>
+	 *   <li>{@code sitemap.xml} / {@code robots.txt}</li>
+	 *   <li>{@code 404.html}</li>
+	 * </ul>
+	 *
+	 * @param out			出力先
+	 * @param byLanguage	言語ごとのページ
+	 * @throws IOException	書けなかった場合
+	 */
+	private static void writeHosting (Path out, Map<String, List<Page>> byLanguage) throws IOException {
+
+		/*
+		 * / に来た人を既定の言語へ送る。
+		 * index.html にも meta refresh を置いてあるが、
+		 * そちらは「ファイルを直接開いたとき」のための保険である。
+		 */
+		Files.writeString(out.resolve("_redirects"), """
+			/    /%1$s/    302
+			""".formatted(DEFAULT_LANGUAGE), StandardCharsets.UTF_8);
+
+		/*
+		 * 外部に一切繋がないサイトなので、CSP は self だけで足りる。
+		 * static は名前に版が入っていないので、長く持たせない
+		 * （持たせると、直したのに古い CSS が出続ける）。
+		 */
+		Files.writeString(out.resolve("_headers"), """
+			/*
+			  X-Content-Type-Options: nosniff
+			  X-Frame-Options: DENY
+			  Referrer-Policy: strict-origin-when-cross-origin
+			  Content-Security-Policy: default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+			/static/*
+			  Cache-Control: public, max-age=600
+
+			https://:project.workers.dev/*
+			  X-Robots-Tag: noindex
+
+			https://:project.pages.dev/*
+			  X-Robots-Tag: noindex
+			""", StandardCharsets.UTF_8);
+
+		/* sitemap */
+		StringBuilder sitemap = new StringBuilder("""
+			<?xml version="1.0" encoding="UTF-8"?>
+			<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+			""");
+
+		for (Map.Entry<String, List<Page>> entry : byLanguage.entrySet()) {
+			for (Page page : entry.getValue()) {
+				/*
+				 * 拡張子は付けない。Cloudflare Pages は .html を落とした形へ
+				 * 307 で正規化するので、付けると sitemap の全件が転送になる。
+				 */
+				sitemap.append("\t<url><loc>%s/%s/%s</loc></url>%n"
+					.formatted(SITE_URL, entry.getKey(), page.slug()));
+			}
+		}
+
+		sitemap.append("</urlset>\n");
+
+		Files.writeString(out.resolve("sitemap.xml"), sitemap.toString(), StandardCharsets.UTF_8);
+
+		Files.writeString(out.resolve("robots.txt"), """
+			User-agent: *
+			Allow: /
+
+			Sitemap: %s/sitemap.xml
+			""".formatted(SITE_URL), StandardCharsets.UTF_8);
+
+		/* 404。Cloudflare Pages は見つからないパスでこれを返す */
+		Files.writeString(out.resolve("404.html"), """
+			<!doctype html>
+			<html lang="%1$s">
+			<head>
+			<meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1">
+			<meta name="robots" content="noindex">
+			<title>ページがありません - jimble</title>
+			<link rel="stylesheet" href="/static/site.css">
+			</head>
+			<body>
+			<article class="notfound">
+			<h1>ページがありません</h1>
+			<p>お探しのページは、移動したか、もう無いようです。</p>
+			<p><a href="/%1$s/">jimble のドキュメントへ</a></p>
+			</article>
+			</body>
+			</html>
+			""".formatted(DEFAULT_LANGUAGE), StandardCharsets.UTF_8);
+
+	}
+
 	private static void copyStatic (Path from, Path to) throws IOException {
 
 		if (!Files.isDirectory(from)) {

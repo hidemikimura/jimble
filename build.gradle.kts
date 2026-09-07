@@ -30,7 +30,7 @@ val sharedDatabase = gradle.sharedServices.registerIfAbsent("sharedDatabase", Sh
  * のように渡す。既定を素の 0.1.0 にしないのは、
  * うっかり publish したものが「リリース版」として残るのを避けるためである。
  */
-val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.1.0-SNAPSHOT")
+val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.1.1-SNAPSHOT")
 
 /* doclint を切るモジュール（要件 D-15。潰したらここから外す） */
 val DOCLINT_OFF = setOf("jimble-util")
@@ -298,7 +298,7 @@ val publishedProjects = subprojects.filterNot { it.name in NOT_PUBLISHED || it.p
  *
  * 別ビルドの gradle-plugin も同じ場所へ出す（向こうの build.gradle.kts 参照）。
  */
-val centralPublishLocal by tasks.registering {
+val centralPublishLocal = tasks.register("centralPublishLocal") {
 
 	group = "publishing"
 	description = "Maven Central へ送る材料を build/central に出す"
@@ -315,7 +315,7 @@ val centralPublishLocal by tasks.registering {
  * <b>いま作っている版のディレクトリだけ</b>を入れる。
  * maven-metadata.xml は Central が自分で作るので入れない。
  */
-val centralBundle by tasks.registering(Zip::class) {
+val centralBundle = tasks.register<Zip>("centralBundle") {
 
 	group = "publishing"
 	description = "Maven Central へ送る zip を作る（要件 NF-L-04）"
@@ -345,13 +345,22 @@ val centralBundle by tasks.registering(Zip::class) {
 
 }
 
-/** Portal のトークン（アカウント画面で発行する User Token） */
+/**
+ * Portal のトークン（アカウント画面で発行する User Token）
+ *
+ * <p>
+ * <b>前後の空白と改行を落とす。</b>
+ * {@code export X=$(pbpaste)} や、コピーの取りこぼしで末尾に改行が1つ入るだけで
+ * Base64 の中身が変わり、Portal は 401 を返す。
+ * 値そのものは何があってもログに出さない。
+ * </p>
+ */
 fun centralAuthorization (): String {
 
-	val user = providers.environmentVariable("JIMBLE_CENTRAL_USERNAME").orNull
-	val password = providers.environmentVariable("JIMBLE_CENTRAL_PASSWORD").orNull
+	val rawUser = providers.environmentVariable("JIMBLE_CENTRAL_USERNAME").orNull
+	val rawPassword = providers.environmentVariable("JIMBLE_CENTRAL_PASSWORD").orNull
 
-	if (user.isNullOrEmpty() || password.isNullOrEmpty()) {
+	if (rawUser.isNullOrEmpty() || rawPassword.isNullOrEmpty()) {
 		throw GradleException(
 			"""
 			Portal のトークンがありません。
@@ -360,10 +369,61 @@ fun centralAuthorization (): String {
 			""".trimIndent())
 	}
 
+	val user = rawUser.trim()
+	val password = rawPassword.trim()
+
+	if (user != rawUser || password != rawPassword) {
+		logger.warn("トークンの前後に空白か改行が入っていたので落としました（値は出しません）")
+	}
+
 	val encoded = java.util.Base64.getEncoder()
 		.encodeToString("$user:$password".toByteArray(Charsets.UTF_8))
 
 	return "Bearer $encoded"
+
+}
+
+/**
+ * 401 のときに、値を出さずに切り分けの手がかりを出す
+ */
+fun centralUnauthorizedHint (): String {
+
+	val user = providers.environmentVariable("JIMBLE_CENTRAL_USERNAME").orNull.orEmpty()
+	val password = providers.environmentVariable("JIMBLE_CENTRAL_PASSWORD").orNull.orEmpty()
+
+	fun shape (value: String): String {
+
+		val trimmed = value.trim()
+
+		val inner = if (trimmed.any { it.isWhitespace() }) " / 途中に空白あり" else ""
+
+		return "${value.length}文字（前後の空白を落とすと ${trimmed.length}文字）$inner"
+
+	}
+
+	return """
+
+		Portal がトークンを受け付けませんでした（401）。値は出しませんが、渡ったものの形は次のとおりです。
+
+		  JIMBLE_CENTRAL_USERNAME : ${shape(user)}
+		  JIMBLE_CENTRAL_PASSWORD : ${shape(password)}
+
+		よくある原因は次の4つです。
+
+		  1. トークンを作り直した。前のものは無効になります
+		  2. ユーザー名とパスワードが逆
+		  3. ログインのパスワードを入れている（User Token は別物です）
+		  4. 別のシェルで export した（Gradle を動かしているシェルに渡っていない）
+
+		手元で切り分けるには：
+
+		  curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+		    -H "Authorization: Bearer ${'$'}(printf '%s:%s' "${'$'}JIMBLE_CENTRAL_USERNAME" "${'$'}JIMBLE_CENTRAL_PASSWORD" | base64)" \
+		    'https://central.sonatype.com/api/v1/publisher/status?id=00000000-0000-0000-0000-000000000000'
+
+		  404 が返ればトークンは通っています（その id の deployment が無いだけ）。
+		  401 ならトークンそのものです。https://central.sonatype.com/account で作り直してください。
+	""".trimIndent()
 
 }
 
@@ -377,6 +437,10 @@ fun centralCall (request: java.net.http.HttpRequest): String {
 
 	if (response.body().isNotEmpty()) {
 		logger.lifecycle(response.body())
+	}
+
+	if (response.statusCode() == 401) {
+		throw GradleException(centralUnauthorizedHint())
 	}
 
 	if (response.statusCode() >= 400) {

@@ -138,6 +138,49 @@ class BlogAppIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("一覧にコメントを付けても、先読みでまとまる（要件 F-A-06）")
+	void prefetchedComments () throws Exception {
+
+		long a = insertPost("先読み1");
+		long b = insertPost("先読み2");
+
+		insertComment(a, "きむら", "1へのコメント");
+		insertComment(b, "さとう", "2へのコメント1");
+		insertComment(b, "たなか", "2へのコメント2");
+
+		HttpResponse<String> response = get("/posts/with-comments");
+
+		assertEquals(200, response.statusCode());
+
+		List<Data> posts = Data.fromJsonString(response.body()).getDataList("posts");
+
+		/*
+		 * 中身が個別読みのときと同じであることを見る。
+		 * <b>何本 SQL が飛んだか</b>は HTTP からは見えないので、
+		 * そちらは AsyncIntegrationTest（実 DB）で数えている。
+		 */
+		Data first = null;
+		Data second = null;
+
+		for (Data post : posts) {
+			if (post.getLong(Post.id) == a) { first = post; }
+			if (post.getLong(Post.id) == b) { second = post; }
+		}
+
+		assertNotNull(first, response.body());
+		assertNotNull(second, response.body());
+
+		assertEquals(1, first.getDataList("comments").size(), response.body());
+		assertEquals(2, second.getDataList("comments").size(), response.body());
+		assertEquals("さとう"
+			, second.getDataList("comments").get(0).getString(Comment.name), response.body());
+
+		delete("/posts/" + a);
+		delete("/posts/" + b);
+
+	}
+
+	@Test
 	@DisplayName("コメントは参照されたときに読まれる（AsyncList）")
 	void asyncComments () throws Exception {
 

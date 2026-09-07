@@ -54,6 +54,9 @@ public final class Dispatcher {
 		this.app = Objects.requireNonNull(app, "app");
 		this.router = app.router();
 
+		// ルートごとのフックをここで確定する（要件 D-69）。以降はルートを足せない
+		this.router.seal();
+
 	}
 
 	/**

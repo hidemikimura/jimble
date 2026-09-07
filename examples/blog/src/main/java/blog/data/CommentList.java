@@ -6,7 +6,10 @@ import io.jimble.db.sql.SQL;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.async.AsyncList;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 記事のコメント（遅延読み込み。要件 F-A-01〜05）
@@ -27,8 +30,12 @@ import java.util.List;
  *
  * <p>
  * 逆に言うと、<b>一覧の全行にこれを付けて全部を JSON にすると N+1 になる。</b>
- * 先読み（要件 F-A-06。Phase 2）はそのためのものである。
+ * それを消すのが {@link #loadBatch(List)} である（要件 F-A-06）。
  * </p>
+ *
+ * <pre>
+ * AsyncPrefetch.run(response);   // ← post_id IN (...) の1本にまとまる
+ * </pre>
  */
 public class CommentList extends AsyncList {
 
@@ -61,6 +68,43 @@ public class CommentList extends AsyncList {
 				.where(Comment.post_id.eq(postId))
 				.orderBy(Comment.created_at)
 		);
+
+	}
+// docs:end
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * <b>上の {@link #load()} と同じことを IN 句で書く</b>（要件 F-A-06）。
+	 * 並べて置いてあるのは、片方だけ直すと結果がずれるからである。
+	 * </p>
+	 */
+	@Override
+// docs:begin async-load-batch
+	protected Map<Object, List<Data>> loadBatch (List<Object> ids) {
+
+		List<Data> rows = BlogExample.db().selectList(
+			SQL.select()
+				.from(Comment.instance())
+				.where(Comment.post_id.in(ids))
+				.orderBy(Comment.post_id, Comment.created_at)
+		);
+
+		if (rows == null) {
+			// 引けなかった。1つも読み込み済みにしないよう、例外にして個別読みへ落とす
+			throw new IllegalStateException("コメントを引けませんでした: " + BlogExample.db().getError());
+		}
+
+		Map<Object, List<Data>> byPost = new LinkedHashMap<>();
+
+		for (Data row : rows) {
+			byPost
+				.computeIfAbsent(row.getLong(Comment.post_id), key -> new ArrayList<>())
+				.add(row);
+		}
+
+		return byPost;
 
 	}
 // docs:end

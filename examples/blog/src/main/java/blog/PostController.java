@@ -7,6 +7,7 @@ import io.jimble.db.data.ResultSetFetcher;
 import io.jimble.db.sql.UpdateBuilder;
 import io.jimble.util.csv.CsvWriter;
 import io.jimble.util.data.Data;
+import io.jimble.util.data.async.AsyncPrefetch;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.router.Controller;
@@ -15,6 +16,7 @@ import io.jimble.web.sse.SseStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -37,6 +39,32 @@ public class PostController extends Controller {
 		// docs:begin json-route
 		get("/posts", context -> context.response().json("posts", BlogApp.listPosts()));
 		// docs:end
+
+		/*
+		 * 一覧 + コメント（先読み。要件 F-A-06）。
+		 *
+		 * 固定セグメントはパスパラメータより先に当たるので（要件 F-R-20）、
+		 * 下の /posts/{id} には食われない。
+		 */
+// docs:begin prefetch-route
+		get("/posts/with-comments", context -> {
+
+			List<Data> posts = new ArrayList<>();
+
+			for (Data row : BlogApp.listPosts()) {
+				posts.add(BlogApp.withComments(row));
+			}
+
+			context.response().json("posts", posts);
+
+			/*
+			 * ここまでで飛んだ SQL は記事の1本だけ。
+			 * これを呼ばずに JSON にすると、記事の数だけコメントの SQL が飛ぶ。
+			 */
+			AsyncPrefetch.run(context.response());
+
+		});
+// docs:end
 
 		/*
 		 * 1件（JSON）。コメントは遅延読み込み（要件 F-A-01）。

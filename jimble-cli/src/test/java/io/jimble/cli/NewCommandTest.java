@@ -42,7 +42,7 @@ class NewCommandTest {
 			, "README.md"
 			, "src/main/java/myblog/App.java"
 			, "src/main/jte/myblog/index.jte"
-			, "src/main/resources/application.conf"
+			, "conf/application.conf"
 		}) {
 			assertTrue(Files.isRegularFile(root.resolve(path)), path);
 		}
@@ -131,9 +131,9 @@ class NewCommandTest {
 
 		Path root = NewCommand.run("my-blog", dir);
 
-		assertTrue(Files.isDirectory(root.resolve("src/main/resources/migration/my_blog")));
+		assertTrue(Files.isDirectory(root.resolve("conf/migration/my_blog")));
 
-		String conf = Files.readString(root.resolve("src/main/resources/application.conf"));
+		String conf = Files.readString(root.resolve("conf/application.conf"));
 		assertTrue(conf.contains("my_blog"), conf);
 
 	}
@@ -149,10 +149,10 @@ class NewCommandTest {
 		 * マイグレーションが流れると驚く。拡張子で止めてある。
 		 */
 		assertTrue(Files.isRegularFile(
-			root.resolve("src/main/resources/migration/my_blog/001_create_note.sql.example")));
+			root.resolve("conf/migration/my_blog/001_create_note.sql.example")));
 
 		assertFalse(Files.exists(
-			root.resolve("src/main/resources/migration/my_blog/001_create_note.sql")));
+			root.resolve("conf/migration/my_blog/001_create_note.sql")));
 
 	}
 

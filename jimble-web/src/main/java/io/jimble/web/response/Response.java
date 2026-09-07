@@ -9,6 +9,7 @@ import io.jimble.db.cache.CacheData;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.io.FileUtil;
 import io.jimble.util.data.Data;
+import io.jimble.util.data.async.AsyncPrefetch;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.util.log.Log;
 import io.jimble.web.request.Request;
@@ -219,8 +220,17 @@ public class Response extends Data {
 	/** Cache-Control ヘッダ名 */
 	public static final String HEADER_CACHE_CONTROL = "Cache-Control";
 
+	/** Content-Type */
+	public static final String HEADER_CONTENT_TYPE = "Content-Type";
+
+	/** JSON の Content-Type */
+	public static final String CONTENT_TYPE_JSON = "application/json; charset=UTF-8";
+
 	/* Cache-Control を自分で設定したか */
 	private boolean cacheControlSet = false;
+
+	/* Content-Type を自分で設定したか */
+	private boolean contentTypeSet = false;
 
 	/* レスポンスコード */
 	private int responseCode = 200;
@@ -639,6 +649,11 @@ public class Response extends Data {
 			cacheControlSet = true;
 		}
 
+		if (HEADER_CONTENT_TYPE.equalsIgnoreCase(name)) {
+			// 同上
+			contentTypeSet = true;
+		}
+
 		sink.header(name, value);
 		return this;
 
@@ -792,6 +807,8 @@ public class Response extends Data {
 		applyDefaultCacheControl();
 		sink.status(responseCode);
 
+		prefetch();
+
 		// JSONレスポンス
 		if (isResponseJson) {
 			send(this);
@@ -939,6 +956,36 @@ public class Response extends Data {
 	 * @param code    ステータスコード
 	 * @return  Response
 	 */
+	/**
+	 * 遅延読み込みの枝をまとめて埋める（要件 F-A-06）
+	 *
+	 * <p>
+	 * <b>既定では何もしない。</b>{@code async.prefetch.on_response = true} に
+	 * したときだけ走る。原則5（隠れた I/O を作らない）に照らすと、
+	 * 黙って走らせるものではない。入れたとたんに挙動が変わることもない。
+	 * </p>
+	 *
+	 * <p>
+	 * 走らせても<b>出力は変わらない</b>（要件 F-A-08）。変わるのは
+	 * 「1件ずつ引いていたものが IN 句1本になる」ところだけである。
+	 * 明示的に走らせたいときは {@code AsyncPrefetch.run(data)} を直接呼ぶ。
+	 * </p>
+	 */
+	private void prefetch () {
+
+		if (!AsyncPrefetch.isOnResponse()) {
+			return;
+		}
+
+		/* putData で入れたものは自分自身にぶら下がっている */
+		AsyncPrefetch.run(this);
+
+		if (isResponseJsonL) {
+			AsyncPrefetch.run(responseJsonL);
+		}
+
+	}
+
 	public Response send (int code) {
 
 		if (sink.isSent()) {
@@ -1015,7 +1062,7 @@ public class Response extends Data {
 		flushCookies();
 		applyDefaultCacheControl();
 		sink.status(responseCode);
-		sink.header("Content-Type", contentType);
+		sink.header(HEADER_CONTENT_TYPE, contentType);
 		if (contentLength > 0) {
 			sink.header("Content-Length", contentLength);
 		}
@@ -1101,7 +1148,7 @@ public class Response extends Data {
 		flushCookies();
 		applyDefaultCacheControl();
 		sink.status(responseCode);
-		sink.header("Content-Type", contentType);
+		sink.header(HEADER_CONTENT_TYPE, contentType);
 		sink.send(text);
 
 		afterResponse();
@@ -1175,13 +1222,19 @@ public class Response extends Data {
 		flushCookies();
 		applyDefaultCacheControl();
 		sink.status(responseCode);
-//		try (
-//		) {
-//			json.outputJsonString(bw, false);
-//		} catch (Exception ex) {
-//			Log.error(ex, request, this);
-//			sink.status(500); sink.send();
-//		}
+
+		/*
+		 * JSON を返すなら Content-Type も JSON にする。
+		 *
+		 * ブラウザの fetch().json() は Content-Type を見ないので気づきにくいが、
+		 * <b>付いていないと困る相手がいる</b>（curl | jq、プロキシ、
+		 * Accept で振り分ける中継、他言語のクライアント）。
+		 * JSONL 側は最初から付けていた。付け忘れである。
+		 */
+		if (!contentTypeSet) {
+			sink.header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON);
+		}
+
 		try (
 			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
 		) {
@@ -1215,7 +1268,10 @@ public class Response extends Data {
 		flushCookies();
 		applyDefaultCacheControl();
 		sink.status(responseCode);
-		sink.header("Content-Type", "application/jsonl");
+
+		if (!contentTypeSet) {
+			sink.header(HEADER_CONTENT_TYPE, "application/jsonl");
+		}
 
 		byte[] ln = "\n".getBytes(StandardCharsets.UTF_8);
 		try (
@@ -1272,7 +1328,7 @@ public class Response extends Data {
 		flushCookies();
 		applyDefaultCacheControl();
 		sink.status(responseCode);
-		sink.header("Content-Type", contentType);
+		sink.header(HEADER_CONTENT_TYPE, contentType);
 		if (contentEncoding != null) {
 			sink.header("Content-Encoding", contentEncoding);
 		}

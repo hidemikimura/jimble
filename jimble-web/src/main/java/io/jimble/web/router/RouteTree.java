@@ -1,11 +1,9 @@
 package io.jimble.web.router;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * ルートツリー
@@ -51,15 +49,6 @@ final class RouteTree {
 	/* ワイルドカード（メソッド → ルート） */
 	private final Map<String, Route> wildcards = new LinkedHashMap<>();
 
-	/* before */
-	private final List<Handler> befores = new ArrayList<>();
-
-	/* after */
-	private final List<Handler> afters = new ArrayList<>();
-
-	/* error */
-	private final List<ErrorHandler> errors = new ArrayList<>();
-
 	/**
 	 * コンストラクタ（ルートノード）
 	 */
@@ -82,39 +71,6 @@ final class RouteTree {
 
 
 	// region 登録
-
-	/**
-	 * フックを追加する
-	 *
-	 * @param handler	処理
-	 */
-	void before (Handler handler) {
-
-		befores.add(handler);
-
-	}
-
-	/**
-	 * フックを追加する
-	 *
-	 * @param handler	処理
-	 */
-	void after (Handler handler) {
-
-		afters.add(handler);
-
-	}
-
-	/**
-	 * フックを追加する
-	 *
-	 * @param handler	処理
-	 */
-	void error (ErrorHandler handler) {
-
-		errors.add(handler);
-
-	}
 
 	/**
 	 * パスの子ノードを取得する（無ければ作る）
@@ -233,10 +189,6 @@ final class RouteTree {
 	 */
 	void merge (RouteTree source) {
 
-		befores.addAll(source.befores);
-		afters.addAll(source.afters);
-		errors.addAll(source.errors);
-
 		for (Map.Entry<String, Route> entry : source.routes.entrySet()) {
 			putRoute(entry.getKey(), entry.getValue());
 		}
@@ -272,43 +224,34 @@ final class RouteTree {
 		/* パス変数 */
 		private final PathVariables variables = PathVariables.empty();
 
-		/* マッチしたノード列（外側 → 内側） */
-		private final Deque<RouteTree> chain = new ArrayDeque<>();
-
 	}
 
 	/**
 	 * マッチさせる
 	 *
-	 * @param method	メソッド
-	 * @param segments	セグメント列
+	 * <p>
+	 * <b>フックはここでは組み立てない。</b>ルートごとに起動時に確定してある
+	 * （{@link Route#seal()}）ので、そのまま渡すだけである。
+	 * </p>
+	 *
+	 * @param method		メソッド
+	 * @param segments		セグメント列
+	 * @param rootErrors	未マッチのときに使う error（一番外側のスコープのもの）
 	 * @return	マッチ結果
 	 */
-	RouteMatch match (String method, PathSegments segments) {
+	RouteMatch match (String method, PathSegments segments, List<ErrorHandler> rootErrors) {
 
 		State state = new State();
 
 		if (!find(state, method, segments, 0)) {
 			// 未マッチでもトップレベルの error は適用する（アプリ全体の404ページ用）
-			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), List.copyOf(errors));
+			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), rootErrors);
 		}
 
-		List<Handler> beforeHooks = new ArrayList<>();
-		List<Handler> afterHooks = new ArrayList<>();
-		List<ErrorHandler> errorHooks = new ArrayList<>();
+		Route route = state.route;
 
-		// 外側 → 内側
-		for (RouteTree node : state.chain) {
-			beforeHooks.addAll(node.befores);
-		}
-
-		// 内側 → 外側
-		for (RouteTree node : state.chain.reversed()) {
-			afterHooks.addAll(node.afters);
-			errorHooks.addAll(node.errors);
-		}
-
-		return new RouteMatch(state.route, state.variables, beforeHooks, afterHooks, errorHooks);
+		return new RouteMatch(
+			route, state.variables, route.beforeHooks(), route.afterHooks(), route.errorHooks());
 
 	}
 
@@ -316,8 +259,8 @@ final class RouteTree {
 	 * 再帰的に探索する
 	 *
 	 * <p>
-	 * <b>成功したときだけ</b>自ノードを {@code chain} の先頭に積み、パス変数を記録する。
-	 * これにより失敗した枝のフックと変数が混ざらない。
+	 * <b>成功したときだけ</b>パス変数を記録する。
+	 * これにより失敗した枝の変数が混ざらない。
 	 * </p>
 	 *
 	 * @param state		探索状態
@@ -335,7 +278,6 @@ final class RouteTree {
 				return false;
 			}
 			state.route = route;
-			state.chain.addFirst(this);
 			return true;
 		}
 
@@ -344,7 +286,6 @@ final class RouteTree {
 		// 1. 固定セグメント
 		RouteTree staticChild = statics.get(segment);
 		if (staticChild != null && staticChild.find(state, method, segments, index + 1)) {
-			state.chain.addFirst(this);
 			return true;
 		}
 
@@ -352,7 +293,6 @@ final class RouteTree {
 		for (Map.Entry<String, RouteTree> entry : variables.entrySet()) {
 			if (entry.getValue().find(state, method, segments, index + 1)) {
 				state.variables.put(entry.getKey(), segment);
-				state.chain.addFirst(this);
 				return true;
 			}
 		}
@@ -362,7 +302,6 @@ final class RouteTree {
 		if (wildcard != null) {
 			state.route = wildcard;
 			state.variables.put(PathVariables.WILDCARD, segments.joinFrom(index));
-			state.chain.addFirst(this);
 			return true;
 		}
 
@@ -374,6 +313,28 @@ final class RouteTree {
 
 
 	// region 一覧
+
+	/**
+	 * 全ルートに処理を適用する
+	 *
+	 * <p>起動時のフック確定（{@link Route#seal()}）に使う。</p>
+	 *
+	 * @param action	処理
+	 */
+	void forEachRoute (Consumer<Route> action) {
+
+		routes.values().forEach(action);
+		wildcards.values().forEach(action);
+
+		for (RouteTree child : statics.values()) {
+			child.forEachRoute(action);
+		}
+
+		for (RouteTree child : variables.values()) {
+			child.forEachRoute(action);
+		}
+
+	}
 
 	/**
 	 * ルート一覧を集める

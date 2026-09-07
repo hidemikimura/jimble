@@ -23,26 +23,38 @@ import java.util.function.Supplier;
  */
 public final class Router {
 
-	/* ルートツリー */
+	/* このスコープのルートツリー（path でネストすると子ノードになる） */
 	private final RouteTree tree;
+
+	/* 一番外側のルートツリー（フックの確定に使う） */
+	private final RouteTree rootTree;
+
+	/* フックのスコープ（要件 D-69） */
+	private final Scope scope;
 
 	/**
 	 * コンストラクタ
 	 */
 	public Router () {
 
-		this(new RouteTree());
+		this.tree = new RouteTree();
+		this.rootTree = this.tree;
+		this.scope = new Scope();
 
 	}
 
 	/**
 	 * コンストラクタ
 	 *
-	 * @param tree	ルートツリー
+	 * @param tree		ルートツリー
+	 * @param rootTree	一番外側のルートツリー
+	 * @param scope		フックのスコープ
 	 */
-	private Router (RouteTree tree) {
+	private Router (RouteTree tree, RouteTree rootTree, Scope scope) {
 
 		this.tree = tree;
+		this.rootTree = rootTree;
+		this.scope = scope;
 
 	}
 
@@ -63,39 +75,52 @@ public final class Router {
 	/**
 	 * before を登録する
 	 *
-	 * <p>このスコープ配下の全ルートに適用される。実行順は 外側 → 内側。</p>
+	 * <p>
+	 * <b>効くのはこのスコープで登録したルートだけ</b>（と、このスコープから
+	 * {@code path} / {@code install} でネストしたもの）。パスが同じでも、
+	 * 別のスコープで登録したルートには効かない（要件 D-69）。
+	 * </p>
+	 *
+	 * <p>実行順は 外側 → 内側。</p>
 	 *
 	 * @param handler	処理
 	 */
 	public void before (Handler handler) {
 
-		tree.before(Objects.requireNonNull(handler, "handler"));
+		scope.before(Objects.requireNonNull(handler, "handler"));
 
 	}
 
 	/**
 	 * after を登録する
 	 *
-	 * <p>このスコープ配下の全ルートに適用される。実行順は 内側 → 外側。</p>
+	 * <p>効く範囲は {@link #before(Handler)} と同じ。実行順は 内側 → 外側。</p>
 	 *
 	 * @param handler	処理
 	 */
 	public void after (Handler handler) {
 
-		tree.after(Objects.requireNonNull(handler, "handler"));
+		scope.after(Objects.requireNonNull(handler, "handler"));
 
 	}
 
 	/**
 	 * error を登録する
 	 *
-	 * <p>このスコープ配下で発生した例外を捕捉する。内側のスコープが優先される。</p>
+	 * <p>
+	 * このスコープで登録したルートで起きた例外を捕捉する。内側のスコープが優先される。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>未マッチ（404）で呼ばれるのは一番外側のスコープの error だけ</b>である
+	 * （要件 F-R-09b）。どのルートにも当たっていないので、内側のスコープが決まらない。
+	 * </p>
 	 *
 	 * @param handler	処理
 	 */
 	public void error (ErrorHandler handler) {
 
-		tree.error(Objects.requireNonNull(handler, "handler"));
+		scope.error(Objects.requireNonNull(handler, "handler"));
 
 	}
 
@@ -112,7 +137,7 @@ public final class Router {
 	 */
 	public Router path (String path) {
 
-		return new Router(tree.node(PathSegments.ofPattern(path)));
+		return new Router(tree.node(PathSegments.ofPattern(path)), rootTree, scope.child());
 
 	}
 
@@ -126,7 +151,11 @@ public final class Router {
 	public void merge (Router other) {
 
 		Objects.requireNonNull(other, "other");
+
 		tree.merge(other.tree);
+
+		// 取り込んだ側のフックが子にも効くよう、スコープを自分の下にぶら下げる
+		scope.adopt(other.scope);
 
 	}
 
@@ -348,6 +377,7 @@ public final class Router {
 		Objects.requireNonNull(handler, "handler");
 
 		Route route = new Route(method, path, handler, null);
+		route.scope(scope);
 		tree.add(method, PathSegments.ofPattern(path), route);
 		return route;
 
@@ -369,6 +399,7 @@ public final class Router {
 		}
 
 		Route route = new Route(method, path, null, suppliers);
+		route.scope(scope);
 		tree.add(method, PathSegments.ofPattern(path), route);
 		return route;
 
@@ -388,7 +419,34 @@ public final class Router {
 	 */
 	public RouteMatch match (String method, String rawPath) {
 
-		return tree.match(method, PathSegments.ofRawPath(rawPath));
+		seal();
+
+		return tree.match(method, PathSegments.ofRawPath(rawPath), scope.root().ownErrors());
+
+	}
+
+	/**
+	 * フックを確定する（要件 D-69）
+	 *
+	 * <p>
+	 * ルートごとの before / after / error を<b>ここで1度だけ組み立てる。</b>
+	 * リクエストのたびに親を辿って集め直さない。
+	 * </p>
+	 *
+	 * <p>
+	 * 確定した後にフックを足すと落ちる。<b>「足したのに効かない」を黙って通さない</b>
+	 * ためである。{@link io.jimble.web.server.JimbleServer} が起動時に呼ぶので、
+	 * 普通は自分で呼ぶ必要はない。
+	 * </p>
+	 */
+	public void seal () {
+
+		if (scope.isSealed()) {
+			return;
+		}
+
+		scope.root().seal();
+		rootTree.forEachRoute(Route::seal);
 
 	}
 

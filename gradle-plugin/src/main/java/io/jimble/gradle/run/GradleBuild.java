@@ -5,8 +5,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 
 /**
  * 作り直し（要件 F-X-02）
@@ -80,7 +84,7 @@ final class GradleBuild {
 		log.debug("作り直します: " + String.join(" ", tasks));
 
 		List<String> command = new ArrayList<>();
-		command.add(wrapper());
+		command.add(wrapperCommand());
 		command.addAll(tasks);
 		// 進捗のアニメーションはログに混ざると読めない
 		command.add("--console=plain");
@@ -133,36 +137,145 @@ final class GradleBuild {
 	/**
 	 * ラッパーのパス
 	 *
+	 * <p>
+	 * <b>壊れたラッパーを掴まない。</b>ここで掴むと、保存のたびにビルドが失敗し、
+	 * <b>原因がホットリロードの側にあるように見える</b>。
+	 * 使えないと分かったら、理由を言ってから PATH の {@code gradle} に逃がす。
+	 * </p>
+	 *
 	 * @return	パス
 	 */
-	private String wrapper () {
+	String wrapperCommand () {
 
-		/*
-		 * ラッパーは gradlew だけでは動かない。
-		 * gradle/wrapper/gradle-wrapper.properties が要る。
-		 * 揃っていないものを掴むと「Wrapper properties file does not exist」で
-		 * 毎回ビルドに失敗し、原因がホットリロードの側にあるように見える。
-		 */
-		boolean hasWrapperProperties =
-			new File(rootDir, "gradle/wrapper/gradle-wrapper.properties").isFile();
+		File script = wrapperScript();
 
-		if (hasWrapperProperties) {
+		if (script != null) {
 
-			File sh = new File(rootDir, "gradlew");
-			if (sh.canExecute()) {
-				return sh.getAbsolutePath();
+			String problem = wrapperProblem(script);
+
+			if (problem == null) {
+				return script.getAbsolutePath();
 			}
 
-			File bat = new File(rootDir, "gradlew.bat");
-			if (bat.isFile()) {
-				return bat.getAbsolutePath();
-			}
+			log.error("""
+				%s が使えないので PATH の gradle を使います。
+				  %s
+				  直すには、このプロジェクトで次を流してください。
+				    gradle wrapper --gradle-version <版>"""
+				.formatted(script.getName(), problem));
+
+			return "gradle";
 
 		}
 
-		// ラッパーが揃っていなければ PATH の gradle を使う
+		// ラッパーが無ければ PATH の gradle を使う（これは普通のこと）
 		log.debug("gradlew が見つからないので PATH の gradle を使います");
 		return "gradle";
+
+	}
+
+	/**
+	 * ラッパーのスクリプト
+	 *
+	 * <p>
+	 * ラッパーは {@code gradlew} だけでは動かない。
+	 * {@code gradle/wrapper/gradle-wrapper.properties} が要る。
+	 * 揃っていないものを掴むと「Wrapper properties file does not exist」になる。
+	 * </p>
+	 *
+	 * @return	スクリプト。無ければ null
+	 */
+	private File wrapperScript () {
+
+		if (!new File(rootDir, "gradle/wrapper/gradle-wrapper.properties").isFile()) {
+			return null;
+		}
+
+		File sh = new File(rootDir, "gradlew");
+		if (sh.canExecute()) {
+			return sh;
+		}
+
+		File bat = new File(rootDir, "gradlew.bat");
+		if (bat.isFile()) {
+			return bat;
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * ラッパーが使えない理由
+	 *
+	 * <p>
+	 * よくあるのが<b>スクリプトと JAR の食い違い</b>である。
+	 * いまの {@code gradlew} は
+	 * {@code java -jar gradle/wrapper/gradle-wrapper.jar} で起動するので、
+	 * JAR のマニフェストに {@code Main-Class} が要る。
+	 * 古い（{@code -classpath} 前提の）JAR が混ざっていると
+	 * <b>「メイン・マニフェスト属性がありません」</b>だけが出る。
+	 * gradlew も JAR も見た目は揃っているので、これは分からない。
+	 * </p>
+	 *
+	 * @param script	スクリプト
+	 * @return	理由。使えるなら null
+	 */
+	private String wrapperProblem (File script) {
+
+		File jar = new File(rootDir, "gradle/wrapper/gradle-wrapper.jar");
+
+		if (!jar.isFile()) {
+			return "gradle/wrapper/gradle-wrapper.jar がありません";
+		}
+
+		if (!usesJarOption(script)) {
+			// 古い形（-classpath で起動する）。Main-Class は要らない
+			return null;
+		}
+
+		try (JarFile jarFile = new JarFile(jar)) {
+
+			Manifest manifest = jarFile.getManifest();
+
+			String mainClass = manifest == null
+				? null : manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS);
+
+			if (mainClass == null || mainClass.isEmpty()) {
+				return "gradle-wrapper.jar のマニフェストに Main-Class がありません"
+					+ "（%s は -jar で起動するので、古い gradle-wrapper.jar は使えません）"
+						.formatted(script.getName());
+			}
+
+			return null;
+
+		} catch (IOException ex) {
+
+			return "gradle-wrapper.jar を読めません: " + ex.getMessage();
+
+		}
+
+	}
+
+	/**
+	 * スクリプトが {@code -jar} で起動するか
+	 *
+	 * @param script	スクリプト
+	 * @return	{@code -jar} を使うなら true
+	 */
+	private boolean usesJarOption (File script) {
+
+		try {
+
+			return Files.readString(script.toPath(), StandardCharsets.UTF_8)
+				.contains("-jar");
+
+		} catch (IOException ex) {
+
+			// 読めないなら判断しない（使えるものとして扱う）
+			return false;
+
+		}
 
 	}
 

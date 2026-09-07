@@ -3,6 +3,7 @@ package io.jimble.util.conf;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -13,6 +14,30 @@ import java.util.Objects;
  * <p>
  * 環境別ファイル（{@code application.conf} + {@code application.<env>.conf}）を読む。
  * 環境は システムプロパティ {@code env} または環境変数 {@code ENV}（既定 {@code local}）。
+ * </p>
+ *
+ * <h2>どこから読むか（要件 D-71）</h2>
+ * <p>
+ * <b>jar の外の {@code conf/} を先に見る。</b>次にクラスパス。
+ * 上にあるものが勝つ。
+ * </p>
+ * <ol>
+ *   <li>{@code <conf>/application.<env>.conf}</li>
+ *   <li>クラスパスの {@code application.<env>.conf}</li>
+ *   <li>{@code <conf>/application.conf}</li>
+ *   <li>クラスパスの {@code application.conf}</li>
+ *   <li>システムプロパティ</li>
+ * </ol>
+ *
+ * <p>
+ * {@code <conf>} は既定で<b>実行時のカレントディレクトリの {@code conf}</b>。
+ * {@code -Djimble.conf.dir=...} か環境変数 {@code JIMBLE_CONF_DIR} で変えられる。
+ * 無くても落ちない（クラスパスだけで動く）。
+ * </p>
+ *
+ * <p>
+ * <b>実際に読んだファイルは {@link #sources()} で取れる</b>ので、起動ログに出せる。
+ * 「どっちの設定が効いているのか分からない」を作らないためである。
  * </p>
  *
  * <p>
@@ -33,11 +58,29 @@ public final class Conf {
 	/** 既定の環境 */
 	public static final String DEFAULT_ENV = "local";
 
+	/** 設定ファイルを置くディレクトリを指定するキー */
+	public static final String KEY_CONF_DIR = "jimble.conf.dir";
+
+	/** 設定ファイルを置くディレクトリを指定する環境変数 */
+	public static final String ENV_CONF_DIR = "JIMBLE_CONF_DIR";
+
+	/** 既定のディレクトリ */
+	public static final String DEFAULT_CONF_DIR = "conf";
+
+	/** 設定ファイルの基本名 */
+	private static final String BASE_NAME = "application";
+
+	/** 探す拡張子（typesafe config の AnySyntax と同じ） */
+	private static final String[] EXTENSIONS = { ".conf", ".json", ".properties" };
+
 	/* 環境 */
 	private static volatile String env = resolveEnv();
 
 	/* インスタンス */
 	private static volatile Conf instance;
+
+	/* 実際に読んだファイル（起動ログ用） */
+	private static volatile List<String> sources = List.of();
 
 	/* 設定 */
 	private final Config config;
@@ -112,6 +155,7 @@ public final class Conf {
 	public static void replace (Config config) {
 
 		instance = new Conf(Objects.requireNonNull(config, "config"));
+		sources = List.of("（差し替え）");
 
 	}
 
@@ -132,12 +176,81 @@ public final class Conf {
 	 */
 	private static Config load () {
 
-		// 環境別ファイルが基本ファイルを上書きする
+		File dir = confDir();
+
+		List<String> found = new ArrayList<>();
+		collectSources(dir, BASE_NAME + "." + env, found);
+		collectSources(dir, BASE_NAME, found);
+		sources = List.copyOf(found);
+
+		/*
+		 * 上にあるものが勝つ。
+		 *
+		 * 同じ役割どうしでは conf/ がクラスパスに勝ち、
+		 * 環境別は常に基本ファイルに勝つ。
+		 */
 		return ConfigFactory
-			.parseResourcesAnySyntax("application." + env)
-			.withFallback(ConfigFactory.parseResourcesAnySyntax("application"))
+			.parseFileAnySyntax(new File(dir, BASE_NAME + "." + env))
+			.withFallback(ConfigFactory.parseResourcesAnySyntax(BASE_NAME + "." + env))
+			.withFallback(ConfigFactory.parseFileAnySyntax(new File(dir, BASE_NAME)))
+			.withFallback(ConfigFactory.parseResourcesAnySyntax(BASE_NAME))
 			.withFallback(ConfigFactory.systemProperties())
 			.resolve();
+
+	}
+
+	/**
+	 * 設定ファイルを置くディレクトリ
+	 *
+	 * @return	ディレクトリ（存在するとは限らない）
+	 */
+	public static File confDir () {
+
+		String value = System.getProperty(KEY_CONF_DIR);
+
+		if (value == null || value.isEmpty()) {
+			value = System.getenv(ENV_CONF_DIR);
+		}
+
+		return new File((value == null || value.isEmpty()) ? DEFAULT_CONF_DIR : value);
+
+	}
+
+	/**
+	 * 実際に読んだ設定ファイル
+	 *
+	 * <p>
+	 * jar の外のものだけを返す。クラスパスのものは
+	 * どこにあるか（jar の中か src/main/resources か）が実行のしかたで変わるので、
+	 * <b>ここに出すと誤解のもとになる</b>。
+	 * </p>
+	 *
+	 * @return	ファイルのパス（無ければ空）
+	 */
+	public static List<String> sources () {
+
+		return sources;
+
+	}
+
+	/**
+	 * 実在する設定ファイルを集める
+	 *
+	 * @param dir		ディレクトリ
+	 * @param baseName	基本名（拡張子なし）
+	 * @param result	結果
+	 */
+	private static void collectSources (File dir, String baseName, List<String> result) {
+
+		for (String extension : EXTENSIONS) {
+
+			File file = new File(dir, baseName + extension);
+
+			if (file.isFile()) {
+				result.add(file.getPath());
+			}
+
+		}
 
 	}
 

@@ -49,6 +49,12 @@ public final class GeneratorConf {
 		, "db_sticky"
 		, "redis_lock"
 		/*
+		 * DB セッションのテーブルも jimble が作る（jimble-web の DbSessionStore）。
+		 * 名前は設定で変えられるが、既定の "session" だけはここで外す。
+		 * 変えている場合は codegen.exclude_tables に足すこと。
+		 */
+		, "session"
+		/*
 		 * バッチの3つも jimble が作るものである（jimble-batch）。
 		 * 名前が固定なのでここに書ける。
 		 * MQ のテーブルは名前をアプリが決めるので（mq_blog など）ここには書けない。

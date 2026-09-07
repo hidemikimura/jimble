@@ -4,6 +4,7 @@ import io.jimble.util.data.Data;
 import org.jspecify.annotations.NonNull;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -97,6 +98,40 @@ public abstract class AsyncData extends Data implements Async {
 	 * @throws Exception	反映に失敗した場合
 	 */
 	protected void setRelationData (Data data) throws Exception {}
+
+	/**
+	 * まとめて読む（要件 F-A-06）
+	 *
+	 * <p>
+	 * 先読み（{@link AsyncPrefetch}）が、同じ {@link #batchKey()} を持つ
+	 * 未読み込みのノードを集めて<b>1回だけ</b>呼ぶ。
+	 * 呼ばれるのは集まったうちの1つで、渡される {@code ids} には
+	 * <b>ほかのノードの {@link #batchId()} も入っている。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@link #load()} と同じことを、IN 句で書く。</b>
+	 * 片方だけ直すと結果がずれるので、必ず並べて置くこと
+	 * （置き場を分けない理由がこれである）。
+	 * </p>
+	 *
+	 * <p>
+	 * 既定は {@code null}（先読みしない）。返さなかった id のノードは
+	 * <b>「空」として読み込み済みになる</b>（そうしないと、そのぶんだけ
+	 * 個別のクエリが飛んで先読みの意味が無くなる）。
+	 * 例外を投げた場合は<b>どのノードも読み込み済みにしない</b>ので、
+	 * それぞれが個別に {@link #load()} される。
+	 * </p>
+	 *
+	 * @param ids	{@link #batchId()} の一覧（重複なし。1件以上）
+	 * @return	id ごとのデータ（先読みしないなら null）
+	 * @throws Exception	読み込みに失敗した場合
+	 */
+	protected Map<Object, Data> loadBatch (List<Object> ids) throws Exception {
+
+		return null;
+
+	}
 
 	/**
 	 * 同じものかどうかを決めるキー

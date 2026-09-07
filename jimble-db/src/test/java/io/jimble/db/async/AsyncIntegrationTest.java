@@ -8,6 +8,7 @@ import io.jimble.db.sql.TestSchema;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.async.AsyncList;
+import io.jimble.util.data.async.AsyncPrefetch;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +17,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -135,6 +138,46 @@ class AsyncIntegrationTest {
 		protected void setData (Data data) {
 
 			add(data.getString(TestSchema.Feed.title));
+
+		}
+
+		/**
+		 * {@inheritDoc}
+		 *
+		 * <p>上の {@link #load()} と同じことを IN 句で書く（要件 F-A-06）。</p>
+		 */
+		@Override
+		protected Map<Object, List<Data>> loadBatch (List<Object> ids) {
+
+			List<Data> rows = DBUtil.getMainDB().selectList(
+				SQL.select()
+					.from(TestSchema.Feed.instance())
+					.where(TestSchema.Feed.site_id.in(ids))
+					.orderBy(TestSchema.Feed.id));
+
+			Map<Object, List<Data>> bySite = new LinkedHashMap<>();
+
+			for (Data row : rows) {
+				bySite
+					.computeIfAbsent(row.getLong(TestSchema.Feed.site_id), key -> new ArrayList<>())
+					.add(row);
+			}
+
+			return bySite;
+
+		}
+
+		@Override
+		public String batchKey () {
+
+			return "FeedList";
+
+		}
+
+		@Override
+		public Object batchId () {
+
+			return siteId;
 
 		}
 
@@ -303,13 +346,13 @@ class AsyncIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("枝を全部たどると N+1 になる（先読みが Phase 2 の理由）")
+	@DisplayName("先読みせずに枝を全部たどると N+1 になる")
 	void fullTraversalIsNPlusOne () {
 
 		/*
-		 * これは仕様である。要件 F-A-06（先読み）は Phase 2 なので、
-		 * <b>いまは N+1 が起きる</b>。起きることをテストで固定しておかないと、
-		 * Phase 2 で先読みを入れたときに「効いたのかどうか」が分からない。
+		 * これは仕様である。<b>先読みを呼ばなければ N+1 になる</b>。
+		 * 呼べば2本になることを prefetchCollapsesNPlusOne() で固定してあるので、
+		 * この2つは対で意味を持つ。片方だけ見ても「効いたのかどうか」が分からない。
 		 */
 		long sql = countSql("全部たどる", () -> {
 
@@ -401,5 +444,76 @@ class AsyncIntegrationTest {
 		assertEquals(0, sql, "外から入れたのに SQL が飛んでいる");
 
 	}
+
+	// region 先読み（要件 F-A-06〜08 / NF-T-04）
+
+	@Test
+	@DisplayName("先読みすると N+1 が 2本になる")
+	void prefetchCollapsesNPlusOne () {
+
+		long sql = countSql("先読みあり", () -> {
+
+			SiteList sites = new SiteList(1L, false);
+
+			Data page = new Data().putData("sites", sites);
+
+			/*
+			 * サイトの一覧は先読みの対象ではない（batchKey を返していない）ので、
+			 * 走査の起点として1本だけ引いておく。
+			 * そのあとフィードの枝が3つ見つかり、IN 句1本にまとまる。
+			 */
+			sites.loadedSize();
+			sites.size();
+
+			AsyncPrefetch.Result result = AsyncPrefetch.run(page);
+
+			assertEquals(1, result.groups());
+			assertEquals(3, result.filled());
+
+			for (Object element : sites) {
+				((List<?>) ((Data) element).get("feeds")).size();
+			}
+
+		});
+
+		// サイト1本 + まとめて1本
+		assertEquals(2, sql, "本数が想定と違う: " + sql);
+
+	}
+
+	@Test
+	@DisplayName("先読みの有無で出力が完全に一致する（要件 F-A-08）")
+	void prefetchDoesNotChangeOutput () {
+
+		String withoutPrefetch = new Data()
+			.putData("sites", new SiteList(1L, false))
+			.getJsonString();
+
+		Data page = new Data().putData("sites", new SiteList(1L, false));
+
+		AsyncPrefetch.run(page);
+
+		assertEquals(withoutPrefetch, page.getJsonString());
+
+	}
+
+	@Test
+	@DisplayName("先読みしても、触っていない枝は読まない")
+	void prefetchDoesNotTouchUnreachedBranches () {
+
+		long sql = countSql("触らない", () -> {
+
+			/* 起点を引いていないので、ぶら下がっている枝はまだ見えない */
+			Data page = new Data().putData("sites", new SiteList(1L, false));
+
+			assertEquals(0, AsyncPrefetch.run(page).groups());
+
+		});
+
+		assertEquals(0, sql, "走査だけで SQL が飛んでいる");
+
+	}
+
+	// endregion
 
 }
