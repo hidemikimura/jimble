@@ -126,9 +126,7 @@ public class LogbackErrorEncoder extends EncoderBase<ILoggingEvent> {
 				bos.write(ANSI_RED);
 
 				bos.write(suffix);
-				if (throwable.getMessage() != null && !throwable.getMessage().isEmpty()) {
-					bos.write(throwable.getMessage().getBytes(StandardCharsets.UTF_8));
-				}
+				bos.write(head(logData, throwable).getBytes(StandardCharsets.UTF_8));
 				bos.write(LINE_SEPARATOR);
 
 				for (StackTraceElement stackTraceElement : throwable.getStackTrace()) {
@@ -153,6 +151,103 @@ public class LogbackErrorEncoder extends EncoderBase<ILoggingEvent> {
 
 	}
 
+	/**
+	 * 1行目を組み立てる（要件 D-84）
+	 *
+	 * <p>
+	 * <b>呼んだ側が書いた説明を落とさない。</b>
+	 * {@code Log.error(cause, "保存できませんでした: id=3")} の説明は
+	 * {@code objects} に入る（メッセージは例外のものになる）ので、
+	 * ここで拾わないと<b>画面には例外のメッセージしか出ない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 実行 ID も入れる。アクセスログと突き合わせるためである。
+	 * </p>
+	 *
+	 * @param logData	ログのデータ
+	 * @param throwable	例外
+	 * @return	1行目
+	 */
+	private static String head (Data logData, Throwable throwable) {
+
+		StringBuilder head = new StringBuilder();
+
+		String requestId = logData.getStringOptional("request_id");
+
+		if (!requestId.isEmpty() && !"-".equals(requestId)) {
+			head.append('[').append(requestId).append("] ");
+		}
+
+		String explanation = explanation(logData);
+
+		if (!explanation.isEmpty()) {
+			head.append(explanation).append(" / ");
+		}
+
+		head.append(name(throwable));
+
+		return head.toString();
+
+	}
+
+	/**
+	 * 呼んだ側が書いた説明
+	 *
+	 * @param logData	ログのデータ
+	 * @return	説明（無ければ空）
+	 */
+	private static String explanation (Data logData) {
+
+		Object objects = logData.get("objects");
+
+		if (!(objects instanceof Iterable<?> list)) {
+			return "";
+		}
+
+		StringBuilder result = new StringBuilder();
+
+		for (Object item : list) {
+
+			if (!(item instanceof CharSequence text) || text.isEmpty()) {
+				continue;
+			}
+
+			if (!result.isEmpty()) {
+				result.append(' ');
+			}
+
+			result.append(text);
+
+		}
+
+		return result.toString();
+
+	}
+
+	/**
+	 * 例外の名前とメッセージ
+	 *
+	 * <p>
+	 * <b>メッセージが null でも落ちない。</b>
+	 * {@code NullPointerException} のようにメッセージを持たない例外は多く、
+	 * そこで落ちると<b>ログの行がまるごと消える</b>（この encode は
+	 * 例外を握って空を返すため）。
+	 * </p>
+	 *
+	 * @param throwable	例外
+	 * @return	名前（メッセージがあれば添える）
+	 */
+	private static String name (Throwable throwable) {
+
+		String message = throwable.getMessage();
+
+		return (message == null || message.isEmpty())
+			? throwable.getClass().getName()
+			: throwable.getClass().getName() + ": " + message;
+
+	}
+
 	private void outputCaused (Throwable throwable, BufferedOutputStream bos, byte[] suffix) throws IOException {
 
 		if (throwable.getCause() == null) {
@@ -163,7 +258,7 @@ public class LogbackErrorEncoder extends EncoderBase<ILoggingEvent> {
 
 		bos.write(suffix);
 		bos.write("Caused by: ".getBytes(StandardCharsets.UTF_8));
-		bos.write(throwableCase.getMessage().getBytes(StandardCharsets.UTF_8));
+		bos.write(name(throwableCase).getBytes(StandardCharsets.UTF_8));
 		bos.write(LINE_SEPARATOR);
 
 		for (StackTraceElement stackTraceElement : throwableCase.getStackTrace()) {

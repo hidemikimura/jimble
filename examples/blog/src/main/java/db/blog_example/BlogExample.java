@@ -1,3 +1,8 @@
+/*
+ * このファイルは jimble が作りました（codegen）。手で直さないでください。
+ * 直しても次の codegen で消えます。
+ */
+
 package db.blog_example;
 
 import db.blog_example.table.comment.Comment;

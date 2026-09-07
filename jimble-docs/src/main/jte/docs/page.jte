@@ -62,6 +62,24 @@
 		<article>
 			$unsafe{page.html()}
 		</article>
+
+		!{Page previous = nav.before(page);}
+		!{Page following = nav.after(page);}
+
+		@if(previous != null || following != null)
+			<nav class="pager" aria-label="前後のページ">
+				@if(previous != null)
+					<a class="prev" href="${previous.slug()}">
+						<span>前</span>${previous.title()}
+					</a>
+				@endif
+				@if(following != null)
+					<a class="next" href="${following.slug()}">
+						<span>次</span>${following.title()}
+					</a>
+				@endif
+			</nav>
+		@endif
 	</main>
 
 	@if(page.headings().size() > 1)
@@ -83,6 +101,7 @@
 </footer>
 
 <script src="../static/search.js"></script>
+<script src="../static/copy.js"></script>
 
 </body>
 </html>

@@ -28,6 +28,7 @@ class ValidationExecutorTest {
 	/**
 	 * 失敗するバリデーション
 	 */
+	// docs:begin validation-executor
 	private class Failing extends ValidationExecutor {
 
 		@Override
@@ -39,6 +40,7 @@ class ValidationExecutorTest {
 		}
 
 	}
+	// docs:end
 
 	/**
 	 * 通るバリデーション
@@ -94,6 +96,7 @@ class ValidationExecutorTest {
 	@DisplayName("失敗すると後続の UseCase が実行されず 422 になる")
 	void cancelsFollowingExecutors () {
 
+		// docs:begin validation-executor-route
 		JimbleApp app = new JimbleApp() {
 			{
 				post("/items", context -> {
@@ -102,6 +105,7 @@ class ValidationExecutorTest {
 				});
 			}
 		};
+		// docs:end
 
 		Fakes.FakeResponseSink sink = dispatch(app);
 

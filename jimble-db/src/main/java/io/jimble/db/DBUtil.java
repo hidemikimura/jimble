@@ -18,6 +18,7 @@ import io.jimble.db.lock.DBLock;
 import io.jimble.db.log.DBLog;
 import io.jimble.db.value.DBValue;
 import io.jimble.db.version.DBVersion;
+import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.util.log.Log;
 import io.jimble.db.redis.lock.RedisLock;
 
@@ -203,6 +204,9 @@ public class DBUtil {
 		if (!conf.hasPath("db")) {
 			return true;
 		}
+
+		// 「全部止める」に預ける（要件 D-77）。プールは最後に閉じたい
+		Shutdown.add("DB", DBUtil::stop);
 
 		for (String dbName : conf.getConfig("db").root().keySet()) {
 
@@ -517,6 +521,8 @@ public class DBUtil {
 				}
 			}
 		}
+
+		dataSources.clear();
 
 		Log.info("DB stoppped");
 

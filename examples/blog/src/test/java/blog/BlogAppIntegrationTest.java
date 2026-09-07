@@ -62,6 +62,7 @@ class BlogAppIntegrationTest {
 	/* クライアント。Cookie を持ち回る（CSRF と Flash を通すため） */
 	private static HttpClient client;
 
+	// docs:begin test-db-app
 	@BeforeAll
 	static void startServer () {
 
@@ -80,6 +81,7 @@ class BlogAppIntegrationTest {
 			.build();
 
 	}
+	// docs:end
 
 	@AfterAll
 	static void stopServer () {

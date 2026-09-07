@@ -11,6 +11,7 @@ import org.gradle.api.provider.Property;
  *     mainClass = "blog.BlogApp"
  *     port      = 9000            // ブラウザで開くポート
  *     appPort   = 9100            // アプリが実際に待ち受けるポート
+ *     debug     = true            // デバッガを繋げるようにする（既定 5005）
  * }
  * </pre>
  *
@@ -96,18 +97,6 @@ public abstract class JimbleRunExtension {
 	 * @return	拡張子
 	 */
 	public abstract ListProperty<String> getWatchExtensions ();
-
-	/**
-	 * アプリに渡す JVM 引数
-	 *
-	 * <p>
-	 * 別プロセスで起動するので、ここは<b>アプリだけの</b>設定になる
-	 * （Gradle デーモンのヒープに引きずられない）。
-	 * </p>
-	 *
-	 * @return	JVM 引数
-	 */
-	public abstract ListProperty<String> getJvmArgs ();
 
 	/**
 	 * アプリに渡すコマンドライン引数

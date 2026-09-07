@@ -31,8 +31,18 @@ input[type=text] { font:inherit; font-size:12px; padding:3px 6px; border:1px sol
 .ng { color:#b91c1c; border-color:#b91c1c; }
 .muted { color:var(--muted); }
 pre { background:rgba(127,127,127,.1); padding:10px; border-radius:4px; overflow-x:auto; font-size:12px; }
-#message { padding:6px 16px; font-size:13px; }
-#message.error { color:#b91c1c; }
+#message { margin:0; padding:0 16px; font-size:13px; overflow:hidden; max-height:0; transition:max-height .15s; }
+#message.shown { padding:8px 16px; max-height:80px; }
+#message.ok { color:#15803d; background:rgba(21,128,61,.10); border-bottom:1px solid rgba(21,128,61,.35); }
+#message.error { color:#b91c1c; background:rgba(185,28,28,.10); border-bottom:1px solid rgba(185,28,28,.35); }
+tr.detail > td { background:rgba(127,127,127,.06); }
+tr.detail pre { margin:0; }
+td.empty { color:var(--muted); }
+td.failed { color:#b91c1c; }
+.pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:13px; }
+.pager .count { color:var(--muted); }
+.pager select { font:inherit; font-size:12px; padding:3px 6px; border:1px solid var(--line);
+	background:transparent; color:var(--fg); border-radius:4px; }
 details summary { cursor:pointer; }
 </style>
 </head>
@@ -71,7 +81,7 @@ details summary { cursor:pointer; }
 		</thead>
 		<tbody id="histories"></tbody>
 	</table>
-	<p id="detail"></p>
+	<div class="pager" id="history-pager"></div>
 </section>
 
 </main>
@@ -79,10 +89,34 @@ details summary { cursor:pointer; }
 <script>
 const BASE = location.pathname.replace(/\/+$/, '');
 
-function say (text, isError) {
+/* いま出しているメッセージの番号（古いタイマーが新しいものを消さないように） */
+let messageSeq = 0;
+
+/**
+ * メッセージを出す
+ *
+ * 成功も出す。以前は reload() の先頭で消していたので、
+ * 「保存しました」が出た直後に必ず消えていた。
+ */
+function say (text, kind) {
+
 	const el = document.getElementById('message');
+	const seq = ++messageSeq;
+
 	el.textContent = text || '';
-	el.className = isError ? 'error' : '';
+	el.className = text ? ('shown ' + (kind || 'ok')) : '';
+
+	if (!text || kind === 'error') {
+		return;
+	}
+
+	// 成功は放っておくと居座るので、少ししたら消す
+	setTimeout(() => {
+		if (seq === messageSeq) {
+			say('');
+		}
+	}, 6000);
+
 }
 
 async function call (path, body) {
@@ -128,9 +162,45 @@ async function loadStatus () {
 			: ' <span class="muted">起動しているプロセスなし</span>');
 }
 
+/**
+ * 表に「1行だけのお知らせ」を出す
+ *
+ * <p>
+ * 空のときも失敗したときも、前は<b>ただの空っぽ</b>だった。
+ * 「何も出ない」がいちばん困る（原因が分からない）。
+ * </p>
+ *
+ * @param tbody		表の本体
+ * @param columns	列数
+ * @param message	出す文
+ * @param failed	失敗なら true
+ */
+function notice (tbody, columns, message, failed) {
+
+	tbody.innerHTML = '<tr><td colspan="' + columns + '" class="'
+		+ (failed ? 'failed' : 'empty') + '">' + escapeHtml(message) + '</td></tr>';
+
+}
+
 async function loadMasters () {
-	const rows = (await call('/api/master', { per: 100 })).rows || [];
+
 	const tbody = document.getElementById('masters');
+	let rows;
+
+	try {
+		rows = (await call('/api/master', { per: 100 })).rows || [];
+	} catch (ex) {
+		notice(tbody, 6, 'バッチ一覧を読めませんでした: ' + ex.message, true);
+		return;
+	}
+
+	if (rows.length === 0) {
+		notice(tbody, 6,
+			'登録されているバッチがありません。'
+			+ 'BatchRegistry.add(...) と BatchRegistry.sync(...) を通っているか、'
+			+ 'batch_master の status が nothing になっていないかを確認してください。', false);
+		return;
+	}
 
 	tbody.innerHTML = rows.map(row => {
 		const enabled = row.status === 'enable';
@@ -152,9 +222,43 @@ async function loadMasters () {
 	}).join('');
 }
 
+/* 履歴のいまのページ */
+let historyPage = 1;
+
+/* 履歴の1ページあたりの件数 */
+let historyPer = 20;
+
 async function loadHistories () {
-	const rows = (await call('/api/history', { per: 30 })).rows || [];
+
 	const tbody = document.getElementById('histories');
+	let result;
+
+	try {
+		result = await call('/api/history', { page: historyPage, per: historyPer });
+	} catch (ex) {
+		notice(tbody, 7, '履歴を読めませんでした: ' + ex.message, true);
+		document.getElementById('history-pager').innerHTML = '';
+		return;
+	}
+
+	const rows = result.rows || [];
+	const paging = result.paging || {};
+
+	/*
+	 * 消えて減ったときに、空のページに取り残されないようにする。
+	 * maxPage が 0（1件も無い）ときは 1 ページ目のままにする。
+	 */
+	if (paging.maxPage >= 1 && historyPage > paging.maxPage) {
+		historyPage = paging.maxPage;
+		return loadHistories();
+	}
+
+	renderHistoryPager(paging);
+
+	if (rows.length === 0) {
+		notice(tbody, 7, '履歴がありません', false);
+		return;
+	}
 
 	tbody.innerHTML = rows.map(row =>
 		'<tr>'
@@ -174,13 +278,110 @@ async function loadHistories () {
 	).join('');
 }
 
-async function reload () {
-	say('');
-	try {
-		await Promise.all([loadStatus(), loadMasters(), loadHistories()]);
-	} catch (ex) {
-		say(ex.message, true);
+/**
+ * 履歴のページャを描く
+ *
+ * @param paging	サーバーが返したページ情報
+ */
+function renderHistoryPager (paging) {
+
+	const el = document.getElementById('history-pager');
+
+	const page = paging.page || 1;
+	const maxPage = paging.maxPage || 0;
+	const total = paging.totalCount || 0;
+
+	if (total === 0) {
+		el.innerHTML = '';
+		return;
 	}
+
+	const first = page <= 1;
+	const last = page >= maxPage;
+
+	el.innerHTML =
+		'<button data-page="1"' + (first ? ' disabled' : '') + '>&laquo; 最初</button>'
+		+ '<button data-page="' + (page - 1) + '"' + (first ? ' disabled' : '') + '>&lsaquo; 前へ</button>'
+		+ '<span class="count">' + page + ' / ' + maxPage + ' ページ'
+			+ '（' + total + ' 件中 ' + paging.start + '〜' + (paging.start + paging.count - 1) + ' 件）</span>'
+		+ '<button data-page="' + (page + 1) + '"' + (last ? ' disabled' : '') + '>次へ &rsaquo;</button>'
+		+ '<button data-page="' + maxPage + '"' + (last ? ' disabled' : '') + '>最後 &raquo;</button>'
+		+ '<span class="count">表示件数</span>'
+		+ '<select id="history-per">'
+			+ [20, 50, 100].map(per =>
+				'<option value="' + per + '"' + (per === historyPer ? ' selected' : '') + '>'
+				+ per + '</option>').join('')
+		+ '</select>';
+
+}
+
+document.addEventListener('change', async event => {
+
+	if (event.target.id !== 'history-per') {
+		return;
+	}
+
+	historyPer = Number(event.target.value);
+	historyPage = 1;
+
+	await loadHistories();
+
+});
+
+async function reload () {
+
+	/*
+	 * 1つ失敗しても他は出す。
+	 * Promise.all だと、1つの失敗で残りの表が空のままになり、
+	 * <b>「何も表示されない」だけが残る。</b>
+	 */
+	const results = await Promise.allSettled([loadStatus(), loadMasters(), loadHistories()]);
+
+	const failed = results.find(result => result.status === 'rejected');
+
+	if (failed) {
+		say(String(failed.reason && failed.reason.message || failed.reason), 'error');
+	}
+
+}
+
+/**
+ * 履歴の詳細を、押した行のすぐ下に出す
+ *
+ * <p>表の下にまとめて出すと、行が多いときに画面外まで飛ばされる。</p>
+ *
+ * @param button	押された「詳細」ボタン
+ */
+async function toggleDetail (button) {
+
+	const tr = button.closest('tr');
+	const opened = tr.nextElementSibling;
+
+	// もう開いていれば閉じる
+	if (opened && opened.classList.contains('detail')) {
+		opened.remove();
+		button.textContent = '詳細';
+		return;
+	}
+
+	// 他に開いているものは閉じる（同時に何枚も出すと表が読めない）
+	for (const other of document.querySelectorAll('tr.detail')) {
+		other.remove();
+	}
+	for (const other of document.querySelectorAll('button[data-detail]')) {
+		other.textContent = '詳細';
+	}
+
+	const row = (await call('/api/history/' + button.dataset.detail)).row;
+
+	const detail = document.createElement('tr');
+	detail.className = 'detail';
+	detail.innerHTML = '<td colspan="7"><pre>'
+		+ escapeHtml(JSON.stringify(row, null, 2)) + '</pre></td>';
+
+	tr.after(detail);
+	button.textContent = '閉じる';
+
 }
 
 document.addEventListener('click', async event => {
@@ -188,33 +389,46 @@ document.addEventListener('click', async event => {
 	const el = event.target.closest('button');
 	if (!el) { return; }
 
+	/*
+	 * 成功したことを出す。
+	 *
+	 * ここで say() を呼んでいたのに何も出なかったのは、
+	 * このあとの reload() が先頭で say('') していたからである。
+	 * いまは reload() のあとに出す。
+	 */
+	let done = '';
+
 	try {
 
 		if (el.dataset.kind) {
 			await call('/api/status/change',
 				{ kind: el.dataset.kind, enabled: el.dataset.enabled === 'true' });
-			say('切り替えました');
+			done = '切り替えました';
 		} else if (el.dataset.save) {
 			const input = document.querySelector('input[data-cron="' + el.dataset.save + '"]');
 			await call('/api/master/' + encodeURIComponent(el.dataset.save), { cron: input.value });
-			say('保存しました');
+			done = 'cron を保存しました: ' + el.dataset.save + ' → ' + input.value;
 		} else if (el.dataset.toggle) {
 			await call('/api/master/' + encodeURIComponent(el.dataset.toggle) + '/status',
 				{ status: el.dataset.status });
-			say('変更しました');
+			done = (el.dataset.status === 'enable' ? '有効' : '無効') + 'にしました: ' + el.dataset.toggle;
 		} else if (el.dataset.run) {
 			await call('/api/master/' + encodeURIComponent(el.dataset.run) + '/execute', {});
-			say('スケジューラに依頼しました');
+			done = 'スケジューラに実行を依頼しました: ' + el.dataset.run
+				+ '（結果は下の履歴に出ます）';
 		} else if (el.dataset.cancel) {
 			await call('/api/history/' + el.dataset.cancel + '/cancel', {});
-			say('中断を指示しました');
+			done = '中断を指示しました: #' + el.dataset.cancel;
 		} else if (el.dataset.rerun) {
 			await call('/api/history/' + el.dataset.rerun + '/re-execute', {});
-			say('やり直しを依頼しました');
+			done = 'やり直しを依頼しました: #' + el.dataset.rerun;
 		} else if (el.dataset.detail) {
-			const row = (await call('/api/history/' + el.dataset.detail)).row;
-			document.getElementById('detail').innerHTML =
-				'<pre>' + escapeHtml(JSON.stringify(row, null, 2)) + '</pre>';
+			await toggleDetail(el);
+			return;
+		} else if (el.dataset.page) {
+			// ページ送りは履歴だけ読み直す（全部読み直すと開いている詳細も消える）
+			historyPage = Number(el.dataset.page);
+			await loadHistories();
 			return;
 		} else if (el.id === 'reload') {
 			// 何もしない（下で再読み込みする）
@@ -223,11 +437,15 @@ document.addEventListener('click', async event => {
 		}
 
 	} catch (ex) {
-		say(ex.message, true);
+		say(ex.message, 'error');
 		return;
 	}
 
 	await reload();
+
+	if (done) {
+		say(done, 'ok');
+	}
 
 });
 

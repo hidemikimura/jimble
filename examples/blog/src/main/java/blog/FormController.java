@@ -151,6 +151,7 @@ public class FormController extends Controller {
 	 * @return	保存したファイル名。画像が無ければ null
 	 * @throws Exception	保存に失敗した場合
 	 */
+	// docs:begin upload-save
 	private static String saveImage (WebContext context) throws Exception {
 
 		UploadFile uploadFile = firstFile(context);
@@ -181,6 +182,7 @@ public class FormController extends Controller {
 		return saved;
 
 	}
+	// docs:end
 
 	/**
 	 * 最初のファイル

@@ -1,6 +1,7 @@
 # __NAME__ の設定
 #
-# 環境別に application.<env>.conf を置くと、こちらを上書きする。
+# 環境別に application.<env>.conf を置くと、そちらだけが読まれる。
+# 1行目に include "application.conf" と書いて、このファイルを読み込むこと。
 # 環境は -Djimble.env=<env> で決まる（既定は local）。
 #
 # 値は ${?ENV_NAME} で環境変数から取れる。

@@ -98,11 +98,13 @@ class RedisIntegrationTest {
 
 		String key = "lock:" + UUID.randomUUID();
 
+		// docs:begin redis-lock
 		RedisLockResult result = RedisLock.lock(key);
 
 		assertEquals(RedisLockStatus.Success, result.status());
 
 		closeQuietly(result);
+		// docs:end
 
 	}
 

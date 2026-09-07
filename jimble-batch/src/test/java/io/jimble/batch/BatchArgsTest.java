@@ -8,6 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -60,6 +61,30 @@ class BatchArgsTest {
 
 		assertNull(BatchExecutor.parseArgs(null).className);
 		assertNull(BatchExecutor.parseArgs(new String[0]).className);
+
+	}
+
+	@Test
+	@DisplayName("D-79 env= がいまの環境と同じなら通る")
+	void envMatching () {
+
+		// 既定は local
+		assertNotNull(BatchExecutor.parseArgs(new String[]{ "env=local", "class=x" }));
+
+	}
+
+	@Test
+	@DisplayName("D-79 env= が食い違っていたら、その場で止める")
+	void envMismatchThrows () {
+
+		/*
+		 * env= では環境は変わらない（設定はここに来る前に読み終わっている）。
+		 * 黙って受けると「本番のつもりで local の設定で流していた」が起きる。
+		 */
+		IllegalArgumentException ex = assertThrows(IllegalArgumentException.class
+			, () -> BatchExecutor.parseArgs(new String[]{ "env=prod", "class=x" }));
+
+		assertTrue(ex.getMessage().contains("-Djimble.env=prod"), ex.getMessage());
 
 	}
 

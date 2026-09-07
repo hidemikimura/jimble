@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	__NAME__ のログ設定。
+
+	jimble は logback とエンコーダを持っているが、設定ファイルは持たない。
+	これが無いと logback の既定（全部まとめてコンソール）になる。
+
+	conf/ はリソースに足してあるので、このファイルは jar に入り、
+	クラスパスから読まれる。
+-->
+<configuration>
+
+	<!-- 人が読む形。開発中はこれで足りる -->
+	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+
+	<!-- 例外。スタックトレースを字下げして出す（jimble 同梱） -->
+	<appender name="error" class="ch.qos.logback.core.ConsoleAppender">
+		<target>System.err</target>
+		<encoder class="io.jimble.util.log.encoder.LogbackErrorEncoder"/>
+	</appender>
+
+	<!-- 機械が読む形。1行に1つの JSON（jimble 同梱） -->
+	<appender name="json" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder class="io.jimble.util.log.encoder.LogbackJsonEncoder"/>
+	</appender>
+
+	<!--
+		アクセスログ。1リクエストに1行。
+		実行 ID・SQL 実行回数・SQL 実行時間が入っているので、
+		JSON で出して集計できるようにしておく。
+	-->
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="json"/>
+	</logger>
+
+	<!--
+		ボットのアクセスは分ける（設定 server.bot_access_log = true のとき）。
+
+		access.bot は access の子なので、additivity="false" を外すと
+		両方に出る。
+	-->
+	<logger name="access.bot" level="INFO" additivity="false">
+		<appender-ref ref="json"/>
+	</logger>
+
+	<!-- Log.error(...) はこのロガー -->
+	<logger name="error" level="ERROR" additivity="false">
+		<appender-ref ref="error"/>
+	</logger>
+
+	<root level="INFO">
+		<appender-ref ref="console"/>
+	</root>
+
+</configuration>

@@ -38,12 +38,9 @@ jimble {
  * 設定とマイグレーションは conf/ に置く（移送元と同じ）。
  *
  * リソースとして足すので、conf/ の中身は<b>そのまま jar に入る</b>。
- * 配った jar だけで動くし、codegen / migrate / jimbleRun / テストも
- * クラスパスから見つけられる。
- *
- * そのうえで、実行時は jimble が<b>jar の外の conf/ を先に読む</b>（jimble D-71）。
- * conf/application.conf を書き換えればビルドし直さずに効き、
- * jar の中身は「外に conf/ が無かったときの値」になる。
+ * jimble は<b>クラスパスの設定しか読まない</b>（jimble D-80）ので、
+ * これを外すと設定が見つからない。
+ * codegen / migrate / jimbleRun / テストも同じファイルを見る。
  */
 sourceSets {
 	main {

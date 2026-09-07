@@ -78,6 +78,7 @@ class JimbleServerIntegrationTest {
 	/* HTTPクライアント */
 	private static HttpClient client;
 
+	// docs:begin test-server
 	@BeforeAll
 	static void startServer () {
 
@@ -109,6 +110,7 @@ class JimbleServerIntegrationTest {
 		return client.send(request, HttpResponse.BodyHandlers.ofString());
 
 	}
+	// docs:end
 
 	@Test
 	@DisplayName("ストリームで返しても後段が重ねて返さない")

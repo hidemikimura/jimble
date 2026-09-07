@@ -4,6 +4,7 @@ import io.jimble.batch.BatchExecutor;
 import io.jimble.batch.scheduler.CronSchedule;
 import io.jimble.batch.scheduler.SchedulerControl;
 import io.jimble.batch.scheduler.mq.ExecuteBatchExecutor;
+import io.jimble.batch.scheduler.mq.SchedulerQueue;
 import io.jimble.batch.scheduler.mq.ReExecuteBatchExecutor;
 import io.jimble.batch.status.BatchHistoryStatus;
 import io.jimble.batch.status.BatchMasterStatus;
@@ -307,7 +308,7 @@ public class BatchManagerController extends Controller {
 	 *
 	 * @param context	コンテキスト
 	 */
-	private void historyReExecute (WebContext context) {
+	private void historyReExecute (WebContext context) throws Exception {
 
 		long id = context.request().bodyAll().getLong("id");
 
@@ -323,11 +324,15 @@ public class BatchManagerController extends Controller {
 			return;
 		}
 
-		long queueId = new ReExecuteBatchExecutor().request(DBUtil.getMainDB(), id);
+		try (DB db = DBUtil.getMainDB()) {
 
-		if (queueId <= 0) {
-			context.response().code(500).json("error", "依頼を積めませんでした");
-			return;
+			long queueId = new ReExecuteBatchExecutor().request(db, id);
+
+			if (queueId <= 0) {
+				context.response().code(500).json("error", queueError(db));
+				return;
+			}
+
 		}
 
 		context.response().json("ok", true);
@@ -477,7 +482,7 @@ public class BatchManagerController extends Controller {
 	 *
 	 * @param context	コンテキスト
 	 */
-	private void masterExecute (WebContext context) {
+	private void masterExecute (WebContext context) throws Exception {
 
 		String className = context.request().bodyAll().getString("class_name");
 
@@ -493,14 +498,53 @@ public class BatchManagerController extends Controller {
 			return;
 		}
 
-		long queueId = new ExecuteBatchExecutor().request(DBUtil.getMainDB(), className);
+		try (DB db = DBUtil.getMainDB()) {
 
-		if (queueId <= 0) {
-			context.response().code(500).json("error", "依頼を積めませんでした");
-			return;
+			long queueId = new ExecuteBatchExecutor().request(db, className);
+
+			if (queueId <= 0) {
+				context.response().code(500).json("error", queueError(db));
+				return;
+			}
+
 		}
 
 		context.response().json("ok", true);
+
+	}
+
+	/**
+	 * 依頼を積めなかった理由（要件 F-X-05 / D-74）
+	 *
+	 * <p>
+	 * <b>「依頼を積めませんでした」だけ返さない。</b>
+	 * これだけだと、画面には 500 が出るのに何をすればよいか分からず、
+	 * <b>原因はサーバーのログにしか無い</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * いちばん多いのは<b>スケジューラのキューのテーブルがまだ無い</b>ことである
+	 * （{@code mq_scheduler}。{@code DbScheduler.start()} が作る）。
+	 * ハートビートはテーブルを作る<b>前</b>に打つので、
+	 * 「スケジューラは動いている」と見えていても、まだ無いことがある。
+	 * </p>
+	 *
+	 * @param db	DB
+	 * @return	理由
+	 */
+	private static String queueError (DB db) {
+
+		String reason = db.isError() && db.getError() != null
+			? String.valueOf(db.getError().getMessage()) : "";
+
+		Log.error("バッチの実行依頼を積めませんでした: キュー=%s / 理由=%s"
+			.formatted(SchedulerQueue.name(), reason.isEmpty() ? "不明" : reason));
+
+		if (reason.isEmpty()) {
+			return "依頼を積めませんでした（%s に入れられませんでした）".formatted(SchedulerQueue.name());
+		}
+
+		return "依頼を積めませんでした（%s）: %s".formatted(SchedulerQueue.name(), reason);
 
 	}
 

@@ -250,7 +250,7 @@ class WsIntegrationTest {
 		// 接続に紐づく値は次のメッセージでも残る（WsSession に置いているから）
 		assertEquals(2, second.getInt("count"));
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "おわり").join();
+		closeAndWait(ws, "おわり");
 
 	}
 
@@ -289,7 +289,7 @@ class WsIntegrationTest {
 
 		}
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "").join();
+		closeAndWait(ws, "");
 
 	}
 
@@ -305,7 +305,38 @@ class WsIntegrationTest {
 		assertTrue(recorder.latch.await(5, TimeUnit.SECONDS));
 		assertEquals("hello", recorder.messages.get(0));
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "").join();
+		closeAndWait(ws, "");
+
+	}
+
+	/**
+	 * 閉じて、サーバー側の onClose まで待つ
+	 *
+	 * <p>
+	 * <b>待たずに次のテストへ行かない。</b>{@code closeReason} も
+	 * {@code closed} もテスト間で共有している static なので、
+	 * 前のテストの onClose が遅れて届くと<b>次のテストがそれを自分のものとして拾う</b>
+	 * （「さようなら」を待っていたら「おわり」が入っていた）。
+	 * </p>
+	 *
+	 * <p>
+	 * onClose を持たないハンドラもあるので、<b>来なくても落とさない</b>。
+	 * 「来たこと」を確かめるのは {@link #close()} の仕事である。
+	 * </p>
+	 *
+	 * @param ws		接続
+	 * @param reason	閉じる理由
+	 * @throws Exception	待てなかった場合
+	 */
+	private static void closeAndWait (WebSocket ws, String reason) throws Exception {
+
+		CountDownLatch latch = new CountDownLatch(1);
+		closed.set(latch);
+		closeReason.set(null);
+
+		ws.sendClose(WebSocket.NORMAL_CLOSURE, reason).join();
+
+		latch.await(2, TimeUnit.SECONDS);
 
 	}
 
@@ -314,16 +345,15 @@ class WsIntegrationTest {
 	void close () throws Exception {
 
 		opened.set(new CountDownLatch(1));
-		closed.set(new CountDownLatch(1));
 
 		Recorder recorder = new Recorder(1);
 		WebSocket ws = connect("/echo", recorder);
 
 		recorder.latch.await(5, TimeUnit.SECONDS);
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "さようなら").join();
+		closeAndWait(ws, "さようなら");
 
-		assertTrue(closed.get().await(5, TimeUnit.SECONDS), "onClose が来ていない");
+		assertTrue(closed.get().getCount() == 0, "onClose が来ていない");
 		assertEquals("さようなら", closeReason.get());
 
 	}
@@ -375,7 +405,7 @@ class WsIntegrationTest {
 		assertTrue(recorder.latch.await(5, TimeUnit.SECONDS));
 		assertEquals("ok", recorder.messages.get(0));
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "").join();
+		closeAndWait(ws, "");
 
 	}
 
@@ -400,7 +430,7 @@ class WsIntegrationTest {
 
 		assertFalse(recorder.failed, "接続が死んでいる");
 
-		ws.sendClose(WebSocket.NORMAL_CLOSURE, "").join();
+		closeAndWait(ws, "");
 
 	}
 

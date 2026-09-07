@@ -45,6 +45,38 @@ import java.util.regex.Pattern;
  */
 public class Generator {
 
+
+	/**
+	 * 生成物の先頭に置く印（要件 F-G-03 / D-88）
+	 *
+	 * <p>
+	 * <b>手で直しても次の {@code codegen} で消える。</b>
+	 * 消えることを知らずに直すと、直したはずの変更が黙って戻る。
+	 * </p>
+	 */
+	private static final List<String> GENERATED_HEADER = List.of(
+		"/*"
+		, " * このファイルは jimble が作りました（codegen）。手で直さないでください。"
+		, " * 直しても次の codegen で消えます。"
+		, " */"
+	);
+
+	/**
+	 * 生成物の印を書く
+	 *
+	 * @param textOutput	出力先
+	 * @throws Exception	書けなかった場合
+	 */
+	private static void writeGeneratedHeader (TextOutput textOutput) throws Exception {
+
+		for (String line : GENERATED_HEADER) {
+			textOutput.writeLine(line);
+		}
+
+		textOutput.writeLine("");
+
+	}
+
 	/**
 	 * ソース生成判定
 	 *
@@ -148,6 +180,8 @@ public class Generator {
 		try (
 			TextOutput textOutput = new TextOutput(sourceFile)
 		) {
+
+			writeGeneratedHeader(textOutput);
 
 			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name));
 			textOutput.writeLine("");
@@ -305,6 +339,8 @@ public class Generator {
 			TextOutput textOutput = new TextOutput(sourceFile)
 		) {
 
+			writeGeneratedHeader(textOutput);
+
 			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, dbSource.name, tableInfo.name));
 			textOutput.writeLine("");
 
@@ -388,6 +424,8 @@ public class Generator {
 		try (
 			TextOutput textOutput = new TextOutput(sourceFile)
 		) {
+
+			writeGeneratedHeader(textOutput);
 
 			textOutput.writeLine("package %s.%s.table_data.%s;".formatted(packageName, dbSource.name, tableInfo.name));
 			textOutput.writeLine("");

@@ -4,6 +4,7 @@ import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.ICache;
+import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 
@@ -160,7 +161,45 @@ public final class BatchExecutor {
 
 		batchArgs.schedulerId = BatchConf.schedulerId();
 
+		checkEnv(batchArgs);
+
 		return batchArgs;
+
+	}
+
+	/**
+	 * {@code env=} が効いているか確かめる（要件 D-79）
+	 *
+	 * <p>
+	 * <b>{@code env=} では環境は変わらない。</b>
+	 * 設定はここに来る前（{@code DBUtil.load} など）に読み終わっているので、
+	 * <b>受け取っても手遅れ</b>である。
+	 * </p>
+	 *
+	 * <p>
+	 * それでも移送元からの書き方として README や手順書に残っており、
+	 * <b>「本番のつもりで local の設定で流していた」</b>が起こりえた。
+	 * 食い違っていたら、その場で止める。
+	 * </p>
+	 *
+	 * @param batchArgs	引数
+	 */
+	private static void checkEnv (BatchArgs batchArgs) {
+
+		if (batchArgs.env == null || batchArgs.env.isEmpty()) {
+			return;
+		}
+
+		if (batchArgs.env.equals(Conf.env())) {
+			return;
+		}
+
+		throw new IllegalArgumentException("""
+			env=%s と指定されていますが、いま動いているのは env=%s です。
+			  env= では環境は変わりません（設定はここに来る前に読み終わっています）。
+			  JVM の引数で渡してください。
+			    java -Djimble.env=%s -cp app.jar %s ..."""
+			.formatted(batchArgs.env, Conf.env(), batchArgs.env, "<起動クラス>"));
 
 	}
 

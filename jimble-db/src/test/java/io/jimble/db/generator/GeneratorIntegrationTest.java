@@ -107,6 +107,31 @@ class GeneratorIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-88 生成物には「手で直すな」の印が入る（F-G-03）")
+	void generatedHeader () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		/*
+		 * 直しても次の codegen で消える。
+		 * 消えることを知らずに直すと、直したはずの変更が黙って戻る。
+		 */
+		for (String path : new String[]{
+			"JimbleTest.java"
+			, "table/gen_item/GenItem.java"
+			, "table_data/gen_item/AbstractGenItemData.java"
+		}) {
+
+			String text = read(source(path));
+
+			assertTrue(text.startsWith("/*\n * このファイルは jimble が作りました（codegen）。手で直さないでください。")
+				, path + " に印が無い: " + text.substring(0, Math.min(120, text.length())));
+
+		}
+
+	}
+
+	@Test
 	@DisplayName("列一覧が静的に出力される（D-17。実行時のリフレクションをしない）")
 	void staticColumnList () {
 

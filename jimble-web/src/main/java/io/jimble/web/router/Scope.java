@@ -59,6 +59,9 @@ final class Scope {
 	/* error（登録順） */
 	private final List<ErrorHandler> errors = new ArrayList<>();
 
+	/* 流量制限（このブロックに書かれたもの。要件 F-R-22） */
+	private io.jimble.web.ratelimit.RateLimit rateLimit;
+
 	/* 確定したか */
 	private boolean sealed;
 
@@ -130,6 +133,43 @@ final class Scope {
 
 		checkOpen("error");
 		errors.add(handler);
+
+	}
+
+	/**
+	 * 流量制限を設定する（要件 F-R-15 / F-R-22）
+	 *
+	 * <p>
+	 * <b>このブロックの中のルート全部</b>にかかる。
+	 * ルートが自分で持っていればそちらが勝ち、
+	 * 入れ子になっていれば<b>内側が勝つ</b>。
+	 * </p>
+	 *
+	 * @param value	宣言
+	 */
+	void rateLimit (io.jimble.web.ratelimit.RateLimit value) {
+
+		checkOpen("rateLimit");
+		rateLimit = value;
+
+	}
+
+	/**
+	 * 効く流量制限を探す（内側 → 外側）
+	 *
+	 * @return	宣言。無ければ null
+	 */
+	io.jimble.web.ratelimit.RateLimit resolveRateLimit () {
+
+		for (Scope scope = this; scope != null; scope = scope.parent) {
+
+			if (scope.rateLimit != null) {
+				return scope.rateLimit;
+			}
+
+		}
+
+		return null;
 
 	}
 

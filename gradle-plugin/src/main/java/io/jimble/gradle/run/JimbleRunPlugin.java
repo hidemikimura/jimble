@@ -60,6 +60,7 @@ public class JimbleRunPlugin implements Plugin<Project> {
 	/** タスクの名前 */
 	public static final String TASK_NAME = "jimbleRun";
 
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -82,6 +83,7 @@ public class JimbleRunPlugin implements Plugin<Project> {
 		// appPort は既定で port + 100
 		extension.getAppPort().convention(extension.getPort().map(port -> port + 100));
 
+
 		project.getTasks().register(TASK_NAME, JimbleRunTask.class, task -> {
 
 			task.setGroup("application");
@@ -95,7 +97,6 @@ public class JimbleRunPlugin implements Plugin<Project> {
 			task.getWatchDirs().set(extension.getWatchDirs());
 			task.getExcludeDirs().set(extension.getExcludeDirs());
 			task.getWatchExtensions().set(extension.getWatchExtensions());
-			task.getJvmArgs().set(extension.getJvmArgs());
 			task.getAppArgs().set(extension.getArgs());
 			task.getRestartMode().set(extension.getRestartMode());
 			task.getQuietMillis().set(extension.getQuietMillis());

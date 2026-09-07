@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -110,9 +111,19 @@ class JimbleRunPluginTest {
 		assertEquals(RestartMode.IMMEDIATE, RestartMode.of("immediate"));
 		assertEquals(RestartMode.IMMEDIATE, RestartMode.of("  IMMEDIATE  "));
 
-		// 読めないものは安全側（勝手に再起動しない方）へ倒す
-		assertEquals(RestartMode.ON_REQUEST, RestartMode.of("なにこれ"));
+		// 指定が無ければ安全側（勝手に再起動しない方）
 		assertEquals(RestartMode.ON_REQUEST, RestartMode.of(null));
+		assertEquals(RestartMode.ON_REQUEST, RestartMode.of("  "));
+
+		/*
+		 * D-89 読めない名前は落とす。
+		 * 黙って倒すと「設定したのに効かない」だけが残る。
+		 */
+		IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class
+			, () -> RestartMode.of("on_change"));
+
+		assertTrue(thrown.getMessage().contains("on_request"), thrown.getMessage());
+		assertTrue(thrown.getMessage().contains("immediate"), thrown.getMessage());
 
 	}
 

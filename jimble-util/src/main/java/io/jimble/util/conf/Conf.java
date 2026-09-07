@@ -2,11 +2,18 @@ package io.jimble.util.conf;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigValue;
 
-import java.io.File;
+import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 設定
@@ -16,28 +23,55 @@ import java.util.Objects;
  * 環境は システムプロパティ {@code env} または環境変数 {@code ENV}（既定 {@code local}）。
  * </p>
  *
- * <h2>どこから読むか（要件 D-71）</h2>
+ * <h2>どこから読むか（要件 D-80 / D-81）</h2>
  * <p>
- * <b>jar の外の {@code conf/} を先に見る。</b>次にクラスパス。
- * 上にあるものが勝つ。
+ * <b>クラスパスだけを見る。</b>jar の中（アプリのビルドで {@code conf/} を
+ * リソースに足してある）か、開発中なら {@code build/resources/main} である。
+ * </p>
+ *
+ * <p>
+ * <b>読むのは1つだけ。</b>
  * </p>
  * <ol>
- *   <li>{@code <conf>/application.<env>.conf}</li>
- *   <li>クラスパスの {@code application.<env>.conf}</li>
- *   <li>{@code <conf>/application.conf}</li>
- *   <li>クラスパスの {@code application.conf}</li>
- *   <li>システムプロパティ</li>
+ *   <li>{@code application.<env>.conf} があれば<b>それ</b></li>
+ *   <li>無ければ {@code application.conf}</li>
  * </ol>
  *
  * <p>
- * {@code <conf>} は既定で<b>実行時のカレントディレクトリの {@code conf}</b>。
- * {@code -Djimble.conf.dir=...} か環境変数 {@code JIMBLE_CONF_DIR} で変えられる。
- * 無くても落ちない（クラスパスだけで動く）。
+ * 共通の設定は<b>環境別ファイルの先頭で読み込む</b>（HOCON の {@code include}）。
+ * </p>
+ *
+ * <pre>
+ * // application.local.conf
+ * include "application.conf"
+ *
+ * db { main { url = "jdbc:mariadb://127.0.0.1:3306/app_local" } }
+ * </pre>
+ *
+ * <p>
+ * <b>裏で重ねない。</b>重ねる形（環境別 &gt; 共通 の自動フォールバック）だと、
+ * 書いてある {@code include} が効いているのかフレームワークが足しているのか
+ * <b>ファイルを見ても分からない</b>。読むファイルは1つ、
+ * 続きは<b>ファイルに書いてあるとおり</b>にする（原則1）。
+ * </p>
+ *
+ * <p>
+ * {@code include} を書き忘れると共通の設定が丸ごと消えるので、
+ * <b>起動時に見て言う</b>（{@link #missingFromEnvFile()}）。
+ * </p>
+ *
+ * <h2>jar の外は見ない</h2>
+ * <p>
+ * 前は {@code -Djimble.conf.dir} で指した jar の外の {@code conf/} を
+ * 先に読んでいた（D-71）。<b>やめた。</b>同じ名前のファイルが2か所にある形は、
+ * 「直したのに効かない」の原因がどちらなのか<b>動かしてみるまで分からない</b>。
+ * 設定を変えるならビルドし直す。<b>動いている jar と設定が1対1になる。</b>
  * </p>
  *
  * <p>
  * <b>実際に読んだファイルは {@link #sources()} で取れる</b>ので、起動ログに出せる。
- * 「どっちの設定が効いているのか分からない」を作らないためである。
+ * クラスパスに同じ名前が2つある（jar と {@code resources} の両方など）ときも、
+ * <b>両方見える</b>。
  * </p>
  *
  * <p>
@@ -52,20 +86,29 @@ import java.util.Objects;
  */
 public final class Conf {
 
-	/** 環境を指定するキー */
+	/**
+	 * 環境を指定するシステムプロパティ
+	 *
+	 * <p>
+	 * <b>これが正。</b>{@code jimble.} を付けない {@code env} も読むが、
+	 * ドキュメントも起動コマンドもこちらで書いてある。
+	 * </p>
+	 */
+	public static final String PROPERTY_ENV = "jimble.env";
+
+	/**
+	 * 環境を指定するキー（{@code jimble.} 無し）
+	 *
+	 * @deprecated {@link #PROPERTY_ENV} を使う
+	 */
+	@Deprecated
 	public static final String KEY_ENV = "env";
+
+	/** 環境を指定する環境変数 */
+	public static final String ENV_ENV = "ENV";
 
 	/** 既定の環境 */
 	public static final String DEFAULT_ENV = "local";
-
-	/** 設定ファイルを置くディレクトリを指定するキー */
-	public static final String KEY_CONF_DIR = "jimble.conf.dir";
-
-	/** 設定ファイルを置くディレクトリを指定する環境変数 */
-	public static final String ENV_CONF_DIR = "JIMBLE_CONF_DIR";
-
-	/** 既定のディレクトリ */
-	public static final String DEFAULT_CONF_DIR = "conf";
 
 	/** 設定ファイルの基本名 */
 	private static final String BASE_NAME = "application";
@@ -81,6 +124,9 @@ public final class Conf {
 
 	/* 実際に読んだファイル（起動ログ用） */
 	private static volatile List<String> sources = List.of();
+
+	/* 共通ファイルにしか無かったキー（include の書き忘れを言うため） */
+	private static volatile List<String> missing = List.of();
 
 	/* 設定 */
 	private final Config config;
@@ -101,14 +147,39 @@ public final class Conf {
 	/**
 	 * 環境を解決する
 	 *
+	 * <p>
+	 * {@code -Djimble.env} &gt; {@code -Denv} &gt; 環境変数 {@code ENV} &gt; {@code local}。
+	 * </p>
+	 *
+	 * <h2>直したところ</h2>
+	 * <p>
+	 * <b>{@code jimble.env} を読んでいなかった。</b>
+	 * ドキュメントも README も雛形も
+	 * {@code java -Djimble.env=prod -jar app.jar} と書いてあるのに、
+	 * 読んでいたのは {@code env} だけだった。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>間違えても何も言わずに {@code local} で動く。</b>
+	 * 環境別ファイル（{@code application.prod.conf}）が読まれず、
+	 * {@code isProduction()} も false のままになる。
+	 * 本番でこれが起きても、動いてしまうので気づけない。
+	 * </p>
+	 *
 	 * @return	環境
 	 */
 	private static String resolveEnv () {
 
-		String value = System.getProperty(KEY_ENV);
+		String value = System.getProperty(PROPERTY_ENV);
+
 		if (value == null || value.isEmpty()) {
-			value = System.getenv("ENV");
+			value = System.getProperty(KEY_ENV);
 		}
+
+		if (value == null || value.isEmpty()) {
+			value = System.getenv(ENV_ENV);
+		}
+
 		return (value == null || value.isEmpty()) ? DEFAULT_ENV : value;
 
 	}
@@ -156,6 +227,7 @@ public final class Conf {
 
 		instance = new Conf(Objects.requireNonNull(config, "config"));
 		sources = List.of("（差し替え）");
+		missing = List.of();
 
 	}
 
@@ -176,43 +248,118 @@ public final class Conf {
 	 */
 	private static Config load () {
 
-		File dir = confDir();
+		/*
+		 * 環境別ファイルの中の include "application.conf" は、
+		 * ここでの parse のときに typesafe config が解決する。
+		 * つまり envFile には共通の設定も入っている。
+		 */
+		Config envFile = ConfigFactory.parseResourcesAnySyntax(BASE_NAME + "." + env);
+		Config baseFile = ConfigFactory.parseResourcesAnySyntax(BASE_NAME);
+
+		boolean useEnvFile = !envFile.isEmpty();
 
 		List<String> found = new ArrayList<>();
-		collectSources(dir, BASE_NAME + "." + env, found);
-		collectSources(dir, BASE_NAME, found);
+		collectSources(useEnvFile ? BASE_NAME + "." + env : BASE_NAME, found);
 		sources = List.copyOf(found);
 
-		/*
-		 * 上にあるものが勝つ。
-		 *
-		 * 同じ役割どうしでは conf/ がクラスパスに勝ち、
-		 * 環境別は常に基本ファイルに勝つ。
-		 */
-		return ConfigFactory
-			.parseFileAnySyntax(new File(dir, BASE_NAME + "." + env))
-			.withFallback(ConfigFactory.parseResourcesAnySyntax(BASE_NAME + "." + env))
-			.withFallback(ConfigFactory.parseFileAnySyntax(new File(dir, BASE_NAME)))
-			.withFallback(ConfigFactory.parseResourcesAnySyntax(BASE_NAME))
+		missing = useEnvFile ? missingKeys(envFile, baseFile) : List.of();
+
+		// 読むのは1つだけ。共通を足すのはファイルの include の仕事
+		return (useEnvFile ? envFile : baseFile)
 			.withFallback(ConfigFactory.systemProperties())
 			.resolve();
 
 	}
 
 	/**
-	 * 設定ファイルを置くディレクトリ
+	 * 共通ファイルにしか無いキー
 	 *
-	 * @return	ディレクトリ（存在するとは限らない）
+	 * <p>
+	 * 環境別ファイルに {@code include "application.conf"} を書き忘れると、
+	 * <b>共通の設定が丸ごと落ちる</b>。落ちたことに気づけるように、
+	 * 何が落ちたかを起動時に言う。
+	 * </p>
+	 *
+	 * <p>空なら問題なし（{@code include} が効いているか、共通ファイルが無い）。</p>
+	 *
+	 * @return	共通ファイルにしか無いトップレベルのキー
 	 */
-	public static File confDir () {
+	public static List<String> missingFromEnvFile () {
 
-		String value = System.getProperty(KEY_CONF_DIR);
+		return missing;
 
-		if (value == null || value.isEmpty()) {
-			value = System.getenv(ENV_CONF_DIR);
+	}
+
+	/**
+	 * 共通ファイルにしか無いキーを拾う
+	 *
+	 * <p>
+	 * <b>葉まで見る。</b>トップレベルだけを比べると、
+	 * {@code server { port = ... }} のように名前が同じで
+	 * <b>中身が丸ごと違う</b>ものを見逃す。
+	 * </p>
+	 *
+	 * <p>
+	 * 報告するのは<b>トップレベルの名前だけ</b>にまとめる。
+	 * {@code include} を書き忘れると数百件になり、ログとして読めなくなるためである。
+	 * </p>
+	 *
+	 * <p>
+	 * 値は見ない（<b>解決していない</b>設定なので、
+	 * {@code ${?ENV}} を触ると落ちる）。あるか無いかだけを見る。
+	 * </p>
+	 *
+	 * @param envFile	環境別ファイル（include 解決済み）
+	 * @param baseFile	共通ファイル
+	 * @return	共通にしか無いキーのトップレベル名（重複なし）
+	 */
+	private static List<String> missingKeys (Config envFile, Config baseFile) {
+
+		Set<String> result = new LinkedHashSet<>();
+
+		collectMissing(baseFile.root(), envFile.root(), null, result);
+
+		// 設定の並び順は保たれないので、名前順にして毎回同じログにする
+		List<String> sorted = new ArrayList<>(result);
+		sorted.sort(null);
+
+		return List.copyOf(sorted);
+
+	}
+
+	/**
+	 * 共通にしか無い葉を探して、トップレベルの名前を集める
+	 *
+	 * @param base		共通の側
+	 * @param env		環境別の側（同じ位置。無ければ null）
+	 * @param topLevel	いま辿っているトップレベルの名前（最初は null）
+	 * @param result	結果
+	 */
+	private static void collectMissing (ConfigObject base, ConfigObject env
+		, String topLevel, Set<String> result) {
+
+		for (Map.Entry<String, ConfigValue> entry : base.entrySet()) {
+
+			String name = topLevel == null ? entry.getKey() : topLevel;
+
+			if (result.contains(name)) {
+				// 1つ落ちていれば十分。同じ名前を何度も辿らない
+				continue;
+			}
+
+			ConfigValue other = env == null ? null : env.get(entry.getKey());
+
+			if (other == null) {
+				result.add(name);
+				continue;
+			}
+
+			if (entry.getValue() instanceof ConfigObject child
+				&& other instanceof ConfigObject otherChild) {
+				collectMissing(child, otherChild, name, result);
+			}
+
 		}
-
-		return new File((value == null || value.isEmpty()) ? DEFAULT_CONF_DIR : value);
 
 	}
 
@@ -220,12 +367,18 @@ public final class Conf {
 	 * 実際に読んだ設定ファイル
 	 *
 	 * <p>
-	 * jar の外のものだけを返す。クラスパスのものは
-	 * どこにあるか（jar の中か src/main/resources か）が実行のしかたで変わるので、
-	 * <b>ここに出すと誤解のもとになる</b>。
+	 * 読むのは<b>1つ</b>（環境別があればそれ、無ければ共通）。
+	 * クラスパスの<b>どこにあったか</b>（jar の中か {@code build/resources} か）
+	 * まで分かる形で返す。同じ名前が2か所にあれば<b>両方返す</b>
+	 * （典型的には事故なので、見えるようにしておく）。
 	 * </p>
 	 *
-	 * @return	ファイルのパス（無ければ空）
+	 * <p>
+	 * {@code include} で読み込まれたファイルはここには出ない。
+	 * <b>それはファイルに書いてある</b>。
+	 * </p>
+	 *
+	 * @return	見つかった設定ファイル（無ければ空）
 	 */
 	public static List<String> sources () {
 
@@ -234,20 +387,41 @@ public final class Conf {
 	}
 
 	/**
-	 * 実在する設定ファイルを集める
+	 * クラスパスにある設定ファイルを集める
 	 *
-	 * @param dir		ディレクトリ
+	 * <p>
+	 * 読み込み自体は typesafe config がやる。ここは<b>起動ログに出すため</b>に
+	 * 同じ名前で同じように探しているだけである。
+	 * </p>
+	 *
 	 * @param baseName	基本名（拡張子なし）
 	 * @param result	結果
 	 */
-	private static void collectSources (File dir, String baseName, List<String> result) {
+	private static void collectSources (String baseName, List<String> result) {
+
+		/*
+		 * typesafe config と同じクラスローダを見る。
+		 * jimbleRun（同じ JVM でアプリを入れ替える）では、
+		 * アプリのクラスパスは<b>スレッドのコンテキスト</b>にしか無い。
+		 */
+		ClassLoader loader = Thread.currentThread().getContextClassLoader();
+
+		if (loader == null) {
+			loader = Conf.class.getClassLoader();
+		}
 
 		for (String extension : EXTENSIONS) {
 
-			File file = new File(dir, baseName + extension);
+			try {
 
-			if (file.isFile()) {
-				result.add(file.getPath());
+				Enumeration<URL> urls = loader.getResources(baseName + extension);
+
+				while (urls.hasMoreElements()) {
+					result.add(urls.nextElement().toString());
+				}
+
+			} catch (IOException ignore) {
+				// 一覧が取れないだけ。読み込みには影響しない
 			}
 
 		}

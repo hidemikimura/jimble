@@ -63,6 +63,7 @@ class UploadIntegrationTest {
 
 					received.add("title=" + body.getStringOptional("title"));
 
+					// docs:begin upload-read
 					for (Object value : context.request().bodyFile().values()) {
 						if (value instanceof List<?> list) {
 							for (Object item : list) {
@@ -74,6 +75,7 @@ class UploadIntegrationTest {
 							}
 						}
 					}
+					// docs:end
 
 					context.response().send("ok");
 

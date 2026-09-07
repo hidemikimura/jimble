@@ -11,12 +11,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -64,7 +64,9 @@ class SpaMpaTest {
 			{
 				// 通常のルートと共存できること（要件 F-W-17）
 				get("/api/items", context -> context.response().send("api"));
+				// docs:begin spa-mount
 				install(() -> SpaHandler.mount("/app", "test-spa"));
+				// docs:end
 			}
 		};
 
@@ -141,10 +143,12 @@ class SpaMpaTest {
 
 		JimbleApp app = new JimbleApp() {
 			{
+				// docs:begin spa-rewrite
 				install(() -> SpaHandler.mount("/app", "test-spa", spa -> spa
 					.route("/app/items/{id}", (context, html) ->
 						html.replace("<!--title-->", "<title>item " + context.request().bodyPath().getString("id") + "</title>"))
 				));
+				// docs:end
 			}
 		};
 
@@ -174,31 +178,118 @@ class SpaMpaTest {
 
 	}
 
-	@Test
-	@DisplayName("パスの「.」は正規表現のメタ文字にしない")
-	void spaRouteQuotesLiterals () {
+	/**
+	 * SPA のマッチだけを見る
+	 *
+	 * @param spa	SPA ルーターの組み立て
+	 * @param path	生のパス
+	 * @return	当たったルートのパス（当たらなければ null）
+	 */
+	private String spaMatch (java.util.function.Consumer<SpaRouter> spa, String path) {
 
-		// 移送元はパスをそのまま正規表現に埋めていたので /axb/1 にもマッチした
-		SpaRoute route = new SpaRoute("/a.b/{id}", (context, html) -> html);
+		SpaRouter router = new SpaRouter();
+		spa.accept(router);
 
-		assertNotNull(route.match("/a.b/1"));
-		assertNull(route.match("/axb/1"));
+		try (WebContext context = Fakes.context("GET", path)) {
+			SpaRoute route = router.match(context, path);
+			return route == null ? null : route.path();
+		}
 
 	}
 
 	@Test
-	@DisplayName("パスパラメータが取れる")
+	@DisplayName("D-75 パスの「.」はメタ文字にならない")
+	void spaRouteQuotesLiterals () {
+
+		// 移送元はパスをそのまま正規表現に埋めていたので /axb/1 にもマッチした
+		java.util.function.Consumer<SpaRouter> spa =
+			router -> router.route("/a.b/{id}", (context, html) -> html);
+
+		assertEquals("/a.b/{id}", spaMatch(spa, "/a.b/1"));
+		assertNull(spaMatch(spa, "/axb/1"));
+
+	}
+
+	@Test
+	@DisplayName("D-75 パスパラメータが取れる")
 	void spaRouteVariables () {
 
-		SpaRoute route = new SpaRoute("/items/{id}/tabs/{tab}", (context, html) -> html);
+		SpaRouter router = new SpaRouter();
+		router.route("/items/{id}/tabs/{tab}", (context, html) -> html);
 
-		Map<String, String> variables = route.match("/items/42/tabs/detail");
+		try (WebContext context = Fakes.context("GET", "/items/42/tabs/detail")) {
 
-		assertNotNull(variables);
-		assertEquals("42", variables.get("id"));
-		assertEquals("detail", variables.get("tab"));
-		assertNull(route.match("/items/42/tabs"), "足りないパスがマッチしている");
-		assertNull(route.match("/items/42/tabs/a/b"), "余分なパスがマッチしている");
+			assertNotNull(router.match(context, "/items/42/tabs/detail"));
+			assertEquals("42", context.request().bodyPath().getString("id"));
+			assertEquals("detail", context.request().bodyPath().getString("tab"));
+
+		}
+
+		try (WebContext context = Fakes.context("GET", "/x")) {
+			assertNull(router.match(context, "/items/42/tabs"), "足りないパスがマッチしている");
+			assertNull(router.match(context, "/items/42/tabs/a/b"), "余分なパスがマッチしている");
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-75 固定セグメントがパスパラメータより優先される（書いた順によらない）")
+	void spaRouteStaticWinsOverVariable () {
+
+		// 変数のほうを先に書いても、具体的なほうが勝つ
+		java.util.function.Consumer<SpaRouter> spa = router -> router
+			.route("/app/items/{id}", (context, html) -> html)
+			.route("/app/items/new", (context, html) -> html);
+
+		assertEquals("/app/items/new", spaMatch(spa, "/app/items/new"));
+		assertEquals("/app/items/{id}", spaMatch(spa, "/app/items/42"));
+
+	}
+
+	@Test
+	@DisplayName("D-75 ワイルドカードが書ける")
+	void spaRouteWildcard () {
+
+		java.util.function.Consumer<SpaRouter> spa =
+			router -> router.route("/app/docs/*", (context, html) -> html);
+
+		assertEquals("/app/docs/*", spaMatch(spa, "/app/docs/a/b/c"));
+		assertNull(spaMatch(spa, "/app/other"));
+
+	}
+
+	@Test
+	@DisplayName("D-75 %2F を含む値がセグメントの区切りにならない")
+	void spaRoutePercentEncoded () {
+
+		SpaRouter router = new SpaRouter();
+		router.route("/app/items/{id}", (context, html) -> html);
+
+		try (WebContext context = Fakes.context("GET", "/app/items/a%2Fb")) {
+
+			assertNotNull(router.match(context, "/app/items/a%2Fb"));
+			assertEquals("a/b", context.request().bodyPath().getString("id"));
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-75 同じパスを2回書いたら落ちる（黙って先勝ちにしない）")
+	void spaRouteDuplicate () {
+
+		SpaRouter router = new SpaRouter();
+		router.route("/app/items/{id}", (context, html) -> html);
+
+		assertThrows(IllegalStateException.class,
+			() -> router.route("/app/items/{id}", (context, html) -> html));
+
+		/*
+		 * 変数名だけ違うもの（/app/items/{other}）は落ちない。
+		 * ツリーが変数名でノードを分けるためで、本体のルーターと同じ挙動である
+		 * （到達できないルートの検出は残件 D-10）。
+		 * <b>ここだけ別の挙動にしないことのほうが大事。</b>
+		 */
 
 	}
 
@@ -215,7 +306,9 @@ class SpaMpaTest {
 
 		return new JimbleApp() {
 			{
+				// docs:begin mpa-mount
 				install(() -> MpaHandler.mount("/docs", "test-mpa"));
+				// docs:end
 			}
 		};
 

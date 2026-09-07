@@ -79,6 +79,7 @@ class PagingIntegrationTest {
 	@DisplayName("SELECT にページングが適用され、総件数と最大ページが返る")
 	void paging () {
 
+		// docs:begin paging-select
 		Paging paging = new Paging();
 		paging.load(request("2", "10"), 0);
 
@@ -90,6 +91,7 @@ class PagingIntegrationTest {
 		assertEquals(TOTAL, paging.totalCount());
 		assertEquals(3, paging.maxPage(), "25 件を 10 件ずつなら 3 ページ");
 		assertEquals(11, paging.start());
+		// docs:end
 
 		// 2ページ目の先頭は 11 件目
 		assertEquals("item-11", response.list.getFirst().getString(PagingItem.name));

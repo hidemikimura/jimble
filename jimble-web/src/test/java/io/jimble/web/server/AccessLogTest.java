@@ -39,6 +39,7 @@ class AccessLogTest {
 	/* 記録したログ */
 	private final List<Entry> logs = new ArrayList<>();
 
+	// docs:begin log-sink
 	@BeforeEach
 	void captureLog () {
 
@@ -53,6 +54,7 @@ class AccessLogTest {
 		Log.resetSink();
 
 	}
+	// docs:end
 
 	/**
 	 * アクセスログを取り出す

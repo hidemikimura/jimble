@@ -93,6 +93,7 @@ public final class DocsBuilder {
 			root.resolve("examples")
 			, root.resolve("jimble-web/src/test")
 			, root.resolve("jimble-db/src/test")
+			, root.resolve("jimble-util/src/test")
 			, root.resolve("jimble-mcp/src/test")
 			, root.resolve("docs/site/snippets")
 		));

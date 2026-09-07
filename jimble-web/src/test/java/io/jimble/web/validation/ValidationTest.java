@@ -198,6 +198,7 @@ class ValidationTest {
 	@DisplayName("insertRequired は登録リクエストのときだけ必須になる（F-V-02）")
 	void insertRequired () {
 
+		// docs:begin validation-insert-required
 		ValidationRules rules = new ValidationRules()
 			.put(Item.name, new ValidationRule().insertRequired().empty())
 			.insertRequestChecker(req -> req.getBoolean("is_insert"));
@@ -209,6 +210,7 @@ class ValidationTest {
 		Data insert = new Data();
 		insert.put("is_insert", true);
 		assertFalse(rules.validate(null, insert).isEmpty(), "登録なのに必須になっていない");
+		// docs:end
 
 	}
 
@@ -238,6 +240,7 @@ class ValidationTest {
 	@DisplayName("複数件の検証はエラーのある行だけ返す")
 	void validateList () {
 
+		// docs:begin validation-list
 		ValidationRules rules = new ValidationRules()
 			.put(Item.name, new ValidationRule().empty());
 
@@ -251,6 +254,7 @@ class ValidationTest {
 
 		assertEquals(1, errors.size());
 		assertEquals(2, errors.getFirst().getInt("index"), "行番号が違う");
+		// docs:end
 
 	}
 
@@ -283,6 +287,7 @@ class ValidationTest {
 
 		try {
 
+			// docs:begin validation-message
 			ValidationMessages.put(ValidationErrorType.Empty, (type, settings) -> "required");
 
 			ValidationRules rules = new ValidationRules()
@@ -293,6 +298,7 @@ class ValidationTest {
 
 			assertEquals(List.of("required"),
 				ValidationMessages.toMessages(rules.validate(null, request)).get("name"));
+			// docs:end
 
 		} finally {
 			ValidationMessages.reset();

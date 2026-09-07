@@ -4,6 +4,8 @@ import io.jimble.core.executor.Executor;
 import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.NotFoundException;
+import io.jimble.web.ratelimit.RateLimit;
+import io.jimble.web.ratelimit.RateLimits;
 import io.jimble.web.router.ErrorHandler;
 import io.jimble.web.router.Handler;
 import io.jimble.web.router.HttpMethods;
@@ -107,6 +109,15 @@ public final class Dispatcher {
 			if (!stage.isDone() && !match.matched()) {
 				throw new NotFoundException(context.request().path());
 			}
+
+			/*
+			 * 流量制限（要件 F-R-15 / F-R-22）。
+			 *
+			 * before より前に見る。止めると決めたリクエストに
+			 * 認証や DB を触らせないためである。
+			 */
+			stage.run(current ->
+				RateLimits.apply(current, match.route() == null ? null : match.route().attribute(RateLimit.KEY)));
 
 			for (Handler hook : match.beforeHooks()) {
 				stage.run(hook);

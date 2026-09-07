@@ -32,6 +32,8 @@ dependencies {
 	// エンコーダの実装で logback の型を使う
 	compileOnly(libs.logback.classic)
 	runtimeOnly(libs.logback.classic)
+	// エンコーダのテストで logback のイベントを組み立てる
+	testImplementation(libs.logback.classic)
 
 	implementation(libs.guava)
 	implementation(libs.icu4j)

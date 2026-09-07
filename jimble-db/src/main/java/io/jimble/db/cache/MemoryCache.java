@@ -154,7 +154,7 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public boolean set(String key, String value, String contentType) {
 
-		return set(key, null, value, contentType);
+		return set(key, value, contentType, null);
 
 	}
 
@@ -162,7 +162,7 @@ public class MemoryCache extends AbstractCache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public boolean set(String key, String group, String value, String contentType) {
+	public boolean set(String key, String value, String contentType, String group) {
 
 		if (group != null && !group.isEmpty()) {
 			cacheGroupMap.computeIfAbsent(group, k -> Collections.synchronizedList(new ArrayList<>())).add(key);

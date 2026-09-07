@@ -162,7 +162,11 @@ public final class SpaHandler implements Handler {
 	 */
 	private boolean sendRewritten (WebContext context, String index) {
 
-		SpaRoute route = router.match(context, context.request().path());
+		/*
+		 * 生のパスを渡す。ツリーがセグメントに割ってからデコードするので、
+		 * %2F を含む値がセグメントの区切りに化けない（本体のルーティングと同じ）。
+		 */
+		SpaRoute route = router.match(context, context.request().rawPath());
 
 		if (route == null) {
 			return false;

@@ -38,6 +38,11 @@ final class Skeleton {
 		, new Entry("index.jte.txt", "src/main/jte/__PACKAGE_PATH__/index.jte")
 		, new Entry("application.conf.txt", "conf/application.conf")
 		/*
+		 * ログの設定。無いと logback の既定（全部まとめてコンソール）になり、
+		 * アクセスログもアプリのログも同じところに混ざる。
+		 */
+		, new Entry("logback.xml.txt", "conf/logback.xml")
+		/*
 		 * マイグレーションは「DB を使うようになったら」なので、
 		 * 拡張子を .sql にしないでおく。
 		 * 置いただけで流れると、DB を使わない人が驚く。

@@ -48,20 +48,58 @@ public enum RestartMode {
 	/**
 	 * 名前から引く
 	 *
+	 * <p>
+	 * <b>読めない名前は落とす</b>（要件 D-89）。
+	 * 前は黙って {@link #ON_REQUEST} に倒していたので、
+	 * 書き間違えても<b>「設定したのに効かない」だけ</b>が残った。
+	 * 実際、ドキュメントに無い名前（{@code on_change}）が載っていて、
+	 * そのとおり書いても何も起きなかった。
+	 * </p>
+	 *
+	 * <p>指定が無い（null・空）ときは {@link #ON_REQUEST}。</p>
+	 *
 	 * @param key	名前
-	 * @return	きっかけ。読めなければ {@link #ON_REQUEST}
+	 * @return	きっかけ
+	 * @throws IllegalArgumentException	読めない名前だった場合
 	 */
 	public static RestartMode of (String key) {
 
-		if (key != null) {
-			for (RestartMode mode : values()) {
-				if (mode.key.equalsIgnoreCase(key.trim())) {
-					return mode;
-				}
+		if (key == null || key.isBlank()) {
+			return ON_REQUEST;
+		}
+
+		for (RestartMode mode : values()) {
+			if (mode.key.equalsIgnoreCase(key.trim())) {
+				return mode;
 			}
 		}
 
-		return ON_REQUEST;
+		throw new IllegalArgumentException(
+			"jimbleRun { restartMode } に書けない値です: %s%n  書けるのは %s です。"
+				.formatted(key, keys()));
+
+	}
+
+	/**
+	 * 書ける名前
+	 *
+	 * @return	名前（カンマ区切り）
+	 */
+	private static String keys () {
+
+		StringBuilder result = new StringBuilder();
+
+		for (RestartMode mode : values()) {
+
+			if (!result.isEmpty()) {
+				result.append(" / ");
+			}
+
+			result.append(mode.key);
+
+		}
+
+		return result.toString();
 
 	}
 

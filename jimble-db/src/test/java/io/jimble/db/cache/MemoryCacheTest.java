@@ -47,6 +47,30 @@ class MemoryCacheTest {
 
 	}
 
+	@Test
+	@DisplayName("D-85 ICache 越しに呼んでも引数の並びが同じ")
+	void setThroughInterface () {
+
+		/*
+		 * MemoryCache の 4引数 set は (key, group, value, contentType) で、
+		 * ICache の (key, value, contentType, group) と並びが違っていた。
+		 * 4つとも String なので @Override は通り、
+		 * インターフェース越しに呼んだときだけ中身が入れ替わっていた。
+		 *
+		 * 実際にスケジューラのハートビートがこの形で呼んでいる。
+		 */
+		ICache api = new MemoryCache();
+
+		api.set("iface-key", "本文", "application/json", "iface-group");
+
+		CacheData data = api.get("iface-key");
+
+		assertEquals("本文", data.contentString(), "値が入れ替わっている");
+		assertEquals("application/json", data.contentType(), "コンテンツタイプが入れ替わっている");
+		assertEquals(List.of("本文"), api.getStringGroup("iface-group"), "グループに入っていない");
+
+	}
+
 	/**
 	 * 設定を差し替える
 	 *
@@ -83,7 +107,7 @@ class MemoryCacheTest {
 	@DisplayName("has() がキャッシュの有無を判定する")
 	void has () {
 
-		cache.set("key-3", "group", "値", "text/plain");
+		cache.set("key-3", "値", "text/plain", "group");
 
 		// 移送元は cacheGroupMap.containsKey(key) を見ており、まったく判定できていなかった
 		assertTrue(cache.has("key-3", "group"));
@@ -96,11 +120,13 @@ class MemoryCacheTest {
 	@DisplayName("グループ単位で消せる（F-U-08）")
 	void removeGroup () {
 
-		cache.set("key-4", "group", "値", "text/plain");
-		cache.set("key-5", "group", "値", "text/plain");
-		cache.set("key-6", "keep", "値", "text/plain");
+		// docs:begin cache-group
+		cache.set("key-4", "値", "text/plain", "group");
+		cache.set("key-5", "値", "text/plain", "group");
+		cache.set("key-6", "値", "text/plain", "keep");
 
 		cache.removeGroup("group");
+		// docs:end
 
 		assertFalse(cache.has("key-4", "group"));
 		assertFalse(cache.has("key-5", "group"));

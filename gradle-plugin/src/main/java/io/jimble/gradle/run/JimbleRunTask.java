@@ -58,7 +58,7 @@ public abstract class JimbleRunTask extends DefaultTask {
 	private final RunLog log = new RunLog();
 
 	/* いま動いているアプリ */
-	private AppProcess app;
+	private AppRunner app;
 
 	/* プロキシ */
 	private DevProxy proxy;
@@ -151,15 +151,6 @@ public abstract class JimbleRunTask extends DefaultTask {
 	 */
 	@Input
 	public abstract ListProperty<String> getWatchExtensions ();
-
-	/**
-	 * JVM 引数
-	 *
-	 * @return	引数
-	 */
-	@Input
-	@Optional
-	public abstract ListProperty<String> getJvmArgs ();
 
 	/**
 	 * コマンドライン引数
@@ -303,13 +294,13 @@ public abstract class JimbleRunTask extends DefaultTask {
 	 */
 	private void resolveOnce () {
 
+		checkDaemonJavaVersion();
+
 		this.appSpec = new AppSpec(
-			getJavaLauncher().get().getExecutablePath().getAsFile().getAbsolutePath()
-			, getMainClass().get()
+			getMainClass().get()
 			, classpath()
 			, getEnv().get()
 			, getAppPort().get()
-			, List.copyOf(getJvmArgs().getOrElse(List.of()))
 			, List.copyOf(getAppArgs().getOrElse(List.of()))
 			, getProjectDir().get().getAsFile()
 		);
@@ -325,11 +316,41 @@ public abstract class JimbleRunTask extends DefaultTask {
 	}
 
 	/**
+	 * Gradle デーモンの JVM がアプリを動かせるか確かめる（要件 D-77）
+	 *
+	 * <p>
+	 * <b>アプリは Gradle デーモンの JVM で動く。</b>ツールチェーンではない。
+	 * デーモンのほうが古いと {@code UnsupportedClassVersionError} になるが、
+	 * <b>その文言からは「IDE の Gradle JVM を変えればよい」に辿り着けない。</b>
+	 * ここで見て、何を直せばよいかを言って落とす。
+	 * </p>
+	 */
+	private void checkDaemonJavaVersion () {
+
+		int daemon = Runtime.version().feature();
+		int toolchain = getJavaLauncher().get().getMetadata().getLanguageVersion().asInt();
+
+		if (daemon >= toolchain) {
+			return;
+		}
+
+		throw new GradleException("""
+			Gradle デーモンの JVM が Java %d です。このプロジェクトは Java %d です。
+			  jimbleRun はアプリを同じ JVM の中で動かすので、
+			  デーモンのほうが古いと起動できません（UnsupportedClassVersionError）。
+			  次のどちらかで Java %d にしてください。
+			    - IntelliJ: 設定 > ビルド、実行、デプロイ > ビルドツール > Gradle > Gradle JVM
+			    - gradle.properties: org.gradle.java.home=<Java %d のパス>"""
+			.formatted(daemon, toolchain, toolchain, toolchain));
+
+	}
+
+	/**
 	 * アプリを起動する
 	 */
 	private void startApp () {
 
-		if (AppProcess.isPortTaken(appSpec.port())) {
+		if (AppRunner.isPortTaken(appSpec.port())) {
 
 			lastOutcome = new BuildOutcome(false, List.of(
 				"%d 番はすでに誰かが待ち受けています。".formatted(appSpec.port())
@@ -344,7 +365,7 @@ public abstract class JimbleRunTask extends DefaultTask {
 
 		try {
 
-			app = AppProcess.start(appSpec, log);
+			app = AppRunner.start(appSpec, log);
 
 			Duration timeout = startTimeout;
 

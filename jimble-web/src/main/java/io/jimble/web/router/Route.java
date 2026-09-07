@@ -207,6 +207,22 @@ public final class Route {
 		afterHooks = scope.resolveAfters();
 		errorHooks = scope.resolveErrors();
 
+		/*
+		 * 流量制限（要件 F-R-22）。
+		 *
+		 * ルートが自分で持っていればそのまま。
+		 * 書いていなければ、書かれたブロックのものを引き継ぐ。
+		 */
+		if (!attributes.containsKey(io.jimble.web.ratelimit.RateLimit.KEY)) {
+
+			io.jimble.web.ratelimit.RateLimit resolved = scope.resolveRateLimit();
+
+			if (resolved != null) {
+				attributes.put(io.jimble.web.ratelimit.RateLimit.KEY, resolved);
+			}
+
+		}
+
 	}
 
 	/**

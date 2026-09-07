@@ -32,6 +32,7 @@ class DataPortingTest {
 	@DisplayName("putData(IColumn, 値) は常にテーブル名の下にネストする")
 	void putDataNests () {
 
+		// docs:begin data-nest
 		Data data = new Data();
 		data.putData(SITE_ID, 1L);
 		data.putData(SITE_NAME, "俺的まとめ");
@@ -40,6 +41,7 @@ class DataPortingTest {
 
 		assertEquals(1L, site.getLong("id"));
 		assertEquals("俺的まとめ", site.getString("name"));
+		// docs:end
 
 	}
 
@@ -114,6 +116,7 @@ class DataPortingTest {
 	@DisplayName("JSON のラウンドトリップ（日本語・ネスト・配列）")
 	void jsonRoundTrip () {
 
+		// docs:begin data-json
 		Data nested = new Data();
 		nested.put("title", "記事タイトル");
 
@@ -130,6 +133,7 @@ class DataPortingTest {
 		assertEquals(3, restored.getInt("count"));
 		assertEquals("記事タイトル", restored.getData("feed").getString("title"));
 		assertEquals(List.of("あ", "い"), restored.getStringList("tags"));
+		// docs:end
 
 	}
 

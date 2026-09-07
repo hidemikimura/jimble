@@ -43,6 +43,7 @@ class NewCommandTest {
 			, "src/main/java/myblog/App.java"
 			, "src/main/jte/myblog/index.jte"
 			, "conf/application.conf"
+			, "conf/logback.xml"
 		}) {
 			assertTrue(Files.isRegularFile(root.resolve(path)), path);
 		}

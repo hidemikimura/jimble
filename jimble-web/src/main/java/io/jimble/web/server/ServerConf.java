@@ -7,6 +7,7 @@ import io.jimble.util.conf.Conf;
  *
  * <pre>
  * server {
+ *   host                 = ""         # 待ち受けるアドレス。空なら全部
  *   port                 = 9000
  *   max_request_size     = 10485760   # リクエスト本文の上限（バイト）
  *   max_header_size      = 16384      # ヘッダ全体の上限（バイト）
@@ -29,6 +30,9 @@ import io.jimble.util.conf.Conf;
  */
 public final class ServerConf {
 
+	/** 設定キー：待ち受けるアドレス */
+	public static final String KEY_HOST = "server.host";
+
 	/** 設定キー：ポート */
 	public static final String KEY_PORT = "server.port";
 
@@ -49,6 +53,18 @@ public final class ServerConf {
 
 	/** 設定キー：ボットのアクセスログを分けるか */
 	public static final String KEY_BOT_ACCESS_LOG = "server.bot_access_log";
+
+	/** 設定キー：止め始めてから新規を断つまでの猶予（秒） */
+	public static final String KEY_SHUTDOWN_GRACE_SECONDS = "server.shutdown_grace_seconds";
+
+	/** 設定キー：処理中のリクエストを待つ上限（秒） */
+	public static final String KEY_SHUTDOWN_TIMEOUT_SECONDS = "server.shutdown_timeout_seconds";
+
+	/** 既定の猶予（秒） */
+	public static final long DEFAULT_SHUTDOWN_GRACE_SECONDS = 0;
+
+	/** 既定の待つ上限（秒） */
+	public static final long DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 15;
 
 	/** システムプロパティ：ポート */
 	public static final String PROPERTY_PORT = "jimble.server.port";
@@ -74,6 +90,27 @@ public final class ServerConf {
 	 *
 	 * @return	ポート
 	 */
+	/**
+	 * 待ち受けるアドレス（要件 F-H-06）
+	 *
+	 * <p>
+	 * <b>空なら全部のアドレスで待つ</b>（いままでどおり）。
+	 * {@code "127.0.0.1"} にすると<b>そのマシンからしか繋がらない。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * 手元で動かす MCP サーバーのように、<b>外から見えてはいけないもの</b>で使う。
+	 * ファイアウォールに頼ると、設定を忘れたときに黙って公開される。
+	 * </p>
+	 *
+	 * @return	アドレス（空なら全部）
+	 */
+	public static String host () {
+
+		return Conf.conf().getString(KEY_HOST, "").trim();
+
+	}
+
 	public static int port () {
 
 		Integer property = Integer.getInteger(PROPERTY_PORT);
@@ -105,6 +142,34 @@ public final class ServerConf {
 	public static int maxHeaderSize () {
 
 		return (int) Conf.conf().getLong(KEY_MAX_HEADER_SIZE, DEFAULT_MAX_HEADER_SIZE);
+
+	}
+
+	/**
+	 * 止め始めてから新しいリクエストを断つまでの猶予（秒。要件 D-91）
+	 *
+	 * <p>
+	 * <b>ロードバランサがこの台を外すのを待つ時間。</b>
+	 * この間もリクエストは普通に処理し、ヘルスチェックだけが落ちる。
+	 * 既定は 0（すぐ断つ）。
+	 * </p>
+	 *
+	 * @return	秒
+	 */
+	public static long shutdownGraceSeconds () {
+
+		return Conf.conf().getLong(KEY_SHUTDOWN_GRACE_SECONDS, DEFAULT_SHUTDOWN_GRACE_SECONDS);
+
+	}
+
+	/**
+	 * 処理中のリクエストを待つ上限（秒。要件 D-91）
+	 *
+	 * @return	秒
+	 */
+	public static long shutdownTimeoutSeconds () {
+
+		return Conf.conf().getLong(KEY_SHUTDOWN_TIMEOUT_SECONDS, DEFAULT_SHUTDOWN_TIMEOUT_SECONDS);
 
 	}
 

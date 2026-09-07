@@ -124,6 +124,23 @@ public final class Router {
 
 	}
 
+	/**
+	 * 流量制限を宣言する（要件 F-R-15 / F-R-22）
+	 *
+	 * <p>
+	 * before と同じで<b>書いたブロックに付く</b>。
+	 * 内側に別のものが書いてあれば内側が勝ち、
+	 * ルートが属性で持っていればそれが勝つ。
+	 * </p>
+	 *
+	 * @param rateLimit	宣言
+	 */
+	public void rateLimit (io.jimble.web.ratelimit.RateLimit rateLimit) {
+
+		scope.rateLimit(Objects.requireNonNull(rateLimit, "rateLimit"));
+
+	}
+
 	// endregion
 
 

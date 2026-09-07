@@ -114,6 +114,37 @@ public abstract class Controller {
 
 	}
 
+	/**
+	 * 流量制限を宣言する（要件 F-R-15 / F-R-22）
+	 *
+	 * <p>
+	 * <b>書いたブロックの中のルート全部</b>にかかる。
+	 * before と同じで、パスのノードではなく<b>書いた場所</b>に付く（要件 D-69）。
+	 * </p>
+	 *
+	 * <pre>
+	 * path("/api", () -&gt; {
+	 *     rateLimit(RateLimit.perIp(60, Duration.ofMinutes(1)));
+	 *     get("/items", handler);
+	 * });
+	 * </pre>
+	 *
+	 * <p>
+	 * 1本だけに付けるなら、ルートの属性に直接載せる。
+	 * </p>
+	 *
+	 * <pre>
+	 * post("/login", handler).attribute(RateLimit.KEY, RateLimit.perIp(5, Duration.ofMinutes(1)));
+	 * </pre>
+	 *
+	 * @param rateLimit	宣言
+	 */
+	protected final void rateLimit (io.jimble.web.ratelimit.RateLimit rateLimit) {
+
+		scope().rateLimit(rateLimit);
+
+	}
+
 	// endregion
 
 

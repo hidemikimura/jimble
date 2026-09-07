@@ -323,7 +323,7 @@ public class XmlData {
 	 *
 	 * @return 値
 	 */
-	public byte getShort() {
+	public short getShort() {
 
 		try {
 			return Convertor.convert(null, this.textContent, short.class);
@@ -338,7 +338,7 @@ public class XmlData {
 	 *
 	 * @return 値
 	 */
-	public byte getInt() {
+	public int getInt() {
 
 		try {
 			return Convertor.convert(null, this.textContent, int.class);
@@ -353,7 +353,7 @@ public class XmlData {
 	 *
 	 * @return 値
 	 */
-	public byte getLong() {
+	public long getLong() {
 
 		try {
 			return Convertor.convert(null, this.textContent, long.class);
@@ -368,7 +368,7 @@ public class XmlData {
 	 *
 	 * @return 値
 	 */
-	public byte getFloat() {
+	public float getFloat() {
 
 		try {
 			return Convertor.convert(null, this.textContent, float.class);
@@ -383,7 +383,7 @@ public class XmlData {
 	 *
 	 * @return 値
 	 */
-	public byte getDouble() {
+	public double getDouble() {
 
 		try {
 			return Convertor.convert(null, this.textContent, double.class);

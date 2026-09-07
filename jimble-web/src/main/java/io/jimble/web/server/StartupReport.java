@@ -52,10 +52,9 @@ public final class StartupReport {
 		fields.put("password_encrypt", PasswordUtil.isEncrypt());
 
 		/*
-		 * jar の外の conf/ を読んだかどうか（要件 D-71）。
+		 * どの設定ファイルを読んだか（要件 D-80）。
 		 * 「直したはずの設定が効いていない」の原因がここに出る。
 		 */
-		fields.put("conf_dir", Conf.confDir().getPath());
 		fields.put("conf_files", Conf.sources());
 
 		Log.info("jimble 構成: env=%s / session=%s / cache=%s / redis=%s / db=%s / パスワード暗号化=%s".formatted(
@@ -74,12 +73,17 @@ public final class StartupReport {
 	}
 
 	/**
-	 * どの設定ファイルを読んだかを出す（要件 D-71）
+	 * どの設定ファイルを読んだかを出す（要件 D-80 / D-81）
 	 *
 	 * <p>
-	 * jar に同梱した設定と、jar の外の {@code conf/} の両方があるとき、
-	 * <b>どちらが効いているのかが分からない</b>のがいちばん困る。
-	 * 外のものを読んだならそれを、読んでいないならその旨を出す。
+	 * 読むのは1つ（環境別があればそれ、無ければ共通）。
+	 * <b>どこにあるものを読んだのか</b>まで出す。
+	 * jar と {@code build/resources} の両方から起動できてしまうためである。
+	 * </p>
+	 *
+	 * <p>
+	 * 環境別ファイルに {@code include "application.conf"} を書き忘れると
+	 * <b>共通の設定が丸ごと落ちる</b>。落ちていたら名指しで言う。
 	 * </p>
 	 */
 	private static void logConfSources () {
@@ -87,12 +91,19 @@ public final class StartupReport {
 		List<String> sources = Conf.sources();
 
 		if (sources.isEmpty()) {
-			Log.info("設定: クラスパスのみ（%s/ に application.conf はありません）"
-				.formatted(Conf.confDir().getPath()));
+			Log.warn("設定: クラスパスに application.conf がありません（既定値だけで動いています）");
 			return;
 		}
 
-		Log.info("設定: %s（クラスパスより優先）".formatted(String.join(", ", sources)));
+		Log.info("設定: %s".formatted(String.join(", ", sources)));
+
+		List<String> missing = Conf.missingFromEnvFile();
+
+		if (!missing.isEmpty()) {
+			Log.warn(("設定: application.conf にしかないキーが読まれていません: %s"
+				+ " / application.%s.conf の先頭に include \"application.conf\" を書いてください")
+				.formatted(String.join(", ", missing), Conf.env()));
+		}
 
 	}
 

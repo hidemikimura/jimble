@@ -52,6 +52,7 @@ class DispatcherTest {
 	/**
 	 * ディスパッチして結果のレスポンスを返す
 	 */
+	// docs:begin test-dispatcher
 	private Fakes.FakeResponseSink dispatch (JimbleApp app, String method, String rawPath) {
 
 		Dispatcher dispatcher = new Dispatcher(app);
@@ -62,6 +63,7 @@ class DispatcherTest {
 			dispatcher.dispatch(context);
 			return sink;
 		}
+	// docs:end
 
 	}
 
@@ -434,6 +436,7 @@ class DispatcherTest {
 	@DisplayName("T-13 HttpException のステータスコードがエラーハンドラに渡る")
 	void httpExceptionStatusCode () {
 
+		// docs:begin error-http-status
 		JimbleApp app = new JimbleApp() {
 			{
 				error((context, cause, statusCode) -> {
@@ -445,6 +448,7 @@ class DispatcherTest {
 				});
 			}
 		};
+		// docs:end
 
 		Fakes.FakeResponseSink response = dispatch(app, "GET", "/forbidden");
 
@@ -480,6 +484,7 @@ class DispatcherTest {
 		class MyException extends RuntimeException {
 		}
 
+		// docs:begin error-status-resolve
 		JimbleApp app = new JimbleApp() {
 
 			{
@@ -498,6 +503,7 @@ class DispatcherTest {
 			}
 
 		};
+		// docs:end
 
 		assertEquals(409, dispatch(app, "GET", "/x").status());
 		assertEquals(List.of("error:409"), log);
@@ -547,6 +553,7 @@ class DispatcherTest {
 	@DisplayName("T-15 error ハンドラが例外を投げても次に進み、最終的にレスポンスが返る")
 	void failingErrorHandlerFallsThrough () {
 
+		// docs:begin error-fallthrough
 		JimbleApp app = new JimbleApp() {
 			{
 				error((context, cause, statusCode) -> log.add("outer"));
@@ -562,6 +569,7 @@ class DispatcherTest {
 				});
 			}
 		};
+		// docs:end
 
 		Fakes.FakeResponseSink response = dispatch(app, "GET", "/admin/x");
 

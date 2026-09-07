@@ -2,10 +2,13 @@ package io.jimble.docs;
 
 import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.node.AbstractVisitor;
+import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.Heading;
 import org.commonmark.node.Node;
+import org.commonmark.node.Paragraph;
+import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
@@ -31,8 +34,31 @@ import java.util.Set;
  *   <li><b>{@code snippet=名前} を実コードで置き換える</b>（要件 NF-D-03）</li>
  *   <li><b>色付けを生成時に済ませる</b>（{@link Highlighter}）</li>
  * </ol>
+ *
+ * <p>
+ * 引用（{@code >}）も自前で描く。先頭に印を置くと<b>注記の枠</b>になる。
+ * </p>
+ *
+ * <pre>
+ * &gt; [!WARN]
+ * &gt; 本文
+ * </pre>
+ *
+ * <p>
+ * 印は {@code NOTE}（補足）/ {@code TIP}（こつ）/ {@code WARN}（注意）/
+ * {@code TRAP}（落とし穴）。知らない印はただの引用として描く
+ * （<b>書き間違いで文が消えない</b>ようにするため）。
+ * </p>
  */
 final class Markdown {
+
+	/** 注記の印 → 見出し */
+	private static final Map<String, String> CALLOUTS = Map.of(
+		"note", "補足"
+		, "tip", "こつ"
+		, "warn", "注意"
+		, "trap", "落とし穴"
+	);
 
 	/* パーサ */
 	private final Parser parser;
@@ -238,6 +264,9 @@ final class Markdown {
 		/* 出し先 */
 		private final HtmlWriter writer;
 
+		/* 子を描いてもらうための文脈 */
+		private final HtmlNodeRendererContext context;
+
 		/**
 		 * コンストラクタ
 		 *
@@ -246,6 +275,7 @@ final class Markdown {
 		private CodeRenderer (HtmlNodeRendererContext context) {
 
 			this.writer = context.getWriter();
+			this.context = context;
 
 		}
 
@@ -255,7 +285,7 @@ final class Markdown {
 		@Override
 		public Set<Class<? extends Node>> getNodeTypes () {
 
-			return Set.of(FencedCodeBlock.class, Heading.class);
+			return Set.of(FencedCodeBlock.class, Heading.class, BlockQuote.class);
 
 		}
 
@@ -270,7 +300,108 @@ final class Markdown {
 				return;
 			}
 
+			if (node instanceof BlockQuote quote) {
+				renderQuote(quote);
+				return;
+			}
+
 			renderCode((FencedCodeBlock) node);
+
+		}
+
+		/**
+		 * 引用と注記
+		 *
+		 * @param quote	引用
+		 */
+		private void renderQuote (BlockQuote quote) {
+
+			String kind = calloutKind(quote);
+
+			writer.line();
+
+			if (kind == null) {
+				writer.tag("blockquote");
+			} else {
+				writer.raw("<div class=\"callout callout-%s\">".formatted(kind));
+				writer.raw("<p class=\"callout-title\">%s</p>".formatted(
+					Highlighter.escape(CALLOUTS.get(kind))));
+			}
+
+			writer.line();
+
+			Node child = quote.getFirstChild();
+
+			while (child != null) {
+				Node next = child.getNext();
+				context.render(child);
+				child = next;
+			}
+
+			writer.line();
+			writer.raw(kind == null ? "</blockquote>" : "</div>");
+			writer.line();
+
+		}
+
+		/**
+		 * 注記の種類を読み、印を取り除く
+		 *
+		 * <p>
+		 * <b>知らない印は注記にしない。</b>{@code [!NOTES]} のような書き間違いを
+		 * 注記として描くと、印の行だけが消えて気づけない。
+		 * </p>
+		 *
+		 * @param quote	引用
+		 * @return	種類。ただの引用なら null
+		 */
+		private String calloutKind (BlockQuote quote) {
+
+			if (!(quote.getFirstChild() instanceof Paragraph paragraph)) {
+				return null;
+			}
+
+			if (!(paragraph.getFirstChild() instanceof Text text)) {
+				return null;
+			}
+
+			String literal = text.getLiteral();
+
+			if (!literal.startsWith("[!")) {
+				return null;
+			}
+
+			int end = literal.indexOf(']');
+
+			if (end < 0) {
+				return null;
+			}
+
+			String kind = literal.substring(2, end).toLowerCase(Locale.ROOT);
+
+			if (!CALLOUTS.containsKey(kind)) {
+				return null;
+			}
+
+			String rest = literal.substring(end + 1).stripLeading();
+
+			if (!rest.isEmpty()) {
+				text.setLiteral(rest);
+				return kind;
+			}
+
+			// 印だけの行だったので、行ごと取り除く
+			if (text.getNext() instanceof SoftLineBreak lineBreak) {
+				lineBreak.unlink();
+			}
+
+			text.unlink();
+
+			if (paragraph.getFirstChild() == null) {
+				paragraph.unlink();
+			}
+
+			return kind;
 
 		}
 

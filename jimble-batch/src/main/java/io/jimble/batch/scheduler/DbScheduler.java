@@ -10,6 +10,7 @@ import io.jimble.batch.scheduler.mq.ReExecuteBatchExecutor;
 import io.jimble.batch.scheduler.mq.SchedulerQueue;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.lifecycle.CancelOrderNotify;
+import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.MqQueue;
@@ -19,6 +20,7 @@ import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import io.jimble.util.thread.VirtualThreadManager;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -169,14 +171,29 @@ public final class DbScheduler implements CancelOrderNotify {
 			throw new IllegalStateException("スケジューラはすでに動いています");
 		}
 
+		/*
+		 * 「全部止める」に預ける（要件 D-77）。
+		 * <b>キューを作る前に預ける。</b>あとにすると、
+		 * 立ち上がっている途中に止めろと言われたときに取りこぼす。
+		 */
+		Shutdown.add("スケジューラ(%s)".formatted(schedulerId)
+			, () -> stopCurrent(Duration.ofSeconds(15)));
+
 		Thread hook = new Thread(this::shutdown, "jimble-scheduler-shutdown");
 
 		try {
 
-			// 先に「動いている」ことを出す。テーブルを作るのに少し時間がかかる
-			SchedulerControl.heartbeat(schedulerId);
-
+			/*
+			 * <b>キューのテーブルを作ってからハートビートを打つ。</b>
+			 *
+			 * 逆にすると、「スケジューラは動いている」と見えているのに
+			 * 依頼を積む先（mq_scheduler）がまだ無い、という隙間ができる。
+			 * バッチ管理画面の「いま動かす」は isRunning() を見てから積むので、
+			 * その隙間に押すと 500 になる（要件 D-74）。
+			 */
 			installSchedulerQueue();
+
+			SchedulerControl.heartbeat(schedulerId);
 
 			executeThreads();
 
@@ -220,6 +237,50 @@ public final class DbScheduler implements CancelOrderNotify {
 	public void stop () {
 
 		stopping = true;
+
+	}
+
+	/**
+	 * この JVM で動いているスケジューラを止める（要件 D-77）
+	 *
+	 * <p>
+	 * <b>同じ JVM のままアプリを入れ替える開発用</b>の入口である
+	 * （{@code jimbleRun}）。プロセスを殺せないので、
+	 * 誰かが止めないと<b>入れ替えたあとも古いスケジューラが動き続け、
+	 * 同じジョブが2回走る。</b>
+	 * </p>
+	 *
+	 * @param timeout	止まるのを待つ上限
+	 * @return	止まった場合 = true（動いていなかった場合も true）
+	 */
+	public static boolean stopCurrent (Duration timeout) {
+
+		DbScheduler current = CURRENT.get();
+
+		if (current == null) {
+			return true;
+		}
+
+		current.stop();
+
+		long deadline = System.nanoTime() + timeout.toNanos();
+
+		while (System.nanoTime() < deadline) {
+
+			if (CURRENT.get() == null) {
+				return true;
+			}
+
+			try {
+				Thread.sleep(50);
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return false;
+			}
+
+		}
+
+		return CURRENT.get() == null;
 
 	}
 
