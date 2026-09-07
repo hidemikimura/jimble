@@ -1,0 +1,84 @@
+[versions]
+junit = "5.14.4"
+helidon = "4.5.4"
+guava = "33.6.0-jre"
+icu4j = "78.3"
+tika = "3.3.2"
+fastcsv = "4.4.0"
+jts = "1.20.0"
+caffeine = "3.2.4"
+commons-text = "1.15.0"
+commons-validator = "1.11.0"
+jbcrypt = "0.4"
+juniversalchardet = "2.5.0"
+brotli = "0.1.2"
+jspecify = "1.0.0"
+aircompressor = "3.7"
+hikaricp = "7.1.0"
+agroal = "3.2.1"
+mariadb = "3.5.10"
+redisson = "4.7.0"
+typesafe-config = "1.4.9"
+slf4j = "2.0.17"
+logback = "1.5.20"
+jte = "3.2.4"
+cron-utils = "9.2.1"
+directory-watcher = "0.19.1"
+commonmark = "0.26.0"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+helidon-webserver = { module = "io.helidon.webserver:helidon-webserver", version.ref = "helidon" }
+helidon-logging-jul = { module = "io.helidon.logging:helidon-logging-jul", version.ref = "helidon" }
+helidon-media-multipart = { module = "io.helidon.http.media:helidon-http-media-multipart", version.ref = "helidon" }
+# 応答の gzip 圧縮（要件 F-H-03）
+helidon-encoding-gzip = { module = "io.helidon.http.encoding:helidon-http-encoding-gzip", version.ref = "helidon" }
+# WebSocket（要件 F-W-22）。+3 jar / 0.1MB
+helidon-websocket = { module = "io.helidon.webserver:helidon-webserver-websocket", version.ref = "helidon" }
+
+typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# テンプレート（要件 F-W-08 / O-13）。
+# 実行時は jte-runtime だけを使う（コンパイラを含まない = 実行時コンパイル不可。F-W-10）。
+# コンパイラ本体の jte は Gradle プラグイン側だけが持つ。
+jte-runtime = { module = "gg.jte:jte-runtime", version.ref = "jte" }
+jte-compiler = { module = "gg.jte:jte", version.ref = "jte" }
+
+# 開発用ホットリロードのファイル監視（要件 F-X-02）。Apache-2.0。
+# Gradle デーモンの中でだけ使う。アプリの実行時クラスパスには入らない。
+# JDK の WatchService は macOS では2秒ごとのポーリングで、再帰監視もない。
+directory-watcher = { module = "io.methvin:directory-watcher", version.ref = "directory-watcher" }
+
+# ドキュメントサイトの Markdown（要件 NF-D-01）。BSD-2-Clause。
+# ビルド時にだけ使う。アプリの実行時クラスパスには入らない。
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
+commonmark-anchor = { module = "org.commonmark:commonmark-ext-heading-anchor", version.ref = "commonmark" }
+
+# cron のパース（要件 F-B-04）。Apache-2.0
+cron-utils = { module = "com.cronutils:cron-utils", version.ref = "cron-utils" }
+
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+icu4j = { module = "com.ibm.icu:icu4j", version.ref = "icu4j" }
+tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
+tika-parser-text = { module = "org.apache.tika:tika-parser-text-module", version.ref = "tika" }
+fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
+jts-core = { module = "org.locationtech.jts:jts-core", version.ref = "jts" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+commons-text = { module = "org.apache.commons:commons-text", version.ref = "commons-text" }
+commons-validator = { module = "commons-validator:commons-validator", version.ref = "commons-validator" }
+jbcrypt = { module = "org.mindrot:jbcrypt", version.ref = "jbcrypt" }
+juniversalchardet = { module = "com.github.albfernandez:juniversalchardet", version.ref = "juniversalchardet" }
+brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+aircompressor = { module = "io.airlift:aircompressor-v3", version.ref = "aircompressor" }
+
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+agroal-pool = { module = "io.agroal:agroal-pool", version.ref = "agroal" }
+mariadb-client = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mariadb" }
+redisson = { module = "org.redisson:redisson", version.ref = "redisson" }

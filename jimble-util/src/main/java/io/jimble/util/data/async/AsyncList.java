@@ -1,0 +1,552 @@
+package io.jimble.util.data.async;
+
+import io.jimble.util.data.Data;
+import org.jspecify.annotations.NonNull;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Objects;
+import java.util.Spliterator;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+
+/**
+ * 遅延読み込みリスト（要件 F-A-01〜05 / F-A-09 / F-A-10）
+ *
+ * <p>
+ * <b>参照された時点ではじめて {@link #load()} が走る。</b>
+ * </p>
+ *
+ * <pre>
+ * public class SiteList extends AsyncList {
+ *
+ *     private final long groupId;
+ *
+ *     public SiteList (long groupId) { this.groupId = groupId; }
+ *
+ *     &#64;Override protected List&lt;Data&gt; load () { return db.selectList(...); }
+ *     &#64;Override protected void setData (Data data) { add(data); }
+ *     &#64;Override protected String hashKey () { return "SiteList:" + groupId; }
+ * }
+ * </pre>
+ *
+ * <p>
+ * {@link #setRelationData(List)} は<b>全要素の {@link #setData(Data)} が終わってから
+ * 1回だけ</b>呼ばれる（要件 F-A-03）。要素ごとに1本ずつクエリを投げる代わりに、
+ * ここでまとめて引く。
+ * </p>
+ *
+ * <h2>移送元から直したところ</h2>
+ * <ol>
+ *   <li>読み込み済みフラグの見え方（{@link AsyncState} 参照）</li>
+ *   <li><b>{@code toArray()} が読み込みを起こしていなかった。</b>
+ *       {@code ArrayList.toArray()} は内部配列を直接見るので、
+ *       <b>未読み込みのリストは黙って空の配列を返す。</b>
+ *       {@code new ArrayList&lt;&gt;(asyncList)} や {@code List.copyOf(asyncList)}、
+ *       多くのライブラリがこれを通るため、<b>「なぜか空になる」形で表に出る。</b>
+ *       いちばん質が悪い</li>
+ *   <li><b>{@code indexOf} / {@code lastIndexOf} / {@code subList} も同じ。</b>
+ *       いずれも内部配列を直接見るので、{@code indexOf} は -1 を返し、
+ *       {@code subList(0, 2)} は範囲外で例外になる</li>
+ *   <li><b>{@code getFirst()} / {@code getLast()} は例外を投げていた。</b>
+ *       Java 21 で {@code ArrayList} が持つようになったもので、内部配列を見るため
+ *       <b>未読み込みのリストは常に空扱いになり {@code NoSuchElementException}</b> になる</li>
+ *   <li><b>{@code equals()} が無かった。</b>{@code hashCode()} だけ
+ *       {@code hashKey()} 基準に変えてあり、<b>両者が食い違っていた。</b>
+ *       しかも {@code ArrayList.equals()} は<b>相手を {@code iterator()} で走査する</b>ので、
+ *       比較しただけで片方が読み込まれ、そのうえで答えが間違う
+ *       （自分は内部配列を見るので 0 件のまま比べる）。要件 F-A-05</li>
+ *   <li><b>{@code toString()} が全部読み込んでいた</b>（要件 F-D-27）</li>
+ *   <li><b>読み込みに失敗したことを外から知る方法が無かった</b>（要件 F-A-09）</li>
+ * </ol>
+ */
+public abstract class AsyncList extends ArrayList<Object> implements Async {
+
+	private static final long serialVersionUID = 1L;
+
+	/* 読み込みの状態 */
+	private final AsyncState state = new AsyncState();
+
+	/* 読み込んだデータ */
+	private transient List<Data> dataList;
+
+	// region 実装するもの（要件 F-A-02）
+
+	/**
+	 * データを読む
+	 *
+	 * @return	読んだデータ
+	 * @throws Exception	読み込みに失敗した場合
+	 */
+	protected abstract List<Data> load () throws Exception;
+
+	/**
+	 * 読んだデータを1件ずつ反映する
+	 *
+	 * @param data	読んだデータ
+	 * @throws Exception	反映に失敗した場合
+	 */
+	protected abstract void setData (Data data) throws Exception;
+
+	/**
+	 * 関連データを反映する（要件 F-A-03）
+	 *
+	 * <p>全要素の {@link #setData(Data)} が終わってから1回だけ呼ばれる。</p>
+	 *
+	 * @param dataList	読んだデータ一覧
+	 * @throws Exception	反映に失敗した場合
+	 */
+	protected void setRelationData (List<Data> dataList) throws Exception {}
+
+	/**
+	 * 同じものかどうかを決めるキー
+	 *
+	 * @return	キー
+	 */
+	protected abstract String hashKey ();
+
+	// endregion
+
+	// region 状態（読み込みを起こさない）
+
+	/**
+	 * 読み込み済みか
+	 *
+	 * @return	読み込み済みの場合 = true
+	 */
+	@Override
+	public boolean isLoaded () {
+
+		return state.isLoaded();
+
+	}
+
+	/**
+	 * 読み込みに失敗したか（要件 F-A-09）
+	 *
+	 * @return	失敗した場合 = true
+	 */
+	@Override
+	public boolean isLoadFailed () {
+
+		return state.isFailed();
+
+	}
+
+	/**
+	 * 読み込み済みにする（読み込みは起こさない）
+	 */
+	public void setLoaded () {
+
+		state.markLoaded();
+
+	}
+
+	/**
+	 * まとめて読む単位の識別子（要件 F-A-10）
+	 *
+	 * @return	識別子
+	 */
+	@Override
+	public String batchKey () {
+
+		return null;
+
+	}
+
+	/**
+	 * {@link #batchKey()} の中で自分を特定する値（要件 F-A-10）
+	 *
+	 * @return	値
+	 */
+	@Override
+	public Object batchId () {
+
+		return null;
+
+	}
+
+	/**
+	 * すでに持っている要素だけを返す（読み込みは起こさない）
+	 *
+	 * @return	要素の一覧
+	 */
+	public List<Object> loadedValues () {
+
+		/*
+		 * new ArrayList<>(this) は toArray() を通る。
+		 * toArray() は読み込みを起こすようにしたので、ここでは使えない。
+		 * 添字で取り出す。
+		 */
+		List<Object> values = new ArrayList<>(loadedSize());
+
+		for (int i = 0; i < loadedSize(); i++) {
+			values.add(super.get(i));
+		}
+
+		return values;
+
+	}
+
+	/**
+	 * すでに持っている要素の数（読み込みは起こさない）
+	 *
+	 * @return	要素数
+	 */
+	public int loadedSize () {
+
+		return super.size();
+
+	}
+
+	// endregion
+
+	// region 読み込み
+
+	/**
+	 * 読んだデータ
+	 *
+	 * @return	データ（未読み込みなら null）
+	 */
+	protected List<Data> getDataList () {
+
+		return this.dataList;
+
+	}
+
+	/**
+	 * 読み込む（一度だけ）
+	 */
+	private void loadData () {
+
+		state.loadOnce(this, () -> {
+
+			this.dataList = load();
+
+			if (this.dataList != null) {
+
+				for (Data data : this.dataList) {
+					setData(data);
+				}
+
+				// 全件の setData が終わってから1回だけ（要件 F-A-03）
+				setRelationData(this.dataList);
+
+			}
+
+		});
+
+	}
+
+	/**
+	 * 読み込まずにデータを入れる（要件 F-A-10）
+	 *
+	 * <p><b>すでに読み込み済みなら何もしない。</b></p>
+	 *
+	 * @param dataList	データ
+	 */
+	public void putData (List<Data> dataList) {
+
+		state.loadOnce(this, () -> {
+
+			this.dataList = dataList;
+
+			if (dataList != null) {
+
+				for (Data data : dataList) {
+					setData(data);
+				}
+
+				setRelationData(dataList);
+
+			}
+
+		});
+
+	}
+
+	// endregion
+
+	// region 同一性（読み込みを起こさない。要件 F-A-05）
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int hashCode () {
+
+		return Objects.hashCode(hashKey());
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * 移送元は {@code hashCode()} だけを {@code hashKey()} 基準にしていて、
+	 * <b>{@code equals()} は {@code ArrayList} のまま</b>だった。
+	 * {@code ArrayList.equals()} は相手を {@code iterator()} で走査するので、
+	 * <b>比較しただけで相手が読み込まれ、しかも自分は内部配列（0 件）のまま比べる。</b>
+	 * 同じキーの2つが「等しくない」と言われる。
+	 * </p>
+	 */
+	@Override
+	public boolean equals (Object obj) {
+
+		if (this == obj) {
+			return true;
+		}
+
+		if (!(obj instanceof AsyncList asyncList)) {
+			return false;
+		}
+
+		return Objects.equals(hashKey(), asyncList.hashKey());
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p><b>未読み込みなら読み込まない</b>（要件 F-D-27）。</p>
+	 */
+	@Override
+	public String toString () {
+
+		if (!state.isLoaded()) {
+			return "%s(未読み込み)".formatted(getClass().getSimpleName());
+		}
+
+		if (state.isFailed()) {
+			return "%s(読み込み失敗)".formatted(getClass().getSimpleName());
+		}
+
+		return "%s(%d件)".formatted(getClass().getSimpleName(), loadedSize());
+
+	}
+
+	// endregion
+
+	// region List（触られたら読む）
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int size () {
+
+		loadData();
+		return super.size();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Object get (int index) {
+
+		loadData();
+		return super.get(index);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public boolean contains (Object o) {
+
+		loadData();
+		return super.contains(o);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public boolean isEmpty () {
+
+		loadData();
+		return super.isEmpty();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public @NonNull Iterator<Object> iterator () {
+
+		loadData();
+		return super.iterator();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public @NonNull ListIterator<Object> listIterator (int index) {
+
+		loadData();
+		return super.listIterator(index);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public @NonNull ListIterator<Object> listIterator () {
+
+		loadData();
+		return super.listIterator();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void forEach (Consumer<? super Object> action) {
+
+		loadData();
+		super.forEach(action);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public @NonNull Spliterator<Object> spliterator () {
+
+		loadData();
+		return super.spliterator();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void sort (Comparator<? super Object> c) {
+
+		loadData();
+		super.sort(c);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * <b>移送元はここが抜けていた。</b>{@code ArrayList.toArray()} は内部配列を直接見るので、
+	 * 未読み込みのリストが<b>黙って空の配列</b>になっていた。
+	 * </p>
+	 */
+	@Override
+	public Object @NonNull [] toArray () {
+
+		loadData();
+		return super.toArray();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public <T> T @NonNull [] toArray (T @NonNull [] a) {
+
+		loadData();
+		return super.toArray(a);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int indexOf (Object o) {
+
+		loadData();
+		return super.indexOf(o);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int lastIndexOf (Object o) {
+
+		loadData();
+		return super.lastIndexOf(o);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public @NonNull List<Object> subList (int fromIndex, int toIndex) {
+
+		loadData();
+		return super.subList(fromIndex, toIndex);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Object getFirst () {
+
+		loadData();
+		return super.getFirst();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Object getLast () {
+
+		loadData();
+		return super.getLast();
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public boolean removeIf (Predicate<? super Object> filter) {
+
+		loadData();
+		return super.removeIf(filter);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void replaceAll (UnaryOperator<Object> operator) {
+
+		loadData();
+		super.replaceAll(operator);
+
+	}
+
+	// endregion
+
+}

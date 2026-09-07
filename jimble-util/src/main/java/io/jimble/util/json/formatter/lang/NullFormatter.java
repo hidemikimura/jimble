@@ -1,0 +1,27 @@
+package io.jimble.util.json.formatter.lang;
+
+import io.jimble.util.convertor.Configration;
+import io.jimble.util.json.formatter.IFormatter;
+import io.jimble.util.json.formatter.stream.OutputStreamWriterWrapper;
+
+/**
+ * Nullフォーマットクラス.
+ * 
+ * @author DN
+ */
+public class NullFormatter implements IFormatter {
+
+	/** インスタンス. */
+	public static final NullFormatter INSTANCE = new NullFormatter();
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void format(OutputStreamWriterWrapper writer, Configration conf, Object obj) throws Exception {
+
+		writer.write("null", 0, 4);
+
+	}
+
+}

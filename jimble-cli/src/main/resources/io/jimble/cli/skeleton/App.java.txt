@@ -1,0 +1,82 @@
+package __PACKAGE__;
+
+import io.jimble.util.data.Data;
+import io.jimble.web.server.JimbleApp;
+import io.jimble.web.server.JimbleServer;
+
+/**
+ * __NAME__
+ *
+ * <pre>
+ * ./gradlew run           起動する
+ * ./gradlew jimbleRun     直したらリロードで反映される形で起動する
+ * </pre>
+ *
+ * <p>
+ * ルートはこの初期化ブロックに上から書く。アノテーションは使わない。
+ * <b>ここを読めば、どの URL で何が動くかが分かる</b>状態を保つこと。
+ * </p>
+ */
+public class App extends JimbleApp {
+
+	{
+
+		/*
+		 * 例外はここで整形する。
+		 * ルートに当たらなかった 404 もここへ来る。
+		 */
+		error((context, cause, statusCode) ->
+			context.response().code(statusCode).json("error", cause.getMessage()));
+
+		// HTML を返す（src/main/jte/__PACKAGE_PATH__/index.jte）
+		get("/", context -> {
+
+			context.response().putData("name", "__NAME__");
+			context.response().view("__PACKAGE_PATH__/index.jte");
+
+		});
+
+		// JSON を返す
+		get("/hello", context -> context.response().json("message", "hello, jimble"));
+
+		// パスパラメータ
+		get("/echo/{word}", context ->
+			context.response().json("word", context.route().variables().get("word")));
+
+		/*
+		 * 受け取ったパラメータをそのまま返す。
+		 * クエリ・フォーム・JSON ボディは同じ入れ物に入る。
+		 */
+		post("/echo", context -> {
+
+			Data body = context.request().bodyAll();
+
+			context.response().json(body);
+
+		});
+
+		// ヘルスチェック
+		get("/health_check", context -> context.response().send());
+		head("/health_check", context -> context.response().send());
+
+	}
+
+	/**
+	 * エントリポイント
+	 *
+	 * @param args	コマンドライン引数
+	 */
+	public static void main (String[] args) {
+
+		/*
+		 * DB を使うようになったら、ここで読み込む。
+		 *
+		 *   Migration.install();
+		 *   DBUtil.load(Conf.conf().config(), App.class);
+		 */
+
+		JimbleServer.start(new App());
+
+	}
+
+}

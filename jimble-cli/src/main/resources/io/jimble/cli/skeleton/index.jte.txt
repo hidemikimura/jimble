@@ -1,0 +1,35 @@
+@import io.jimble.util.data.Data
+@param Data data
+
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>${data.getString("name")}</title>
+<style>
+:root { color-scheme: light dark; }
+body { margin: 0; padding: 3rem 2rem; font: 16px/1.8 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+main { max-width: 40rem; margin: 0 auto; }
+code { padding: .1em .4em; border-radius: 4px; background: rgba(127,127,127,.15); }
+ul { padding-left: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+
+	<h1>${data.getString("name")}</h1>
+
+	<p>jimble で動いています。このページは <code>src/main/jte/__PACKAGE_PATH__/index.jte</code> です。</p>
+
+	<ul>
+		<li><code>GET /hello</code> — JSON を返す</li>
+		<li><code>GET /echo/{word}</code> — パスパラメータ</li>
+		<li><code>POST /echo</code> — 受け取ったパラメータをそのまま返す</li>
+		<li><code>GET /health_check</code> — ヘルスチェック</li>
+	</ul>
+
+	<p>ルートは <code>src/main/java/__PACKAGE_PATH__/App.java</code> に上から書いてあります。</p>
+
+</main>
+</body>
+</html>

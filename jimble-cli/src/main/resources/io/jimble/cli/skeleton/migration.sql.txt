@@ -1,0 +1,12 @@
+# --- !Ups
+
+CREATE TABLE `note` (
+	`id`         BIGINT UNSIGNED AUTO_INCREMENT COMMENT 'ID' PRIMARY KEY,
+	`title`      VARCHAR(200)  NOT NULL COMMENT 'タイトル',
+	`body`       TEXT          NULL     COMMENT '本文',
+	`created_at` DATETIME      NOT NULL COMMENT '作成日時'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='メモ';
+
+# --- !Downs
+
+DROP TABLE `note`;

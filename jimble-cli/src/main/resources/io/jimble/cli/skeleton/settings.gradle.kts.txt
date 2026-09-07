@@ -1,0 +1,25 @@
+pluginManagement {
+	repositories {
+		/*
+		 * jimble の Gradle プラグイン（io.jimble.db / io.jimble.jte / io.jimble.run）は
+		 * Plugin Portal ではなく Maven Central から取る（要件 D-22）。
+		 * java-gradle-plugin が出すプラグインマーカーで解決される。
+		 *
+		 * mavenLocal() は「手元でビルドした jimble を試す」ためのもの。
+		 * 要らなければ消してよい。
+		 */
+		mavenLocal()
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+dependencyResolutionManagement {
+	repositories {
+		// jimble を publishToMavenLocal したものを先に見る
+		mavenLocal()
+		mavenCentral()
+	}
+}
+
+rootProject.name = "__NAME__"

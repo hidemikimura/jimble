@@ -1,0 +1,1319 @@
+package io.jimble.web.response;
+
+import io.jimble.web.context.WebContext;
+import io.jimble.web.http.ResponseSink;
+import io.jimble.web.template.ModelAndView;
+import io.jimble.web.template.Templates;
+import io.jimble.util.conf.Conf;
+import io.jimble.db.cache.CacheData;
+import io.jimble.util.convertor.Configration;
+import io.jimble.util.io.FileUtil;
+import io.jimble.util.data.Data;
+import io.jimble.util.data.definition.IColumn;
+import io.jimble.util.log.Log;
+import io.jimble.web.request.Request;
+import io.jimble.web.response.stream.ResponseOutputStream;
+import io.jimble.web.sse.SseConf;
+import io.jimble.web.sse.SseEvent;
+import io.jimble.web.sse.SseStream;
+
+import java.io.*;
+import java.nio.charset.Charset;
+import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * レスポンス情報
+ */
+public class Response extends Data {
+
+	/* Context */
+	private final WebContext context;
+
+	/* リクエスト */
+	private final Request request;
+
+	/* 出力口（HTTP サーバー実装を包む） */
+	private final ResponseSink sink;
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param context	Context
+	 * @param request	リクエスト
+	 * @param sink		出力口
+	 */
+	public Response (WebContext context, Request request, ResponseSink sink) {
+
+		this.context = context;
+		this.request = request;
+		this.sink = sink;
+
+	}
+
+	// region レスポンス開始済み判定
+
+	/* レスポンス開始済み判定 */
+	private boolean isResponseStarted = false;
+
+	/**
+	 * レスポンス内容が組み立てられているか
+	 *
+	 * <p>
+	 * {@code json()} / {@code text()} / {@code modelAndView()} などで<b>内容を積んだ</b>状態。
+	 * <b>まだ送信していない。</b>送信済みかどうかは {@link #isSent()} を見ること。
+	 * </p>
+	 *
+	 * @return  内容がある場合 = true
+	 */
+	public boolean isResponseStarted () {
+
+		return isResponseStarted || sink.isSent();
+
+	}
+
+	/**
+	 * 送信済みか
+	 *
+	 * <p>
+	 * <b>実際にバイトが書き出されたかどうか</b>だけを見る。
+	 * {@code Dispatcher} と {@code Stage} の「送信済みなら打ち切る」判定はこれを使う。
+	 * </p>
+	 *
+	 * <p>
+	 * ここを {@link #isResponseStarted()} と同じにしていたため、
+	 * <b>ハンドラが {@code json()} だけを呼んで {@code send()} を呼ばない場合に
+	 * 「もう送った」と誤判定して、何も返さないまま終わっていた。</b>
+	 * </p>
+	 *
+	 * @return	送信済みなら true
+	 */
+	public boolean isSent () {
+
+		return sink.isSent();
+
+	}
+
+	// endregion
+
+	// region IOバッファサイズ
+
+	/* IOバッファサイズ */
+	private int ioBufferSize = -1;
+
+	/**
+	 * IOバッファサイズを設定する
+	 *
+	 * @param ioBufferSize  IOバッファサイズ(byte)
+	 * @return  Response
+	 */
+	public Response ioBufferSize (int ioBufferSize) {
+
+		this.ioBufferSize = ioBufferSize;
+		return this;
+
+	}
+
+	/**
+	 * IOバッファサイズを取得する
+	 *
+	 * @return  IOバッファサイズ(byte)
+	 */
+	public int IoBufferSize () {
+
+		return this.ioBufferSize;
+
+	}
+
+	/**
+	 * IOバッファサイズを取得する
+	 *
+	 * @return  IOバッファサイズ(byte)
+	 */
+	private int getIoBufferSize () {
+
+		if (this.ioBufferSize > 0) {
+			return this.ioBufferSize;
+		}
+
+		return Conf.conf().getInt("jimble.io.buffer_size", 256 * 1024);
+
+	}
+
+	// endregion
+
+	// region フォームデータ
+
+	/* フォームデータ */
+	private Data formData = new Data();
+
+	/**
+	 * フォームデータを取得する
+	 *
+	 * @return  フォームデータ
+	 */
+	public Data getForm () {
+
+		return this.formData;
+
+	}
+
+	/**
+	 * フォームデータを追加する
+	 *
+	 * @param key   キー
+	 * @param value 値
+	 * @return  Response
+	 */
+	public Response putForm (String key, Object value) {
+
+		this.formData.put(key, value);
+		return this;
+
+	}
+
+	/**
+	 * フォームデータを追加する
+	 *
+	 * @param data  フォームデータ
+	 * @return  Response
+	 */
+	public Response putForm (Data data) {
+
+		this.formData.putAll(data);
+		return this;
+
+	}
+
+	/**
+	 * フォームデータを設定する
+	 *
+	 * @param formData  フォームデータ
+	 * @return  Response
+	 */
+	public Response setForm (Data formData) {
+
+		this.formData = formData;
+		return this;
+
+	}
+
+	/**
+	 * フォームデータ存在判定
+	 *
+	 * @return  存在する場合 = true
+	 */
+	public boolean hasForm () {
+
+		return this.formData != null && !this.formData.isEmpty();
+
+	}
+
+	// endregion
+
+
+	// region レスポンスコード
+
+	/** Cache-Control ヘッダ名 */
+	public static final String HEADER_CACHE_CONTROL = "Cache-Control";
+
+	/* Cache-Control を自分で設定したか */
+	private boolean cacheControlSet = false;
+
+	/* レスポンスコード */
+	private int responseCode = 200;
+	/* レスポンスコード設定済み判定 */
+	private boolean isSettedResponseCode = false;
+
+	/**
+	 * レスポンスコード
+	 *
+	 * @return  レスポンスコード
+	 */
+	public int code () {
+
+		return this.responseCode;
+
+	}
+
+	/**
+	 * レスポンスコードを設定する
+	 *
+	 * @param code  レスポンスコード
+	 * @return  Response
+	 */
+	public Response code (int code) {
+
+		this.responseCode = code;
+		this.isSettedResponseCode = true;
+		return this;
+
+	}
+
+	// endregion
+
+	// region JSONレスポンス
+
+	/* JSONレスポンス判定 */
+	private boolean isResponseJson = false;
+
+	/**
+	 * JSONレスポンス判定
+	 *
+	 * @return  JSONレスポンスの場合 = true
+	 */
+	public boolean isResponseJson() {
+
+		return this.isResponseJson;
+
+	}
+
+	/**
+	 * JSONレスポンスを設定する
+	 *
+	 * @param data  データ
+	 * @return  Response
+	 */
+	public Response json (Data data) {
+
+		this.isResponseStarted = true;
+		this.isResponseJson = true;
+		putAllData(data);
+		return this;
+
+
+	}
+
+	/**
+	 * JSONレスポンスを追加する
+	 *
+	 * @param key   キー
+	 * @param value 値
+	 * @return  Response
+	 */
+	public Response json (String key, Object value) {
+
+		this.isResponseStarted = true;
+		this.isResponseJson = true;
+		putData(key, value);
+		return this;
+
+	}
+
+	/**
+	 * JSONレスポンスを追加する
+	 *
+	 * @param column	列
+	 * @param value		値
+	 * @return  Response
+	 */
+	public Response json (IColumn column, Object value) {
+
+		this.isResponseStarted = true;
+		this.isResponseJson = true;
+		putData(column, value);
+		return this;
+
+	}
+
+	// endregion
+
+	// region JSONLレスポンス
+
+	/* JSONLレスポンス */
+	private List<Data> responseJsonL = new ArrayList<>();
+
+	/* JSONLレスポンス */
+	private boolean isResponseJsonL = false;
+
+	/**
+	 * JSONLレスポンス判定
+	 *
+	 * @return  JSONLレスポンスの場合 = true
+	 */
+	public boolean isResponseJsonL() {
+
+		return this.isResponseJsonL;
+
+	}
+
+	/**
+	 * JSONLを追加する
+	 *
+	 * @param json  JSON
+	 * @return  Response
+	 */
+	public Response addJsonL (Data json) {
+
+		this.isResponseJsonL = true;
+		this.responseJsonL.add(json);
+		return this;
+
+	}
+
+	/**
+	 * JSONLを設定する
+	 *
+	 * @param jsonL JSONL
+	 * @return  Response
+	 */
+	public Response jsonL (List<Data> jsonL) {
+
+		this.isResponseJsonL = true;
+		this.responseJsonL = jsonL;
+		return this;
+
+	}
+
+	// endregion
+
+	// region 文字列レスポンス
+
+	/* 文字列レスポンス */
+	private String responseText = null;
+
+	/**
+	 * 文字列レスポンスを設定する
+	 *
+	 * @param text  文字列
+	 * @return  Response
+	 */
+	public Response text (String text) {
+
+		this.isResponseStarted = true;
+		this.responseText = text;
+		return this;
+
+	}
+
+	// endregion
+
+	// region ModelAndViewレスポンス
+
+	/* ModelAndViewレスポンス */
+	private ModelAndView modelAndViewResponse = null;
+
+	/**
+	 * ModelAndViewレスポンス
+	 *
+	 * @param modelAndView  ModelAndView
+	 * @return  Response
+	 */
+	public Response modelAndView (ModelAndView modelAndView) {
+
+		this.isResponseStarted = true;
+		this.modelAndViewResponse = modelAndView;
+		return this;
+
+	}
+
+	/**
+	 * ModelAndViewレスポンス（モデルはこのレスポンス自身）
+	 *
+	 * <p>
+	 * {@code Response} は {@code Data} なので、そのままモデルになる。
+	 * </p>
+	 *
+	 * <pre>
+	 * context.response()
+	 *     .put("title", "一覧")
+	 *     .view("shop/item/index.jte");
+	 * </pre>
+	 *
+	 * @param view	テンプレート名
+	 * @return	Response
+	 */
+	public Response view (String view) {
+
+		return modelAndView(new ModelAndView(view, this));
+
+	}
+
+	/**
+	 * ModelAndViewレスポンス
+	 *
+	 * @param view	テンプレート名
+	 * @param model	モデル
+	 * @return	Response
+	 */
+	public Response view (String view, Data model) {
+
+		return modelAndView(new ModelAndView(view, model));
+
+	}
+
+	// endregion
+
+	// region リダイレクトレスポンス
+
+	/* リダイレクトレスポンス */
+	private String redirectResponse = null;
+
+	/**
+	 * リダイレクトレスポンスを設定する
+	 *
+	 * @param redirectResponse  リダイレクトレスポンス
+	 * @return  Response
+	 */
+	public Response redirect (String redirectResponse) {
+
+		code(302);
+		this.isResponseStarted = true;
+		this.redirectResponse = redirectResponse;
+		return this;
+
+	}
+
+	// endregion
+
+	// region ダウンロードFileレスポンス
+
+	/* ダウンロードFileレスポンス */
+	private File downloadFileResponse = null;
+	/* ダウンロードFile名 */
+	private String downloadFileName = null;
+
+	/**
+	 * ダウンロードFileレスポンスを設定する
+	 *
+	 * @param fileResponse  ダウンロードFile
+	 * @return  Response
+	 */
+	public Response download (File fileResponse) {
+
+		this.isResponseStarted = true;
+		this.downloadFileResponse = fileResponse;
+		return this;
+
+	}
+
+	/**
+	 * ダウンロードFileレスポンスを設定する
+	 *
+	 * @param fileResponse  ダウンロードFile
+	 * @param fileName      ダウンロードFile名
+	 * @return  Response
+	 */
+	public Response download (File fileResponse, String fileName) {
+
+		this.isResponseStarted = true;
+		this.downloadFileResponse = fileResponse;
+		this.downloadFileName = fileName;
+		return this;
+
+	}
+
+	// endregion
+
+	// region Fileレスポンス
+
+	/* Fileレスポンス */
+	private File fileResponse = null;
+	/* Fileコンテンツタイプ */
+	private String fileContentType = null;
+
+	/**
+	 * Fileレスポンスを設定する
+	 *
+	 * @param file  File
+	 * @return  Response
+	 */
+	public Response file (File file) {
+
+		this.isResponseStarted = true;
+		this.fileResponse = file;
+		return this;
+
+	}
+
+	/**
+	 * ViewFileレスポンスを設定する
+	 *
+	 * @param file          File
+	 * @param contentType   コンテンツタイプ
+	 * @return  Response
+	 */
+	public Response file (File file, String contentType) {
+
+		this.isResponseStarted = true;
+		this.fileResponse = file;
+		this.fileContentType = contentType;
+		return this;
+
+	}
+
+	// endregion
+
+	// region ストリームレスポンス
+
+	/* ストリームレスポンス */
+	private InputStream streamResponse = null;
+	/* ストリームコンテンツタイプ */
+	private String streamContentType = null;
+	/* ストリームコンテンツ長 */
+	private long streamContentLength = -1;
+
+	/**
+	 * ストリームレスポンスを設定する
+	 *
+	 * @param streamResponse    ストリーム
+	 * @param contentType       コンテンツタイプ
+	 * @return  Response
+	 */
+	public Response stream (InputStream streamResponse, String contentType) {
+
+		this.isResponseStarted = true;
+		this.streamResponse = streamResponse;
+		if (!(this.streamResponse instanceof BufferedInputStream)) {
+			this.streamResponse = new BufferedInputStream(streamResponse);
+		}
+		this.streamContentType = contentType;
+		return this;
+
+	}
+
+	/**
+	 * ストリームレスポンスを設定する
+	 *
+	 * @param streamResponse    ストリーム
+	 * @param contentType       コンテンツタイプ
+	 * @param contentLength     コンテンツ長
+	 * @return  Response
+	 */
+	public Response stream (InputStream streamResponse, String contentType, long contentLength) {
+
+		this.isResponseStarted = true;
+		this.streamResponse = streamResponse;
+		if (!(this.streamResponse instanceof BufferedInputStream)) {
+			this.streamResponse = new BufferedInputStream(streamResponse);
+		}
+		this.streamContentType = contentType;
+		this.streamContentLength = contentLength;
+		return this;
+
+	}
+
+	// endregion
+
+	// region キャッシュレスポンス
+
+	/* キャッシュレスポンス */
+	private CacheData cacheResponse = null;
+
+	/**
+	 * キャッシュレスポンスを設定する
+	 *
+	 * @param cacheResponse キャッシュレスポンス
+	 * @return  Response
+	 */
+	public Response cache (CacheData cacheResponse) {
+
+		this.isResponseStarted = true;
+		this.cacheResponse = cacheResponse;
+		return this;
+
+	}
+
+	// endregion
+
+
+	// region レスポンスヘッダ
+
+	/**
+	 * レスポンスヘッダを設定する
+	 *
+	 * @param name  名前
+	 * @param value 値
+	 * @return  Response
+	 */
+	public Response setResponseHeader (String name, String value) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		if (HEADER_CACHE_CONTROL.equalsIgnoreCase(name)) {
+			// 自分で決めた値を送信時に上書きしない
+			cacheControlSet = true;
+		}
+
+		sink.header(name, value);
+		return this;
+
+	}
+
+	/**
+	 * 既定の Cache-Control を設定する
+	 *
+	 * <p>
+	 * <b>動的レスポンスは {@code no-store}</b>（要件 F-X-07）。
+	 * ただし静的配信のように<b>自分で Cache-Control を設定した場合は上書きしない。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * 移送元（と移送直後の jimble）は送信のたびに無条件で {@code no-store} を書いていた。
+	 * <b>静的ファイルにも no-store が付き、ブラウザキャッシュが効かなかった。</b>
+	 * </p>
+	 */
+	private void applyDefaultCacheControl () {
+
+		if (cacheControlSet) {
+			return;
+		}
+
+		sink.header(HEADER_CACHE_CONTROL, "no-store");
+
+	}
+
+	// endregion
+
+
+	// region 出力ストリームを取得する
+
+	/**
+	 * 出力ストリームを取得する
+	 *
+	 * @return  出力ストリーム
+	 */
+	public OutputStream outputStream () {
+
+		isResponseStarted = true;
+		return new ResponseOutputStream(this, sink.outputStream());
+
+	}
+
+	// endregion
+
+
+	// region SSE（要件 F-W-21）
+
+	/**
+	 * サーバーから送り続ける口を開く（要件 F-W-21）
+	 *
+	 * <pre>
+	 * try (SseStream sse = context.response().sse()) {
+	 *     sse.send("tick", new Data().putData("n", 1));
+	 * }
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>ここを呼んだ時点でヘッダが確定する。</b>あとから変えられない。
+	 * 中身の型・キャッシュ・バッファ抑止をここで入れる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>DB 接続を握ったまま張らないこと。</b>
+	 * 1本のストリームは1つの実行単位（要件 F-C-01）なので、
+	 * 繋ぎっぱなしのぶんだけ接続プールを食う（{@link SseStream} 参照）。
+	 * </p>
+	 *
+	 * @return	送る口
+	 */
+	public SseStream sse () {
+
+		return sse(Duration.ofSeconds(SseConf.maxDurationSeconds()), SseConf.maxEvents());
+
+	}
+
+	/**
+	 * サーバーから送り続ける口を開く（要件 F-W-21）
+	 *
+	 * @param maxDuration	張っていられる上限。null か 0 以下なら無制限
+	 * @param maxEvents		送れる件数の上限。0 以下なら無制限
+	 * @return	送る口
+	 */
+	public SseStream sse (Duration maxDuration, long maxEvents) {
+
+		code(200);
+
+		setResponseHeader("Content-Type", SseStream.CONTENT_TYPE);
+
+		// 途中で溜め込まれると SSE の意味が無くなる
+		setResponseHeader(HEADER_CACHE_CONTROL, "no-store");
+		setResponseHeader("X-Accel-Buffering", "no");
+
+		SseStream stream = new SseStream(outputStream(), maxDuration, maxEvents);
+
+		/*
+		 * 繋ぎ直すまでの時間を最初に伝える。
+		 * 上限で切ったあと、クライアントはこの時間のあとに勝手に戻ってくる。
+		 */
+		long retry = SseConf.retryMillis();
+		if (retry > 0) {
+			// 件数には数えない。中身が無いので
+			stream.sendWithoutCounting(new SseEvent(null, null, null, retry, null));
+		}
+
+		return stream;
+
+	}
+
+	// endregion
+
+	/**
+	 * 溜めた Cookie を書き出す
+	 *
+	 * <p>
+	 * <b>送信のどの経路を通っても、ヘッダを書く直前にここを通る。</b>
+	 * 2回目以降は何もしない（{@link io.jimble.web.cookie.Cookies#flush}）。
+	 * </p>
+	 */
+	private void flushCookies () {
+
+		context.flushCookies(sink);
+
+	}
+
+	/**
+	 * レスポンス後処理
+	 */
+	public void afterResponse () {
+
+		// レスポンス後処理（M4 でセッション保存などが入る）
+
+	}
+
+	// region レスポンス送信
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @return  レスポンスに応じたオブジェクト
+	 */
+	public Object send () {
+
+		if (sink.isSent()) {
+			return null;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+
+		// JSONレスポンス
+		if (isResponseJson) {
+			send(this);
+			return null;
+		}
+
+		// JSONLレスポンス
+		if (isResponseJsonL) {
+			send(responseJsonL);
+			return null;
+		}
+
+		// 文字列レスポンス
+		if (responseText != null) {
+			send(responseText);
+			return null;
+		}
+
+		// キャッシュレスポンス
+		if (cacheResponse != null) {
+			String contentType = cacheResponse.contentType();
+			if (cacheResponse.hasContentFile()) {
+				if (contentType == null) {
+					contentType = FileUtil.getFileContentType(cacheResponse.contentFile());
+				}
+				send(cacheResponse.contentFile(), contentType, "gzip");
+			} else if (cacheResponse.hasContentString()) {
+				if (contentType == null) {
+					send(cacheResponse.contentString());
+				} else {
+					send(cacheResponse.contentString(), contentType);
+				}
+			} else {
+				send(500);
+			}
+			return null;
+		}
+
+		// ModelAndViewレスポンス
+		if (modelAndViewResponse != null) {
+			// JSONレスポンスを要求されている場合はデータだけ返す（移送元と同じ）
+			if (request.acceptJson()) {
+				send(this);
+				return null;
+			}
+			sendView(modelAndViewResponse);
+			return null;
+		}
+
+		// リダイレクトレスポンス
+		if (redirectResponse != null) {
+			flushCookies();
+			sink.redirect(redirectResponse);
+			afterResponse();
+			return null;
+		}
+
+		// ダウンロードFileレスポンス
+		if (downloadFileResponse != null) {
+			try {
+				flushCookies();
+				sink.sendFile(downloadFileResponse.toPath(), downloadFileName);
+				afterResponse();
+				return null;
+			} catch (Exception ex) {
+				Log.error(ex, request, this);
+				this.responseCode = 500;
+				sink.status(500); sink.send();
+				afterResponse();
+				return null;
+			}
+		}
+
+		// ファイルレスポンス
+		if (fileResponse != null) {
+			if (fileContentType == null) {
+				fileContentType = FileUtil.getFileContentType(fileResponse);
+			}
+			send(fileResponse, fileContentType);
+			return null;
+		}
+
+		// ストリームレスポンス
+		if (streamResponse != null) {
+			send(streamResponse, streamContentType, streamContentLength);
+			return null;
+		}
+
+		// レスポンスなし
+		if (request.acceptJson()) {
+			// JSONレスポンスを要求されている場合はデータを返す
+			send(this);
+		} else if (isSettedResponseCode) {
+			// レスポンスコードありの場合はレスポンスコードを返す
+			sink.status(responseCode); sink.send();
+			afterResponse();
+		} else {
+			// 何もない場合はNO_CONTENTを返す
+			this.responseCode = 204;
+			sink.status(204); sink.send();
+			afterResponse();
+		}
+		return null;
+
+	}
+
+	/**
+	 * テンプレートを描画して返す
+	 *
+	 * <p>
+	 * <b>いったん文字列に組み立ててから送る。</b>
+	 * ストリームで書きながら描画すると速いが、
+	 * 途中でテンプレートが落ちたときには<b>もうヘッダも本文も出てしまっていて、
+	 * 500 を返せない。</b>HTML1ページ分の大きさなら組み立ててからで困らない。
+	 * 大きなものを流したい場合は {@code Templates.render(name, model, writer)} を使う。
+	 * </p>
+	 *
+	 * @param modelAndView	テンプレートとモデル
+	 */
+	private void sendView (ModelAndView modelAndView) {
+
+		String html;
+
+		try {
+
+			html = Templates.render(modelAndView.view(), modelAndView.model());
+
+		} catch (Exception ex) {
+
+			Log.error(ex, request, this);
+			this.responseCode = 500;
+			sink.status(500); sink.send();
+			afterResponse();
+			return;
+
+		}
+
+		send(html, Templates.responseContentType(), StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param code    ステータスコード
+	 * @return  Response
+	 */
+	public Response send (int code) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		this.responseCode = code;
+		this.isSettedResponseCode = true;
+		sink.status(code);
+		sink.send();
+
+		if (code >= 400) {
+//			Log.error("Response code: " + code);
+		}
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param is    入力ストリーム
+	 * @return  Response
+	 */
+	public Response send (InputStream is) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.send(is);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param   is          入力ストリーム
+	 * @param   contentType コンテンツタイプ
+	 * @return  Response
+	 */
+	public Response send (InputStream is, String contentType) {
+
+		return send(is, contentType, -1);
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param   is              入力ストリーム
+	 * @param   contentType     コンテンツタイプ
+	 * @param   contentLength   コンテンツ長
+	 * @return  Response
+	 */
+	public Response send (InputStream is, String contentType, long contentLength) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Type", contentType);
+		if (contentLength > 0) {
+			sink.header("Content-Length", contentLength);
+		}
+		try (
+			BufferedInputStream bis = new BufferedInputStream(is, getIoBufferSize())
+		) {
+			sink.send(bis);
+		} catch (Exception ex) {
+			Log.error(ex, request, this);
+			this.responseCode = 500;
+			sink.status(500); sink.send();
+		}
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * Content-Type に文字コードを足す
+	 *
+	 * <p>
+	 * <b>文字コードを指定して本文を書いたのに、Content-Type に載せていなかった。</b>
+	 * 受け取る側は文字コードを推測することになり、
+	 * {@code text/plain} や CSV では文字化けする（HTML は {@code <meta>} で助かることが多い）。
+	 * </p>
+	 *
+	 * @param contentType	コンテンツタイプ
+	 * @param charset		文字コード
+	 * @return	{@code charset} つきのコンテンツタイプ
+	 */
+	static String withCharset (String contentType, Charset charset) {
+
+		if (contentType == null || contentType.isEmpty() || charset == null) {
+			return contentType;
+		}
+
+		if (contentType.toLowerCase().contains("charset=")) {
+			return contentType;
+		}
+
+		return contentType + "; charset=" + charset.name();
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param text  文字列
+	 * @return  Response
+	 */
+	public Response send (String text) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.send(text);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param text          文字列
+	 * @param contentType   コンテンツタイプ
+	 * @return  Response
+	 */
+	public Response send (String text, String contentType) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Type", contentType);
+		sink.send(text);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param text      文字列
+	 * @param charset   文字コード
+	 * @return  Response
+	 */
+	public Response send (String text, Charset charset) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.send(text, charset);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param text          文字列
+	 * @param contentType   コンテンツタイプ
+	 * @param charset       文字コード
+	 * @return  Response
+	 */
+	public Response send (String text, String contentType, Charset charset) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Type", withCharset(contentType, charset));
+		sink.send(text, charset);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param json  JSONデータ
+	 * @return  Response
+	 */
+	public Response send (Data json) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+//		try (
+//		) {
+//			json.outputJsonString(bw, false);
+//		} catch (Exception ex) {
+//			Log.error(ex, request, this);
+//			sink.status(500); sink.send();
+//		}
+		try (
+			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
+		) {
+			Configration configration = new Configration();
+			configration.isAutoClose = true;
+			json.outputJsonString(bos, configration);
+		} catch (Exception ex) {
+			Log.error(ex, request, this);
+			this.responseCode = 500;
+			sink.status(500); sink.send();
+		}
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param jsonL JSONL
+	 * @return  Response
+	 */
+	public Response send (List<Data> jsonL) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Type", "application/jsonl");
+
+		byte[] ln = "\n".getBytes(StandardCharsets.UTF_8);
+		try (
+			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
+		) {
+			boolean isFirst = true;
+			for (Data json : jsonL) {
+				if (isFirst) {
+					isFirst = false;
+				} else {
+					bos.write(ln);
+				}
+				json.outputJsonString(bos, false);
+			}
+		} catch (Exception ex) {
+			Log.error(ex, request, this);
+			this.responseCode = 500;
+			sink.status(500); sink.send();
+		}
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param file          ファイル
+	 * @param contentType   コンテンツタイプ
+	 * @return  Response
+	 */
+	public Response send (File file, String contentType) {
+
+		return send(file, contentType, null);
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param file              ファイル
+	 * @param contentType       コンテンツタイプ
+	 * @param contentEncoding   コンテンツエンコーディング
+	 * @return  Response
+	 */
+	public Response send (File file, String contentType, String contentEncoding) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Type", contentType);
+		if (contentEncoding != null) {
+			sink.header("Content-Encoding", contentEncoding);
+		}
+		sink.header("Content-Length", file.length());
+		try (
+			FileInputStream fis = new FileInputStream(file);
+			BufferedInputStream bis = new BufferedInputStream(fis, getIoBufferSize())
+		) {
+			sink.send(bis);
+		} catch (Exception ex) {}
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	/**
+	 * レスポンス送信
+	 *
+	 * @param buff  バイト配列
+	 * @return  Response
+	 */
+	public Response send (byte[] buff) {
+
+		if (sink.isSent()) {
+			return this;
+		}
+
+		flushCookies();
+		applyDefaultCacheControl();
+		sink.status(responseCode);
+		sink.header("Content-Length", buff.length);
+		sink.send(buff);
+
+		afterResponse();
+
+		return this;
+
+	}
+
+	// endregion
+
+}

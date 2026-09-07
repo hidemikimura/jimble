@@ -1,0 +1,46 @@
+package db.blog_example.table.comment;
+
+import db.blog_example.BlogExample;
+import io.jimble.db.sql.definition.column.Column;
+import io.jimble.util.data.definition.ISchema;
+import io.jimble.db.sql.definition.table.Table;
+
+import java.util.List;
+
+/**
+ * コメント
+ */
+public class Comment extends Table {
+
+	/* コメントID */
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+
+	/* 記事ID */
+	public static final Column post_id = new Column(instance(), "post_id", long.class, false, null, false);
+
+	/* 名前 */
+	public static final Column name = new Column(instance(), "name", java.lang.String.class, false, null, false);
+
+	/* 本文 */
+	public static final Column body = new Column(instance(), "body", java.lang.String.class, false, null, false);
+
+	/* 作成日時 */
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
+
+
+	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
+	private static final List<Column> COLUMNS = List.of(id, post_id, name, body, created_at);
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected List<Column> declareColumns () { return COLUMNS; }
+
+	public static List<Column> columns () { return COLUMNS; }
+
+	public Comment (ISchema schema, String name) { super(schema, name); }
+
+	public static Comment instance () { return new Comment(new BlogExample(), "comment"); }
+
+}

@@ -1,0 +1,49 @@
+plugins {
+	application
+	// src/main/jte を compileJava の前に Java へ変換する
+	id("io.jimble.jte") version "__JIMBLE_VERSION__"
+	// 開発用のホットリロード（./gradlew jimbleRun）
+	id("io.jimble.run") version "__JIMBLE_VERSION__"
+	/*
+	 * DB を使うようになったら外す。
+	 * migrate → codegen → compileJava を繋いでくれる。
+	 */
+	// id("io.jimble.db") version "__JIMBLE_VERSION__"
+}
+
+group = "__PACKAGE__"
+version = "0.1.0-SNAPSHOT"
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+tasks.withType<JavaCompile>().configureEach {
+	options.encoding = "UTF-8"
+	// リフレクションに頼らずパラメータ名を残す
+	options.compilerArgs.add("-parameters")
+}
+
+dependencies {
+	implementation("io.jimble:jimble-web:__JIMBLE_VERSION__")
+
+	// バッチと MQ を使うようになったら外す
+	// implementation("io.jimble:jimble-batch:__JIMBLE_VERSION__")
+	// implementation("io.jimble:jimble-mq:__JIMBLE_VERSION__")
+	// implementation("io.jimble:jimble-batch-manager:__JIMBLE_VERSION__")
+
+	// DB を使うようになったら、使うドライバを入れる
+	// runtimeOnly("org.mariadb.jdbc:mariadb-java-client:3.5.10")
+}
+
+application {
+	mainClass = "__PACKAGE__.App"
+	// 日本語ログの文字化け対策（要件 F-U-12）
+	applicationDefaultJvmArgs = listOf("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+}
+
+jimbleRun {
+	mainClass = "__PACKAGE__.App"
+}

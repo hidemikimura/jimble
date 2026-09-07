@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>jimble batch manager</title>
+<style>
+:root { color-scheme: light dark; --line:#d0d4da; --bg:#fff; --fg:#1a1d21; --muted:#6b7280; --accent:#2563eb; }
+@media (prefers-color-scheme: dark) { :root { --line:#3a4048; --bg:#16191d; --fg:#e6e8ea; --muted:#9aa2ad; --accent:#60a5fa; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+	font:14px/1.6 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; }
+header { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+h1 { font-size:15px; margin:0; font-weight:600; }
+main { padding:16px; max-width:1200px; }
+section { margin-bottom:28px; }
+h2 { font-size:14px; margin:0 0 8px; font-weight:600; }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { color:var(--muted); font-weight:600; white-space:nowrap; }
+td.actions { white-space:nowrap; }
+button { font:inherit; font-size:12px; padding:3px 9px; border:1px solid var(--line);
+	background:transparent; color:var(--fg); border-radius:4px; cursor:pointer; }
+button:hover { border-color:var(--accent); color:var(--accent); }
+button:disabled { opacity:.4; cursor:default; }
+input[type=text] { font:inherit; font-size:12px; padding:3px 6px; border:1px solid var(--line);
+	background:transparent; color:var(--fg); border-radius:4px; width:110px; }
+.pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; border:1px solid var(--line); }
+.ok { color:#15803d; border-color:#15803d; }
+.ng { color:#b91c1c; border-color:#b91c1c; }
+.muted { color:var(--muted); }
+pre { background:rgba(127,127,127,.1); padding:10px; border-radius:4px; overflow-x:auto; font-size:12px; }
+#message { padding:6px 16px; font-size:13px; }
+#message.error { color:#b91c1c; }
+details summary { cursor:pointer; }
+</style>
+</head>
+<body>
+
+<header>
+	<h1>jimble batch manager</h1>
+	<span id="status-batch"></span>
+	<span id="status-scheduler"></span>
+	<button id="reload">再読み込み</button>
+</header>
+
+<div id="message"></div>
+
+<main>
+
+<section>
+	<h2>バッチ</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>クラス</th><th>名前</th><th>状態</th><th>cron</th><th>同時実行</th><th></th>
+			</tr>
+		</thead>
+		<tbody id="masters"></tbody>
+	</table>
+</section>
+
+<section>
+	<h2>履歴</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>ID</th><th>名前</th><th>状態</th><th>開始</th><th>終了</th><th>所要(秒)</th><th></th>
+			</tr>
+		</thead>
+		<tbody id="histories"></tbody>
+	</table>
+	<p id="detail"></p>
+</section>
+
+</main>
+
+<script>
+const BASE = location.pathname.replace(/\/+$/, '');
+
+function say (text, isError) {
+	const el = document.getElementById('message');
+	el.textContent = text || '';
+	el.className = isError ? 'error' : '';
+}
+
+async function call (path, body) {
+	const res = await fetch(BASE + path, {
+		method: body === undefined ? 'GET' : 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: body === undefined ? undefined : JSON.stringify(body || {})
+	});
+	const json = await res.json().catch(() => ({}));
+	if (!res.ok) {
+		throw new Error(json.error || ('HTTP ' + res.status));
+	}
+	return json;
+}
+
+function text (value) {
+	return value === null || value === undefined ? '' : String(value);
+}
+
+function pill (label, good) {
+	return '<span class="pill ' + (good ? 'ok' : 'ng') + '">' + label + '</span>';
+}
+
+function escapeHtml (value) {
+	return text(value).replace(/[&<>"']/g, c =>
+		({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function loadStatus () {
+	const row = (await call('/api/status')).row;
+
+	document.getElementById('status-batch').innerHTML =
+		'バッチ ' + pill(row.batch_enabled ? '稼働' : '停止', row.batch_enabled)
+		+ ' <button data-kind="batch" data-enabled="' + (!row.batch_enabled) + '">'
+		+ (row.batch_enabled ? '止める' : '動かす') + '</button>'
+		+ (row.batch_running ? ' <span class="muted">実行中</span>' : '');
+
+	document.getElementById('status-scheduler').innerHTML =
+		'スケジューラ ' + pill(row.scheduler_enabled ? '稼働' : '停止', row.scheduler_enabled)
+		+ ' <button data-kind="scheduler" data-enabled="' + (!row.scheduler_enabled) + '">'
+		+ (row.scheduler_enabled ? '止める' : '動かす') + '</button>'
+		+ (row.scheduler_running ? ' <span class="muted">起動中</span>'
+			: ' <span class="muted">起動しているプロセスなし</span>');
+}
+
+async function loadMasters () {
+	const rows = (await call('/api/master', { per: 100 })).rows || [];
+	const tbody = document.getElementById('masters');
+
+	tbody.innerHTML = rows.map(row => {
+		const enabled = row.status === 'enable';
+		return '<tr>'
+			+ '<td><code>' + escapeHtml(row.class_name) + '</code></td>'
+			+ '<td>' + escapeHtml(row.name) + '</td>'
+			+ '<td>' + pill(enabled ? '有効' : '無効', enabled) + '</td>'
+			+ '<td><input type="text" value="' + escapeHtml(row.cron) + '" data-cron="'
+				+ escapeHtml(row.class_name) + '"><br>'
+				+ '<span class="muted">既定 ' + escapeHtml(row.default_cron || '-') + '</span></td>'
+			+ '<td>' + text(row.allow_concurrent_execution) + '</td>'
+			+ '<td class="actions">'
+				+ '<button data-save="' + escapeHtml(row.class_name) + '">保存</button> '
+				+ '<button data-toggle="' + escapeHtml(row.class_name) + '" data-status="'
+					+ (enabled ? 'disable' : 'enable') + '">' + (enabled ? '無効' : '有効') + '</button> '
+				+ '<button data-run="' + escapeHtml(row.class_name) + '">いま動かす</button>'
+			+ '</td>'
+			+ '</tr>';
+	}).join('');
+}
+
+async function loadHistories () {
+	const rows = (await call('/api/history', { per: 30 })).rows || [];
+	const tbody = document.getElementById('histories');
+
+	tbody.innerHTML = rows.map(row =>
+		'<tr>'
+		+ '<td>' + row.id + '</td>'
+		+ '<td>' + escapeHtml(row.name) + '</td>'
+		+ '<td>' + pill(escapeHtml(row.status), row.status === 'completed') + '</td>'
+		+ '<td>' + escapeHtml(row.starts_at) + '</td>'
+		+ '<td>' + escapeHtml(row.ends_at) + '</td>'
+		+ '<td>' + text(row.required_time) + '</td>'
+		+ '<td class="actions">'
+			+ '<button data-detail="' + row.id + '">詳細</button> '
+			+ (row.status === 'in_process'
+				? '<button data-cancel="' + row.id + '">中断</button> ' : '')
+			+ '<button data-rerun="' + row.id + '">やり直す</button>'
+		+ '</td>'
+		+ '</tr>'
+	).join('');
+}
+
+async function reload () {
+	say('');
+	try {
+		await Promise.all([loadStatus(), loadMasters(), loadHistories()]);
+	} catch (ex) {
+		say(ex.message, true);
+	}
+}
+
+document.addEventListener('click', async event => {
+
+	const el = event.target.closest('button');
+	if (!el) { return; }
+
+	try {
+
+		if (el.dataset.kind) {
+			await call('/api/status/change',
+				{ kind: el.dataset.kind, enabled: el.dataset.enabled === 'true' });
+			say('切り替えました');
+		} else if (el.dataset.save) {
+			const input = document.querySelector('input[data-cron="' + el.dataset.save + '"]');
+			await call('/api/master/' + encodeURIComponent(el.dataset.save), { cron: input.value });
+			say('保存しました');
+		} else if (el.dataset.toggle) {
+			await call('/api/master/' + encodeURIComponent(el.dataset.toggle) + '/status',
+				{ status: el.dataset.status });
+			say('変更しました');
+		} else if (el.dataset.run) {
+			await call('/api/master/' + encodeURIComponent(el.dataset.run) + '/execute', {});
+			say('スケジューラに依頼しました');
+		} else if (el.dataset.cancel) {
+			await call('/api/history/' + el.dataset.cancel + '/cancel', {});
+			say('中断を指示しました');
+		} else if (el.dataset.rerun) {
+			await call('/api/history/' + el.dataset.rerun + '/re-execute', {});
+			say('やり直しを依頼しました');
+		} else if (el.dataset.detail) {
+			const row = (await call('/api/history/' + el.dataset.detail)).row;
+			document.getElementById('detail').innerHTML =
+				'<pre>' + escapeHtml(JSON.stringify(row, null, 2)) + '</pre>';
+			return;
+		} else if (el.id === 'reload') {
+			// 何もしない（下で再読み込みする）
+		} else {
+			return;
+		}
+
+	} catch (ex) {
+		say(ex.message, true);
+		return;
+	}
+
+	await reload();
+
+});
+
+reload();
+setInterval(loadStatus, 5000);
+</script>
+
+</body>
+</html>

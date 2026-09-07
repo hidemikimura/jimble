@@ -1,19 +1,47 @@
-.gradle
-.gradle/*
-logs
-logs/*
-build/*
-tmp/*
-conf/local
-conf/local/*
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
 
-# ecforce check mock
-projects/java/apps/ecforce/check/mock_external_api/build/*
-projects/java/apps/ecforce/check/mock_external_api/front/*
-projects/java/apps/ecforce/check/mock_external_api/src/*
+# IDE
+.idea/
+*.iml
+.vscode/
 
-# Mac
+# OS
 .DS_Store
 
-# Docker
-*compose.override.yml
+# 疎通確認（使い捨て）
+/probe/
+
+# 作業用のアーカイブ・スナップショット（公開しない）
+*.tgz
+*.tar.gz
+*.zip
+!gradle/wrapper/*.zip
+/build-tmp/
+
+# 開発中に出るもの
+/dump.rdb
+*.log
+
+# 秘密（万一置いても入らないように）
+*.gpg
+*.asc
+*.p12
+*.jks
+secring.*
+.env
+.env.*
+application.local.conf
+
+# 設計メモ・要件・ドキュメントサイトの原稿（公開範囲を検討中）
+#
+# jooby_base（社内フレームワーク）の棚卸しと精読結果を含むため、
+# いったんリポジトリから外している。公開範囲が決まったら、
+# 出すものだけ ! で戻す。
+#   例: !/docs/site/  !/docs/publishing.md
+#
+# 先頭の / が要る。付けないと「どの階層の docs/ も」という意味になり、
+# jimble-docs/src/main/jte/docs/ まで巻き込む（テンプレートが消える）。
+/docs/

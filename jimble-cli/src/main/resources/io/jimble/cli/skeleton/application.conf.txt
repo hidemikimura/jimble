@@ -1,0 +1,58 @@
+# __NAME__ の設定
+#
+# 環境別に application.<env>.conf を置くと、こちらを上書きする。
+# 環境は -Djimble.env=<env> で決まる（既定は local）。
+#
+# 値は ${?ENV_NAME} で環境変数から取れる。
+# 本番の秘密（DB のパスワード・セッションの鍵）はこの形で渡し、
+# ファイルには書かないこと。
+
+server {
+	port = 9000
+	port = ${?PORT}
+
+	# ロードバランサの後ろに置くまでは false のままにする。
+	# true にすると X-Forwarded-For を信じる = 送信元を偽れる
+	trust_proxy = false
+}
+
+# DB を使うようになったら外す
+#
+# db {
+#   __DB__ {
+#     main     = true
+#     driver   = "org.mariadb.jdbc.Driver"
+#     url      = "jdbc:mariadb://127.0.0.1:3306/__DB__?useUnicode=true&characterEncoding=UTF-8"
+#     url      = ${?DB_URL}
+#     username = "__DB__"
+#     username = ${?DB_USER}
+#     password = ""
+#     password = ${?DB_PASSWORD}
+#
+#     maximumPoolSize = 10
+#     connection_pool_type = "hikari"
+#
+#     create_database_sql = "CREATE SCHEMA __DB__ COLLATE utf8mb4_bin"
+#   }
+# }
+#
+# codegen {
+#   package = "db"
+# }
+
+# Cookie（要件 F-S-05 / NF-S-04）
+#
+# 既定は secure = true（HTTPS のみ）である。安全側が既定なのは正しいが、
+# ローカルは http なのでブラウザが Cookie を送り返さない。
+# セッションも CSRF も「エラーも出ずに効かない」形になる。
+# 本番では必ず true に戻すこと（この節を消せばよい）。
+cookie {
+	secure = false
+}
+
+# セッションを使うようになったら外す（none | db | redis | cookie）
+#
+# session {
+#   store       = "db"
+#   cookie_name = "sid"
+# }

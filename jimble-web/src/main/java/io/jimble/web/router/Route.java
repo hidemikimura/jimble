@@ -1,0 +1,177 @@
+package io.jimble.web.router;
+
+import io.jimble.core.executor.Executor;
+import io.jimble.web.context.WebContext;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/**
+ * ルート
+ *
+ * <p>
+ * 処理の実体は次のどちらか一方。
+ * </p>
+ * <ul>
+ *     <li>{@link Handler} — ラムダで直接処理する</li>
+ *     <li>{@link Executor} の {@link Supplier} 列 — 登録順に実行する（通常こちら）</li>
+ * </ul>
+ */
+public final class Route {
+
+	/* メソッド */
+	private final String method;
+
+	/* 登録パターン */
+	private final String pattern;
+
+	/* ハンドラ */
+	private final Handler handler;
+
+	/* Executor生成 */
+	private final List<Supplier<Executor<WebContext>>> executorSuppliers;
+
+	/* 属性 */
+	private final Map<AttributeKey<?>, Object> attributes = new HashMap<>();
+
+	/* タグ */
+	private final List<String> tags = new ArrayList<>();
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param method				メソッド
+	 * @param pattern				登録パターン
+	 * @param handler				ハンドラ
+	 * @param executorSuppliers		Executor生成
+	 */
+	Route (String method, String pattern, Handler handler, List<Supplier<Executor<WebContext>>> executorSuppliers) {
+
+		this.method = Objects.requireNonNull(method, "method");
+		this.pattern = Objects.requireNonNull(pattern, "pattern");
+		this.handler = handler;
+		this.executorSuppliers = executorSuppliers == null ? List.of() : List.copyOf(executorSuppliers);
+
+	}
+
+	/**
+	 * メソッド
+	 *
+	 * @return	メソッド
+	 */
+	public String method () {
+
+		return method;
+
+	}
+
+	/**
+	 * 登録パターン
+	 *
+	 * <p>絶対パスではない。絶対パスは {@link Router#routes()} が返す。</p>
+	 *
+	 * @return	登録パターン
+	 */
+	public String pattern () {
+
+		return pattern;
+
+	}
+
+	/**
+	 * ハンドラ
+	 *
+	 * @return	ハンドラ。Executor形式なら null
+	 */
+	public Handler handler () {
+
+		return handler;
+
+	}
+
+	/**
+	 * Executor生成
+	 *
+	 * @return	Executor生成。ハンドラ形式なら空
+	 */
+	public List<Supplier<Executor<WebContext>>> executorSuppliers () {
+
+		return executorSuppliers;
+
+	}
+
+	/**
+	 * 属性を設定する
+	 *
+	 * @param key	キー
+	 * @param value	値
+	 * @param <T>	値の型
+	 * @return	自身
+	 */
+	public <T> Route attribute (AttributeKey<T> key, T value) {
+
+		Objects.requireNonNull(key, "key");
+		attributes.put(key, value);
+		return this;
+
+	}
+
+	/**
+	 * 属性を取得する
+	 *
+	 * @param key	キー
+	 * @param <T>	値の型
+	 * @return	値。未設定ならキーの既定値
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T attribute (AttributeKey<T> key) {
+
+		Objects.requireNonNull(key, "key");
+
+		if (!attributes.containsKey(key)) {
+			return key.defaultValue();
+		}
+
+		return (T) attributes.get(key);
+
+	}
+
+	/**
+	 * タグを追加する
+	 *
+	 * @param values	タグ
+	 * @return	自身
+	 */
+	public Route tag (String... values) {
+
+		tags.addAll(List.of(values));
+		return this;
+
+	}
+
+	/**
+	 * タグ
+	 *
+	 * @return	タグ
+	 */
+	public List<String> tags () {
+
+		return List.copyOf(tags);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public String toString () {
+
+		return method + " " + pattern;
+
+	}
+
+}
