@@ -4,7 +4,6 @@ import db.blog_example.BlogExample;
 import db.blog_example.table.comment.Comment;
 import db.blog_example.table.post.Post;
 import io.jimble.db.DBUtil;
-import io.jimble.db.migration.Migration;
 import io.jimble.db.sql.SQL;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
@@ -68,8 +67,11 @@ class BlogAppIntegrationTest {
 
 		Conf.reload();
 
-		Migration.install();
-		DBUtil.load(Conf.conf().config(), BlogAppIntegrationTest.class);
+		/*
+		 * <b>本番の入口と同じものを呼ぶ。</b>
+		 * ここでテストだけの用意を書くと、入口が変わったときに<b>テストだけ通る</b>。
+		 */
+		Bootstrap.load();
 
 		// ポート 0 で空いているところを使う。他のテストと衝突しない
 		server = JimbleServer.start(new BlogApp(), 0);

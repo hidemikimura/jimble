@@ -4,12 +4,10 @@ import blog.batch.MqWorkerBatch;
 import blog.batch.PostCleanupBatch;
 import blog.mq.NoticeExecutor;
 import io.jimble.batch.BatchRegistry;
-import io.jimble.batch.BatchTables;
 import io.jimble.batch.scheduler.DbScheduler;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.MqQueue;
 import io.jimble.mq.MqRegistry;
-import io.jimble.util.conf.Conf;
 
 /**
  * スケジューラの入口
@@ -32,23 +30,19 @@ public class BlogScheduler {
 	 */
 	public static void main (String[] args) {
 
-		// 1. DB
-		DBUtil.load(Conf.conf().config(), BlogScheduler.class);
-
-		// 2. テーブル
-		BatchTables.install(DBUtil.getMainDB());
+		// 1. DB とテーブル（3つの入口で同じものを用意する）
+		Bootstrap.load();
 
 		MqQueue noticeQueue = new MqQueue(NoticeExecutor.QUEUE_NAME);
-		noticeQueue.install();
 
-		// 3. 登録（要件 F-B-09 / F-M-07。クラスパス走査はしない）
+		// 2. 登録（要件 F-B-09 / F-M-07。クラスパス走査はしない）
 		MqRegistry.add(NoticeExecutor::new);
 
 		BatchRegistry.add(PostCleanupBatch::new);
 		BatchRegistry.add(MqWorkerBatch::new);
 		BatchRegistry.sync(DBUtil.getMainDB());
 
-		// 4. スケジューラ（アプリの MQ も一緒に回す）
+		// 3. スケジューラ（アプリの MQ も一緒に回す）
 		new DbScheduler().start(noticeQueue);
 
 		DBUtil.stop();

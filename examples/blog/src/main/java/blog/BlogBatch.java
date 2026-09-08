@@ -6,11 +6,8 @@ import blog.mq.NoticeExecutor;
 import io.jimble.batch.BatchExecutor;
 import io.jimble.batch.BatchRegistry;
 import io.jimble.batch.BatchResult;
-import io.jimble.batch.BatchTables;
 import io.jimble.db.DBUtil;
-import io.jimble.mq.MqQueue;
 import io.jimble.mq.MqRegistry;
-import io.jimble.util.conf.Conf;
 import io.jimble.util.log.Log;
 
 /**
@@ -35,22 +32,18 @@ public class BlogBatch {
 	 */
 	public static void main (String[] args) {
 
-		// 1. DB
-		DBUtil.load(Conf.conf().config(), BlogBatch.class);
+		// 1. DB とテーブル（3つの入口で同じものを用意する）
+		Bootstrap.load();
 
-		// 2. バッチが使うテーブル
-		BatchTables.install(DBUtil.getMainDB());
-
-		// 3. MQ のテーブルと Executor（要件 F-M-07。クラスパス走査はしない）
-		new MqQueue(NoticeExecutor.QUEUE_NAME).install();
+		// 2. MQ の Executor（要件 F-M-07。クラスパス走査はしない）
 		MqRegistry.add(NoticeExecutor::new);
 
-		// 4. バッチの登録（要件 F-B-09。クラスパス走査はしない）
+		// 3. バッチの登録（要件 F-B-09。クラスパス走査はしない）
 		BatchRegistry.add(PostCleanupBatch::new);
 		BatchRegistry.add(MqWorkerBatch::new);
 		BatchRegistry.sync(DBUtil.getMainDB());
 
-		// 5. 実行
+		// 4. 実行
 		BatchResult result = BatchExecutor.start(args);
 
 		Log.info("バッチの結果: %s".formatted(result));

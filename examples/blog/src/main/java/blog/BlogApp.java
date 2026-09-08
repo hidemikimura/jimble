@@ -10,10 +10,7 @@ import db.blog_example.table.post.Post;
 import io.jimble.batch.manager.BatchManagerController;
 import io.jimble.db.DB;
 import io.jimble.db.DBTransaction;
-import io.jimble.db.DBUtil;
-import io.jimble.db.migration.Migration;
 import io.jimble.db.sql.SQL;
-import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.web.cors.Cors;
 import io.jimble.web.cors.CorsHandler;
@@ -127,10 +124,8 @@ public class BlogApp extends JimbleApp {
 	 */
 	public static void main (String[] args) {
 
-		// 起動時マイグレーション。ローカルでは何もしない（要件 F-G-07 / F-G-15）
-		Migration.install();
-
-		DBUtil.load(Conf.conf().config(), BlogApp.class);
+		// DB とテーブル（3つの入口で同じものを用意する）
+		Bootstrap.load();
 
 		JimbleServer.start(new BlogApp());
 
