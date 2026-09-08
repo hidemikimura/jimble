@@ -4,6 +4,5 @@
 ./docs/publishing.md
 ./docs/requirements.md
 ./docs/site/ja/cli.md
-./docs/site/ja/gradle.md
 ./gradle-plugin/build.gradle.kts
 ./jimble-cli/src/main/java/io/jimble/cli/Version.java

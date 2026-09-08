@@ -30,7 +30,7 @@ val sharedDatabase = gradle.sharedServices.registerIfAbsent("sharedDatabase", Sh
  * のように渡す。既定を素の 0.2.0 にしないのは、
  * うっかり publish したものが「リリース版」として残るのを避けるためである。
  */
-val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.2.0-SNAPSHOT")
+val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.2.1-SNAPSHOT")
 
 /* doclint を切るモジュール（要件 D-15。潰したらここから外す） */
 val DOCLINT_OFF = setOf("jimble-util")

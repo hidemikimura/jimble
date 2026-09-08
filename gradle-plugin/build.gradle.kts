@@ -19,7 +19,7 @@ group = "io.jimble"
  * 版は本体と揃える（-Pjimble.version）。
  * 外側のビルドに渡したプロパティは、取り込まれたこのビルドにも届く。
  */
-version = providers.gradleProperty("jimble.version").getOrElse("0.2.0-SNAPSHOT")
+version = providers.gradleProperty("jimble.version").getOrElse("0.2.1-SNAPSHOT")
 
 java {
 	toolchain {
