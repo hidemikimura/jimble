@@ -42,7 +42,7 @@ public final class Convertor {
 	/**
 	 * オブジェクトを変換する.<br>
 	 * 型パラメータを指定する場合は必ず全ての型パラメータを指定してください.<br>
-	 * 例) Map<String, Map<String, Integer>> → new Class< ? >[]{ Map.class, String.class, Map.class, String.class, Integer.class }
+	 * 例) {@code Map<String, Map<String, Integer>>} → {@code new Class<?>[]{ Map.class, String.class, Map.class, String.class, Integer.class }}
 	 *
 	 * @param conf        設定情報
 	 * @param src         変換前オブジェクト
@@ -58,7 +58,7 @@ public final class Convertor {
 	/**
 	 * オブジェクトを変換する.<br>
 	 * 型パラメータを指定する場合は必ず全ての型パラメータを指定してください.<br>
-	 * 例) Map<String, Map<String, Integer>> → new Class< ? >[]{ Map.class, String.class, Map.class, String.class, Integer.class }
+	 * 例) {@code Map<String, Map<String, Integer>>} → {@code new Class<?>[]{ Map.class, String.class, Map.class, String.class, Integer.class }}
 	 *
 	 * @param conf        設定情報
 	 * @param src         変換前オブジェクト

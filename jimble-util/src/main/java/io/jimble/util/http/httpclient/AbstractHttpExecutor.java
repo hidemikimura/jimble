@@ -36,12 +36,39 @@ import java.util.zip.GZIPInputStream;
 /**
  * HTTPリクエスト基底
  */
-public abstract class AbstractHttpExecutor<E> {
+public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 
 	// region ログデータ
 
 	/* その他ログ情報 */
 	private final Data otherLogData = new Data();
+
+	/**
+	 * 自分を返す
+	 *
+	 * <p>
+	 * <b>メソッドチェーンのために、派生クラスの型で自分を返す。</b>
+	 * {@code this} が {@code E} であることは型からは証明できないので、
+	 * どうしても無検査キャストになる。
+	 * <b>キャストはここ1つに閉じる。</b>
+	 * 呼ぶところごとに書くと、同じ無検査キャストが 30 か所以上に散り、
+	 * <b>本当に危ないキャストが警告の山に埋もれる</b>。
+	 * </p>
+	 * <p>
+	 * 安全である理由は型パラメータの縛り（{@code E extends AbstractHttpExecutor<E>}）と、
+	 * <b>派生クラスが自分自身を {@code E} に渡している</b>ことである
+	 * （{@code class HttpGetExecutor extends AbstractHttpExecutor<HttpGetExecutor>}）。
+	 * 他人の型を渡した派生クラスを作るとここで {@code ClassCastException} になる。
+	 * </p>
+	 *
+	 * @return	自身のインスタンス
+	 */
+	@SuppressWarnings("unchecked")
+	protected final E self () {
+
+		return (E) this;
+
+	}
 
 	/**
 	 * その他ログ情報を設定する
@@ -53,7 +80,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E putLogData (String key, Object value) {
 
 		otherLogData.put(key, value);
-		return (E) this;
+		return self();
 
 	}
 
@@ -111,7 +138,7 @@ public abstract class AbstractHttpExecutor<E> {
 		} catch (Exception ex) {
 			Log.error(ex);
 		}
-		return (E) this;
+		return self();
 
 	}
 
@@ -123,7 +150,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setLocalAddress (InetAddress localAddress) {
 
 		this.localAddress = localAddress;
-		return (E) this;
+		return self();
 
 	}
 
@@ -164,7 +191,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setVersion (HttpClient.Version version) {
 
 		this.version = version;
-		return (E) this;
+		return self();
 
 	}
 
@@ -193,7 +220,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setUrl (String url) {
 
 		this.url = url;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -233,7 +260,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setCharset (String charset) {
 
 		this.charset = charset;
-		return (E) this;
+		return self();
 
 	}
 
@@ -278,7 +305,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setHeaders (Map<String, String> headers) {
 
 		this.headers = headers;
-		return (E) this;
+		return self();
 	}
 
 	/**
@@ -289,7 +316,7 @@ public abstract class AbstractHttpExecutor<E> {
 	 */
 	public E addHeader (String key, String value) {
 		headers.put(key, value);
-		return (E) this;
+		return self();
 	}
 
 	/**
@@ -299,7 +326,7 @@ public abstract class AbstractHttpExecutor<E> {
 	 */
 	public E removeHeader (String key) {
 		headers.remove(key);
-		return (E) this;
+		return self();
 	}
 
 	/**
@@ -320,7 +347,7 @@ public abstract class AbstractHttpExecutor<E> {
 		addHeader("sec-fetch-user", "?1");
 		addHeader("upgrade-insecure-requests", "1");
 		addHeader("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36");
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -367,7 +394,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setProxy (HttpProxy proxy) {
 
 		this.proxy = proxy;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -395,7 +422,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setTimeout (long timeout) {
 
 		this.timeout = timeout;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -424,7 +451,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setKeepResponseBodyStream (boolean isKeepResponseBodyStream) {
 
 		this.isKeepResponseBodyStream = isKeepResponseBodyStream;
-		return (E) this;
+		return self();
 
 	}
 
@@ -471,7 +498,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setEnableRedirect (boolean isEnableRedirect) {
 
 		this.isEnableRedirect = isEnableRedirect;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -499,7 +526,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setIgnoreSslError (boolean isIgnoreSslError) {
 
 		this.isIgnoreSslError = isIgnoreSslError;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -527,7 +554,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setSleep (long sleep) {
 
 		this.sleep = sleep;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -555,7 +582,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setContentOutputFile (File contentOutputFile) {
 
 		this.contentOutputFile = contentOutputFile;
-		return (E) this;
+		return self();
 	}
 
 	// endregion
@@ -584,7 +611,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setUseCookie (boolean useCookie) {
 
 		this.useCookie = useCookie;
-		return (E) this;
+		return self();
 
 	}
 
@@ -625,7 +652,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E setCookieManager (CookieManager cookieManager) {
 
 		this.cookieManager = cookieManager;
-		return (E) this;
+		return self();
 
 	}
 
@@ -638,7 +665,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E addCookie (String key, String value) {
 
 		requestCookieMap.put(key, value);
-		return (E) this;
+		return self();
 
 	}
 
@@ -657,7 +684,7 @@ public abstract class AbstractHttpExecutor<E> {
 	public E addEnableBodyContentType (String contentType) {
 
 		this.enableBodyContentType.add(contentType);
-		return (E) this;
+		return self();
 
 	}
 
@@ -1233,7 +1260,7 @@ public abstract class AbstractHttpExecutor<E> {
 		if (url == null || url.length() == 0) {
 			this.isError = true;
 			this.errorException = new Exception("URL is empty.");
-			return (E) this;
+			return self();
 		}
 
 		// スリープ
@@ -1305,7 +1332,7 @@ public abstract class AbstractHttpExecutor<E> {
 			this.isError = true;
 			this.errorException = ex;
 
-			return (E) this;
+			return self();
 
 		}
 
@@ -1348,10 +1375,13 @@ public abstract class AbstractHttpExecutor<E> {
 						this.contentText = os.toString(this.charset);
 					} catch (Exception ignore) {}
 				} else {
-					try (
-						InputStream is = response.body()
-					) {
-
+					/*
+					 * 本文は読まないが、<b>閉じないと接続が返らない</b>。
+					 * try-with-resources に空の本体を書くと
+					 * 「宣言した資源を使っていない」警告になるので、素直に閉じる。
+					 */
+					try {
+						response.body().close();
 					} catch (Exception ignore) {}
 				}
 				httpResponse = response;
@@ -1389,7 +1419,7 @@ public abstract class AbstractHttpExecutor<E> {
 
 		}
 
-		return (E) this;
+		return self();
 
 	}
 

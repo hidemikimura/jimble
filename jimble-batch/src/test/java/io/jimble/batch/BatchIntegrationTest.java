@@ -319,6 +319,30 @@ class BatchIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("1つも登録されていなければ全部 nothing になる")
+	void allDisappeared () {
+
+		register();
+
+		/*
+		 * 「最後の1つを消した」ときだけ行が enable のまま残る、を防ぐ。
+		 * 裏返しに、<b>登録し忘れて sync を呼ぶと全部止まる</b>ので、
+		 * sync は登録を済ませてから呼ぶこと。
+		 */
+		BatchRegistry.clear();
+		BatchRegistry.sync(DBUtil.getMainDB());
+
+		Data ok = DBUtil.getMainDB().select(
+			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName());
+		Data ng = DBUtil.getMainDB().select(
+			"SELECT * FROM batch_master WHERE class_name = ?", NgBatch.class.getName());
+
+		assertEquals(BatchMasterStatus.nothing.name(), ok.getString("status"));
+		assertEquals(BatchMasterStatus.nothing.name(), ng.getString("status"));
+
+	}
+
 	// endregion
 
 	// region 実行と履歴（要件 F-B-08）

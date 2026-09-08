@@ -1,5 +1,6 @@
 package io.jimble.web.ratelimit;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
@@ -28,7 +29,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class DbRateLimitStore implements RateLimitStore {
 
 	/** テーブル名 */
-	public static final String TABLE = "rate_limit";
+	public static final String TABLE = FrameworkTables.RATE_LIMIT;
 
 	/* テーブルを作る排他 */
 	private static final ReentrantLock INIT_LOCK = new ReentrantLock();

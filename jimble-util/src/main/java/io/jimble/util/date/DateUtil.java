@@ -793,6 +793,13 @@ public class DateUtil {
 
 
 
+	/*
+	 * switch を<b>わざと落として</b>いる。これがこの処理そのものである
+	 * （「月まで丸める」なら、月・日・時・分・秒・ミリ秒を順に潰す）。
+	 * break を入れると<b>指定した単位より下が丸められずに残る</b>。
+	 * 分けて書くと同じ並びを2つ持つことになり、片方だけ直る事故のほうが怖い。
+	 */
+	@SuppressWarnings("fallthrough")
 	public static Date getFrom (Date date, int type) {
 
 		if (date == null) {
@@ -822,6 +829,13 @@ public class DateUtil {
 
 	}
 
+	/*
+	 * switch を<b>わざと落として</b>いる。これがこの処理そのものである
+	 * （「月まで丸める」なら、月・日・時・分・秒・ミリ秒を順に潰す）。
+	 * break を入れると<b>指定した単位より下が丸められずに残る</b>。
+	 * 分けて書くと同じ並びを2つ持つことになり、片方だけ直る事故のほうが怖い。
+	 */
+	@SuppressWarnings("fallthrough")
 	public static Date getTo (Date date, int type) {
 
 		if (date == null) {

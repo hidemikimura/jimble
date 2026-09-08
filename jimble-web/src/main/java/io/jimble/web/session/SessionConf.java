@@ -1,5 +1,6 @@
 package io.jimble.web.session;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -43,7 +44,7 @@ public final class SessionConf {
 	public static final String DEFAULT_COOKIE_NAME = "sid";
 
 	/** 既定のテーブル名 */
-	public static final String DEFAULT_TABLE = "session";
+	public static final String DEFAULT_TABLE = FrameworkTables.SESSION;
 
 	private SessionConf () {}
 

@@ -16,7 +16,6 @@ import io.jimble.db.sql.SQL;
 import io.jimble.util.log.Log;
 
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -37,7 +36,7 @@ import java.util.regex.Pattern;
  *   <li><b>失敗を握りつぶさない。</b>移送元は出力の失敗を {@code Log.error} して
  *       黙って戻っていたため、<b>生成物が欠けたままビルドが進んでいた。</b>
  *       {@link GeneratorException} を投げる</li>
- *   <li><b>jimble の管理テーブルを生成対象から外す</b>（{@link GeneratorConf#FRAMEWORK_TABLES}）。
+ *   <li><b>jimble の管理テーブルを生成対象から外す</b>（{@link io.jimble.db.FrameworkTables#ALL}）。
  *       移送元は {@code SHOW TABLE STATUS} の結果をそのまま生成しており、
  *       {@code migration} や {@code db_lock} がアプリのコードに現れていた</li>
  *   <li><b>生成前に出力先を掃除する。</b>消えたテーブルのクラスが残らないようにする</li>
@@ -74,30 +73,6 @@ public class Generator {
 		}
 
 		textOutput.writeLine("");
-
-	}
-
-	/**
-	 * ソース生成判定
-	 *
-	 * @param packageName   パッケージ名
-	 * @return  必要な場合 = true
-	 */
-	public static boolean isGenerationRequired (String packageName) {
-
-		DBSource dbSource = DBUtil.getDataSourceList().getFirst();
-
-		String className = "%s.%s.%s".formatted(packageName, dbSource.name, upperCamel(dbSource.name));
-		try {
-			Class<?> cls = Class.forName(className);
-			Field field = cls.getDeclaredField("SQL_VERSION");
-			field.setAccessible(true);
-			long version = (long) field.get(null);
-
-			return SQL.VERSION != version;
-		} catch (Throwable ex) {
-			return true;
-		}
 
 	}
 
@@ -203,6 +178,18 @@ public class Generator {
 			textOutput.writeLine(" */");
 			textOutput.writeLine("public class %s extends AbstractSchema {".formatted(schemeClassName));
 			textOutput.writeLine("");
+			/*
+			 * 生成したときの jimble の版。
+			 *
+			 * <b>誰も読まない。読ませない。</b>
+			 * 移送元は起動時にこれをリフレクションで覗いて
+			 * 「古ければ作り直す」判定にしていたが、
+			 * <b>スキーマが変わっても版は変わらない</b>ので、
+			 * マイグレーションのあとに作り直しを飛ばしてしまう。
+			 * jimble は生成を build の段（codegen タスク）に寄せ、
+			 * 鮮度は codegenCheck が<b>生成物そのものを突き合わせて</b>見る。
+			 * この行はそこで差分として出るための印である。
+			 */
 			textOutput.writeLine("\tprivate static final long SQL_VERSION = %s;".formatted(SQL.VERSION));
 			textOutput.writeLine("");
 			for (TableInfo tableInfo : tableInfoList) {
@@ -632,11 +619,22 @@ public class Generator {
 			 */
 			TableMetaReader reader = TableMetaReader.of(db.dialect());
 
+			/*
+			 * 外したテーブルは<b>名前を出す</b>。
+			 *
+			 * jimble の管理テーブルの名前（session / batch_master / sql_cache …）は
+			 * アプリの業務テーブルとぶつかりうる。黙って外すと、
+			 * <b>自分のテーブルのクラスがいつまでも生成されない</b>のに
+			 * 何も言われない、という形でしか気づけない（D-68）。
+			 */
+			List<String> excluded = new ArrayList<>();
+
 			List<Data> tableList = reader.tables(db);
 			for (Data table : tableList) {
 
 				// jimble の管理テーブルはアプリのテーブル定義に出さない
 				if (excludes.contains(table.getString("name").toLowerCase())) {
+					excluded.add(table.getString("name"));
 					continue;
 				}
 
@@ -723,6 +721,11 @@ public class Generator {
 
 				tableInfoList.add(tableInfo);
 
+			}
+
+			if (!excluded.isEmpty()) {
+				Log.info("codegen: 生成対象から外しました（jimble の管理テーブル）: %s"
+					.formatted(String.join(", ", excluded)));
 			}
 
 		} catch (Exception ex) {

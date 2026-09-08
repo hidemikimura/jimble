@@ -1,6 +1,10 @@
 package io.jimble.web.mpa;
 
 import io.jimble.web.router.Controller;
+import io.jimble.web.router.Route;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * MPA 配信のルート定義
@@ -8,6 +12,9 @@ import io.jimble.web.router.Controller;
  * <p><b>ルーティング本体に混ぜない</b>（要件 F-W-20）ための独立コントローラ。</p>
  */
 public final class MpaController extends Controller {
+
+	/* 登録したルート（D-70） */
+	private final List<Route> routes = new ArrayList<>();
 
 	/**
 	 * コンストラクタ
@@ -22,15 +29,39 @@ public final class MpaController extends Controller {
 		String prefix = normalize(routePath);
 
 		if (!prefix.isEmpty()) {
-			get(prefix, handler::handle);
-			head(prefix, handler::handle);
+			routes.add(get(prefix, handler::handle));
+			routes.add(head(prefix, handler::handle));
 		} else {
-			get("/", handler::handle);
-			head("/", handler::handle);
+			routes.add(get("/", handler::handle));
+			routes.add(head("/", handler::handle));
 		}
 
-		get(prefix + "/*", handler::handle);
-		head(prefix + "/*", handler::handle);
+		routes.add(get(prefix + "/*", handler::handle));
+		routes.add(head(prefix + "/*", handler::handle));
+
+	}
+
+	/**
+	 * 登録したルート
+	 *
+	 * <p>
+	 * <b>属性を付けられるように外に出す</b>（D-70）。
+	 * </p>
+	 *
+	 * <pre>
+	 * MpaController mpa = MpaHandler.mount("/", "site");
+	 * for (Route route : mpa.routes()) {
+	 *     route.attribute(NO_AUTH, true);
+	 * }
+	 *
+	 * install(() -&gt; mpa);   // ← 組み込みを忘れないこと
+	 * </pre>
+	 *
+	 * @return	登録したルート（登録順。変更はできない）
+	 */
+	public List<Route> routes () {
+
+		return List.copyOf(routes);
 
 	}
 

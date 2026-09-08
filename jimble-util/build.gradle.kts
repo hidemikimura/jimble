@@ -2,23 +2,13 @@ description = "jimble の共通ユーティリティ。Data / 型変換 / JSON /
 
 /*
  * jooby_base から移送したコード（168ファイル / 約 23,700 行）。
- * 移送時点の警告が多いため、うるさい種別だけ落としている。
- * 段階的に潰して、最終的にはこのブロックを消す。
+ *
+ * 移送時点は警告が多く、種別ごと（unchecked / rawtypes / fallthrough / deprecation /
+ * dangling-doc-comments / this-escape / cast / overloads）落としていた（要件 D-15）。
+ * <b>2026-09-08 に 81 件を潰して、この抑止をやめた。</b>
+ * doclint も同時に有効へ戻した（45 件）。
+ * 消せないものは、消せない理由を書いた @SuppressWarnings をその場所に付けてある。
  */
-tasks.withType<JavaCompile>().configureEach {
-	options.compilerArgs.addAll(
-		listOf(
-			"-Xlint:-unchecked",
-			"-Xlint:-rawtypes",
-			"-Xlint:-fallthrough",
-			"-Xlint:-deprecation",
-			"-Xlint:-dangling-doc-comments",
-			"-Xlint:-this-escape",
-			"-Xlint:-cast",
-			"-Xlint:-overloads",
-		)
-	)
-}
 
 dependencies {
 	api(project(":jimble-core"))

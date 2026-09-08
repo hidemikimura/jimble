@@ -1,7 +1,9 @@
 package io.jimble.web.server;
 
 import io.jimble.core.executor.Executor;
+import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.router.ErrorHandler;
 import io.jimble.web.router.Handler;
 
 /**
@@ -60,6 +62,48 @@ final class Stage {
 
 		if (context.response().isSent()) {
 			done = true;
+		}
+
+	}
+
+	/**
+	 * エラーハンドラを1つ実行する
+	 *
+	 * <p>
+	 * <b>ハンドラ自身が失敗しても止めない</b>（要件 F-C-15）。
+	 * ここで投げ返すと、エラーハンドラのバグで
+	 * <b>クライアントに何も返らなくなる</b>。握って次のハンドラに進む。
+	 * </p>
+	 *
+	 * @param hook			エラーハンドラ
+	 * @param cause			原因
+	 * @param statusCode	ステータス
+	 */
+	void runError (ErrorHandler hook, Throwable cause, int statusCode) {
+
+		if (done) {
+			return;
+		}
+
+		try {
+
+			hook.handle(context, cause, statusCode);
+
+		} catch (Throwable failure) {
+
+			Log.error(failure, "エラーハンドラで例外が発生しました");
+
+		} finally {
+
+			/*
+			 * <b>送ってから落ちたハンドラ</b>も送信済みである。
+			 * catch で抜けて判定を飛ばすと、
+			 * <b>もう返したあとに次のハンドラが動く</b>。
+			 */
+			if (context.response().isSent()) {
+				done = true;
+			}
+
 		}
 
 	}

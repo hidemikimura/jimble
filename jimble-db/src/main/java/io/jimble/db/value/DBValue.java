@@ -1,5 +1,6 @@
 package io.jimble.db.value;
 
+import io.jimble.db.FrameworkTables;
 import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.util.convertor.PropertyUtil;
@@ -518,7 +519,7 @@ public class DBValue {
 	 */
 	public static void init (DB db) {
 
-		DBVersion dbVersion = new DBVersion("db_value", "汎用値情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.DB_VALUE, "汎用値情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table db_value

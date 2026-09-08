@@ -32,6 +32,9 @@ public class In implements ICondition {
 	@Override
 	public void conditionSql (SqlWriter sb) {
 
+		// 空の一覧のまま書くと IN () になる（要件 F-D-07）
+		InValues.check(value, "IN");
+
 		sb.append(" IN (");
 		if (value instanceof SelectBuilder selectBuilder) {
 			sb.append(selectBuilder.sql(sb.dialect()));

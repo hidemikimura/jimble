@@ -1,5 +1,6 @@
 package io.jimble.db.cache;
 
+import io.jimble.db.FrameworkTables;
 import com.google.common.base.Utf8;
 import io.jimble.db.cache.AbstractCache;
 import io.jimble.db.cache.Cache;
@@ -346,7 +347,7 @@ public class DBCache extends AbstractCache {
 	 */
 	public static void init (DB db) {
 
-		DBVersion dbVersion = new DBVersion("db_cache", "汎用キャッシュ情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.DB_CACHE, "汎用キャッシュ情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table db_cache

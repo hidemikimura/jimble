@@ -263,6 +263,10 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param key キー
 	 * @return 値
 	 */
+	/*
+	 * 無検査キャスト：Map の中身の型までは確かめられない。<b>キーは String である前提</b>で読み替える（JSON から作った Map は必ずそうなる）。違えば putAll のところで落ちる。
+	 */
+	@SuppressWarnings("unchecked")
 	public Data getData (String key) {
 
 		if (isNull(key)) {
@@ -477,11 +481,15 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Data>型で値を取得する
 
 	/**
-	 * List<Data>型で値を取得する
+	 * {@code List<Data>}型で値を取得する
 	 *
 	 * @param key	キー
 	 * @return	値
 	 */
+	/*
+	 * 無検査キャスト：Map の中身の型までは確かめられない。<b>キーは String である前提</b>で読み替える（JSON から作った Map は必ずそうなる）。違えば putAll のところで落ちる。
+	 */
+	@SuppressWarnings("unchecked")
 	public List<Data> getDataList (String key) {
 
 		if (isNull(key)) {
@@ -534,7 +542,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Data>型で値を取得する
+	 * {@code List<Data>}型で値を取得する
 	 * 値がない場合は生成して返す
 	 *
 	 * @param key	キー
@@ -553,7 +561,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Data>型で値を取得する
+	 * {@code List<Data>}型で値を取得する
 	 *
 	 * @param column	列
 	 * @return	値
@@ -565,7 +573,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Data>型で値を取得する
+	 * {@code List<Data>}型で値を取得する
 	 * 値がない場合は生成して返す
 	 *
 	 * @param column	列
@@ -1229,7 +1237,18 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param key	キー
 	 * @return	オブジェクト
 	 */
-	public <T> T getValue (String key, T...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 */
+	@SafeVarargs
+	public final <T> T getValue (String key, T...types) {
 
 		try {
 
@@ -1254,7 +1273,18 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param column	列
 	 * @return	オブジェクト
 	 */
-	public <T> T getValue (IColumn column, T...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 */
+	@SafeVarargs
+	public final <T> T getValue (IColumn column, T...types) {
 
 		try {
 
@@ -1274,7 +1304,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<String>型で取得する
 
 	/**
-	 * List<String>型で取得する
+	 * {@code List<String>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1295,7 +1325,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<String>型で取得する
+	 * {@code List<String>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1313,7 +1343,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<String>型で取得する
+	 * {@code List<String>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1325,7 +1355,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<String>型で取得する
+	 * {@code List<String>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1341,12 +1371,26 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<T>型で取得する
 
 	/**
-	 * List<T>型で取得する
+	 * {@code List<T>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
 	 */
-	public <T> List<T> getObjectList (String key, Class<T>...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 *
+	 * 受け取った配列を Arrays.asList で<b>読むだけ</b>のところで varargs 警告が出る。
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")
+	public final <T> List<T> getObjectList (String key, Class<T>...types) {
 
 		if (isNull(key)) {
 			return null;
@@ -1359,7 +1403,7 @@ public class Data extends LinkedHashMap<String, Object> {
 			if (types != null && types.length > 0) {
 				classList.addAll(Arrays.asList(types));
 			}
-			List<T> res = Convertor.convert(null, object, classList.toArray(new Class[]{}));
+			List<T> res = Convertor.convert(null, object, classList.toArray(new Class<?>[]{}));
 			put(key, res);
 			return res;
 		} catch (Exception ex) {
@@ -1369,12 +1413,23 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<T>型で取得する
+	 * {@code List<T>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
 	 */
-	public <T> List<T> getObjectListOptional (String key, Class<T>...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 */
+	@SafeVarargs
+	public final <T> List<T> getObjectListOptional (String key, Class<T>...types) {
 
 		List<T> res = getObjectList(key);
 		if (res == null) {
@@ -1387,24 +1442,54 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<T>型で取得する
+	 * {@code List<T>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
 	 */
-	public <T> List<T> getObjectList (IColumn column, Class<T>...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 *
+	 * 受け取った配列を<b>そのまま次へ渡す</b>ところで varargs 警告が出る。
+	 * 渡す先も @SafeVarargs（読むだけ）なので、ここは安全である。
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")
+	public final <T> List<T> getObjectList (IColumn column, Class<T>...types) {
 
 		return getTableData(column).getObjectList(column.name(), types);
 
 	}
 
 	/**
-	 * List<T>型で取得する
+	 * {@code List<T>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
 	 */
-	public <T> List<T> getObjectListOptional (IColumn column, Class<T>...types) {
+	/*
+	 * 可変長引数に総称型を取る。
+	 *
+	 * <b>渡された配列は読むだけで、中に何かを入れることはしない</b>
+	 * （型を知るために getComponentType() を見る、あるいはそのまま次へ渡すだけ）。
+	 * だから @SafeVarargs で正しい。書き込むようになったらこの印を外すこと。
+	 *
+	 * 印を付けるには final でなければならない。
+	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
+	 *
+	 * 受け取った配列を<b>そのまま次へ渡す</b>ところで varargs 警告が出る。
+	 * 渡す先も @SafeVarargs（読むだけ）なので、ここは安全である。
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")
+	public final <T> List<T> getObjectListOptional (IColumn column, Class<T>...types) {
 
 		return getTableData(column).getObjectListOptional(column.name(), types);
 
@@ -1415,7 +1500,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Byte>型で取得する
 
 	/**
-	 * List<Byte>型で取得する
+	 * {@code List<Byte>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1436,7 +1521,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Byte>型で取得する
+	 * {@code List<Byte>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1454,7 +1539,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Byte>型で取得する
+	 * {@code List<Byte>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1466,7 +1551,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Byte>型で取得する
+	 * {@code List<Byte>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1482,7 +1567,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Short>型で取得する
 
 	/**
-	 * List<Short>型で取得する
+	 * {@code List<Short>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1503,7 +1588,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Short>型で取得する
+	 * {@code List<Short>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1521,7 +1606,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Short>型で取得する
+	 * {@code List<Short>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1533,7 +1618,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Short>型で取得する
+	 * {@code List<Short>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1549,7 +1634,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Integer>型で取得する
 
 	/**
-	 * List<Integer>型で取得する
+	 * {@code List<Integer>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1570,7 +1655,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Integer>型で取得する
+	 * {@code List<Integer>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1588,7 +1673,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Integer>型で取得する
+	 * {@code List<Integer>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1600,7 +1685,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Integer>型で取得する
+	 * {@code List<Integer>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1616,7 +1701,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Long>型で取得する
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1637,7 +1722,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1655,7 +1740,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1667,7 +1752,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1683,7 +1768,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Float>型で取得する
 
 	/**
-	 * List<Float>型で取得する
+	 * {@code List<Float>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1704,7 +1789,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1722,7 +1807,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Float>型で取得する
+	 * {@code List<Float>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1734,7 +1819,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Long>型で取得する
+	 * {@code List<Long>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1750,7 +1835,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region List<Float>型で取得する
 
 	/**
-	 * List<Double>型で取得する
+	 * {@code List<Double>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1771,7 +1856,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Double>型で取得する
+	 * {@code List<Double>}型で取得する
 	 *
 	 * @param key	キー
 	 * @return	値
@@ -1789,7 +1874,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Double>型で取得する
+	 * {@code List<Double>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1801,7 +1886,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * List<Double>型で取得する
+	 * {@code List<Double>}型で取得する
 	 *
 	 * @param column    列
 	 * @return	値
@@ -1898,6 +1983,10 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param enumType	enum型
 	 * @return	enum
 	 */
+	/*
+	 * 無検査キャスト：戻り値の型 {@code T} は呼び出し側が決める。<b>enum かどうかは実行時に確かめている</b>ので、ここで返すのは必ず enum である。{@code T} が違えば呼び出し側で ClassCastException になる（型を書いた側の間違い）。
+	 */
+	@SuppressWarnings("unchecked")
 	public <T> T getEnum (String key, Class<? extends Enum<?>> enumType) {
 
 		Object value = get(key);

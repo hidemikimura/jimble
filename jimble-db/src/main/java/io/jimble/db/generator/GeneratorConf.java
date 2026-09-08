@@ -1,5 +1,6 @@
 package io.jimble.db.generator;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.util.conf.Conf;
 
 import java.util.LinkedHashSet;
@@ -29,42 +30,6 @@ public final class GeneratorConf {
 	/** 既定の生成先パッケージ */
 	public static final String DEFAULT_PACKAGE = "db";
 
-	/**
-	 * jimble 自身が作る管理テーブル
-	 *
-	 * <p>
-	 * <b>アプリのテーブル定義には出さない。</b>
-	 * 移送元は {@code SHOW TABLE STATUS} の結果をそのまま生成対象にしていたため、
-	 * フレームワークの内部テーブルまでアプリのコードに現れていた。
-	 * </p>
-	 */
-	public static final Set<String> FRAMEWORK_TABLES = Set.of(
-		"migration"
-		, "migration_history"
-		, "migration_code"
-		, "db_lock"
-		, "db_log"
-		, "db_value"
-		, "db_cache"
-		, "db_sticky"
-		, "redis_lock"
-		/*
-		 * DB セッションのテーブルも jimble が作る（jimble-web の DbSessionStore）。
-		 * 名前は設定で変えられるが、既定の "session" だけはここで外す。
-		 * 変えている場合は codegen.exclude_tables に足すこと。
-		 */
-		, "session"
-		/*
-		 * バッチの3つも jimble が作るものである（jimble-batch）。
-		 * 名前が固定なのでここに書ける。
-		 * MQ のテーブルは名前をアプリが決めるので（mq_blog など）ここには書けない。
-		 * 要らなければ codegen.exclude_tables に足す。
-		 */
-		, "batch_master"
-		, "batch_history"
-		, "batch_execute_info"
-	);
-
 	private GeneratorConf () {}
 
 	/**
@@ -89,7 +54,7 @@ public final class GeneratorConf {
 	 */
 	public static Set<String> excludeTables () {
 
-		Set<String> excludes = new LinkedHashSet<>(FRAMEWORK_TABLES);
+		Set<String> excludes = new LinkedHashSet<>(FrameworkTables.ALL);
 
 		List<String> configured = Conf.conf().getStringListOptional(KEY_EXCLUDE_TABLES);
 		for (String table : configured) {

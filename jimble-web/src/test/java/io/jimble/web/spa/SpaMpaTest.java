@@ -73,6 +73,29 @@ class SpaMpaTest {
 	}
 
 	@Test
+	@DisplayName("SPA をルート（/）に置いたとき、/ 自身も index.html を返す")
+	void spaAtRootServesRoot () {
+
+		/*
+		 * "/*" は "/" に当たらない（セグメントが0個）。
+		 * 足していないと<b>トップページだけ 404</b> になり、
+		 * /any は 200 なので気づきにくい。
+		 */
+		JimbleApp app = new JimbleApp() {
+			{
+				install(() -> SpaHandler.mount("/", "test-spa"));
+			}
+		};
+
+		Fakes.FakeResponseSink root = request(app, "/");
+
+		assertEquals(200, root.status());
+
+		assertEquals(200, request(app, "/anything").status());
+
+	}
+
+	@Test
 	@DisplayName("実ファイルがあればそれを返す")
 	void spaServesFile () {
 

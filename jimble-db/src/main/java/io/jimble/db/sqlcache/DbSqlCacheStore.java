@@ -1,5 +1,6 @@
 package io.jimble.db.sqlcache;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
@@ -30,10 +31,10 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class DbSqlCacheStore implements SqlCacheStore {
 
 	/** 値のテーブル名 */
-	public static final String TABLE = "sql_cache";
+	public static final String TABLE = FrameworkTables.SQL_CACHE;
 
 	/** タグのテーブル名 */
-	public static final String TAG_TABLE = "sql_cache_tag";
+	public static final String TAG_TABLE = FrameworkTables.SQL_CACHE_TAG;
 
 	/* テーブルを作る排他 */
 	private static final ReentrantLock INIT_LOCK = new ReentrantLock();

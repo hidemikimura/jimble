@@ -22,6 +22,13 @@ public class RecordConvertor<E> implements IConvertor<E> {
 	 * {@inheritDoc}
 	 */
 	@Override
+	/*
+	 * 無検査キャスト：組み立てた record を {@code E} として返す。
+	 * <b>どの record を作るかは destClasses[0] で決まる</b>ので、
+	 * 型からは {@code E} と一致することを証明できない。
+	 * 呼び出し側が違う型を書いていればそこで ClassCastException になる。
+	 */
+	@SuppressWarnings("unchecked")
 	public E convert(Configration conf, Object obj, Class<?>... destClasses) throws Exception {
 
 		if (obj == null) {
@@ -87,7 +94,7 @@ public class RecordConvertor<E> implements IConvertor<E> {
 
 		Object res = constructor.newInstance(params);
 
-		/** 循環参照後処理. */
+		/* 循環参照後処理. */
 
 		conf.Hierarchy--;
 		conf.hashSet.remove(hash);

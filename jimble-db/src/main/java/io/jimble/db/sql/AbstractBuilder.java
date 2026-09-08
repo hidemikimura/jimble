@@ -228,19 +228,19 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 
 		List<Object> res = new ArrayList<>();
 
+		/*
+		 * <b>空は空のまま返す。</b>null に潰してはいけない（要件 F-D-07）。
+		 *
+		 * 潰すと in(null) になり、SQL は IN (?) ＋ NULL のバインドになる。
+		 * IN (NULL) はどの行にも当たらないので、
+		 * <b>{"id|in": []} が黙って 0 件になる</b>。例外も DB のエラーも出ない。
+		 * 空のまま渡せば In が組み立て時に落とす。
+		 * （between は size() >= 2 で見ているので、空でも影響しない）
+		 */
 		if (value.getClass().isArray()) {
-			Object[] values = (Object[]) value;
-			if (values.length == 0) {
-				return null;
-			} else {
-				Collections.addAll(res, values);
-			}
+			Collections.addAll(res, (Object[]) value);
 		} else if (value instanceof List<?> list) {
-			if (list.isEmpty()) {
-				return null;
-			} else {
-				res.addAll(list);
-			}
+			res.addAll(list);
 		} else if (value instanceof Data data) {
 			res.add(data);
 		} else if (value instanceof Map<?,?> map) {

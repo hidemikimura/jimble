@@ -48,7 +48,6 @@ public interface IEncoder {
 	 * @param value オブジェクト
 	 * @param stream 出力先
 	 * @param charset 文字コード
-	 * @return JSON文字列
 	 */
 	public void encode(Configration conf, Object value, OutputStream stream, Charset charset);
 
@@ -58,7 +57,6 @@ public interface IEncoder {
 	 * @param conf 設定情報
 	 * @param value オブジェクト
 	 * @param writer 出力先
-	 * @return JSON文字列
 	 */
 	public void encode(Configration conf, Object value, Writer writer);
 

@@ -42,7 +42,12 @@ tasks.withType<JavaCompile>().configureEach {
 	 * Gradle 9 の下限に合わせて 17 で出す。
 	 */
 	options.release = 17
-	options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-serial", "-parameters"))
+	/*
+	 * 警告はエラーにする（要件 D-15。本体と同じ扱い）。
+	 * this-escape は jimble の「コンストラクタで登録する」形に由来するので落とす。
+	 */
+	options.compilerArgs.addAll(listOf(
+		"-Xlint:all", "-Xlint:-serial", "-Xlint:-this-escape", "-Werror", "-parameters"))
 }
 
 dependencies {

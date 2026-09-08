@@ -1,5 +1,6 @@
 package io.jimble.db.lock;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
@@ -38,7 +39,7 @@ public class DBLock {
 			paramsList.add(new SQLParameterList(key));
 		}
 		List<Integer> results = db.executeBatch(
-			Sqls.insertIgnoreInto(db.dialect(), "db_lock")
+			Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.DB_LOCK)
 				+ " (lock_key) VALUES (?)"
 				+ Sqls.insertIgnoreTail(db.dialect())
 			, paramsList
@@ -131,7 +132,7 @@ public class DBLock {
 	 */
 	public static void init (DB db) {
 
-		DBVersion dbVersion = new DBVersion("db_lock", "ロック情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.DB_LOCK, "ロック情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table db_lock (

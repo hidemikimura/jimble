@@ -1,5 +1,6 @@
 package io.jimble.batch;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.version.DBVersion;
 
@@ -43,7 +44,7 @@ public final class BatchTables {
 	 */
 	private static void master (DB db) {
 
-		DBVersion dbVersion = new DBVersion("batch_master", "バッチマスタ");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.BATCH_MASTER, "バッチマスタ");
 
 		/*
 		 * 移送元は 6 回の ALTER に分かれていた（運用しながら育った形）。
@@ -103,7 +104,7 @@ public final class BatchTables {
 	 */
 	private static void history (DB db) {
 
-		DBVersion dbVersion = new DBVersion("batch_history", "バッチ履歴");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.BATCH_HISTORY, "バッチ履歴");
 
 		dbVersion.add(1)
 			.mysql("""
@@ -152,7 +153,7 @@ public final class BatchTables {
 	 */
 	private static void executeInfo (DB db) {
 
-		DBVersion dbVersion = new DBVersion("batch_execute_info", "バッチ実行情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.BATCH_EXECUTE_INFO, "バッチ実行情報");
 
 		dbVersion.add(1)
 			.mysql("""

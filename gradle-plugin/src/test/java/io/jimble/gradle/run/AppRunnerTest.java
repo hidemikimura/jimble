@@ -311,6 +311,72 @@ class AppRunnerTest {
 	}
 
 	/**
+	 * helidon の JVM 全体の直列化フィルタを切る
+	 *
+	 * <p>
+	 * 切らないと、helidon が Gradle デーモンにフィルタを張ってしまい、
+	 * <b>次のビルドが {@code filter status: REJECTED} で起動しなくなる</b>
+	 * （要件 F-X-02 / D-77）。
+	 * </p>
+	 */
+	@Test
+	@DisplayName("helidon に JVM 全体の直列化フィルタを張らせない")
+	void keepDaemonDeserializable () {
+
+		String key = "helidon.serialFilter.missing.action";
+		String saved = System.getProperty(key);
+
+		try {
+
+			System.clearProperty(key);
+
+			AppRunner.keepDaemonDeserializable(new RunLog());
+
+			assertEquals("IGNORE", System.getProperty(key));
+
+		} finally {
+
+			if (saved == null) {
+				System.clearProperty(key);
+			} else {
+				System.setProperty(key, saved);
+			}
+
+		}
+
+	}
+
+	/**
+	 * 自分で指定していたらそのまま
+	 */
+	@Test
+	@DisplayName("自分で指定した直列化フィルタの扱いは変えない")
+	void keepDaemonDeserializableKeepsExplicit () {
+
+		String key = "helidon.serialFilter.missing.action";
+		String saved = System.getProperty(key);
+
+		try {
+
+			System.setProperty(key, "FAIL");
+
+			AppRunner.keepDaemonDeserializable(new RunLog());
+
+			assertEquals("FAIL", System.getProperty(key));
+
+		} finally {
+
+			if (saved == null) {
+				System.clearProperty(key);
+			} else {
+				System.setProperty(key, saved);
+			}
+
+		}
+
+	}
+
+	/**
 	 * アプリが読まれたクラスローダを取る
 	 *
 	 * @param classpath	クラスパス

@@ -300,6 +300,13 @@ public final class PropertyUtil {
 	 * @param value     値
 	 * @throws Exception 例外
 	 */
+	/*
+	 * 無検査キャスト：Map の中身の型までは確かめられない。
+	 * <b>キーが String の Map である前提</b>で1つ入れるだけである
+	 * （プロパティ名をキーにする、というのがこのメソッドの仕事）。
+	 * 違う Map を渡されると put のところで落ちる。
+	 */
+	@SuppressWarnings("unchecked")
 	public static void setProperty (Configration conf, Object src, String fieldName, Object value) throws Exception {
 
 		Class<?> cls = src.getClass();
@@ -465,15 +472,15 @@ public final class PropertyUtil {
 		if (!CONSTRUCTOR_MAP.containsKey(cls)) {
 			List<Constructor<?>> list = new ArrayList<>();
 
-			Constructor[] array = cls.getConstructors();
+			Constructor<?>[] array = cls.getConstructors();
 			if (array != null) {
-				for (Constructor c : array) {
+				for (Constructor<?> c : array) {
 					list.add(c);
 				}
 			}
 			array = cls.getDeclaredConstructors();
 			if (array != null) {
-				for (Constructor c : array) {
+				for (Constructor<?> c : array) {
 					list.add(c);
 				}
 			}

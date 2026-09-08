@@ -119,6 +119,22 @@ public final class BatchRegistry {
 	 * クラス名で直接判定する。
 	 * </p>
 	 *
+	 * <h2>登録が0件のときも動く</h2>
+	 * <p>
+	 * <b>「1つも登録されていない」は「全部消えた」である。</b>
+	 * 空のときだけ何もしないと、最後のバッチを消したときにだけ
+	 * <b>行が {@code enable} のまま残る</b>。
+	 * </p>
+	 * <p>
+	 * <b>そのかわり、{@code sync} を呼ぶ入口は登録を済ませてから呼ぶこと。</b>
+	 * 登録し忘れたまま呼ぶと<b>全部の行が {@code nothing} になる</b>
+	 * （スケジューラが1つも動かなくなる）。
+	 * バッチを持たないアプリは {@code sync} を呼ばないこと。
+	 * </p>
+	 * <p>
+	 * 空のときは {@code NOT IN ()} を書けないので、その節ごと落とす。
+	 * </p>
+	 *
 	 * @param db		DB
 	 * @param batches	登録されているバッチ
 	 */
@@ -142,13 +158,20 @@ public final class BatchRegistry {
 
 		params.add(BatchMasterStatus.nothing.name());
 
+		/*
+		 * NOT IN () は構文エラーになる。
+		 * 登録が0件なら「残っている行は全部消えたもの」なので、節ごと要らない。
+		 */
+		String keep = placeholders.isEmpty()
+			? ""
+			: "class_name NOT IN (%s) AND ".formatted(placeholders);
+
 		db.update("""
 				UPDATE batch_master SET
 					status = ?
 				WHERE
-					class_name NOT IN (%s)
-					AND status <> ?
-			""".formatted(placeholders)
+					%sstatus <> ?
+			""".formatted(keep)
 			, params.toArray());
 
 	}
@@ -209,7 +232,18 @@ public final class BatchRegistry {
 	 *
 	 * <p>
 	 * <b>コードから消えたバッチは {@code nothing} にする。</b>行そのものは残すので、
-	 * 過去の履歴からたどれる。
+	 * 過去の履歴からたどれる。<b>1つも登録されていなければ、全部が消えたものとして扱う。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>登録を済ませてから呼ぶこと。</b>登録し忘れたまま呼ぶと
+	 * 全部の行が {@code nothing} になる。バッチを持たないアプリは呼ばないこと。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code batch_master} を別のアプリと共有しないこと。</b>
+	 * 消えた判定はクラス名で行うので、同じテーブルを見る2つのアプリがあると
+	 * <b>お互いの行を {@code nothing} にし合う</b>。
 	 * </p>
 	 *
 	 * @param db	DB
@@ -232,7 +266,16 @@ public final class BatchRegistry {
 		}
 
 		if (batches.isEmpty()) {
+
+			/*
+			 * <b>1つも登録されていない = 全部消えた</b>、として扱う。
+			 * ここで戻ると、最後のバッチを消したときにだけ
+			 * 行が enable のまま残る。
+			 */
+			markDisappeared(db, batches);
+
 			return 0;
+
 		}
 
 		Date now = new Date();

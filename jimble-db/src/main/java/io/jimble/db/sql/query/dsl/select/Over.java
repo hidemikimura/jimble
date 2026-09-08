@@ -1,10 +1,12 @@
 package io.jimble.db.sql.query.dsl.select;
 
 import io.jimble.db.dialect.SqlWriter;
+import io.jimble.db.sql.SqlBuildException;
 import io.jimble.db.sql.query.dsl.AbstractDsl;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.order_by.IOrderBy;
 import io.jimble.db.sql.query.select.ISelect;
+import io.jimble.db.sql.query.where.IWhere;
 import io.jimble.util.data.definition.IColumn;
 
 import java.util.ArrayList;
@@ -122,6 +124,31 @@ public class Over extends AbstractDsl implements IDsl {
 	}
 
 	// endregion
+
+	/**
+	 * ウィンドウ関数は条件に書けない
+	 *
+	 * <p>
+	 * {@code AbstractDsl} は条件のメソッド（{@code eq} / {@code gt} …）を
+	 * 全部の DSL に生やしている。集約関数なら {@code HAVING} で意味があるが、
+	 * <b>ウィンドウ関数は {@code WHERE} にも {@code HAVING} にも書けない</b>
+	 * （評価されるのがどちらより後なので、SQL の決まりで禁じられている）。
+	 * </p>
+	 * <p>
+	 * 塞がないと {@code Dsl.rowNumber().over(...).eq(1)} と書けてしまい、
+	 * <b>DB に投げるまで気づけない</b>。組み立てた時点で落とす。
+	 * </p>
+	 *
+	 * @return	返らない
+	 */
+	@Override
+	protected IWhere where () {
+
+		throw new SqlBuildException(
+			"ウィンドウ関数は WHERE にも HAVING にも書けません。"
+				+ "順位で絞るなら、いったん副問い合わせで出してから外側で絞ってください");
+
+	}
 
 	/**
 	 * {@inheritDoc}

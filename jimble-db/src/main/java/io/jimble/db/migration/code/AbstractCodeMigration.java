@@ -1,5 +1,6 @@
 package io.jimble.db.migration.code;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
@@ -159,7 +160,7 @@ public abstract class AbstractCodeMigration {
 
 		DB db = DBUtil.getMainDB();
 
-		db.insert(Sqls.insertIgnoreInto(db.dialect(), "migration_code") + """
+		db.insert(Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.MIGRATION_CODE) + """
 				 (
 					version
 					, state

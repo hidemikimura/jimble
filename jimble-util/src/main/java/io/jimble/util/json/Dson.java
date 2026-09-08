@@ -22,7 +22,7 @@ import java.util.Map;
  */
 public final class Dson {
 
-	/****************************** コンストラクタ. ******************************/
+	/* ***************************** コンストラクタ. ******************************/
 
 	/**
 	 * コンストラクタ.
@@ -47,7 +47,7 @@ public final class Dson {
 		this.decoder = decoder == null ? new StreamDecoder() : decoder;
 	}
 
-	/****************************** エラー. ******************************/
+	/* ***************************** エラー. ******************************/
 
 	/**
 	 * エラー判定.
@@ -101,7 +101,45 @@ public final class Dson {
 		this.decoder.clearError();
 	}
 
-	/****************************** デコード. ******************************/
+	/**
+	 * デコード結果を {@code Data} として返す
+	 *
+	 * <p>
+	 * <b>4つの decode（ファイル / Reader / ストリーム / 文字列）で同じことをしていた。</b>
+	 * 同じ無検査キャストが4か所に並ぶと、
+	 * <b>本当に危ないキャストが警告の山に埋もれる</b>ので、ここ1つに閉じる。
+	 * </p>
+	 * <p>
+	 * {@code T} が {@code Data} を受け取れることは、呼ぶ前に
+	 * {@code PropertyUtil.isAssignableFrom(Data.class, destClasses[0])} で確かめている。
+	 * </p>
+	 *
+	 * @param dest	デコード結果
+	 * @param <T>	返す型
+	 * @return	{@code Data} にできなければ null（呼び出し側が {@code Convertor} に回す）
+	 */
+	@SuppressWarnings("unchecked")
+	private static <T> T asData (Object dest) {
+
+		if (dest instanceof Data) {
+			return (T) dest;
+		}
+
+		if (dest instanceof Map<?, ?> map) {
+
+			try {
+				Data res = (Data) PropertyUtil.newInstance(dest.getClass());
+				res.putAll((Map<String, ?>) map);
+				return (T) res;
+			} catch (Exception ignore) {}
+
+		}
+
+		return null;
+
+	}
+
+	/* ***************************** デコード. ******************************/
 
 	/**
 	 * JSONデコーダ.
@@ -259,16 +297,9 @@ public final class Dson {
 
 			Object dest = this.decoder.decode(conf, file, Charset.forName(charset));
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				if (dest instanceof Data) {
-					try {
-						return (T) dest;
-					} catch (Exception ignore) {}
-				} else if (dest instanceof Map<?,?>) {
-					try {
-						Data res = (Data) PropertyUtil.newInstance(dest.getClass());
-						res.putAll(((Map<String, ?>) dest));
-						return (T) res;
-					} catch (Exception ignore) {}
+				T res = asData(dest);
+				if (res != null) {
+					return res;
 				}
 			}
 
@@ -321,16 +352,9 @@ public final class Dson {
 
 			Object dest = this.decoder.decode(conf, reader);
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				if (dest instanceof Data) {
-					try {
-						return (T) dest;
-					} catch (Exception ignore) {}
-				} else if (dest instanceof Map<?,?>) {
-					try {
-						Data res = (Data) PropertyUtil.newInstance(dest.getClass());
-						res.putAll(((Map<String, ?>) dest));
-						return (T) res;
-					} catch (Exception ignore) {}
+				T res = asData(dest);
+				if (res != null) {
+					return res;
 				}
 			}
 
@@ -385,16 +409,9 @@ public final class Dson {
 
 			Object dest = this.decoder.decode(conf, stream, Charset.forName(charset));
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				if (dest instanceof Data) {
-					try {
-						return (T) dest;
-					} catch (Exception ignore) {}
-				} else if (dest instanceof Map<?,?>) {
-					try {
-						Data res = (Data) PropertyUtil.newInstance(dest.getClass());
-						res.putAll(((Map<String, ?>) dest));
-						return (T) res;
-					} catch (Exception ignore) {}
+				T res = asData(dest);
+				if (res != null) {
+					return res;
 				}
 			}
 
@@ -445,16 +462,9 @@ public final class Dson {
 
 			Object dest = this.decoder.decode(conf, json);
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				if (dest instanceof Data) {
-					try {
-						return (T) dest;
-					} catch (Exception ignore) {}
-				} else if (dest instanceof Map<?,?>) {
-					try {
-						Data res = (Data) PropertyUtil.newInstance(dest.getClass());
-						res.putAll(((Map<String, ?>) dest));
-						return (T) res;
-					} catch (Exception ignore) {}
+				T res = asData(dest);
+				if (res != null) {
+					return res;
 				}
 			}
 
@@ -466,7 +476,7 @@ public final class Dson {
 		}
 	}
 
-	/****************************** エンコード. ******************************/
+	/* ***************************** エンコード. ******************************/
 
 	/**
 	 * JSONエンコーダ.

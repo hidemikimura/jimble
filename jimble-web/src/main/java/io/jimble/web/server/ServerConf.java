@@ -84,13 +84,6 @@ public final class ServerConf {
 	private ServerConf () {}
 
 	/**
-	 * ポート
-	 *
-	 * <p>システムプロパティ &gt; 設定 &gt; 既定値 の順で決まる。</p>
-	 *
-	 * @return	ポート
-	 */
-	/**
 	 * 待ち受けるアドレス（要件 F-H-06）
 	 *
 	 * <p>
@@ -111,6 +104,13 @@ public final class ServerConf {
 
 	}
 
+	/**
+	 * ポート
+	 *
+	 * <p>システムプロパティ &gt; 設定 &gt; 既定値 の順で決まる。</p>
+	 *
+	 * @return	ポート
+	 */
 	public static int port () {
 
 		Integer property = Integer.getInteger(PROPERTY_PORT);

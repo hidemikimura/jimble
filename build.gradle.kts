@@ -32,9 +32,6 @@ val sharedDatabase = gradle.sharedServices.registerIfAbsent("sharedDatabase", Sh
  */
 val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.2.1-SNAPSHOT")
 
-/* doclint を切るモジュール（要件 D-15。潰したらここから外す） */
-val DOCLINT_OFF = setOf("jimble-util")
-
 /*
  * Maven Central へ出さないモジュール。
  *
@@ -79,6 +76,33 @@ subprojects {
 			listOf(
 				"-Xlint:all",
 				"-Xlint:-serial",
+				/*
+				 * this-escape を切る（要件 D-15）。
+				 *
+				 * jimble は<b>ルートをコンストラクタで登録する</b>
+				 * （`class PostController extends Controller { { get("/posts", ...); } }`）。
+				 * javac から見ると「派生クラスの初期化が終わる前に this を触っている」ので、
+				 * <b>正しく書いたコントローラが必ず1件警告を出す。</b>
+				 *
+				 * 登録の口（Controller の get / post / before / error / install …）は
+				 * <b>全部 protected final</b> で、上書きされたメソッドを呼ぶことはない。
+				 * つまりこの形は安全である。
+				 *
+				 * 1つずつ @SuppressWarnings を付ける手もあるが、
+				 * <b>jimble を使う人が書くコントローラすべてに要ることになる</b>。
+				 * フレームワークの設計に由来する警告なので、ここで落とす。
+				 */
+				"-Xlint:-this-escape",
+				/*
+				 * <b>警告をエラーにする</b>（要件 D-15）。
+				 *
+				 * 「あとで潰す」で溜めた警告は潰されない。
+				 * 移送時点の警告を jimble-util だけ種別ごと落としていたせいで、
+				 * <b>本当に危ないものが山に埋もれて見えなくなっていた。</b>
+				 * 消せないものは、消せない理由を書いた @SuppressWarnings を
+				 * <b>その場所に</b>付ける（読めば理由が分かる）。
+				 */
+				"-Werror",
 				// リフレクションに頼らずパラメータ名を残す
 				"-parameters",
 			)
@@ -90,15 +114,12 @@ subprojects {
 		options.encoding = "UTF-8"
 
 		/*
-		 * 移送してきたコードは javadoc の作法が揃っていない（要件 D-15）。
-		 * ここに挙げたモジュールだけ doclint を切る。
-		 * 全体で切ると、これから書くコードの間違いに気づけなくなる。
-		 * 潰したら、この表から外す。
+		 * doclint は<b>全モジュールで有効</b>である（要件 D-15）。
+		 * 移送してきた jimble-util だけ切っていたが、
+		 * <b>切っている場所で壊れても気づけない</b>（publishToMavenLocal が
+		 * javadoc で落ちて初めて分かる、という形でしか出てこない）。
+		 * 2026-09-08 に 45 件を潰して、切るのをやめた。
 		 */
-		// ここでの name は Javadoc タスクの名前。見たいのはモジュール名である
-		if (this@subprojects.name in DOCLINT_OFF) {
-			(options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
-		}
 
 	}
 

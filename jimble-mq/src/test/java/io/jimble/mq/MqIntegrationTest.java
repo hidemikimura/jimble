@@ -249,11 +249,6 @@ class MqIntegrationTest {
 	}
 
 	/**
-	 * 1行目
-	 *
-	 * @return	行
-	 */
-	/**
 	 * キューのテーブル名を製品に合わせて囲む（要件 F-D-30）
 	 *
 	 * @return	囲んだテーブル名
@@ -264,6 +259,11 @@ class MqIntegrationTest {
 
 	}
 
+	/**
+	 * 1行目
+	 *
+	 * @return	行
+	 */
 	private Data firstRow () {
 
 		return DBUtil.getMainDB().select("SELECT * FROM %s ORDER BY id LIMIT 1".formatted(quoted()));

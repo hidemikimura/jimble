@@ -85,7 +85,7 @@ public class DBSticky {
 	 */
 	public static void init () {
 
-		DBVersion dbVersion = new DBVersion("db_sticky", "DB sticky");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.DB_STICKY, "DB sticky");
 		dbVersion.add(1)
 			.mysql("""
 				create table db_sticky (

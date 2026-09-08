@@ -34,6 +34,12 @@ public class NumberStreamParser implements IStreamParser {
 	 * {@inheritDoc}
 	 */
 	@Override
+	/*
+	 * switch を<b>わざと落として</b>いる。
+	 * 「区切り文字はどれも同じ扱い」「: のときだけ先にキーを切り替える」
+	 * という書き方で、break を入れると<b>区切り文字が値の一部として読まれる</b>。
+	 */
+	@SuppressWarnings("fallthrough")
 	public Object parse (Configration conf, IInputStream stream) {
 
 		stream.returnPos();

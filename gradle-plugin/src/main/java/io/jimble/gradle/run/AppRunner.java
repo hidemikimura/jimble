@@ -52,6 +52,13 @@ final class AppRunner {
 	/** 「全部止める」の入口（jimble 側。要件 D-77） */
 	private static final String SHUTDOWN_CLASS = "io.jimble.core.lifecycle.Shutdown";
 
+	/**
+	 * helidon に「全体のフィルタが無かったときどうするか」を伝えるもの
+	 *
+	 * <p>{@code IGNORE} にすると helidon はフィルタを張らない。</p>
+	 */
+	private static final String HELIDON_MISSING_ACTION = "helidon.serialFilter.missing.action";
+
 	/** 止まるのを待つ上限 */
 	private static final Duration STOP_TIMEOUT = Duration.ofSeconds(20);
 
@@ -126,10 +133,69 @@ final class AppRunner {
 		System.setProperty("jimble.env", spec.env());
 		System.setProperty("jimble.server.port", String.valueOf(spec.port()));
 
+		keepDaemonDeserializable(log);
+
 		AppRunner runner = new AppRunner(spec, log);
 		runner.thread.start();
 
 		return runner;
+
+	}
+
+	/**
+	 * helidon に JVM 全体の直列化フィルタを張らせない
+	 *
+	 * <p>
+	 * helidon は {@code WebServer} を立てるときに
+	 * {@code SerializationConfig.configureRuntime()} を呼び、
+	 * <b>JVM 全体の直列化フィルタ</b>
+	 * （{@code ObjectInputFilter.Config.setSerialFilter}）を
+	 * 「許可リスト + {@code !*}」で張る。
+	 * 攻撃で任意のクラスを読み戻されないためのもので、
+	 * <b>アプリが自分のプロセスで動いているうちは正しい</b>。
+	 * </p>
+	 *
+	 * <h2>ここでは正しくない</h2>
+	 * <p>
+	 * jimbleRun は<b>アプリを Gradle デーモンの中で動かす</b>（要件 F-X-02 / D-77）。
+	 * つまりこのフィルタは<b>デーモンに張られる</b>。
+	 * フィルタは一度きりで、外せない。アプリを止めても<b>デーモンに残る</b>。
+	 * </p>
+	 * <p>
+	 * Gradle は自分のビルドサービスのパラメータを Java 直列化で読み戻す。
+	 * その {@code ObjectInputStream} にもこのフィルタが載るので、
+	 * <b>次のビルドが始まる前に落ちる。</b>
+	 * </p>
+	 * <pre>
+	 * Couldn't populate class org.gradle.api.services.BuildServiceParameters$None
+	 * &gt; filter status: REJECTED
+	 * </pre>
+	 * <p>
+	 * <b>「1回目は動く。止めてもう1回動かすと起動しない」</b>という出かたをする。
+	 * デーモンを作り直す（IDE の同期、{@code gradle --stop}）と直るので、
+	 * 原因がここだと分かりにくい。
+	 * </p>
+	 *
+	 * <h2>本番は変わらない</h2>
+	 * <p>
+	 * 切るのは<b>jimbleRun のあいだだけ</b>である。
+	 * 本番はアプリが自分の JVM で動くので、helidon はいつもどおりフィルタを張る。
+	 * 自分で {@code -Dhelidon.serialFilter.missing.action=...} を
+	 * 指定している場合は、そちらを尊重して何もしない。
+	 * </p>
+	 *
+	 * @param log	ログ
+	 */
+	static void keepDaemonDeserializable (RunLog log) {
+
+		if (System.getProperty(HELIDON_MISSING_ACTION) != null) {
+			return;
+		}
+
+		System.setProperty(HELIDON_MISSING_ACTION, "IGNORE");
+
+		log.debug("helidon の JVM 全体の直列化フィルタを切りました"
+			+ "（Gradle デーモンの中で動かすため。本番では切りません）");
 
 	}
 

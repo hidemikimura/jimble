@@ -224,11 +224,6 @@ class DbSessionIntegrationTest {
 	// region ヘルパー
 
 	/**
-	 * 行数
-	 *
-	 * @return	行数
-	 */
-	/**
 	 * セッションテーブル名を製品に合わせて囲む（要件 F-D-30）
 	 *
 	 * @return	囲んだテーブル名
@@ -239,6 +234,11 @@ class DbSessionIntegrationTest {
 
 	}
 
+	/**
+	 * 行数
+	 *
+	 * @return	行数
+	 */
 	private long count () {
 
 		return DBUtil.getMainDB()

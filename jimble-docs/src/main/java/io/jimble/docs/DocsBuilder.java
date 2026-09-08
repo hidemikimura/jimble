@@ -45,10 +45,6 @@ public final class DocsBuilder {
 	/** 公開先。sitemap と canonical に使う */
 	private static final String SITE_URL = "https://jimble.io";
 
-	/** まとまりの並び */
-	private static final List<String> SECTIONS = List.of(
-		"はじめに", "基本", "データベース", "実行基盤", "プロトコル", "開発", "そのほか"
-	);
 
 	private DocsBuilder () {}
 
@@ -100,7 +96,6 @@ public final class DocsBuilder {
 
 		System.out.println("コード片: %d 件".formatted(snippets.size()));
 
-		Markdown markdown = new Markdown(snippets);
 
 		TemplateEngine engine = TemplateEngine.createPrecompiled(ContentType.Html);
 
@@ -125,7 +120,11 @@ public final class DocsBuilder {
 				continue;
 			}
 
-			List<Page> pages = readAll(source, markdown);
+			/*
+			 * 注記の見出し（補足 / 注意 …）は言語で変わるので、
+			 * Markdown も言語ごとに作る（要件 NF-D-06）。
+			 */
+			List<Page> pages = readAll(source, new Markdown(snippets, language), language);
 
 			if (pages.isEmpty()) {
 				continue;
@@ -144,7 +143,7 @@ public final class DocsBuilder {
 			String language = entry.getKey();
 			List<Page> pages = entry.getValue();
 
-			SiteNav nav = new SiteNav(pages, SECTIONS);
+			SiteNav nav = new SiteNav(pages, Texts.sections(language));
 
 			Path target = out.resolve(language);
 			Files.createDirectories(target);
@@ -201,7 +200,7 @@ public final class DocsBuilder {
 	 * @return	ページ
 	 * @throws IOException	読めなかった場合
 	 */
-	private static List<Page> readAll (Path source, Markdown markdown) throws IOException {
+	private static List<Page> readAll (Path source, Markdown markdown, String language) throws IOException {
 
 		List<Page> pages = new ArrayList<>();
 
@@ -213,7 +212,7 @@ public final class DocsBuilder {
 				.toList();
 
 			for (Path file : files) {
-				pages.add(read(file, markdown));
+				pages.add(read(file, markdown, language));
 			}
 
 		}
@@ -227,10 +226,11 @@ public final class DocsBuilder {
 	 *
 	 * @param file		ファイル
 	 * @param markdown	変換するもの
+	 * @param language	言語
 	 * @return	ページ
 	 * @throws IOException	読めなかった場合
 	 */
-	private static Page read (Path file, Markdown markdown) throws IOException {
+	private static Page read (Path file, Markdown markdown, String language) throws IOException {
 
 		String content = Files.readString(file, StandardCharsets.UTF_8);
 
@@ -275,7 +275,7 @@ public final class DocsBuilder {
 			slug
 			, title
 			, front.getOrDefault("summary", "")
-			, front.getOrDefault("section", "そのほか")
+			, front.getOrDefault("section", Texts.otherSection(language))
 			, Integer.parseInt(front.getOrDefault("order", "999"))
 			, markdown.toHtml(body)
 			, markdown.headings(body)
@@ -308,6 +308,7 @@ public final class DocsBuilder {
 		model.put("nav", nav);
 		model.put("language", language);
 		model.put("languages", languages);
+		model.put("text", Texts.ui(language));
 
 		StringOutput output = new StringOutput();
 		engine.render("docs/page.jte", model, output);
@@ -349,13 +350,6 @@ public final class DocsBuilder {
 
 	}
 
-	/**
-	 * 静的ファイルを写す
-	 *
-	 * @param from	元
-	 * @param to	先
-	 * @throws IOException	写せなかった場合
-	 */
 	/**
 	 * 配る側が要るものを書く
 	 *
@@ -460,6 +454,13 @@ public final class DocsBuilder {
 
 	}
 
+	/**
+	 * 静的ファイルを写す
+	 *
+	 * @param from	元
+	 * @param to	先
+	 * @throws IOException	写せなかった場合
+	 */
 	private static void copyStatic (Path from, Path to) throws IOException {
 
 		if (!Files.isDirectory(from)) {

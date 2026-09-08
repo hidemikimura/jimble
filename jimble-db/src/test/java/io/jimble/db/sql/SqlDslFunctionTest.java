@@ -517,6 +517,92 @@ class SqlDslFunctionTest {
 
 	}
 
+	@Test
+	@DisplayName("ウィンドウ関数は条件に書けない")
+	void windowFunctionInWhere () {
+
+		/*
+		 * Dsl.rowNumber().over(...).eq(1) と書けてしまうと、
+		 * WHERE に ROW_NUMBER() OVER (...) = ? が並ぶ。
+		 * SQL の決まりで禁じられているので DB が落とすが、
+		 * <b>落ちるのは投げたときで、書いたときではない</b>。
+		 */
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class
+			, () -> Dsl.rowNumber().partitionBy(TestSchema.Site.group_id).eq(1));
+
+		// 選択の側（本来の使い方）は塞がない。<b>塞ぎ方が広すぎない</b>ことの確認
+		assertEquals("ROW_NUMBER() OVER (PARTITION BY `site`.`group_id`)"
+			, sql(MYSQL, Dsl.rowNumber().partitionBy(TestSchema.Site.group_id)));
+
+	}
+
+	@Test
+	@DisplayName("in に空の一覧を渡したら組み立てた時点で落ちる")
+	void inWithEmptyList () {
+
+		// IN () という構文エラーの SQL を DB に投げない（要件 F-D-07）
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class
+			, () -> SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.where(TestSchema.Site.id.in(List.of()))
+				.sql(MYSQL));
+
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class
+			, () -> SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.where(TestSchema.Site.id.not_in(new Object[0]))
+				.sql(POSTGRESQL));
+
+		// 1件でも入っていれば通る
+		org.junit.jupiter.api.Assertions.assertTrue(
+			SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.where(TestSchema.Site.id.in(List.of(1)))
+				.sql(MYSQL)
+				.contains("IN (?)"));
+
+	}
+
+	@Test
+	@DisplayName("JSON の where から空の一覧が来ても落ちる（IN (NULL) にしない）")
+	void inWithEmptyListFromJson () {
+
+		/*
+		 * クライアントから {"where": {"site": {"id|in": []}}} が飛んでくるのが、
+		 * F-D-07 がいちばん効いてほしいところである。
+		 *
+		 * 以前は空の一覧が null に潰され、IN (?) ＋ NULL のバインドになっていた。
+		 * <b>IN (NULL) はどの行にも当たらないので、黙って 0 件</b>になり、
+		 * 例外も DB のエラーも出なかった。not_in なら逆に本来の全件が 0 件になる。
+		 */
+		io.jimble.util.data.Data where = new io.jimble.util.data.Data();
+		io.jimble.util.data.Data site = new io.jimble.util.data.Data();
+		site.put("id|in", List.of());
+		io.jimble.util.data.Data tables = new io.jimble.util.data.Data();
+		tables.put("site", site);
+		where.put("where", tables);
+
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class
+			, () -> SQL.select()
+				.from(TestSchema.Site.instance())
+				.where(where)
+				.sql(MYSQL));
+
+	}
+
+	@Test
+	@DisplayName("in に null を渡しても落ちる")
+	void inWithNull () {
+
+		// IN (NULL) もどの行にも当たらない。取り違えが表に出ない
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class
+			, () -> SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.where(TestSchema.Site.id.in(null))
+				.sql(MYSQL));
+
+	}
+
 	// endregion
 
 }

@@ -247,17 +247,17 @@ public final class Dispatcher {
 		 */
 		context.response().code(statusCode);
 
+		/*
+		 * エラー経路も Stage を通す（要件 F-C-13）。
+		 *
+		 * ここだけ自前で isSent() を見ていると、
+		 * <b>通常の経路と同じ判定が2つ</b>になる。片方だけ直すとずれる。
+		 */
+		Stage stage = new Stage(context);
+
 		// 内側 → 外側
 		for (ErrorHandler hook : match.errorHooks()) {
-			try {
-				hook.handle(context, cause, statusCode);
-				if (context.response().isSent()) {
-					return;
-				}
-			} catch (Throwable handlerFailure) {
-				// エラーハンドラ自身の失敗で何も返せなくならないよう、握って次に進む（要件 F-C-15）
-				Log.error(handlerFailure, "エラーハンドラで例外が発生しました");
-			}
+			stage.runError(hook, cause, statusCode);
 		}
 
 		/*
@@ -270,9 +270,7 @@ public final class Dispatcher {
 		 * ハンドラは動いているし例外も出ないので、
 		 * 「404 は返るが本文が空」という形でしか表に出ない。
 		 */
-		if (!context.response().isSent()) {
-			context.response().send();
-		}
+		stage.send();
 
 	}
 

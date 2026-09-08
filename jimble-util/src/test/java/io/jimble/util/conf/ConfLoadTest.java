@@ -24,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * フレームワークではないこと</b>である。
  * </p>
  */
+/*
+ * 非推奨の {@code -Denv} が効き続けることも確かめる（D-78）。
+ * <b>非推奨のものをわざと呼ぶテスト</b>なので、非推奨警告が出るのは当たり前である。
+ * 消すために本体の @Deprecated を外すのは本末転倒なので、ここで黙らせる。
+ */
+@SuppressWarnings("deprecation")
 class ConfLoadTest {
 
 	/** 前に使っていた「jar の外の conf/」を指すキー（もう効かないことを確かめる） */

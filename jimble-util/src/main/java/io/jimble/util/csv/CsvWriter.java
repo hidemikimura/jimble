@@ -63,7 +63,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param outputFile    ファイル
-	 * @throws Exception    例外
+	 * @throws IOException  開けなかった場合
 	 */
 	public CsvWriter(File outputFile) throws IOException {
 

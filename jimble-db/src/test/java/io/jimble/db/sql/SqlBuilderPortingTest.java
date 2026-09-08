@@ -164,18 +164,19 @@ class SqlBuilderPortingTest {
 	}
 
 	@Test
-	@DisplayName("F-D-07【既知の落とし穴】in() に空コレクションを渡すと壊れた SQL になる")
-	void emptyInIsBroken () {
+	@DisplayName("F-D-07 in() に空コレクションを渡したら組み立てた時点で落ちる")
+	void emptyInFailsEarly () {
 
 		SelectBuilder builder = SQL
 			.select()
 			.from(TestSchema.Site.instance())
 			.where(SITE_ID.in(List.of()));
 
-		String sql = builder.sql();
-
-		// 現状の仕様を明示的に固定しておく。改善したらこのテストを書き換える
-		assertTrue(sql.contains("IN ()") || sql.contains("IN()"), "現状は IN () になる: " + sql);
+		/*
+		 * 以前は IN () という構文エラーの SQL を組み立てて、そのまま DB に投げていた。
+		 * DB のエラーメッセージからは<b>どこで空を渡したのか辿れない</b>。
+		 */
+		org.junit.jupiter.api.Assertions.assertThrows(SqlBuildException.class, builder::sql);
 
 	}
 

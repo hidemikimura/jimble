@@ -581,6 +581,37 @@ class DispatcherTest {
 	}
 
 	@Test
+	@DisplayName("F-C-13 error ハンドラが送ったら外側の error ハンドラは走らない")
+	void errorHandlerThatSendsStopsTheRest () {
+
+		/*
+		 * 「送ったら以降は動かさない」の判定は Stage 1か所に閉じている。
+		 * エラー経路だけ自前で見ていると、片方だけ直したときにずれる。
+		 */
+		JimbleApp app = new JimbleApp() {
+			{
+				error((context, cause, statusCode) -> log.add("outer"));
+
+				path("/admin", () -> {
+					error((context, cause, statusCode) -> {
+						log.add("inner");
+						context.response().code(statusCode).send();
+					});
+					get("/x", context -> {
+						throw new HttpException(400, "bad");
+					});
+				});
+			}
+		};
+
+		Fakes.FakeResponseSink response = dispatch(app, "GET", "/admin/x");
+
+		assertEquals(List.of("inner"), log, "内側が送ったら外側は走らないこと");
+		assertEquals(400, response.status());
+
+	}
+
+	@Test
 	@DisplayName("T-16 404 はエラーログに出ない")
 	void notFoundIsNotLoggedAsError () {
 

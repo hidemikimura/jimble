@@ -32,6 +32,9 @@ public class NotIn implements ICondition {
 	@Override
 	public void conditionSql (SqlWriter sb) {
 
+		// 空の一覧のまま書くと NOT IN () になる（要件 F-D-07）
+		InValues.check(value, "NOT IN");
+
 		sb.append(" NOT IN (");
 		if (value instanceof SelectBuilder selectBuilder) {
 			sb.append(selectBuilder.sql(sb.dialect()));
@@ -103,6 +106,26 @@ public class NotIn implements ICondition {
 		} else {
 			return value;
 		}
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public String operator () {
+
+		return io.jimble.db.sql.query.where.WhereTerm.NOT_IN;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Object conditionValue () {
+
+		return value;
 
 	}
 

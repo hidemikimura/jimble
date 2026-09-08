@@ -37,7 +37,7 @@ public class DataConvertor implements IConvertor<Data> {
 		}
 
 		if (destClasses == null || destClasses.length == 0) {
-			destClasses = new Class[]{ Data.class };
+			destClasses = new Class<?>[]{ Data.class };
 		}
 
 		Data res = (Data) PropertyUtil.newInstance(destClasses[0]);

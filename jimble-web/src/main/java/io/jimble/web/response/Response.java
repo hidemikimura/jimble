@@ -998,12 +998,6 @@ public class Response extends Data {
 	}
 
 	/**
-	 * レスポンス送信
-	 *
-	 * @param code    ステータスコード
-	 * @return  Response
-	 */
-	/**
 	 * 遅延読み込みの枝をまとめて埋める（要件 F-A-06）
 	 *
 	 * <p>
@@ -1033,6 +1027,12 @@ public class Response extends Data {
 
 	}
 
+	/**
+	 * レスポンス送信
+	 *
+	 * @param code    ステータスコード
+	 * @return  Response
+	 */
 	public Response send (int code) {
 
 		if (sink.isSent()) {

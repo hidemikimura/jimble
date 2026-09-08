@@ -1,5 +1,6 @@
 package io.jimble.db.migration;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
@@ -715,7 +716,7 @@ public final class Migration {
 
 		DB db = DBUtil.getDB(dbSource.name);
 
-		DBVersion migration = new DBVersion("migration", "マイグレーション情報");
+		DBVersion migration = new DBVersion(FrameworkTables.MIGRATION, "マイグレーション情報");
 		migration.add(1)
 			.mysql("""
 				create table migration (
@@ -741,7 +742,7 @@ public final class Migration {
 			throw new MigrationException("migration テーブルを作成できませんでした: " + dbSource.name);
 		}
 
-		DBVersion history = new DBVersion("migration_history", "マイグレーション履歴");
+		DBVersion history = new DBVersion(FrameworkTables.MIGRATION_HISTORY, "マイグレーション履歴");
 		history.add(1)
 			.mysql("""
 				create table migration_history (

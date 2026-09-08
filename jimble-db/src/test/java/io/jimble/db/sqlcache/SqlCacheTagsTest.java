@@ -222,6 +222,24 @@ class SqlCacheTagsTest {
 	}
 
 	@Test
+	@DisplayName("NOT IN で絞った UPDATE はテーブルごと消す（IN と同じ扱いにしない）")
+	void updateByNotIn () {
+
+		/*
+		 * IN (1, 3) は「1 か 3 の行」だが、NOT IN (1, 3) は<b>それ以外の全部</b>。
+		 * 1 と 3 の行タグだけを消すと、<b>本当に書き換わった行のキャッシュが残る</b>
+		 * （古い値が返り続ける）。読めるようにはしたが、絞り込みには使わない。
+		 */
+		Set<String> tags = SqlCacheTags.of(DB_NAME,
+			SQL.update(Customer.instance()).set(Customer.name, "x").where(Customer.id.not_in(List.of(1, 3))));
+
+		assertTrue(tags.contains("jimble_test/customer#*"), tags.toString());
+		assertFalse(tags.contains("jimble_test/customer#id#1"), tags.toString());
+		assertFalse(tags.contains("jimble_test/customer#id#3"), tags.toString());
+
+	}
+
+	@Test
 	@DisplayName("キーでない列で絞った UPDATE はテーブルごと消す")
 	void updateByNonKey () {
 

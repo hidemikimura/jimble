@@ -85,11 +85,30 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	// region IWhere
 
 	/**
+	 * 条件を組み立てる先
+	 *
+	 * <p>
+	 * {@code IWhere} のメソッドは<b>全部ここを通す。</b>
+	 * 「この式は条件に書けない」ものは、
+	 * メソッドを1つずつ塞ぐのではなく<b>ここを塞ぐ</b>
+	 * （{@link io.jimble.db.sql.query.dsl.select.Over} がそうしている）。
+	 * 1つずつ塞ぐ形にすると、条件のメソッドを増やしたときに<b>塞ぎ忘れる</b>。
+	 * </p>
+	 *
+	 * @return	組み立て先
+	 */
+	protected IWhere where () {
+
+		return this.where;
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	public IWhere and(IWhere where) {
-		return this.where.and(where);
+		return where().and(where);
 	}
 
 	/**
@@ -97,7 +116,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere or(IWhere where) {
-		return this.where.or(where);
+		return where().or(where);
 	}
 
 	/**
@@ -105,7 +124,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere eq(Object value) {
-		return this.where.eq(value);
+		return where().eq(value);
 	}
 
 	/**
@@ -113,7 +132,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere not(Object value) {
-		return this.where.not(value);
+		return where().not(value);
 	}
 
 	/**
@@ -121,7 +140,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere gt(Object value) {
-		return this.where.gt(value);
+		return where().gt(value);
 	}
 
 	/**
@@ -129,7 +148,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere lt(Object value) {
-		return this.where.lt(value);
+		return where().lt(value);
 	}
 
 	/**
@@ -137,7 +156,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere ge(Object value) {
-		return this.where.ge(value);
+		return where().ge(value);
 	}
 
 	/**
@@ -145,7 +164,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere le(Object value) {
-		return this.where.le(value);
+		return where().le(value);
 	}
 
 	/**
@@ -153,7 +172,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere is_null() {
-		return this.where.is_null();
+		return where().is_null();
 	}
 
 	/**
@@ -161,7 +180,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere is_not_null() {
-		return this.where.is_not_null();
+		return where().is_not_null();
 	}
 
 	/**
@@ -169,7 +188,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere between(Object value1, Object value2) {
-		return this.where.between(value1, value2);
+		return where().between(value1, value2);
 	}
 
 	/**
@@ -177,7 +196,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere like(Object value) {
-		return this.where.like(value);
+		return where().like(value);
 	}
 
 	/**
@@ -185,7 +204,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere not_like(Object value) {
-		return this.where.not_like(value);
+		return where().not_like(value);
 	}
 
 	/**
@@ -193,7 +212,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere contains(Object value) {
-		return this.where.contains(value);
+		return where().contains(value);
 	}
 
 	/**
@@ -201,7 +220,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere starts_with(Object value) {
-		return this.where.starts_with(value);
+		return where().starts_with(value);
 	}
 
 	/**
@@ -209,7 +228,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere ends_with(Object value) {
-		return this.where.ends_with(value);
+		return where().ends_with(value);
 	}
 
 	/**
@@ -217,7 +236,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere in(Object value) {
-		return this.where.in(value);
+		return where().in(value);
 	}
 
 	/**
@@ -225,7 +244,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere not_in(Object value) {
-		return this.where.not_in(value);
+		return where().not_in(value);
 	}
 
 	/**
@@ -233,7 +252,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public IWhere exists(Object value) {
-		return this.where.exists(value);
+		return where().exists(value);
 	}
 
 	/**
@@ -241,7 +260,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public String logicalOperator() {
-		return this.where.logicalOperator();
+		return where().logicalOperator();
 	}
 
 	/**
@@ -249,7 +268,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 */
 	@Override
 	public void whereSql (SqlWriter sb) {
-		this.where.whereSql(sb);
+		where().whereSql(sb);
 	}
 
 	// endregion

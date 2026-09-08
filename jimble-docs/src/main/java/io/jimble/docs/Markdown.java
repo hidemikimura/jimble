@@ -52,13 +52,8 @@ import java.util.Set;
  */
 final class Markdown {
 
-	/** 注記の印 → 見出し */
-	private static final Map<String, String> CALLOUTS = Map.of(
-		"note", "補足"
-		, "tip", "こつ"
-		, "warn", "注意"
-		, "trap", "落とし穴"
-	);
+	/* 注記の印 → 見出し（言語で変わる。要件 NF-D-06） */
+	private final Map<String, String> callouts;
 
 	/* パーサ */
 	private final Parser parser;
@@ -73,10 +68,12 @@ final class Markdown {
 	 * コンストラクタ
 	 *
 	 * @param snippets	抜いてきたコード
+	 * @param language	言語（注記の見出しに使う）
 	 */
-	Markdown (Snippets snippets) {
+	Markdown (Snippets snippets, String language) {
 
 		this.snippets = snippets;
+		this.callouts = Texts.callouts(language);
 
 		List<org.commonmark.Extension> extensions = List.of(TablesExtension.create());
 
@@ -325,7 +322,7 @@ final class Markdown {
 			} else {
 				writer.raw("<div class=\"callout callout-%s\">".formatted(kind));
 				writer.raw("<p class=\"callout-title\">%s</p>".formatted(
-					Highlighter.escape(CALLOUTS.get(kind))));
+					Highlighter.escape(callouts.get(kind))));
 			}
 
 			writer.line();
@@ -379,7 +376,7 @@ final class Markdown {
 
 			String kind = literal.substring(2, end).toLowerCase(Locale.ROOT);
 
-			if (!CALLOUTS.containsKey(kind)) {
+			if (!callouts.containsKey(kind)) {
 				return null;
 			}
 

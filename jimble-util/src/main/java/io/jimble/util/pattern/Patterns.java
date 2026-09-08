@@ -275,7 +275,7 @@ public class Patterns {
 	/**
 	 * Kept for backward compatibility reasons. It does not match IPv6 addresses.
 	 *
-	 * @deprecated Please use {@link android.net.InetAddresses#isNumericAddress(String)} instead.
+	 * @deprecated Use {@code java.net.InetAddress} instead.
 	 */
 	@Deprecated
 	public static final Pattern IP_ADDRESS = Pattern.compile(IP_ADDRESS_STRING);
@@ -398,14 +398,12 @@ public class Patterns {
 	 * Regular expression pattern to match IRIs. If a string starts with http(s):// the expression
 	 * tries to match the URL structure with a relaxed rule for TLDs. If the string does not start
 	 * with http(s):// the TLDs are expected to be one of the known TLDs.
-	 *
-	 * @hide
 	 */
 	public static final Pattern AUTOLINK_WEB_URL = Pattern.compile(
 		"(" + WEB_URL_WITH_PROTOCOL + "|" + WEB_URL_WITHOUT_PROTOCOL + ")");
 	/**
 	 * Regular expression for valid email characters. Does not include some of the valid characters
-	 * defined in RFC5321: #&~!^`{}/=$*?|
+	 * defined in RFC5321: {@code #&amp;~!^`{}/=$*?|}
 	 */
 	private static final String EMAIL_CHAR = LABEL_CHAR + "\\+\\-_%'";
 	/**
@@ -422,8 +420,7 @@ public class Patterns {
 		"(?=.{1,255}(?:\\s|$|^))" + HOST_NAME;
 	/**
 	 * Regular expression pattern to match email addresses. It excludes double quoted local parts
-	 * and the special characters #&~!^`{}/=$*?| that are included in RFC5321.
-	 * @hide
+	 * and the special characters {@code #&amp;~!^`{}/=$*?|} that are included in RFC5321.
 	 */
 	public static final Pattern AUTOLINK_EMAIL_ADDRESS = Pattern.compile("(" + WORD_BOUNDARY +
 		"(?:" + EMAIL_ADDRESS_LOCAL_PART + "@" + EMAIL_ADDRESS_DOMAIN + ")" +

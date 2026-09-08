@@ -1,5 +1,6 @@
 package io.jimble.db.redis.lock;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
@@ -190,7 +191,7 @@ public class RedisLock {
 	 */
 	public static void init (DB db) {
 
-		DBVersion dbVersion = new DBVersion("redis_lock", "Redisロック情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.REDIS_LOCK, "Redisロック情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table redis_lock (

@@ -18,7 +18,7 @@ import java.util.Map.Entry;
 /**
  * POST基底
  */
-public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E> {
+public abstract class AbstractHttpPostExecutor<E extends AbstractHttpExecutor<E>> extends AbstractHttpExecutor<E> {
 
 	// region リクエストボディFORM
 
@@ -38,7 +38,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 		}
 		requestFormMap.get(name).add(value);
 
-		return (E) this;
+		return self();
 
 	}
 
@@ -68,7 +68,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 
 		requestFormFileMap.get(name).add(filePart);
 
-		return (E) this;
+		return self();
 
 	}
 
@@ -153,7 +153,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 
 		requestBodyPlainText = value;
 		setBodyText(value, "text/plain; charset=" + getCharset());
-		return (E) this;
+		return self();
 
 	}
 
@@ -166,7 +166,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 
 		requestBodyJson = value;
 		setBodyText(requestBodyJson, "application/json; charset=" + getCharset());
-		return (E) this;
+		return self();
 
 	}
 
@@ -180,7 +180,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 		requestBodyJsonData = value;
 		requestBodyJson = requestBodyJsonData.getJsonString();
 		setBodyText(requestBodyJson, "application/json; charset=" + getCharset());
-		return (E) this;
+		return self();
 
 	}
 
@@ -193,7 +193,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 
 		requestBodyXml = value;
 		setBodyText(value, "application/xml; charset=" + getCharset());
-		return (E) this;
+		return self();
 
 	}
 
@@ -216,7 +216,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 		requestBodyFile.value = value;
 		requestBodyFile.contentType = contentType;
 
-		return (E) this;
+		return self();
 
 	}
 
@@ -236,7 +236,7 @@ public abstract class AbstractHttpPostExecutor<E> extends AbstractHttpExecutor<E
 
 		requestBodyStream = is;
 
-		return (E) this;
+		return self();
 
 	}
 

@@ -1,5 +1,6 @@
 package io.jimble.db.log;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
@@ -87,7 +88,7 @@ public class DBLog {
 	 */
 	public static void init (DB db) {
 
-		DBVersion dbVersion = new DBVersion("db_log", "汎用ログ情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.DB_LOG, "汎用ログ情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table db_log

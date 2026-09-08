@@ -1,5 +1,6 @@
 package io.jimble.db.migration.code;
 
+import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.lock.DBLock;
@@ -164,7 +165,7 @@ public final class CodeMigration {
 	 */
 	public static void init () {
 
-		DBVersion dbVersion = new DBVersion("migration_code", "コードマイグレーション情報");
+		DBVersion dbVersion = new DBVersion(FrameworkTables.MIGRATION_CODE, "コードマイグレーション情報");
 		dbVersion.add(1)
 			.mysql("""
 				create table migration_code (

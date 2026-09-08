@@ -83,6 +83,17 @@ public final class StartupReport {
 	}
 
 	/**
+	 * SQL結果キャッシュの状態
+	 *
+	 * @return	{@code off}、または置き場の名前
+	 */
+	private static String sqlCache () {
+
+		return SqlCacheConf.enabled() ? SqlCacheConf.store() : "off";
+
+	}
+
+	/**
 	 * どの設定ファイルを読んだかを出す（要件 D-80 / D-81）
 	 *
 	 * <p>
@@ -96,17 +107,6 @@ public final class StartupReport {
 	 * <b>共通の設定が丸ごと落ちる</b>。落ちていたら名指しで言う。
 	 * </p>
 	 */
-	/**
-	 * SQL結果キャッシュの状態
-	 *
-	 * @return	{@code off}、または置き場の名前
-	 */
-	private static String sqlCache () {
-
-		return SqlCacheConf.enabled() ? SqlCacheConf.store() : "off";
-
-	}
-
 	private static void logConfSources () {
 
 		List<String> sources = Conf.sources();

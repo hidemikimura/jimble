@@ -245,11 +245,7 @@ public class DBUtil {
 						 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
 						 * 作りにいって二度失敗する。元の例外をそのまま上げる。
 						 */
-						try (
-							Connection connection = dbSource.dataSource.getConnection();
-						) {
-
-						}
+						dbSource.dataSource.getConnection().close();
 					}
 
 					String version = "unknown";

@@ -1,5 +1,7 @@
 package io.jimble.db.generator;
 
+import io.jimble.db.FrameworkTables;
+
 import io.jimble.db.TestDdl;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
@@ -251,7 +253,7 @@ class GeneratorIntegrationTest {
 
 		Generator.generate(outputDir.toFile(), PACKAGE);
 
-		for (String table : GeneratorConf.FRAMEWORK_TABLES) {
+		for (String table : FrameworkTables.ALL) {
 			assertFalse(source("table/" + table).exists(), table + " が生成されている");
 		}
 

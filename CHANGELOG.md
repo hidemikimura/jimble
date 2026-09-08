@@ -4,6 +4,49 @@
 
 ---
 
+## 未リリース
+
+### 変わったこと（挙動）
+
+| | |
+|---|---|
+| **`in()` / `not_in()` に空の一覧を渡すと例外になる**（F-D-07 / D-102） | いままでは `IN ()` という構文エラーの SQL を組み立てて DB に投げていた。**SQL を組み立てたところで `SqlBuildException`** にする。「空なら条件ごと外す」ことはしない（`in(空)` は「どれにも当たらない」、条件を外すと**全件**。取り違えると静かに全件消したり全件見せたりする）。空になりうるところは `if (ids.isEmpty())` で分けること |
+| **ウィンドウ関数を `where` / `having` に書くと例外になる**（D-103） | `Dsl.rowNumber().over(...).eq(1)` は SQL の決まりで書けない。いままでは書けてしまい、**DB に投げるまで気づけなかった** |
+| **バッチの登録が0件のまま `BatchRegistry.sync` を呼ぶと、`batch_master` の行が全部 `nothing` になる**（D-104） | いままでは0件のとき何もしなかったため、**最後の1つを消したときだけ行が `enable` のまま残って**いた。「1つも登録されていない = 全部消えた」に揃えた。**`sync` は登録を済ませてから呼ぶこと。**バッチを持たないアプリは呼ばないこと |
+| **`codegen` が `sql_cache` / `sql_cache_tag` / `rate_limit` を生成しなくなった**（D-68） | jimble が作るテーブルなのに除外一覧から漏れていて、**アプリのテーブル定義クラスとして生成されていた**（`rate_limit` は `io.jimble.web.ratelimit.RateLimit` と単純名がぶつかる）。これらのテーブルがある環境では `codegen` の出力が変わるので、**生成物をコミットしているなら流し直すこと** |
+
+### 直した
+
+| | |
+|---|---|
+| **`jimbleRun` を止めて動かし直すと、次のビルドが起動しない**（D-101） | helidon が起動のときに JVM 全体の直列化フィルタを張る。`jimbleRun` はアプリを Gradle デーモンの中で動かす（D-77）ので、**フィルタがデーモンに残り**、次のビルドが `Couldn't populate class org.gradle.api.services.BuildServiceParameters$None > filter status: REJECTED` で落ちていた。`jimbleRun` のあいだだけ `helidon.serialFilter.missing.action = IGNORE` にする。**本番の挙動は変わらない** |
+| **SPA を `/` に置くとトップページだけ 404** | `"/*"` はセグメントが0個の `/` に当たらないのに、`/` 自身を登録していなかった。`/any` は 200 で返るので気づきにくかった |
+| **`in` の空一覧が JSON の `where` からだと素通りしていた** | `{"where": {"site": {"id|in": []}}}` が `IN (NULL)` になり、**例外もエラーも出ずに 0 件**（`not_in` なら本来の全件が 0 件）。`in(null)` も同じく落とすようにした |
+| **エラーハンドラが送信してから落ちると、後続のエラーハンドラが走っていた** | 「送信済みなら以降は実行しない」の判定を `catch` で飛ばしていた |
+| **ドキュメントの食い違い 3 件** | `execution.md`「送ったら止まる」で `after` も止まると書いていた（`after` と `onComplete` は `finally` にあるので必ず通る）／`config.md` の `migration.on_startup` の既定を `false` と書いていた（実際は `"auto"`）／`deploy.md` の起動ログ例が jar の外の conf を「クラスパスより優先」と書いていた（jimble はクラスパスしか見ない） |
+
+### 足した
+
+| | |
+|---|---|
+| **`UrlUtil.normalizeUrl`**（D-107） | **未エンコードの URL でも、エンコード済みの URL でも、同じ答えになる**（2回通しても変わらない）。ホストは punycode にする。移送してきた `fullUrlEncode` は<b>エンコード済みを二重にし、ホストをパーセントエンコードしていた</b>（DNS が引けない）。`urlToEncodeUrl` は<b>パスの空白を `+` にしていた</b>（`+` が空白なのはフォームの書式だけ）。どちらも呼ばれていないので消さず、javadoc から新しいほうへ案内している |
+| **静的配信のルートを外から触れる**（D-70） | `AssetController` / `SpaController` / `MpaController` に `routes()`。`install` した子のルートに `AttributeKey`（認証の除外・流量制限）を付けられる |
+| **`NOT IN` の条件を読めるようにした**（D-105） | `NotIn` に `operator()` / `conditionValue()`。`In` と対称になった。**`IN` とは別の演算子（`WhereTerm.NOT_IN`）**にしてある（`NOT IN (1,3)` は「それ以外の全部」なので、1 と 3 の行タグだけ消すと**古い値が返り続ける**）。SQL 結果キャッシュは従来どおりテーブルごと消す安全側のまま |
+| **`codegen` が外したテーブルの名前を出す**（D-68） | `session` のように、jimble の管理テーブルとアプリの業務テーブルで名前がぶつかりうる。黙って外すと**自分のテーブルのクラスが生成されないことに気づけない** |
+
+### 中の整理
+
+| | |
+|---|---|
+| **移送してきたコードの警告を全部潰し、`-Werror` にした**（D-15。**完了**） | `jimble-util` は移送時点の警告を種別ごと（`unchecked` / `rawtypes` / `fallthrough` / `deprecation` / `dangling-doc-comments` / `this-escape` / `cast` / `overloads`）落としていて、**javadoc の doclint も切っていた**。**コンパイル警告 81 件と doclint 45 件を潰して、抑止をやめた。**以降は警告が出たらビルドが落ちる。消せないものは、消せない理由を書いた `@SuppressWarnings` をその場所に付けてある |
+| **ヘルスチェックの要件を実態に合わせた**（NF-O-03 / D-106） | 要件は「標準で提供する」と書いてあったが、実装は無く、ドキュメントは「アプリが書いてください」だった。**グレースフルシャットダウンで「先にヘルスチェックだけ落とす」順番をアプリが決めるため**という理由を要件側に書いた |
+| **jimble が作るテーブルの名前を1か所に**（D-68） | `io.jimble.db.FrameworkTables`。作る側も codegen の除外側も同じ定数を使う。`GeneratorConf.FRAMEWORK_TABLES` は廃止 |
+| **「送信済みなら打ち切る」判定をエラー経路にも通した**（F-C-13） | `Dispatcher` から `isSent()` の直書きが無くなり、判定は `Stage` だけになった |
+| 使われていない `Generator.isGenerationRequired` を削除 | スキーマが変わっても版は変わらないので、生成を飛ばす判定には使えない。鮮度は `codegenCheck` が生成物そのものを突き合わせて見る |
+| 同名の `FileCharDetecter` が 2 パッケージにあったのを解消 | `io.jimble.util.io.FileCharDetecter` を残し、`io.jimble.util.charset.FileCharDetecter` を削除（後者はどこからも使われていなかった） |
+
+---
+
 ## 0.2.0（2026-09-08）
 
 **PostgreSQL に対応した版。**アプリのコードは1行も変えずに
