@@ -43,6 +43,13 @@ import java.io.File;
  */
 public class JimbleJtePlugin implements Plugin<Project> {
 
+	/**
+	 * コンストラクタ
+	 */
+	public JimbleJtePlugin () {
+
+	}
+
 	/** 拡張ブロック名 */
 	public static final String EXTENSION_NAME = "jte";
 

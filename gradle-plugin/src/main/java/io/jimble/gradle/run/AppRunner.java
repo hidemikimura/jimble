@@ -301,8 +301,17 @@ final class AppRunner {
 	 * <p>
 	 * jimble が立てるものを順に止めてから、クラスローダを捨てる。
 	 * </p>
+	 *
+	 * <p>
+	 * <b>止め方は「待ち受けを始める前」に預けること。</b>
+	 * ポートを開いてから {@code Shutdown.add(...)} を呼ぶまでのあいだに
+	 * ここが止めに来ると、<b>預かっているものがまだ無いので何も止まらない。</b>
+	 * 古いアプリがポートを握ったまま残り、入れ替えたほうが立ち上がれない。
+	 * </p>
+	 *
+	 * @return	<b>ポートが空いた場合 = true</b>（残ったスレッドがあっても、ポートが空けば true）
 	 */
-	void stop () {
+	boolean stop () {
 
 		shutdown();
 
@@ -343,7 +352,7 @@ final class AppRunner {
 		 */
 		if (!released || !leftover.isEmpty()) {
 			log.debug("古いクラスローダは閉じません（まだ使われています）");
-			return;
+			return released;
 		}
 
 		try {
@@ -351,6 +360,8 @@ final class AppRunner {
 		} catch (IOException ex) {
 			log.debug("クラスローダを閉じられませんでした: " + ex.getMessage());
 		}
+
+		return true;
 
 	}
 

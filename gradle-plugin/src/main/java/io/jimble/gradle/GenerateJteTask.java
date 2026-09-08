@@ -14,6 +14,7 @@ import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SkipWhenEmpty;
+import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.TaskAction;
 
 import java.io.File;
@@ -41,7 +42,22 @@ import java.util.List;
  * <b>アプリの実行時クラスパスには入らない。</b>
  * </p>
  */
+/*
+ * ビルドキャッシュに入れてよい（要件 F-W-10）。
+ *
+ * 入力はテンプレートと4つの設定、出力は生成した Java だけである。
+ * 生成物に<b>絶対パスも時刻も入らない</b>（JTE_NAME はテンプレートの相対名）ので、
+ * <b>別のマシン・別の置き場所で作ったものを使い回せる</b>。
+ */
+@CacheableTask
 public abstract class GenerateJteTask extends DefaultTask {
+
+	/**
+	 * コンストラクタ
+	 */
+	public GenerateJteTask () {
+
+	}
 
 	/**
 	 * テンプレートの置き場所

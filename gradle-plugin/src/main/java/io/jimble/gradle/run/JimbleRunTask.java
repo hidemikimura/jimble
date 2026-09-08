@@ -6,6 +6,7 @@ import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
@@ -13,6 +14,7 @@ import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.jvm.toolchain.JavaLauncher;
+import org.gradle.work.DisableCachingByDefault;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,7 +45,22 @@ import java.util.concurrent.locks.ReentrantLock;
  *    → 次のリクエストが来たら 作り直す → 入れ替える → そのリクエストを転送する
  * </pre>
  */
+/*
+ * キャッシュしない。
+ *
+ * <b>アプリを立てて、止められるまで居座るタスク</b>である。
+ * 作るものが無いので、キャッシュから戻せるものも無い。
+ * Gradle 自身の {@code JavaExec} も同じ扱いにしている。
+ */
+@DisableCachingByDefault(because = "アプリを立てて居座るタスクなので、作るものが無い")
 public abstract class JimbleRunTask extends DefaultTask {
+
+	/**
+	 * コンストラクタ
+	 */
+	public JimbleRunTask () {
+
+	}
 
 	/* 作り直しが要るか */
 	private final AtomicBoolean dirty = new AtomicBoolean(false);
@@ -190,7 +207,13 @@ public abstract class JimbleRunTask extends DefaultTask {
 	 *
 	 * @return	クラスパス
 	 */
+	/*
+	 * @Classpath にする。<b>クラスパスは「並び順」が意味を持ち、
+	 * jar の置き場所は意味を持たない</b>。
+	 * 素の @InputFiles だと絶対パスまで見るので、別のマシンで作ったものを使い回せない。
+	 */
 	@InputFiles
+	@Classpath
 	public abstract ConfigurableFileCollection getRuntimeClasspath ();
 
 	/**

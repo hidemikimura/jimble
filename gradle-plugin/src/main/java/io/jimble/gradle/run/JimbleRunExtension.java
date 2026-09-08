@@ -23,6 +23,13 @@ import org.gradle.api.provider.Property;
 public abstract class JimbleRunExtension {
 
 	/**
+	 * コンストラクタ
+	 */
+	public JimbleRunExtension () {
+
+	}
+
+	/**
 	 * アプリの起動クラス（{@code main} を持つクラス）
 	 *
 	 * <p><b>必須。</b></p>

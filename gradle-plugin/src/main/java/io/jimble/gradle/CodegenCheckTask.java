@@ -4,7 +4,10 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.tasks.InputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.work.DisableCachingByDefault;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -31,7 +34,15 @@ import java.util.stream.Stream;
  * 足りない・余分・中身違いのどれでも失敗する。
  * </p>
  */
+@DisableCachingByDefault(because = "出力を持たない（突き合わせて落とすだけ）ので、キャッシュするものが無い")
 public abstract class CodegenCheckTask extends DefaultTask {
+
+	/**
+	 * コンストラクタ
+	 */
+	public CodegenCheckTask () {
+
+	}
 
 	/** 差分として並べる上限（多すぎても読めない） */
 	private static final int MAX_REPORTED = 20;
@@ -42,6 +53,7 @@ public abstract class CodegenCheckTask extends DefaultTask {
 	 * @return	ディレクトリ
 	 */
 	@InputDirectory
+	@PathSensitive(PathSensitivity.RELATIVE)
 	public abstract DirectoryProperty getGenerated ();
 
 	/**
@@ -50,6 +62,7 @@ public abstract class CodegenCheckTask extends DefaultTask {
 	 * @return	ディレクトリ
 	 */
 	@InputDirectory
+	@PathSensitive(PathSensitivity.RELATIVE)
 	public abstract DirectoryProperty getCommitted ();
 
 	/**

@@ -18,6 +18,13 @@ import org.gradle.api.provider.Property;
  */
 public abstract class JimbleDbExtension {
 
+	/**
+	 * コンストラクタ
+	 */
+	public JimbleDbExtension () {
+
+	}
+
 	/** 既定のソースルート */
 	public static final String DEFAULT_SOURCE_ROOT = "src/main/java";
 

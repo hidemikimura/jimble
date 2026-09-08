@@ -74,6 +74,8 @@ class AppRunnerTest {
 			private static Thread thread;
 
 			public static void start (int port) throws Exception {
+				// 止め方を「待ち受けを始める前」に預ける。あとにすると隙間ができる
+				Shutdown.add("サーバー", JimbleServer::stopAll);
 				socket = new ServerSocket(port);
 				thread = new Thread(() -> {
 					try {
@@ -83,8 +85,8 @@ class AppRunnerTest {
 					} catch (Exception ignore) {
 					}
 				}, "fake-server");
+				thread.setDaemon(true);
 				thread.start();
-				Shutdown.add("サーバー", JimbleServer::stopAll);
 			}
 
 			public static void stopAll () {
@@ -227,9 +229,13 @@ class AppRunnerTest {
 		assertTrue(runner.awaitReady(Duration.ofSeconds(10)), "待ち受けが始まらない");
 		assertTrue(runner.isAlive());
 
-		runner.stop();
-
-		assertFalse(AppRunner.isPortTaken(port), "止めたのにポートが空かない");
+		/*
+		 * <b>止めたあとにポートを叩き直してはいけない。</b>
+		 * 空いた瞬間に<b>別のもの（同じマシンの他のプロセス）が同じ番号を取りうる</b>ので、
+		 * 「繋がった = 止まっていない」にはならない。実際それで時々落ちていた。
+		 * stop() 自身が「空くまで待った結果」を返すので、それを見る。
+		 */
+		assertTrue(runner.stop(), "止めたのにポートが空かない");
 
 	}
 
@@ -242,14 +248,18 @@ class AppRunnerTest {
 			, "io/jimble/web/server/JimbleServer.java", FAKE_SERVER
 			, "testapp/App.java", FAKE_APP));
 
-		int port = freePort();
-
-		AppRunner first = AppRunner.start(spec(classpath, "testapp.App", port, root), new RunLog());
+		AppRunner first = AppRunner.start(spec(classpath, "testapp.App", freePort(), root), new RunLog());
 		assertTrue(first.awaitReady(Duration.ofSeconds(10)));
 		ClassLoader firstLoader = loaderOf(classpath, first);
-		first.stop();
+		assertTrue(first.stop(), "1つめが止まらない");
 
-		AppRunner second = AppRunner.start(spec(classpath, "testapp.App", port, root), new RunLog());
+		/*
+		 * <b>2つめは別のポートで立てる。</b>
+		 * 同じ番号を取り直すと、空いた一瞬に<b>同じマシンの他のプロセスが
+		 * その番号を取る</b>ことがあり、束ねられずに落ちる（実際に時々落ちていた）。
+		 * このテストが見たいのは「入れ替えたら別のクラスローダになる」ことだけである。
+		 */
+		AppRunner second = AppRunner.start(spec(classpath, "testapp.App", freePort(), root), new RunLog());
 		assertTrue(second.awaitReady(Duration.ofSeconds(10)), "入れ替えたあとに起動できない");
 		ClassLoader secondLoader = loaderOf(classpath, second);
 		second.stop();
@@ -298,10 +308,12 @@ class AppRunnerTest {
 		AppRunner runner = AppRunner.start(spec(classpath, "testapp.Leaky", port, root), new RunLog());
 		assertTrue(runner.awaitReady(Duration.ofSeconds(10)));
 
-		runner.stop();
-
-		// ポートは空く（止める口があるので）
-		assertFalse(AppRunner.isPortTaken(port));
+		/*
+		 * ポートは空く（止める口があるので）。
+		 * ただし<b>残ったスレッドがある</b>ので、stop() は false を返す
+		 * （クラスローダを閉じない、という判断がそこに出ている）。
+		 */
+		assertTrue(runner.stop(), "止める口はあるので、ポートは空くこと");
 
 		// 残ったスレッドは残る。ここを黙って通さないのが AppRunner の仕事
 		assertTrue(Thread.getAllStackTraces().keySet().stream()

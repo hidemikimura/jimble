@@ -54,6 +54,13 @@ import java.util.List;
  */
 public class JimbleRunPlugin implements Plugin<Project> {
 
+	/**
+	 * コンストラクタ
+	 */
+	public JimbleRunPlugin () {
+
+	}
+
 	/** 拡張の名前 */
 	public static final String EXTENSION_NAME = "jimbleRun";
 

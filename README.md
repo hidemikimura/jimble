@@ -142,12 +142,15 @@ GitHub Actions（`.github/workflows/ci.yml`）で3つに分けて流している
 
 | ジョブ | 中身 |
 | --- | --- |
-| `build` | **DB を使わない。**`build`（単体テスト・javadoc・`-Werror`）／ Gradle プラグイン ／ ドキュメントサイトの生成 |
+| `build` | **DB を使わない。**`build`（単体テスト・javadoc・`-Werror`）とドキュメントサイトの生成 |
+| `plugin` | Gradle プラグイン（本体とは**別のビルド**） |
 | `db` | MariaDB + Redis を立てて `dbTest`、`codegenCheck`、`migrate → codegen → compileJava` の連鎖 |
 | `pg` | PostgreSQL + Redis を立てて `pgTest` |
 
 **`db` と `pg` を分けてある。**1つにまとめると、落ちたときに製品差の問題なのかを
-ログを追わないと判別できない。
+ログを追わないと判別できない。`plugin` を分けてあるのも同じ理由で、
+同じ作業ディレクトリでルートの build（`includeBuild` で巻き込む）と
+`-p gradle-plugin` の build を続けて流すと、**同じ出力先を2つのビルドが触る**。
 
 ---
 

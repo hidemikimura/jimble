@@ -202,7 +202,26 @@ public final class JimbleServer {
 			builder.addRouting(wsRouting);
 		}
 
-		WebServer server = builder.build().start();
+		WebServer server = builder.build();
+
+		JimbleServer started = new JimbleServer(server, state);
+		STARTED.add(started);
+
+		/*
+		 * <b>待ち受けを始める前に預ける</b>（要件 D-77 / D-110）。
+		 *
+		 * 待ち受けを始めてから預けるまでのあいだに
+		 * jimbleRun が {@code Shutdown.runAll()} を呼ぶと、
+		 * <b>預かっているものがまだ無いので何も止まらない。</b>
+		 * 古いアプリがポートを握ったまま残り、入れ替えたほうが立ち上がれなくなる。
+		 * ログ2行を挟んでいたので、その隙間は実測できる長さだった。
+		 *
+		 * 名前に番号を入れない。<b>番号が決まるのは start のあと</b>で、
+		 * ポート 0（空いているところを使う）では 0 になってしまう。
+		 */
+		Shutdown.add("サーバー", started::stop);
+
+		server.start();
 
 		Log.info("jimble を起動しました: http://%s:%d".formatted(
 			ServerConf.host().isEmpty() ? "localhost" : ServerConf.host(), server.port()));
@@ -215,12 +234,6 @@ public final class JimbleServer {
 			, ServerConf.trustProxy()));
 
 		warnSecureCookieInLocal();
-
-		JimbleServer started = new JimbleServer(server, state);
-		STARTED.add(started);
-
-		// 「全部止める」に預ける（要件 D-77）
-		Shutdown.add("サーバー(:%d)".formatted(server.port()), started::stop);
 
 		/*
 		 * SIGTERM で全部止める（要件 D-91）。
@@ -326,6 +339,15 @@ public final class JimbleServer {
 	public void stop () {
 
 		STARTED.remove(this);
+
+		/*
+		 * まだ待ち受けていないなら、待つものも断つものも無い（D-110）。
+		 * 止め方は<b>待ち受けを始める前に</b>預けてあるので、ここに来ることがある。
+		 * 抜けないと、猶予（shutdown_grace_seconds）のぶんだけ黙って寝てしまう。
+		 */
+		if (!server.isRunning()) {
+			return;
+		}
 
 		Shutdown.markStopping();
 

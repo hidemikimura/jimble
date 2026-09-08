@@ -76,6 +76,17 @@ tasks.withType<Test>().configureEach {
 	}
 }
 
+/*
+ * プラグインの作法を<b>手元でも Gradle 9 と同じ厳しさで</b>見る。
+ *
+ * Gradle 8 は「キャッシュの可否を書いていない」「正規化を書いていない」を
+ * <b>警告で流す</b>が、Gradle 9 は<b>エラーで落とす</b>。
+ * 手元が 8 のままだと、<b>CI で初めて分かる</b>ことになる（実際そうなった）。
+ */
+tasks.withType<org.gradle.plugin.devel.tasks.ValidatePlugins>().configureEach {
+	enableStricterValidation = true
+}
+
 gradlePlugin {
 	plugins {
 		create("jimbleDb") {

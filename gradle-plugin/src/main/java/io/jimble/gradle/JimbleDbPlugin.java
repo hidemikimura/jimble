@@ -48,6 +48,13 @@ import java.util.List;
  */
 public class JimbleDbPlugin implements Plugin<Project> {
 
+	/**
+	 * コンストラクタ
+	 */
+	public JimbleDbPlugin () {
+
+	}
+
 	/** CLI のメインクラス */
 	public static final String CLI_MAIN_CLASS = "io.jimble.db.cli.JimbleDbCli";
 

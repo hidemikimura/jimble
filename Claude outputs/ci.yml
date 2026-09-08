@@ -5,9 +5,10 @@
 #
 # 3つに分けてある。理由は「落ちたときにどこが悪いか一目で分かる」ため。
 #
-#   build  DB を一切使わない。ここが落ちたら DB とは無関係の壊れ方である
-#   db     MySQL(MariaDB) + Redis の結合テストと、生成物の鮮度確認
-#   pg     PostgreSQL の結合テスト。db と同じテストを製品だけ変えて流す
+#   build   DB を一切使わない。ここが落ちたら DB とは無関係の壊れ方である
+#   plugin  Gradle プラグイン。本体とは<b>別のビルド</b>なので、ジョブも分ける
+#   db      MySQL(MariaDB) + Redis の結合テストと、生成物の鮮度確認
+#   pg      PostgreSQL の結合テスト。db と同じテストを製品だけ変えて流す
 #
 # db と pg を分けているのは、<b>片方だけ落ちたときに「製品差の問題」だと分かる</b>ためである。
 # 1つのジョブにまとめると、どちらで落ちたのかログを追わないと分からない。
@@ -52,10 +53,6 @@ jobs:
       - name: build（単体テスト・javadoc 込み）
         run: ./gradlew build --stacktrace
 
-      # 本体とは別ビルドなので、別に流さないと誰も確かめない
-      - name: Gradle プラグインの build
-        run: ./gradlew -p gradle-plugin build --stacktrace
-
       # コード片は examples/ とテストの実コードから抜いている（要件 NF-D-03）。
       # 印が消えていればここで落ちる = ドキュメントの陳腐化を機械で止める
       - name: ドキュメントサイトの生成
@@ -67,6 +64,41 @@ jobs:
         with:
           name: build-test-results
           path: '**/build/reports/tests/**'
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Gradle プラグイン（本体とは別ビルド）
+  #
+  # <b>ジョブを分ける。</b>同じ作業ディレクトリで
+  # 「ルートの build（gradle-plugin を includeBuild で巻き込む）」と
+  # 「-p gradle-plugin の build」を続けて流すと、
+  # <b>同じ出力先を2つのビルドが触る</b>ことになり、落ちたときに切り分けられない。
+  plugin:
+    name: build（Gradle プラグイン）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: build（テスト・javadoc 込み）
+        run: ./gradlew -p gradle-plugin build --stacktrace
+
+      - name: テスト結果を残す
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-test-results
+          path: 'gradle-plugin/build/reports/**'
           retention-days: 7
           if-no-files-found: ignore
 
