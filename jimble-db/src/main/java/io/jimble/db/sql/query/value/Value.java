@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.value;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -52,11 +53,10 @@ public class Value implements IValue {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void columnSql(StringBuilder sb) {
+	public void columnSql (SqlWriter sb) {
 
-		sb.append(" `");
-		sb.append(column.name());
-		sb.append("`");
+		sb.append(' ');
+		sb.identifier(column.name());
 
 	}
 
@@ -64,7 +64,7 @@ public class Value implements IValue {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void valueSql(StringBuilder sb) {
+	public void valueSql (SqlWriter sb) {
 
 		if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);

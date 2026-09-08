@@ -88,15 +88,23 @@ public class DBLog {
 	public static void init (DB db) {
 
 		DBVersion dbVersion = new DBVersion("db_log", "汎用ログ情報");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table db_log
 				(
 					id         bigint unsigned auto_increment comment 'ID' primary key,
 					content    longtext null comment '内容',
 					created_at datetime not null comment '登録日時'
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
-			""".formatted(dbVersion.placeholder())
-		);
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table db_log
+				(
+					id         bigserial primary key,
+					content    text null,
+					created_at timestamp not null
+				)
+			""");
 		dbVersion.apply(db);
 
 	}

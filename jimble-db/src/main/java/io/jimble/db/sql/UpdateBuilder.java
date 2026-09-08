@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
@@ -140,17 +141,15 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public String sql() {
+	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		StringBuilder sb = new StringBuilder();
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// UPDATE句
 		sb.append("UPDATE ");
 
 		// テーブル
-		sb.append("`");
-		sb.append(table.name());
-		sb.append("`");
+		sb.identifier(table.name());
 
 		// SET句
 		sb.append(" SET ");
@@ -223,5 +222,32 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 		return this;
 
 	}
+
+
+	// region 内省（要件 F-D-28）
+
+	/**
+	 * 更新するテーブル
+	 *
+	 * @return	テーブル
+	 */
+	public ITable table () {
+
+		return table;
+
+	}
+
+	/**
+	 * WHERE
+	 *
+	 * @return	WHERE
+	 */
+	public List<IWhere> whereList () {
+
+		return List.copyOf(whereList);
+
+	}
+
+	// endregion
 
 }

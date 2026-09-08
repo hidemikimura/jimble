@@ -46,7 +46,7 @@ class DbSessionIntegrationTest {
 	@AfterAll
 	static void stopDataSource () {
 
-		DBUtil.getMainDB().execute("DROP TABLE IF EXISTS `%s`".formatted(TABLE));
+		DBUtil.getMainDB().execute("DROP TABLE IF EXISTS %s".formatted(quoted()));
 		DBUtil.stop();
 
 	}
@@ -55,7 +55,7 @@ class DbSessionIntegrationTest {
 	void clean () {
 
 		SessionStores.reset();
-		DBUtil.getMainDB().execute("DELETE FROM `%s`".formatted(TABLE));
+		DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
 
 	}
 
@@ -169,8 +169,9 @@ class DbSessionIntegrationTest {
 
 		// 最終アクセスを過去にする
 		DBUtil.getMainDB().update(
-			"UPDATE `%s` SET last_accessed_at = NOW() - INTERVAL 1 DAY WHERE session_id = ?".formatted(TABLE)
-			, sessionId);
+			"UPDATE %s SET last_accessed_at = %s WHERE session_id = ?"
+				.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("DAY", true))
+			, 1, sessionId);
 
 		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/");
 		source.cookie(SessionConf.cookieName(), sessionId);
@@ -194,7 +195,9 @@ class DbSessionIntegrationTest {
 		}
 
 		DBUtil.getMainDB().execute(
-			"UPDATE `%s` SET last_accessed_at = NOW() - INTERVAL 1 DAY".formatted(TABLE));
+			"UPDATE %s SET last_accessed_at = %s"
+				.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("DAY", true))
+			, 1);
 
 		assertEquals(1, SessionStores.db().cleanupExpired());
 		assertEquals(0, count());
@@ -225,10 +228,21 @@ class DbSessionIntegrationTest {
 	 *
 	 * @return	行数
 	 */
+	/**
+	 * セッションテーブル名を製品に合わせて囲む（要件 F-D-30）
+	 *
+	 * @return	囲んだテーブル名
+	 */
+	private static String quoted () {
+
+		return DBUtil.getMainDB().dialect().identifier(TABLE);
+
+	}
+
 	private long count () {
 
 		return DBUtil.getMainDB()
-			.select("SELECT COUNT(*) AS cnt FROM `%s`".formatted(TABLE)).getLong("cnt");
+			.select("SELECT COUNT(*) AS cnt FROM %s".formatted(quoted())).getLong("cnt");
 
 	}
 

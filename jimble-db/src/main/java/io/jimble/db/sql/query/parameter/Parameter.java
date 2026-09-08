@@ -42,7 +42,15 @@ public class Parameter {
 		if (o == null) {
 			res.add(null);
 		} else if (o instanceof Data data) {
-			res.add(data.getJsonString());
+			/*
+			 * ここで JSON 文字列にしてはいけない（要件 F-D-30）。
+			 *
+			 * <b>PostgreSQL の json / jsonb 列は varchar のパラメータを受け取らない。</b>
+			 * 「column x is of type jsonb but expression is of type character varying」で落ちる。
+			 * Data のまま渡し、DB#setParameters で製品ごとの渡し方
+			 * （{@code Dialect#bindJson}）に任せる。
+			 */
+			res.add(data);
 		} else if (o instanceof Collection<?> list) {
 			for (Object listObj : list) {
 				res.addAll(flattenObject(listObj));

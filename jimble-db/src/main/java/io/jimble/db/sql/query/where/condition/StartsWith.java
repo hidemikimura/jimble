@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.where.condition;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -27,15 +28,11 @@ public class StartsWith implements ICondition {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void conditionSql(StringBuilder sb) {
+	public void conditionSql (SqlWriter sb) {
 
 		sb.append(" LIKE ");
 		if (value instanceof IColumn column) {
-			sb.append("`");
-			sb.append(column.table().name());
-			sb.append("`.`");
-			sb.append(column.name());
-			sb.append("`");
+			sb.qualified(column);
 		} else if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);
 		} else if (value instanceof ISelect select) {

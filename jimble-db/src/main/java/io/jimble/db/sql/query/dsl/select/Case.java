@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.select.SelectQuery;
@@ -154,7 +155,7 @@ public class Case implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
 		sb.append("CASE");
 		for (WhenThen whenThen : whenThenList) {
@@ -249,7 +250,7 @@ public class Case implements IDsl {
 		 *
 		 * @param sb    StringBuilder
 		 */
-		public void sql (StringBuilder sb) {
+		public void sql (SqlWriter sb) {
 
 			sb.append("WHEN ");
 			when.whereSql(sb);

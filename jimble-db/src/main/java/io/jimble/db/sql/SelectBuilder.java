@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
@@ -517,9 +518,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public String sql() {
+	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		StringBuilder sb = new StringBuilder();
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// SELECT
 		sqlSelect(sb);
@@ -594,7 +595,19 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public String simpleSql () {
 
-		StringBuilder sb = new StringBuilder();
+		return simpleSql(io.jimble.db.dialect.Dialects.defaultDialect());
+
+	}
+
+	/**
+	 * IDのみSELECTするSQL（要件 F-D-30）
+	 *
+	 * @param dialect	方言
+	 * @return  SQL
+	 */
+	public String simpleSql (io.jimble.db.dialect.Dialect dialect) {
+
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// SELECT
 		{
@@ -640,7 +653,19 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public String rowCountSql () {
 
-		StringBuilder sb = new StringBuilder();
+		return rowCountSql(io.jimble.db.dialect.Dialects.defaultDialect());
+
+	}
+
+	/**
+	 * 全件数取得SQL（要件 F-D-30）
+	 *
+	 * @param dialect	方言
+	 * @return	全件数取得SQL
+	 */
+	public String rowCountSql (io.jimble.db.dialect.Dialect dialect) {
+
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// SELECT
 		sb.append("SELECT COUNT(__count_table.cnt) AS cnt");
@@ -672,9 +697,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * SELECT句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlSelect(StringBuilder sb) {
+	private void sqlSelect(SqlWriter sb) {
 
 		sb.append("SELECT");
 		if (selectList.isEmpty()) {
@@ -690,9 +715,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			selectList.get(i).selectSql(sb);
 			if (select instanceof Column column) {
 				sb.append(" AS ");
-				sb.append("`");
-				sb.append(column.getJoinSelectName());
-				sb.append("`");
+				sb.identifier(column.getJoinSelectName());
 			}
 		}
 
@@ -720,9 +743,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * FROM句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlFrom(StringBuilder sb) {
+	private void sqlFrom(SqlWriter sb) {
 
 		if (from != null) {
 			sb.append(" FROM");
@@ -734,9 +757,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * WHERE句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlWhere(StringBuilder sb) {
+	private void sqlWhere(SqlWriter sb) {
 
 		if (!whereList.isEmpty()) {
 			sb.append(" WHERE ");
@@ -763,9 +786,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * GROUP BY句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlGroupBy(StringBuilder sb) {
+	private void sqlGroupBy(SqlWriter sb) {
 
 		if (!groupByList.isEmpty()) {
 			sb.append(" GROUP BY");
@@ -783,9 +806,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * HAVING句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlHaving(StringBuilder sb) {
+	private void sqlHaving(SqlWriter sb) {
 
 		if (!havingList.isEmpty()) {
 			sb.append(" HAVING ");
@@ -812,9 +835,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * ORDER BY句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlOrderBy(StringBuilder sb) {
+	private void sqlOrderBy(SqlWriter sb) {
 
 		if (!orderByList.isEmpty()) {
 			sb.append(" ORDER BY ");
@@ -831,9 +854,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * LIMIT句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlLimitOffset(StringBuilder sb) {
+	private void sqlLimitOffset(SqlWriter sb) {
 
 		if (limit >= 0) {
 			sb.append(" LIMIT ?");
@@ -847,9 +870,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * FOR UPDATE句SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	private void sqlForUpdate(StringBuilder sb) {
+	private void sqlForUpdate(SqlWriter sb) {
 
 		if (forUpdate) {
 			sb.append(" FOR UPDATE");
@@ -973,5 +996,65 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 		return this;
 
 	}
+
+
+	// region 内省（要件 F-D-28）
+
+	/**
+	 * FROM（結合を含む）
+	 *
+	 * <p>
+	 * <b>組み立てた SQL を、あとから読むための口。</b>
+	 * SQL 結果のキャッシュが「どのテーブルに触るか」「結合先が1行に決まるか」を知るのに使う。
+	 * </p>
+	 *
+	 * @return	FROM。指定していなければ null
+	 */
+	public IFrom from () {
+
+		return from;
+
+	}
+
+	/**
+	 * このクエリが触るテーブル（結合を含む）
+	 *
+	 * @return	テーブル。FROM が無ければ空
+	 */
+	public List<ITable> tableList () {
+
+		return from == null ? List.of() : from.getTableList();
+
+	}
+
+	/**
+	 * WHERE
+	 *
+	 * @return	WHERE
+	 */
+	public List<IWhere> whereList () {
+
+		return List.copyOf(whereList);
+
+	}
+
+	/**
+	 * 件数を絞っているか（{@code LIMIT} / {@code OFFSET}）
+	 *
+	 * <p>
+	 * <b>絞っていると、行が変わっていなくても中身が変わる。</b>
+	 * {@code ORDER BY name LIMIT 1} は、別の行の名前が変わるだけで
+	 * 返る行が入れ替わる。SQL 結果のキャッシュはこれを見て安全側に倒す。
+	 * </p>
+	 *
+	 * @return	絞っていれば true
+	 */
+	public boolean hasRowLimit () {
+
+		return limit >= 0 || offset >= 0;
+
+	}
+
+	// endregion
 
 }

@@ -1,5 +1,8 @@
 package io.jimble.db;
 
+import io.jimble.util.log.Log;
+import java.util.List;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.core.lifecycle.AppLifecycle;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.thread.ThreadUtil;
@@ -83,19 +86,26 @@ public class DBSticky {
 	public static void init () {
 
 		DBVersion dbVersion = new DBVersion("db_sticky", "DB sticky");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table db_sticky (
 					id              bigint unsigned auto_increment comment 'ID' primary key,
 					cookie_id       varchar(250)              not null comment 'Cookie ID',
 					last_updated_at bigint unsigned default 0 not null comment '最終更新日時',
 					constraint db_sticky_pk_2 unique (cookie_id)
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
-			""".formatted(dbVersion.placeholder())
-		);
-		dbVersion.add(2, """
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table db_sticky (
+					id              bigserial primary key,
+					cookie_id       varchar(250)     not null,
+					last_updated_at bigint default 0 not null,
+					constraint db_sticky_pk_2 unique (cookie_id)
+				)
+			""");
+		dbVersion.add(2).any("""
 				create index db_sticky__index_1 on db_sticky (last_updated_at)
-			"""
-		);
+			""");
 		dbVersion.apply(DBUtil.getMainDB());
 
 		if (AppLifecycle.isBatch()) {
@@ -204,17 +214,24 @@ public class DBSticky {
 		}
 
 		if (isPersist) {
-			DBUtil.getMainDB().insert("""
-				INSERT INTO db_sticky (
-					cookie_id
-					, last_updated_at
-				) VALUES (
-					?
-					, ?
-				)
-				ON DUPLICATE KEY UPDATE
-					last_updated_at = VALUES(last_updated_at)
-			""", cookieId, lastUpdatedAt);
+
+			try (DB db = DBUtil.getMainDB()) {
+
+				db.insert("""
+					INSERT INTO db_sticky (
+						cookie_id
+						, last_updated_at
+					) VALUES (
+						?
+						, ?
+					)
+					""" + Sqls.upsert(db.dialect(), List.of("cookie_id"), "last_updated_at")
+					, cookieId, lastUpdatedAt);
+
+			} catch (Exception ex) {
+				Log.error(ex, "db_sticky を更新できませんでした");
+			}
+
 		}
 
 	}

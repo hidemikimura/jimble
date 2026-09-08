@@ -102,4 +102,56 @@ public final class TestSchema extends AbstractSchema {
 
 	}
 
+	/**
+	 * customer テーブル
+	 *
+	 * <p>
+	 * <b>採番の主キー ＋ 業務上の一意キー</b>という定番の形。
+	 * PostgreSQL の {@code ON CONFLICT} が主キーだけを見ていると
+	 * ここで衝突を見つけられない（要件 F-D-30）。
+	 * </p>
+	 */
+	public static final class Customer extends Table {
+
+		/** id */
+		public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+
+		/** code */
+		public static final Column code = new Column(instance(), "code", String.class, false, null, false);
+
+		/** name */
+		public static final Column name = new Column(instance(), "name", String.class, true, null, false);
+
+		/**
+		 * コンストラクタ
+		 */
+		private Customer () {
+
+			super(INSTANCE, "customer");
+
+		}
+
+		/**
+		 * {@inheritDoc}
+		 */
+		@Override
+		protected java.util.List<java.util.List<Column>> declareUniqueKeys () {
+
+			return java.util.List.of(java.util.List.of(code));
+
+		}
+
+		/**
+		 * インスタンス
+		 *
+		 * @return	インスタンス
+		 */
+		public static Customer instance () {
+
+			return new Customer();
+
+		}
+
+	}
+
 }

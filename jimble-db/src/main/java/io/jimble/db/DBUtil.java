@@ -240,19 +240,22 @@ public class DBUtil {
 					end = System.currentTimeMillis();
 
 					{
+						/*
+						 * 移送元はここで new Exception("Unknown database") に潰していた。
+						 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
+						 * 作りにいって二度失敗する。元の例外をそのまま上げる。
+						 */
 						try (
 							Connection connection = dbSource.dataSource.getConnection();
 						) {
 
-						} catch (Exception ex) {
-							throw new Exception("Unknown database");
 						}
 					}
 
 					String version = "unknown";
 					try (
 						Connection connection = dbSource.dataSource.getConnection();
-						PreparedStatement st = connection.prepareStatement("SELECT VERSION() AS 'version'");
+						PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
 						ResultSet resultSet = st.executeQuery()
 					) {
 						resultSet.next();
@@ -263,7 +266,11 @@ public class DBUtil {
 					Log.info("success create write datasource: " + dbName + ":" + version + " (" + (end - start) +"ms)");
 					break;
 				} catch (Exception ex) {
-					if (ex.getMessage().contains("Unknown database")) {
+					/*
+					 * 「そんなデータベースは無い」の文言は製品ごとに違う（要件 F-D-30）。
+					 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
+					 */
+					if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
 						if (writeDbConf.createDatabaseSql == null || writeDbConf.createDatabaseSql.isEmpty()) {
 							Log.error("failed create write datasource: " + dbName, ex);
 							return false;
@@ -274,17 +281,7 @@ public class DBUtil {
 						}
 						isCreated = true;
 						String url = writeDbConf.url;
-						String dbUrl = url;
-						{
-							int index1 = dbUrl.lastIndexOf("/");
-							int index2 = dbUrl.indexOf("?");
-							if (index2 > 0) {
-								dbUrl = dbUrl.substring(0, index1) + dbUrl.substring(index2);
-							} else {
-								dbUrl = dbUrl.substring(0, index1);
-							}
-							writeDbConf.url = dbUrl;
-						}
+						writeDbConf.url = dbSource.dialect().maintenanceUrl(url);
 						try {
 							DataSource dataSource = createDataSource(writeDbConf);
 							PreparedStatement st = null;
@@ -379,6 +376,12 @@ public class DBUtil {
 			dataSources.put(dbName, dbSource);
 			if (mainDataSource == null || (configDb.hasPath("main") && configDb.getBoolean("main"))) {
 				mainDataSource = dbSource;
+
+				/*
+				 * データソースが分からないところで使う既定の方言（要件 F-D-30）。
+				 * builder.sql() を引数なしで呼んだとき、主データソースの製品になる。
+				 */
+				io.jimble.db.dialect.Dialects.defaultDialect(dbSource.dialect());
 			}
 
 			// DB version
@@ -701,6 +704,10 @@ public class DBUtil {
 		}
 		if (config.hasPath("scheme")) {
 			dbConf.schema = innerConf.getString("scheme");
+		}
+		// DB 製品（要件 F-D-30）。書かなければ mysql
+		if (config.hasPath(io.jimble.db.dialect.Dialects.KEY_PRODUCT)) {
+			dbConf.product = innerConf.getString(io.jimble.db.dialect.Dialects.KEY_PRODUCT);
 		}
 		if (config.hasPath("create_database_sql")) {
 			dbConf.createDatabaseSql = innerConf.getString("create_database_sql");

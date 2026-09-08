@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.dsl.where;
 
+import io.jimble.db.dialect.SqlFunction;
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -35,9 +37,9 @@ public class STWithIn implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("ST_Within(");
+		sb.function(SqlFunction.ST_WITHIN).append('(');
 		output(sb, value1);
 		sb.append(", ");
 		output(sb, value2);
@@ -74,17 +76,13 @@ public class STWithIn implements IDsl {
 	/**
 	 * SQL出力
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 * @param value	値
 	 */
-	private void output (StringBuilder sb, Object value) {
+	private void output (SqlWriter sb, Object value) {
 
 		if (value instanceof IColumn column) {
-			sb.append("`");
-			sb.append(column.table().name());
-			sb.append("`.`");
-			sb.append(column.name());
-			sb.append("`");
+			sb.qualified(column);
 		} else if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);
 		} else if (value instanceof ISelect select) {

@@ -2,6 +2,9 @@ package io.jimble.web.server;
 
 import io.jimble.core.executor.Executor;
 import io.jimble.util.log.Log;
+import io.jimble.web.call.CallRequest;
+import io.jimble.web.call.CallResponse;
+import io.jimble.web.call.Calls;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.NotFoundException;
 import io.jimble.web.ratelimit.RateLimit;
@@ -83,7 +86,52 @@ public final class Dispatcher {
 	 */
 	public void dispatch (WebContext context) {
 
+		context.dispatcher(this);
 		context.run(() -> handle(context));
+
+	}
+
+	/**
+	 * すでに実装してあるルートを、HTTP を通さずに呼ぶ（要件 F-W-27）
+	 *
+	 * <pre>
+	 * CallResponse response = context.dispatcher().call(context
+	 *     , CallRequest.of("GET", "/api/posts").query("page", "2"));
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>通常のリクエストとまったく同じ道を通る。</b>
+	 * {@code before} / {@code after} / エラーハンドラも流量制限も効く。
+	 * 違うのは<b>送り先だけ</b>で、ネットワークに出す代わりに
+	 * {@link CallResponse} に受け止める。
+	 * </p>
+	 *
+	 * <p>
+	 * MCP から API の実装を流用するのが最初の用途である（要件 F-MCP-15）。
+	 * <b>ハンドラを2度書かないためにある。</b>
+	 * ドメイン層を共有できるならそちらが先で、
+	 * これは<b>「API として組み上がったものをそのまま出したい」</b>ときに使う。
+	 * </p>
+	 *
+	 * <p>
+	 * 内側は<b>別のコンテキスト</b>になる（実行IDだけ外側から引き継ぐ）。
+	 * トランザクションも DB 接続も内側で別に持つので、
+	 * <b>外側で開けたトランザクションの中には入らない。</b>
+	 * </p>
+	 *
+	 * @param outer		外側のコンテキスト
+	 * @param request	呼び出すもの
+	 * @return	結果
+	 */
+	public CallResponse call (WebContext outer, CallRequest request) {
+
+		Objects.requireNonNull(outer, "outer");
+		Objects.requireNonNull(request, "request");
+
+		return Calls.call(outer, request, inner -> {
+			inner.dispatcher(this);
+			inner.run(() -> handle(inner));
+		});
 
 	}
 

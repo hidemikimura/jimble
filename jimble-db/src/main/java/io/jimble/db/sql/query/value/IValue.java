@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.value;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 
 /**
@@ -24,16 +25,16 @@ public interface IValue {
 	/**
 	 * column sql
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void columnSql(StringBuilder sb);
+	void columnSql (SqlWriter sb);
 
 	/**
 	 * value sql
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void valueSql(StringBuilder sb);
+	void valueSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定

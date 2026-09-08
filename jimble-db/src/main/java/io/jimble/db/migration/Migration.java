@@ -184,7 +184,7 @@ public final class Migration {
 	 */
 	private static void setLockTimeout (DB db) {
 
-		db.execute("SET SESSION innodb_lock_wait_timeout = " + MigrationConf.lockTimeoutSeconds());
+		db.execute(db.dialect().setLockTimeoutSql(MigrationConf.lockTimeoutSeconds()));
 
 	}
 
@@ -716,32 +716,55 @@ public final class Migration {
 		DB db = DBUtil.getDB(dbSource.name);
 
 		DBVersion migration = new DBVersion("migration", "マイグレーション情報");
-		migration.add(1, """
-			create table migration (
-				name varchar(255) not null primary key
-				, hash varchar(255) not null
-				, up mediumtext null
-				, down mediumtext null
-				, state varchar(255) null
-				, error_info text null
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
-		""".formatted(migration.placeholder()));
+		migration.add(1)
+			.mysql("""
+				create table migration (
+					name varchar(255) not null primary key
+					, hash varchar(255) not null
+					, up mediumtext null
+					, down mediumtext null
+					, state varchar(255) null
+					, error_info text null
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
+			""".formatted(migration.placeholder()))
+			.postgresql("""
+				create table migration (
+					name varchar(255) not null primary key
+					, hash varchar(255) not null
+					, up text null
+					, down text null
+					, state varchar(255) null
+					, error_info text null
+				)
+			""");
 		if (!migration.apply(db)) {
 			throw new MigrationException("migration テーブルを作成できませんでした: " + dbSource.name);
 		}
 
 		DBVersion history = new DBVersion("migration_history", "マイグレーション履歴");
-		history.add(1, """
-			create table migration_history (
-				id bigint unsigned auto_increment primary key
-				, name varchar(255) not null
-				, kind varchar(100) not null
-				, sql_text longtext null
-				, state varchar(255) null
-				, error_info text null
-				, executed_at datetime not null
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
-		""".formatted(history.placeholder()));
+		history.add(1)
+			.mysql("""
+				create table migration_history (
+					id bigint unsigned auto_increment primary key
+					, name varchar(255) not null
+					, kind varchar(100) not null
+					, sql_text longtext null
+					, state varchar(255) null
+					, error_info text null
+					, executed_at datetime not null
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
+			""".formatted(history.placeholder()))
+			.postgresql("""
+				create table migration_history (
+					id bigserial primary key
+					, name varchar(255) not null
+					, kind varchar(100) not null
+					, sql_text text null
+					, state varchar(255) null
+					, error_info text null
+					, executed_at timestamp not null
+				)
+			""");
 		if (!history.apply(db)) {
 			throw new MigrationException("migration_history テーブルを作成できませんでした: " + dbSource.name);
 		}

@@ -73,7 +73,7 @@ public class RedisLockResult implements AutoCloseable {
 						WHERE
 							lock_key = ?
 					"""
-					, 0
+					, false
 					, lockKeyHash
 				);
 				db = null;

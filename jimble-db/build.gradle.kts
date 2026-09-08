@@ -25,8 +25,21 @@ dependencies {
 	api(libs.hikaricp)
 	api(libs.agroal.pool)
 
-	// JDBC ドライバ
+	/*
+	 * JDBC ドライバ（要件 F-D-30）
+	 *
+	 * MySQL / MariaDB と PostgreSQL の両方を入れておく。
+	 * conf の db.xxx.product を書き換えるだけで動くようにするためである。
+	 * 使わないほうを外したいときは
+	 *
+	 *   implementation("io.jimble:jimble-db:x.y.z") {
+	 *       exclude(group = "org.postgresql", module = "postgresql")
+	 *   }
+	 *
+	 * のように除く（実行時にしか要らないので、外してもコンパイルは通る）。
+	 */
 	runtimeOnly(libs.mariadb.client)
+	runtimeOnly(libs.postgresql.client)
 
 	// Redis（キャッシュ / 分散ロック）
 	api(libs.redisson)

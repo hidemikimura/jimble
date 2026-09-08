@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
@@ -53,6 +54,35 @@ public class SelectQuery implements ISelect {
 
 		this.dsl = dsl;
 		return this;
+
+	}
+
+	/**
+	 * DSL（要件 F-D-31）
+	 *
+	 * <p>ウィンドウ関数が中身を取り出すのに使う。</p>
+	 *
+	 * @return	DSL。無ければ null
+	 */
+	public IDsl dsl () {
+
+		return dsl;
+
+	}
+
+	/**
+	 * 別名や計算が付いているか（要件 F-D-31）
+	 *
+	 * <p>
+	 * ウィンドウ関数が「中の関数だけ」を取り出してよいかの判断に使う。
+	 * 付いているのに捨てると<b>黙って別の値</b>になる。
+	 * </p>
+	 *
+	 * @return	付いている場合 = true
+	 */
+	public boolean hasDecoration () {
+
+		return as != null || plus != null || minus != null || multiply != null || subtract != null;
 
 	}
 
@@ -116,7 +146,7 @@ public class SelectQuery implements ISelect {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void selectSql(StringBuilder sb) {
+	public void selectSql (SqlWriter sb) {
 
 		if (this.dsl == null) {
 			this.select.selectSql(sb);
@@ -140,11 +170,7 @@ public class SelectQuery implements ISelect {
 		}
 		if (basicCalcOperation != null) {
 			if (basicCalcOperation instanceof IColumn column) {
-				sb.append("`");
-				sb.append(column.table().name());
-				sb.append("`.`");
-				sb.append(column.name());
-				sb.append("`");
+				sb.qualified(column);
 			} else if (basicCalcOperation instanceof IDsl d) {
 				d.dslSql(sb);
 			} else if (basicCalcOperation instanceof ISelect s) {
@@ -154,17 +180,9 @@ public class SelectQuery implements ISelect {
 			}
 		}
 
-		if (this.dsl == null && this.select instanceof Column column && (this.as == null || this.as.isEmpty())) {
-			// TODO 不要？
-//			sb.append(" AS ");
-//			sb.append("`");
-//			sb.append(column.getJoinSelectName());
-//			sb.append("`");
-		} else if (this.as != null && !this.as.isEmpty()) {
+		if (this.as != null && !this.as.isEmpty()) {
 			sb.append(" AS ");
-			sb.append("`");
-			sb.append(this.as);
-			sb.append("`");
+			sb.identifier(this.as);
 		}
 
 	}

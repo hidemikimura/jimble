@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -42,13 +43,10 @@ public class Truncate implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("TRUNCATE(");
-		select.selectSql(sb);
-		sb.append(", ");
-		sb.append(digit);
-		sb.append(")");
+		// PostgreSQL は TRUNC（TRUNCATE は DDL の予約語）
+		sb.dialect().truncate(sb.builder(), () -> select.selectSql(sb), digit);
 
 	}
 

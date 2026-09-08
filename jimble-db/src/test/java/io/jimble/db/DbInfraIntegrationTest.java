@@ -50,11 +50,17 @@ class DbInfraIntegrationTest {
 		db.execute("DROP TABLE IF EXISTS version_probe");
 
 		DBVersion first = new DBVersion("version_probe", "版のテスト");
-		first.add(1, """
+		first.add(1)
+			.mysql("""
 				create table version_probe (
 					id bigint unsigned auto_increment primary key
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
-			""".formatted(first.placeholder()));
+			""".formatted(first.placeholder()))
+			.postgresql("""
+				create table version_probe (
+					id bigserial primary key
+				)
+			""");
 
 		assertTrue(first.apply(db));
 		assertNotNull(db.select("SELECT 1 AS ok FROM version_probe LIMIT 1") == null ? new Data() : new Data()
@@ -62,8 +68,10 @@ class DbInfraIntegrationTest {
 
 		// 版を足すと、その分だけ流れる
 		DBVersion second = new DBVersion("version_probe", "版のテスト");
-		second.add(1, "create table version_probe (id bigint unsigned auto_increment primary key)");
-		second.add(2, "alter table version_probe add name varchar(100) null");
+		second.add(1)
+			.mysql("create table version_probe (id bigint unsigned auto_increment primary key)")
+			.postgresql("create table version_probe (id bigserial primary key)");
+		second.add(2).any("alter table version_probe add name varchar(100) null");
 
 		assertTrue(second.apply(db));
 
@@ -73,8 +81,10 @@ class DbInfraIntegrationTest {
 
 		// もう一度流しても何も起きない
 		DBVersion again = new DBVersion("version_probe", "版のテスト");
-		again.add(1, "create table version_probe (id bigint unsigned auto_increment primary key)");
-		again.add(2, "alter table version_probe add name varchar(100) null");
+		again.add(1)
+			.mysql("create table version_probe (id bigint unsigned auto_increment primary key)")
+			.postgresql("create table version_probe (id bigserial primary key)");
+		again.add(2).any("alter table version_probe add name varchar(100) null");
 
 		assertTrue(again.apply(db), "二度目で落ちている");
 

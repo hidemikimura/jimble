@@ -3,10 +3,12 @@ package io.jimble.db.redis.lock;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.version.DBVersion;
 import io.jimble.db.redis.RedisClient;
 import org.redisson.api.RLock;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,18 +71,16 @@ public class RedisLock {
 			}
 
 			db.insert("""
-					INSERT IGNORE INTO redis_lock (
+					INSERT INTO redis_lock (
 						lock_key
 						, lock_flg
 					) VALUES (
 						?
 						, ?
 					)
-					ON DUPLICATE KEY UPDATE
-						lock_flg = VALUES(lock_flg)
-				"""
+				""" + Sqls.upsert(db.dialect(), List.of("lock_key"), "lock_flg")
 				, Hash.sipHash(lockKey)
-				, 1
+				, true
 			);
 			if (db.isError()) {
 				throw db.getError();
@@ -158,18 +158,16 @@ public class RedisLock {
 			}
 
 			db.insert("""
-					INSERT IGNORE INTO redis_lock (
+					INSERT INTO redis_lock (
 						lock_key
 						, lock_flg
 					) VALUES (
 						?
 						, ?
 					)
-					ON DUPLICATE KEY UPDATE
-						lock_flg = VALUES(lock_flg)
-				"""
+				""" + Sqls.upsert(db.dialect(), List.of("lock_key"), "lock_flg")
 				, Hash.sipHash(lockKey)
-				, 1
+				, true
 			);
 			if (db.isError()) {
 				throw db.getError();
@@ -193,13 +191,19 @@ public class RedisLock {
 	public static void init (DB db) {
 
 		DBVersion dbVersion = new DBVersion("redis_lock", "Redisロック情報");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table redis_lock (
 					lock_key bigint not null primary key
 					, lock_flg tinyint(1) not null
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT '%s'
-			""".formatted(dbVersion.placeholder())
-		);
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table redis_lock (
+					lock_key bigint not null primary key
+					, lock_flg boolean not null
+				)
+			""");
 		dbVersion.apply(db);
 
 	}

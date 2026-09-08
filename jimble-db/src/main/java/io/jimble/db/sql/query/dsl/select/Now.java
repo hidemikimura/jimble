@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlFunction;
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 
 /**
@@ -11,9 +13,9 @@ public class Now implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("NOW()");
+		sb.function(SqlFunction.NOW).append("()");
 
 	}
 

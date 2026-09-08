@@ -6,6 +6,7 @@ import io.jimble.util.json.formatter.IFormatter;
 import io.jimble.util.json.formatter.lang.NullFormatter;
 import io.jimble.util.json.formatter.lang.StringFormatter;
 import io.jimble.util.json.formatter.stream.OutputStreamWriterWrapper;
+import io.jimble.util.data.TableNest;
 import io.jimble.util.data.async.AsyncData;
 
 import java.util.Map;
@@ -53,6 +54,17 @@ public class MapFormatter implements IFormatter {
 		writer.write('{');
 
 		Map< ? , ? > map = (Map< ? , ? >) obj;
+
+		/*
+		 * テーブルネストの組み直し（要件 F-A-11）。
+		 *
+		 * 循環参照のハッシュは<b>組み直す前のノード</b>で取ってある。
+		 * 組み直した Data は呼ばれるたびに別のインスタンスになるので、
+		 * ここで取り直すと同じノードを2度書き出してしまう。
+		 */
+		if (obj instanceof AsyncData asyncData && conf.tableNest != TableNest.AS_IS) {
+			map = asyncData.reshape(conf.tableNest);
+		}
 
 		IFormatter lastFormatter = null;
 		Class< ? > lastClass = null;

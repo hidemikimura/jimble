@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.order_by;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -62,7 +63,7 @@ public class OrderByQuery implements IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void orderBySql(StringBuilder sb) {
+	public void orderBySql (SqlWriter sb) {
 
 		this.select.selectSql(sb);
 		sb.append(" ");

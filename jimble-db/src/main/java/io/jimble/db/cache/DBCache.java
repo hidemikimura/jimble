@@ -6,6 +6,7 @@ import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.CacheData;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.version.DBVersion;
 
 import java.io.File;
@@ -241,13 +242,9 @@ public class DBCache extends AbstractCache {
 					, ?
 					, ?
 					, NOW()
-				) ON DUPLICATE KEY UPDATE
-					content = VALUES(content)
-					, group_key = VALUES(group_key)
-					, content_type = VALUES(content_type)
-					, content_length = VALUES(content_length)
-					, created_at = VALUES(created_at)
-			"""
+				)
+			""" + Sqls.upsert(db().dialect(), List.of("cache_key")
+				, "content", "group_key", "content_type", "content_length", "created_at")
 			, key
 			, value
 			, null
@@ -281,13 +278,9 @@ public class DBCache extends AbstractCache {
 					, ?
 					, ?
 					, NOW()
-				) ON DUPLICATE KEY UPDATE
-					content = VALUES(content)
-					, group_key = VALUES(group_key)
-					, content_type = VALUES(content_type)
-					, content_length = VALUES(content_length)
-					, created_at = VALUES(created_at)
-			"""
+				)
+			""" + Sqls.upsert(db().dialect(), List.of("cache_key")
+				, "content", "group_key", "content_type", "content_length", "created_at")
 			, key
 			, value
 			, group
@@ -354,7 +347,8 @@ public class DBCache extends AbstractCache {
 	public static void init (DB db) {
 
 		DBVersion dbVersion = new DBVersion("db_cache", "汎用キャッシュ情報");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table db_cache
 				 (
 				     cache_key    varchar(250) not null,
@@ -366,8 +360,20 @@ public class DBCache extends AbstractCache {
 				     constraint db_cache_pk primary key (cache_key)
 				 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
 			""".formatted(dbVersion.placeholder())
-			, "create index db_cache__index_1 on db_cache (group_key)"
-		);
+			, "create index db_cache__index_1 on db_cache (group_key)")
+			.postgresql("""
+				create table db_cache
+				 (
+				     cache_key    varchar(250) not null,
+				     content      text         null,
+				     group_key    varchar(250) null,
+				     content_type varchar(250) null,
+				     content_length bigint default 0 not null,
+				     created_at   timestamp    not null,
+				     constraint db_cache_pk primary key (cache_key)
+				 )
+			"""
+			, "create index db_cache__index_1 on db_cache (group_key)");
 		dbVersion.apply(db);
 
 	}

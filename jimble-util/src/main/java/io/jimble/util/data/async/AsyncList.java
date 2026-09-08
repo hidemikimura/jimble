@@ -1,6 +1,7 @@
 package io.jimble.util.data.async;
 
 import io.jimble.util.data.Data;
+import io.jimble.util.data.TableNest;
 import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -301,6 +303,66 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 			}
 
 		});
+
+	}
+
+	// endregion
+
+	// region テーブルネストの組み直し（要件 F-A-11）
+
+	/**
+	 * テーブルネストの形を変えて取り出す（要件 F-A-11）
+	 *
+	 * <p>
+	 * <b>自分は変わらない。</b>組み直した一覧を新しく作って返す。
+	 * </p>
+	 *
+	 * <p>
+	 * 要素が {@link AsyncData} なら<b>触らない</b>（その要素が自分で組み直す）。
+	 * 要素が素の {@link Data} なら、このリストの生データから導いた
+	 * 「テーブル名 → 列名」で組み直す。それ以外（文字列など）はそのまま。
+	 * </p>
+	 *
+	 * <p><b>読み込みを起こす。</b></p>
+	 *
+	 * @param nest	どちらの形にするか
+	 * @return	組み直した一覧（{@link TableNest#AS_IS} なら自分自身）
+	 */
+	public List<Object> reshape (TableNest nest) {
+
+		if (nest == null || nest == TableNest.AS_IS) {
+			return this;
+		}
+
+		// 中身が要るので読む
+		loadData();
+
+		Map<String, Set<String>> tables = TableShape.tablesOf(this.dataList);
+
+		if (tables.isEmpty()) {
+			return this;
+		}
+
+		List<Object> result = new ArrayList<>(super.size());
+
+		for (int i = 0; i < super.size(); i++) {
+
+			Object element = super.get(i);
+
+			/*
+			 * 要素が AsyncData なら、その要素が自分の生データで組み直す。
+			 * ここで触ると、親の列名で子を組み直すことになる。
+			 */
+			if (element instanceof Data data && !(element instanceof Async)) {
+				result.add(TableShape.reshape(data, tables, nest));
+				continue;
+			}
+
+			result.add(element);
+
+		}
+
+		return result;
 
 	}
 

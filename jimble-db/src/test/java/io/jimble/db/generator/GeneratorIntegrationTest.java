@@ -1,7 +1,9 @@
 package io.jimble.db.generator;
 
+import io.jimble.db.TestDdl;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
+import io.jimble.db.dialect.MySqlDialect;
 import io.jimble.util.conf.Conf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -67,12 +69,13 @@ class GeneratorIntegrationTest {
 		DB db = DBUtil.getMainDB();
 
 		db.execute("DROP TABLE IF EXISTS gen_item");
-		db.execute("""
+		TestDdl.execute(db, """
 			CREATE TABLE gen_item (
 				id         bigint unsigned auto_increment comment '商品ID' primary key,
 				code       varchar(50)     not null comment '商品コード',
 				name       varchar(250)    null comment '商品名',
 				price      int unsigned    default 0 not null comment '価格',
+				amount     decimal(10,2)   default 0 not null comment '金額,税込',
 				is_active  tinyint(1)      default 1 not null comment '有効',
 				note       text            null comment '備考',
 				created_at datetime        default current_timestamp() not null comment '作成日時',
@@ -80,12 +83,24 @@ class GeneratorIntegrationTest {
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '商品'
 			""");
 
+		/*
+		 * 一意キーとして数えてはいけないインデックス（PostgreSQL でだけ作れる）。
+		 *   式インデックス   … 列が取れないので、残った列だけで一意だと誤解しうる
+		 *   部分インデックス … 条件に合う行の中でしか一意でない
+		 */
+		if (!MySqlDialect.NAME.equals(db.dialect().name())) {
+			db.execute("CREATE UNIQUE INDEX gen_item_lower ON gen_item (price, lower(name))");
+			db.execute("CREATE UNIQUE INDEX gen_item_partial ON gen_item (note) WHERE is_active");
+		}
+
 	}
 
 	@AfterAll
 	static void tearDown () {
 
-		DBUtil.getMainDB().execute("DROP TABLE IF EXISTS gen_item");
+		if (DBUtil.isUseDB()) {
+			DBUtil.getMainDB().execute("DROP TABLE IF EXISTS gen_item");
+		}
 		DBUtil.stop();
 
 	}
@@ -132,6 +147,26 @@ class GeneratorIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("一意キーが静的に出力される（D-94。SQL結果キャッシュが「どの行か」を決めるのに要る）")
+	void staticUniqueKeys () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		String table = read(source("table/gen_item/GenItem.java"));
+
+		/*
+		 * SHOW INDEX では取っていたのに、Java には出していなかった。
+		 * 主キーは Column.isPrimaryKey() で分かるので、ここには入れない。
+		 */
+		assertTrue(table.contains("private static final List<List<Column>> UNIQUE_KEYS = List.of(List.of(code));")
+			, table);
+
+		assertTrue(table.contains("protected List<List<Column>> declareUniqueKeys () { return UNIQUE_KEYS; }")
+			, table);
+
+	}
+
+	@Test
 	@DisplayName("列一覧が静的に出力される（D-17。実行時のリフレクションをしない）")
 	void staticColumnList () {
 
@@ -159,6 +194,38 @@ class GeneratorIntegrationTest {
 		// tinyint(1) は boolean
 		assertTrue(table.contains("new Column(instance(), \"is_active\", boolean.class"), table);
 		assertTrue(table.contains("new Column(instance(), \"created_at\", java.util.Date.class"), table);
+		// decimal(10,2) は double（PostgreSQL は numeric として返る）
+		assertTrue(table.contains("new Column(instance(), \"amount\", double.class"), table);
+
+	}
+
+	@Test
+	@DisplayName("型名の中にカンマがあってもコメントを取り違えない")
+	void commentWithComma () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		String table = read(source("table/gen_item/GenItem.java"));
+
+		// decimal(10,2) のカンマで切ってしまうと、この列のコメントだけが消える
+		assertTrue(table.contains("/* 金額,税込 */"), table);
+
+	}
+
+	@Test
+	@DisplayName("式インデックスと部分インデックスは一意キーに数えない")
+	void unsafeUniqueIndexes () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		String table = read(source("table/gen_item/GenItem.java"));
+
+		/*
+		 * 式インデックスは残った列だけで一意だと誤解しうる（price は一意ではない）。
+		 * 部分インデックスは条件に合う行の中でしか一意でない。
+		 * どちらも「どの行か」を決める根拠にはできない（要件 F-D-28）。
+		 */
+		assertTrue(table.contains("UNIQUE_KEYS = List.of(List.of(code));"), table);
 
 	}
 

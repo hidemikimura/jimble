@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.where;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.where.IWhere;
@@ -110,26 +111,25 @@ public class Match implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("MATCH(");
-		for (int i = 0; i < selects.length; i++) {
-			if (i > 0) {
-				sb.append(", ");
+		/*
+		 * 全文検索は製品ごとに別物である（要件 F-D-30）。
+		 *
+		 * PostgreSQL の to_tsvector に寄せると、語彙の分割もスコアも変わる。
+		 * <b>「動くけれど検索結果が違う」</b>がいちばん気づけないので、
+		 * 対応する語彙が無い製品では組み立てた時点で例外にする。
+		 */
+		sb.dialect().fullTextMatch(sb.builder()
+			, () -> {
+				for (int i = 0; i < selects.length; i++) {
+					if (i > 0) {
+						sb.append(", ");
+					}
+					selects[i].selectSql(sb);
+				}
 			}
-			selects[i].selectSql(sb);
-		}
-		sb.append(")");
-
-		sb.append(" AGAINST(");
-		if (value != null) {
-			sb.append("?");
-		}
-		if (searchModifier != null) {
-			sb.append(" ");
-			sb.append(searchModifier.searchModifier());
-		}
-		sb.append(")");
+			, searchModifier == null ? null : searchModifier.searchModifier());
 
 	}
 

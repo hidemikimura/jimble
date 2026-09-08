@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.property;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 
 /**
@@ -52,7 +53,7 @@ public class Point implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
 		sb.append("'POINT(");
 		sb.append(lat);

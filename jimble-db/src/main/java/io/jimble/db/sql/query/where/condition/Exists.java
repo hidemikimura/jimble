@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.where.condition;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.SelectBuilder;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -27,11 +28,11 @@ public class Exists implements ICondition {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void conditionSql(StringBuilder sb) {
+	public void conditionSql (SqlWriter sb) {
 
 		sb.append(" EXISTS (");
 		if (value instanceof SelectBuilder selectBuilder) {
-			sb.append(selectBuilder.sql());
+			sb.append(selectBuilder.sql(sb.dialect()));
 		} else if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);
 		} else if (value instanceof ISelect select) {

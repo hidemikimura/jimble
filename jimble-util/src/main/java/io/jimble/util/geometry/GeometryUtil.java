@@ -4,6 +4,8 @@ import io.jimble.util.log.Log;
 import org.locationtech.jts.algorithm.Centroid;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.io.WKBReader;
+
+import java.util.HexFormat;
 import org.locationtech.jts.io.WKTReader;
 
 import java.util.ArrayList;
@@ -89,6 +91,42 @@ public class GeometryUtil {
 			System.arraycopy(geometryAsBytes, 4, wkb, 0, wkb.length);
 			Geometry dbGeometry = wkbReader.read(wkb);
 			dbGeometry.setSRID(srid);
+
+			return dbGeometry.toText();
+
+		} catch (Exception ex) {
+
+			Log.error(ex);
+			return null;
+
+		}
+
+	}
+
+	/**
+	 * PostGIS の Geometry をテキスト表現に変換する（要件 F-D-30）
+	 *
+	 * <p>
+	 * <b>MySQL とは並びが違う。</b>MySQL は先頭4バイトが SRID の生バイト列だが、
+	 * PostGIS は JDBC が<b>16進の文字列</b>（EWKB）を返す。
+	 * これを MySQL のつもりで読むと必ず失敗し、<b>黙って null になる</b>。
+	 * </p>
+	 *
+	 * @param hexEwkb	16進の EWKB
+	 * @return	テキスト表現
+	 */
+	public static String parsePostGISGeometry (String hexEwkb) {
+
+		if (hexEwkb == null || hexEwkb.isEmpty()) {
+			return null;
+		}
+
+		try {
+
+			byte[] wkb = HexFormat.of().parseHex(hexEwkb);
+
+			// WKBReader は EWKB の SRID 付きも読める
+			Geometry dbGeometry = new WKBReader().read(wkb);
 
 			return dbGeometry.toText();
 

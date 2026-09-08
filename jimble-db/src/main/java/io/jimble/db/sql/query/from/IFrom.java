@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.from;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.where.IWhere;
 
@@ -37,9 +38,9 @@ public interface IFrom {
 	/**
 	 * SQLを出力する
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void fromSql (StringBuilder sb);
+	void fromSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定
@@ -61,5 +62,20 @@ public interface IFrom {
 	 * @return	テーブル一覧
 	 */
 	List<ITable> getTableList();
+
+
+	/**
+	 * 結合条件を読み取る（要件 F-D-28）
+	 *
+	 * <p>
+	 * {@code ON (customer.shop_id = shop.id)} を読む。
+	 * SQL 結果のキャッシュが「結合先の行が1つに決まるか」を判断するのに使う。
+	 * </p>
+	 *
+	 * @param terms	読み取り先
+	 */
+	default void onTerms (io.jimble.db.sql.query.where.WhereTerms terms) {
+
+	}
 
 }

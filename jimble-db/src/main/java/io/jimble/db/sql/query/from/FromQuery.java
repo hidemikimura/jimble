@@ -1,7 +1,9 @@
 package io.jimble.db.sql.query.from;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.where.IWhere;
+import io.jimble.db.sql.query.where.WhereTerms;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +64,7 @@ public class FromQuery implements IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void fromSql(StringBuilder sb) {
+	public void fromSql (SqlWriter sb) {
 
 		for (IFrom from : fromList) {
 			from.fromSql(sb);
@@ -113,6 +115,18 @@ public class FromQuery implements IFrom {
 			tableList.addAll(from.getTableList());
 		}
 		return tableList;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void onTerms (WhereTerms terms) {
+
+		for (IFrom from : fromList) {
+			from.onTerms(terms);
+		}
 
 	}
 
@@ -185,7 +199,7 @@ public class FromQuery implements IFrom {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void fromSql(StringBuilder sb) {
+		public void fromSql (SqlWriter sb) {
 
 			if (from != null) {
 
@@ -295,6 +309,24 @@ public class FromQuery implements IFrom {
 				tableList.addAll(join.getTableList());
 			}
 			return tableList;
+
+		}
+
+
+		/**
+		 * {@inheritDoc}
+		 */
+		@Override
+		public void onTerms (WhereTerms terms) {
+
+			if (where == null) {
+				return;
+			}
+
+			// ON (...) は AND で並べて出しているので、そのまま読む
+			for (IWhere w : where) {
+				w.terms(terms);
+			}
 
 		}
 

@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.set;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 
 /**
@@ -24,9 +25,9 @@ public interface ISet {
 	/**
 	 * set sql
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void setSql(StringBuilder sb);
+	void setSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定

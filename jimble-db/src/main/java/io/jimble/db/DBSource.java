@@ -1,5 +1,8 @@
 package io.jimble.db;
 
+import io.jimble.db.dialect.Dialect;
+import io.jimble.db.dialect.Dialects;
+
 import javax.sql.DataSource;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +26,33 @@ public class DBSource {
 
 	/* サブデータソースマップ */
 	public Map<String, DBSource> subsDbSourceMap = new HashMap<>();
+
+	/* SQL の方言（要件 F-D-30） */
+	private Dialect dialect = null;
+
+	/**
+	 * SQL の方言
+	 *
+	 * <p>
+	 * {@code db.<name>.product} で決まる（既定は mysql）。
+	 * <b>{@link DB} がこれを SQL ビルダーに渡す</b>ので、
+	 * アプリのコードは製品を知らなくてよい。
+	 * </p>
+	 *
+	 * @return	方言
+	 */
+	public Dialect dialect () {
+
+		Dialect current = dialect;
+
+		if (current == null) {
+			current = Dialects.of(conf == null ? null : conf.product);
+			dialect = current;
+		}
+
+		return current;
+
+	}
 
 	/**
 	 * 読み取り専用データソースを取得する

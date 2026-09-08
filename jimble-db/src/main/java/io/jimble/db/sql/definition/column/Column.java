@@ -1,5 +1,6 @@
 package io.jimble.db.sql.definition.column;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 
 import io.jimble.util.data.definition.ITable;
@@ -238,16 +239,9 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void selectSql(StringBuilder sb) {
+	public void selectSql (SqlWriter sb) {
 
-		if (table() != null && !table().name().isEmpty()) {
-			sb.append("`");
-			sb.append(table().name());
-			sb.append("`.");
-		}
-		sb.append("`");
-		sb.append(name);
-		sb.append("`");
+		sb.qualified(table() == null ? null : table().name(), name);
 
 	}
 
@@ -459,16 +453,9 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void whereSql(StringBuilder sb) {
+	public void whereSql (SqlWriter sb) {
 
-		if (table() != null && !table().name().isEmpty()) {
-			sb.append("`");
-			sb.append(table().name());
-			sb.append("`.");
-		}
-		sb.append("`");
-		sb.append(name);
-		sb.append("`");
+		sb.qualified(table() == null ? null : table().name(), name);
 
 	}
 
@@ -520,16 +507,9 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void orderBySql(StringBuilder sb) {
+	public void orderBySql (SqlWriter sb) {
 
-		if (table() != null && !table().name().isEmpty()) {
-			sb.append("`");
-			sb.append(table().name());
-			sb.append("`.");
-		}
-		sb.append("`");
-		sb.append(name);
-		sb.append("`");
+		sb.qualified(table() == null ? null : table().name(), name);
 
 	}
 

@@ -3,6 +3,7 @@ package io.jimble.batch;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.util.log.Log;
 
 import java.util.ArrayList;
@@ -243,8 +244,13 @@ public final class BatchRegistry {
 				batch.getClass().getName()
 				, batch.batchName()
 				, BatchMasterStatus.enable.name()
-				, batch.isScheduler()
-				, batch.isEnableScheduler()
+				/*
+				 * 列は int（MySQL / PostgreSQL とも）。boolean のまま渡すと
+				 * PostgreSQL が「integer の列に boolean」と言って落ちる（要件 F-D-30）。
+				 * DbScheduler の WHERE も = 1 で見ているので、int に揃える。
+				 */
+				, batch.isScheduler() ? 1 : 0
+				, batch.isEnableScheduler() ? 1 : 0
 				, batch.cron()
 				, batch.cron()
 				, batch.allowConcurrentExecutionCount()
@@ -272,15 +278,10 @@ public final class BatchRegistry {
 					, created_at
 				) VALUES (
 					?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-				) ON DUPLICATE KEY UPDATE
-					name = VALUES(name)
-					, is_scheduler = VALUES(is_scheduler)
-					, is_enable_scheduler = VALUES(is_enable_scheduler)
-					, default_cron = VALUES(default_cron)
-					, default_settings = VALUES(default_settings)
-					, default_allow_concurrent_execution = VALUES(default_allow_concurrent_execution)
-					, created_at = VALUES(created_at)
-			"""
+				)
+			""" + Sqls.upsert(db.dialect(), List.of("class_name")
+				, "name", "is_scheduler", "is_enable_scheduler", "default_cron"
+				, "default_settings", "default_allow_concurrent_execution", "created_at")
 			, paramsList);
 
 		if (db.isError()) {

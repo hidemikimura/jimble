@@ -36,13 +36,24 @@ public class Comment extends Table {
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
 	private static final List<Column> COLUMNS = List.of(id, post_id, name, body, created_at);
 
+	/* 一意キー（生成時に確定。要件 F-D-28） */
+	private static final List<List<Column>> UNIQUE_KEYS = List.of();
+
 	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	protected List<Column> declareColumns () { return COLUMNS; }
 
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected List<List<Column>> declareUniqueKeys () { return UNIQUE_KEYS; }
+
 	public static List<Column> columns () { return COLUMNS; }
+
+	public static List<List<Column>> uniqueKeys () { return UNIQUE_KEYS; }
 
 	public Comment (ISchema schema, String name) { super(schema, name); }
 

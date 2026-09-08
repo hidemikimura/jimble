@@ -5,6 +5,7 @@ import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.context.BatchContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
+import io.jimble.db.dialect.SqlFunction;
 import io.jimble.db.DBTransaction;
 import io.jimble.db.DBUtil;
 import io.jimble.db.lock.DBLock;
@@ -383,8 +384,8 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					batch_execute_info
 				WHERE
 					class_name = ?
-					AND updated_at >= CURRENT_TIMESTAMP + INTERVAL - ? SECOND
-			"""
+					AND updated_at >= %s
+			""".formatted(db.dialect().intervalFromNow("SECOND", true))
 			, className()
 			, BatchConf.aliveSeconds());
 
@@ -419,13 +420,15 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 				FROM
 					batch_execute_info
 				WHERE
-					updated_at >= CURRENT_TIMESTAMP + INTERVAL - ? SECOND
+					updated_at >= %s
 				GROUP BY
 					scheduler_id
 				ORDER BY
 					cnt ASC
-					, RAND()
-			"""
+					, %s
+			""".formatted(
+				db.dialect().intervalFromNow("SECOND", true)
+				, db.dialect().call(SqlFunction.RAND))
 			, BatchConf.aliveSeconds());
 
 		if (rows == null || rows.isEmpty()) {

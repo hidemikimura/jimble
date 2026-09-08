@@ -5,6 +5,7 @@ import io.jimble.util.json.formatter.Formatter;
 import io.jimble.util.json.formatter.IFormatter;
 import io.jimble.util.json.formatter.lang.NullFormatter;
 import io.jimble.util.json.formatter.stream.OutputStreamWriterWrapper;
+import io.jimble.util.data.TableNest;
 import io.jimble.util.data.async.AsyncList;
 
 import java.util.Iterator;
@@ -54,7 +55,14 @@ public class IterableFormatter implements IFormatter {
 		IFormatter lastFormatter = null;
 		Class< ? > lastClass = null;
 
-		Iterator< ? > it = ((Iterable< ? >) obj).iterator();
+		Iterable< ? > iterable = (Iterable< ? >) obj;
+
+		// テーブルネストの組み直し（要件 F-A-11）
+		if (obj instanceof AsyncList asyncList && conf.tableNest != TableNest.AS_IS) {
+			iterable = asyncList.reshape(conf.tableNest);
+		}
+
+		Iterator< ? > it = iterable.iterator();
 		while (it.hasNext()) {
 
 			Object k = it.next();

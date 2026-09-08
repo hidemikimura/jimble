@@ -46,23 +46,23 @@ class MultiDataSourceIntegrationTest {
 			, "DB に接続できませんでした");
 
 		try (DB db = DBUtil.getDB(SUB_DB)) {
-			db.execute("""
-				CREATE TABLE IF NOT EXISTS `sub_item` (
-					`id`   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-					`name` VARCHAR(100) NOT NULL
+			TestDdl.execute(db, """
+				CREATE TABLE IF NOT EXISTS sub_item (
+					id   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 			""");
-			db.execute("TRUNCATE TABLE `sub_item`");
+			db.execute("TRUNCATE TABLE sub_item");
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
-			db.execute("""
-				CREATE TABLE IF NOT EXISTS `main_item` (
-					`id`   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-					`name` VARCHAR(100) NOT NULL
+			TestDdl.execute(db, """
+				CREATE TABLE IF NOT EXISTS main_item (
+					id   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 			""");
-			db.execute("TRUNCATE TABLE `main_item`");
+			db.execute("TRUNCATE TABLE main_item");
 		}
 
 	}
@@ -95,12 +95,12 @@ class MultiDataSourceIntegrationTest {
 	void isolated () throws Exception {
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			assertTrue(sub.insert("INSERT INTO `sub_item` (`name`) VALUES (?)", "サブの行") > 0
+			assertTrue(sub.insert("INSERT INTO sub_item (name) VALUES (?)", "サブの行") > 0
 				, String.valueOf(sub.getError()));
 		}
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			Data row = sub.select("SELECT `name` FROM `sub_item` WHERE `name` = ?", "サブの行");
+			Data row = sub.select("SELECT name FROM sub_item WHERE name = ?", "サブの行");
 			assertNotNull(row, "サブ DB から読めない");
 			assertEquals("サブの行", row.getString("name"));
 		}
@@ -112,7 +112,7 @@ class MultiDataSourceIntegrationTest {
 		 */
 		try (DB main = DBUtil.getMainDB()) {
 
-			Data row = main.select("SELECT `name` FROM `sub_item`");
+			Data row = main.select("SELECT name FROM sub_item");
 
 			assertNull(row, "メインからサブのテーブルが見えている");
 			assertTrue(main.isError(), "エラーが立っていない");
@@ -128,8 +128,8 @@ class MultiDataSourceIntegrationTest {
 		try (DB main = DBUtil.getMainDB();
 			 DB sub = DBUtil.getDB(SUB_DB)) {
 
-			String mainSchema = main.select("SELECT DATABASE() AS `schema_name`").getString("schema_name");
-			String subSchema = sub.select("SELECT DATABASE() AS `schema_name`").getString("schema_name");
+			String mainSchema = main.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(main))).getString("schema_name");
+			String subSchema = sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).getString("schema_name");
 
 			assertNotEquals(mainSchema, subSchema);
 			assertEquals(MAIN_DB, mainSchema);
@@ -152,8 +152,8 @@ class MultiDataSourceIntegrationTest {
 				mainTransaction.beginTransaction();
 				subTransaction.beginTransaction();
 
-				main.insert("INSERT INTO `main_item` (`name`) VALUES (?)", "残る行");
-				sub.insert("INSERT INTO `sub_item` (`name`) VALUES (?)", "消える行");
+				main.insert("INSERT INTO main_item (name) VALUES (?)", "残る行");
+				sub.insert("INSERT INTO sub_item (name) VALUES (?)", "消える行");
 
 				/*
 				 * 片方だけ戻す。
@@ -168,12 +168,12 @@ class MultiDataSourceIntegrationTest {
 		}
 
 		try (DB main = DBUtil.getMainDB()) {
-			assertNotNull(main.select("SELECT `id` FROM `main_item` WHERE `name` = ?", "残る行")
+			assertNotNull(main.select("SELECT id FROM main_item WHERE name = ?", "残る行")
 				, "コミットしたのに残っていない");
 		}
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			assertNull(sub.select("SELECT `id` FROM `sub_item` WHERE `name` = ?", "消える行")
+			assertNull(sub.select("SELECT id FROM sub_item WHERE name = ?", "消える行")
 				, "ロールバックしたのに残っている");
 		}
 
@@ -197,7 +197,7 @@ class MultiDataSourceIntegrationTest {
 			try (DB sub = main.newSubDB("sub")) {
 
 				assertEquals(SUB_DB
-					, sub.select("SELECT DATABASE() AS `schema_name`").getString("schema_name"));
+					, sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).getString("schema_name"));
 
 			}
 

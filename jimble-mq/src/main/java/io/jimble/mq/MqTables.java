@@ -44,7 +44,8 @@ public final class MqTables {
 
 		DBVersion dbVersion = new DBVersion(queueName, "MQ (%s)".formatted(queueName));
 
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table `%s`
 				(
 				    id           bigint unsigned auto_increment comment 'ID' primary key,
@@ -64,8 +65,26 @@ public final class MqTables {
 				.formatted(queueName, queueName)
 			// 迷子の行を拾い直すときの順路
 			, "create index %s__index_2 on `%s` (status, updated_at)"
+				.formatted(queueName, queueName))
+			.postgresql("""
+				create table "%s"
+				(
+				    id           bigserial primary key,
+				    execute_type varchar(100)   not null,
+				    mq_key       varchar(200)   not null,
+				    status       varchar(100)   not null,
+				    scheduled_at timestamp      null,
+				    retry_count  int default 0  not null,
+				    data         jsonb          not null,
+				    log_info     jsonb          null,
+				    created_at   timestamp      not null,
+				    updated_at   timestamp      not null
+				)
+			""".formatted(queueName)
+			, "create index %s__index_1 on \"%s\" (execute_type, status, scheduled_at, id)"
 				.formatted(queueName, queueName)
-		);
+			, "create index %s__index_2 on \"%s\" (status, updated_at)"
+				.formatted(queueName, queueName));
 
 		dbVersion.apply(db);
 

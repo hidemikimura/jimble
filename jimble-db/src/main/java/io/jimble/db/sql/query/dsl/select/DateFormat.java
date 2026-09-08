@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -31,13 +32,10 @@ public class DateFormat implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("DATE_FORMAT(");
-		select.selectSql(sb);
-		sb.append(", '");
-		sb.append(format);
-		sb.append("')");
+		// 書式の言語が製品で違うので、出し方ごと方言に任せる（要件 F-D-30）
+		sb.dialect().dateFormat(sb.builder(), () -> select.selectSql(sb), format);
 
 	}
 

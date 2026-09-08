@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.set;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -52,11 +53,10 @@ public class Set implements ISet {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void setSql(StringBuilder sb) {
+	public void setSql (SqlWriter sb) {
 
-		sb.append("`");
-		sb.append(column.name());
-		sb.append("` = ");
+		sb.identifier(column.name());
+		sb.append(" = ");
 
 		if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);

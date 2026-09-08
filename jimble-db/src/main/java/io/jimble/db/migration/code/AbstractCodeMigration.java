@@ -2,6 +2,7 @@ package io.jimble.db.migration.code;
 
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.migration.MigrationException;
 import io.jimble.util.data.Data;
 
@@ -158,8 +159,8 @@ public abstract class AbstractCodeMigration {
 
 		DB db = DBUtil.getMainDB();
 
-		db.insert("""
-				INSERT IGNORE INTO migration_code (
+		db.insert(Sqls.insertIgnoreInto(db.dialect(), "migration_code") + """
+				 (
 					version
 					, state
 					, execute_info
@@ -170,7 +171,7 @@ public abstract class AbstractCodeMigration {
 					, ?
 					, ?
 				)
-			"""
+			""" + Sqls.insertIgnoreTail(db.dialect())
 			, versionKey()
 			, MigrationCodeState.waiting.name()
 			, null

@@ -50,7 +50,8 @@ public final class BatchTables {
 		 * jimble では最初から1つの CREATE にまとめる。
 		 * 移送元の DB を引き継ぐわけではないので、履歴を再現する必要がない。
 		 */
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table `batch_master`
 				(
 				    class_name                         varchar(200)     not null comment 'バッチクラス名',
@@ -69,8 +70,27 @@ public final class BatchTables {
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
 			""".formatted(dbVersion.placeholder())
 			, "create index batch_master__index_1 on `batch_master` (created_at)"
-			, "create index batch_master__index_2 on `batch_master` (status)"
-		);
+			, "create index batch_master__index_2 on `batch_master` (status)")
+			.postgresql("""
+				create table batch_master
+				(
+				    class_name                         varchar(200) not null,
+				    name                               varchar(200) null,
+				    status                             varchar(200) not null,
+				    is_scheduler                       int          default 0 not null,
+				    is_enable_scheduler                int          default 1 not null,
+				    cron                               varchar(200) null,
+				    default_cron                       varchar(200) null,
+				    allow_concurrent_execution         int          default 1 not null,
+				    default_allow_concurrent_execution int          default 1 not null,
+				    settings                           jsonb        null,
+				    default_settings                   jsonb        null,
+				    created_at                         timestamp    null,
+				    constraint batch_master_pk primary key (class_name)
+				)
+			"""
+			, "create index batch_master__index_1 on batch_master (created_at)"
+			, "create index batch_master__index_2 on batch_master (status)");
 
 		dbVersion.apply(db);
 
@@ -85,7 +105,8 @@ public final class BatchTables {
 
 		DBVersion dbVersion = new DBVersion("batch_history", "バッチ履歴");
 
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table `batch_history`
 				(
 				    id            bigint unsigned auto_increment comment 'ID' primary key,
@@ -101,8 +122,24 @@ public final class BatchTables {
 			""".formatted(dbVersion.placeholder())
 			, "create index batch_history__index_1 on `batch_history` (status)"
 			, "create index batch_history__index_2 on `batch_history` (class_name)"
-			, "create index batch_history__index_3 on `batch_history` (status, class_name, starts_at)"
-		);
+			, "create index batch_history__index_3 on `batch_history` (status, class_name, starts_at)")
+			.postgresql("""
+				create table batch_history
+				(
+				    id            bigserial primary key,
+				    class_name    varchar(200) not null,
+				    name          varchar(200) null,
+				    status        varchar(200) not null,
+				    cancel_status int          not null,
+				    execute_info  jsonb        null,
+				    starts_at     timestamp    null,
+				    ends_at       timestamp    null,
+				    required_time bigint       null
+				)
+			"""
+			, "create index batch_history__index_1 on batch_history (status)"
+			, "create index batch_history__index_2 on batch_history (class_name)"
+			, "create index batch_history__index_3 on batch_history (status, class_name, starts_at)");
 
 		dbVersion.apply(db);
 
@@ -117,7 +154,8 @@ public final class BatchTables {
 
 		DBVersion dbVersion = new DBVersion("batch_execute_info", "バッチ実行情報");
 
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table batch_execute_info (
 					uid          varchar(250) not null comment 'UID' primary key,
 					scheduler_id varchar(250) null comment 'スケジューラID',
@@ -128,8 +166,19 @@ public final class BatchTables {
 			""".formatted(dbVersion.placeholder())
 			, "create index batch_execute_info__index_1 on batch_execute_info (class_name, updated_at)"
 			, "create index batch_execute_info__index_2 on batch_execute_info (updated_at)"
-			, "create index batch_execute_info__index_3 on batch_execute_info (scheduler_id, updated_at)"
-		);
+			, "create index batch_execute_info__index_3 on batch_execute_info (scheduler_id, updated_at)")
+			.postgresql("""
+				create table batch_execute_info (
+					uid          varchar(250) not null primary key,
+					scheduler_id varchar(250) null,
+					class_name   varchar(200) not null,
+					created_at   timestamp    not null,
+					updated_at   timestamp    not null
+				)
+			"""
+			, "create index batch_execute_info__index_1 on batch_execute_info (class_name, updated_at)"
+			, "create index batch_execute_info__index_2 on batch_execute_info (updated_at)"
+			, "create index batch_execute_info__index_3 on batch_execute_info (scheduler_id, updated_at)");
 
 		dbVersion.apply(db);
 

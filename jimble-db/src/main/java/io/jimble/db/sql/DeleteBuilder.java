@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.parameter.Parameter;
@@ -79,15 +80,13 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public String sql() {
+	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		StringBuilder sb = new StringBuilder();
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// DELETE句
 		sb.append("DELETE FROM ");
-		sb.append("`");
-		sb.append(from.name());
-		sb.append("`");
+		sb.identifier(from.name());
 
 		// WHERE句
 		if (!whereList.isEmpty()) {
@@ -143,5 +142,32 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 		return this;
 
 	}
+
+
+	// region 内省（要件 F-D-28）
+
+	/**
+	 * 削除するテーブル
+	 *
+	 * @return	テーブル
+	 */
+	public ITable table () {
+
+		return from;
+
+	}
+
+	/**
+	 * WHERE
+	 *
+	 * @return	WHERE
+	 */
+	public List<IWhere> whereList () {
+
+		return List.copyOf(whereList);
+
+	}
+
+	// endregion
 
 }

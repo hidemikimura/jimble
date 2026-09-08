@@ -1,6 +1,7 @@
 package io.jimble.util.data.async;
 
 import io.jimble.util.data.Data;
+import io.jimble.util.data.TableNest;
 import org.jspecify.annotations.NonNull;
 
 import java.util.Collection;
@@ -279,6 +280,49 @@ public abstract class AsyncData extends Data implements Async {
 			}
 
 		});
+
+	}
+
+	// endregion
+
+	// region テーブルネストの組み直し（要件 F-A-11）
+
+	/**
+	 * テーブルネストの形を変えて取り出す（要件 F-A-11）
+	 *
+	 * <p>
+	 * <b>自分は変わらない。</b>組み直した {@link Data} を新しく作って返す。
+	 * 中の子（{@link Async}）は<b>同じインスタンスのまま</b>入るので、
+	 * JSON の書き出しはそこから普通に降りていける。
+	 * </p>
+	 *
+	 * <pre>
+	 * // setData が flattenTable でも extractTableData でも、どちらの形にもできる
+	 * post.reshape(TableNest.ON)    // {"post": {"id": 1, ...}, "comments": [...]}
+	 * post.reshape(TableNest.OFF)   // {"id": 1, ..., "comments": [...]}
+	 * </pre>
+	 *
+	 * <p>
+	 * どのキーがどのテーブルの列かは<b>生の読み込みデータから導く</b>
+	 * （{@link TableShape}）。導けないとき（{@code putData(null)} を受けた、
+	 * 自由 SQL でテーブルネストしていない）は<b>そのまま返す</b>。
+	 * </p>
+	 *
+	 * <p><b>読み込みを起こす。</b></p>
+	 *
+	 * @param nest	どちらの形にするか
+	 * @return	組み直した {@link Data}（{@link TableNest#AS_IS} なら自分自身）
+	 */
+	public Data reshape (TableNest nest) {
+
+		if (nest == null || nest == TableNest.AS_IS) {
+			return this;
+		}
+
+		// 中身が要るので読む
+		loadData();
+
+		return TableShape.reshape(this, TableShape.tablesOf(this.data), nest);
 
 	}
 

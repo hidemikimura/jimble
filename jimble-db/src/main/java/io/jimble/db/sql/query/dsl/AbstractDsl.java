@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.order_by.IOrderBy;
 import io.jimble.db.sql.query.order_by.OrderByQuery;
 import io.jimble.db.sql.query.select.ISelect;
@@ -43,7 +44,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void selectSql(StringBuilder sb) {
+	public void selectSql (SqlWriter sb) {
 		select.selectSql(sb);
 	}
 
@@ -247,7 +248,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void whereSql(StringBuilder sb) {
+	public void whereSql (SqlWriter sb) {
 		this.where.whereSql(sb);
 	}
 
@@ -275,7 +276,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void orderBySql(StringBuilder sb) {
+	public void orderBySql (SqlWriter sb) {
 		this.orderBy.orderBySql(sb);
 	}
 

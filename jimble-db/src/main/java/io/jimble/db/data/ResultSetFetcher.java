@@ -53,6 +53,19 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 
 	}
 
+	/**
+	 * 方言を渡す（要件 F-D-30）
+	 *
+	 * <p>列の型を見分けるのに、接続先の製品が要る。</p>
+	 *
+	 * @param dialect	方言
+	 */
+	public void dialect (io.jimble.db.dialect.Dialect dialect) {
+
+		this.iterator.dialect(dialect);
+
+	}
+
 	// endregion
 
 	// region 行を移動する

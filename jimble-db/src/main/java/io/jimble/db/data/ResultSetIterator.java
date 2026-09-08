@@ -1,6 +1,8 @@
 package io.jimble.db.data;
 
 import io.jimble.util.data.Data;
+import io.jimble.db.dialect.Dialect;
+import io.jimble.db.dialect.Dialects;
 import io.jimble.db.sql.definition.column.Column;
 
 import java.sql.ResultSet;
@@ -44,6 +46,37 @@ class ResultSetIterator implements Iterator<Data> {
 	public void load (ResultSet resultSet) {
 
 		this.resultSet = resultSet;
+
+	}
+
+	/* 列の型を見分ける方言（要件 F-D-30） */
+	private Dialect dialect = null;
+
+	/**
+	 * 方言を渡す
+	 *
+	 * <p>
+	 * <b>接続先の製品を使う。</b>渡されなければ既定の方言を見るが、
+	 * 製品の違うデータソースを混ぜていると
+	 * <b>jsonb の列が Data に戻らない</b>といったことが黙って起きる。
+	 * </p>
+	 *
+	 * @param dialect	方言
+	 */
+	public void dialect (Dialect dialect) {
+
+		this.dialect = dialect;
+
+	}
+
+	/**
+	 * 方言
+	 *
+	 * @return	方言
+	 */
+	private Dialect dialect () {
+
+		return dialect != null ? dialect : Dialects.defaultDialect();
 
 	}
 
@@ -146,9 +179,20 @@ class ResultSetIterator implements Iterator<Data> {
 						for (int i = 0; i < colCount; i++) {
 							String key = metaData.getColumnLabel(i + 1);
 
+							/*
+							 * 型名で見分ける（要件 F-D-30）。
+							 *
+							 * MySQL の geometry は VARBINARY として返るので、
+							 * <b>型名を見ずに VARBINARY を全部 geometry 扱いすると、
+							 * PostgreSQL の bytea が壊れる。</b>
+							 */
 							String typeName = metaData.getColumnTypeName(i + 1);
-							if ("JSON".equalsIgnoreCase(typeName)) {
-								columnTypeList.add(-999);
+							Dialect dialect = dialect();
+
+							if (dialect.isJsonType(typeName)) {
+								columnTypeList.add(ResultSetConverter.TYPE_JSON);
+							} else if (dialect.isGeometryType(typeName)) {
+								columnTypeList.add(ResultSetConverter.TYPE_GEOMETRY);
 							} else {
 								columnTypeList.add(metaData.getColumnType(i + 1));
 							}
@@ -170,7 +214,7 @@ class ResultSetIterator implements Iterator<Data> {
 				}
 
 				// データを変換して保持する
-				currentData = ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList);
+				currentData = ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList, dialect());
 
 			}
 

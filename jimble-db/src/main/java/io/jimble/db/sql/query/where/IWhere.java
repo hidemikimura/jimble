@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.where;
 
+import io.jimble.db.dialect.SqlWriter;
 /**
  * where
  */
@@ -166,9 +167,9 @@ public interface IWhere {
 	/**
 	 * SQLを出力する
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void whereSql (StringBuilder sb);
+	void whereSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定
@@ -183,5 +184,25 @@ public interface IWhere {
 	 * @return	パラメータ
 	 */
 	Object getParameter();
+
+	/**
+	 * 条件を読み取る（要件 F-D-28）
+	 *
+	 * <p>
+	 * <b>組み立てた WHERE を、あとから読むための口。</b>
+	 * SQL 結果のキャッシュが「この更新はどの行に当たるか」を知るのに使う。
+	 * </p>
+	 *
+	 * <p>
+	 * 既定は<b>何も返さない</b>（読めない）。読めないことは
+	 * 「絞り込めていない」＝<b>安全側（テーブルごと消す）に倒れる</b>ので、
+	 * 実装していない条件があっても古いデータは出ない。
+	 * </p>
+	 *
+	 * @param terms	読み取り先
+	 */
+	default void terms (WhereTerms terms) {
+
+	}
 
 }

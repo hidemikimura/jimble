@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 
 /**
@@ -58,9 +59,9 @@ public interface ISelect {
 	/**
 	 * SQLを出力する
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void selectSql (StringBuilder sb);
+	void selectSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定

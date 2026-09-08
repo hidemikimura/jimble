@@ -1,7 +1,7 @@
 package io.jimble.db.data;
 
+import io.jimble.db.dialect.Dialect;
 import io.jimble.util.conf.Conf;
-import io.jimble.util.geometry.GeometryUtil;
 import io.jimble.util.json.Dson;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
@@ -15,6 +15,12 @@ import java.util.*;
  */
 public class ResultSetConverter {
 
+	/** JSON を表す内部の型（JDBC の型番号とぶつからない値） */
+	public static final int TYPE_JSON = -999;
+
+	/** 地理空間を表す内部の型 */
+	public static final int TYPE_GEOMETRY = -998;
+
 	/* 全ての列がNullのテーブルデータを削除する */
 	private static final boolean removeAllNullTableData = Conf.conf().getBoolean("db.removeAllNullTableData", false);
 
@@ -26,9 +32,9 @@ public class ResultSetConverter {
 	 * @param columnTypeList     列種別一覧
 	 * @return オブジェクト
 	 */
-	public static Data convert (ResultSet resultSet, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList) {
+	public static Data convert (ResultSet resultSet, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList, Dialect dialect) {
 
-		return convertToData(resultSet, keyInfoList, columnTypeList);
+		return convertToData(resultSet, keyInfoList, columnTypeList, dialect);
 
 	}
 
@@ -40,7 +46,7 @@ public class ResultSetConverter {
 	 * @param columnTypeList    列種別一覧
 	 * @return Map
 	 */
-	private static Data convertToData (ResultSet resultSet, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList) {
+	private static Data convertToData (ResultSet resultSet, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList, Dialect dialect) {
 
 		try {
 
@@ -52,7 +58,7 @@ public class ResultSetConverter {
 			for (ResultSetIterator.KeyInfo keyInfo : keyInfoList) {
 
 				Object value = null;
-				if (-999 == columnTypeList.get(i)) {
+				if (TYPE_JSON == columnTypeList.get(i)) {
 					// JSON
 					String jsonString = resultSet.getString(i + 1);
 					if (jsonString != null) {
@@ -62,10 +68,9 @@ public class ResultSetConverter {
 							value = Dson.decodes(jsonString, Data.class);
 						}
 					}
-				} else if (-3 == columnTypeList.get(i)) {
-					// Geometry
-					byte[] geometryAsBytes = resultSet.getBytes(i + 1);
-					value = GeometryUtil.parseMySQLGeometry(geometryAsBytes);
+				} else if (TYPE_GEOMETRY == columnTypeList.get(i)) {
+					// Geometry（返ってくる形が製品で違う。要件 F-D-30）
+					value = dialect.geometryText(resultSet, i + 1);
 				} else {
 					// その他
 					value = resultSet.getObject(i + 1);

@@ -7,6 +7,7 @@ import io.jimble.web.template.Templates;
 import io.jimble.util.conf.Conf;
 import io.jimble.db.cache.CacheData;
 import io.jimble.util.convertor.Configration;
+import io.jimble.util.data.TableNest;
 import io.jimble.util.io.FileUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.async.AsyncPrefetch;
@@ -259,6 +260,52 @@ public class Response extends Data {
 		this.responseCode = code;
 		this.isSettedResponseCode = true;
 		return this;
+
+	}
+
+	// endregion
+
+	// region テーブルネスト（要件 F-A-11）
+
+	/* テーブルネストの扱い */
+	private TableNest tableNest = TableNest.AS_IS;
+
+	/**
+	 * このレスポンスのテーブルネストの扱いを決める（要件 F-A-11）
+	 *
+	 * <p>
+	 * {@code AsyncData} / {@code AsyncList} を<b>テーブル名でネストして返すかどうか</b>。
+	 * 既定は {@link TableNest#AS_IS}（{@code setData} が作った形のまま）。
+	 * </p>
+	 *
+	 * <pre>
+	 * // 管理画面 API はテーブルネストで返す
+	 * before(context -&gt; context.response().tableNest(TableNest.ON));
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>同じ {@code AsyncData} を、面ごとに違う形で返すためにある。</b>
+	 * 形ごとにクラスを2つ書くと、片方だけ直したときに気づけない。
+	 * </p>
+	 *
+	 * @param tableNest	テーブルネストの扱い
+	 * @return	Response
+	 */
+	public Response tableNest (TableNest tableNest) {
+
+		this.tableNest = tableNest == null ? TableNest.AS_IS : tableNest;
+		return this;
+
+	}
+
+	/**
+	 * テーブルネストの扱い
+	 *
+	 * @return	テーブルネストの扱い
+	 */
+	public TableNest tableNest () {
+
+		return this.tableNest;
 
 	}
 
@@ -1240,6 +1287,7 @@ public class Response extends Data {
 		) {
 			Configration configration = new Configration();
 			configration.isAutoClose = true;
+			configration.tableNest = tableNest;
 			json.outputJsonString(bos, configration);
 		} catch (Exception ex) {
 			Log.error(ex, request, this);
@@ -1284,7 +1332,17 @@ public class Response extends Data {
 				} else {
 					bos.write(ln);
 				}
-				json.outputJsonString(bos, false);
+
+				/*
+				 * 1行ごとに作る。
+				 * Configration は循環参照の記録を持っていて、
+				 * <b>使い回すと2行目以降で組み立てが変わりうる</b>。
+				 */
+				Configration configration = new Configration();
+				configration.isAutoClose = false;
+				configration.tableNest = tableNest;
+
+				json.outputJsonString(bos, configration);
 			}
 		} catch (Exception ex) {
 			Log.error(ex, request, this);

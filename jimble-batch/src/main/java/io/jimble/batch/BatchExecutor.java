@@ -313,9 +313,9 @@ public final class BatchExecutor {
 					FROM
 						batch_execute_info
 					WHERE
-						updated_at >= CURRENT_TIMESTAMP + INTERVAL - ? SECOND
+						updated_at >= %s
 					LIMIT 1
-				"""
+				""".formatted(db.dialect().intervalFromNow("SECOND", true))
 				, BatchConf.aliveSeconds());
 
 			return row != null;
@@ -345,8 +345,8 @@ public final class BatchExecutor {
 			db.delete("""
 					DELETE FROM batch_execute_info
 					WHERE
-						updated_at < CURRENT_TIMESTAMP + INTERVAL - ? SECOND
-				"""
+						updated_at < %s
+				""".formatted(db.dialect().intervalFromNow("SECOND", true))
 				, BatchConf.aliveSeconds() * 3);
 
 		} catch (Exception ex) {

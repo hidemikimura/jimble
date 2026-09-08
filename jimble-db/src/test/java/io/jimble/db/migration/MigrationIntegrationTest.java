@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory;
 import io.jimble.db.DB;
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
+import io.jimble.db.TestDdl;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import org.junit.jupiter.api.AfterAll;
@@ -450,10 +451,11 @@ class MigrationIntegrationTest {
 	 */
 	private boolean hasTable (String table) {
 
+		// 「いまのスキーマ」の書き方が製品で違う（要件 F-D-30）
 		return DBUtil.getMainDB().select("""
 			SELECT COUNT(*) AS cnt FROM information_schema.tables
-			WHERE table_schema = DATABASE() AND table_name = ?
-			""", table).getLong("cnt") > 0;
+			WHERE table_schema = %s AND table_name = ?
+			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table).getLong("cnt") > 0;
 
 	}
 
@@ -468,8 +470,8 @@ class MigrationIntegrationTest {
 
 		return DBUtil.getMainDB().select("""
 			SELECT COUNT(*) AS cnt FROM information_schema.columns
-			WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
-			""", table, column).getLong("cnt") > 0;
+			WHERE table_schema = %s AND table_name = ? AND column_name = ?
+			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table, column).getLong("cnt") > 0;
 
 	}
 

@@ -156,6 +156,24 @@ public abstract class Context<SELF extends Context<SELF>> implements AutoCloseab
 	}
 
 	/**
+	 * コンストラクタ
+	 *
+	 * <p>
+	 * <b>実行IDを親から引き継ぐ。</b>
+	 * 1本の実行の中から別の実行単位を起こしたとき
+	 * （Web の内部呼び出し。要件 F-W-27）に使う。
+	 * ログを実行IDで辿ると、内側で起きたことも一緒に出る。
+	 * </p>
+	 *
+	 * @param parent	引き継ぐ元。null なら新しく採番する
+	 */
+	protected Context (Context<?> parent) {
+
+		this(parent == null ? ExecutionIds.generate() : parent.executionId());
+
+	}
+
+	/**
 	 * 自身を返す
 	 *
 	 * <p>実装は {@code return this;} だけでよい。</p>

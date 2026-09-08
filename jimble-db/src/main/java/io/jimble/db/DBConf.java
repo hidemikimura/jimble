@@ -33,6 +33,9 @@ public class DBConf {
 
 	public String schema;
 
+	/** DB 製品（要件 F-D-30。mysql / postgresql） */
+	public String product;
+
 	public String createDatabaseSql;
 
 	public String connectionPoolType;
@@ -61,6 +64,7 @@ public class DBConf {
 		conf.keepaliveTime = from.keepaliveTime;
 		conf.fetchSize = from.fetchSize;
 		conf.schema = from.schema;
+		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;
 		conf.transactionIsolation = from.transactionIsolation;

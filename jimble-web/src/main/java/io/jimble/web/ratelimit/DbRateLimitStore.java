@@ -2,12 +2,14 @@ package io.jimble.web.ratelimit;
 
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.log.Log;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -79,8 +81,9 @@ public final class DbRateLimitStore implements RateLimitStore {
 
 				db.execute("""
 					INSERT INTO %s (rate_key, tokens, updated_at) VALUES (?, ?, ?)
-					ON DUPLICATE KEY UPDATE tokens = VALUES(tokens), updated_at = VALUES(updated_at)
-					""".formatted(TABLE), hash, tokens, now);
+					""".formatted(TABLE)
+					+ Sqls.upsert(db.dialect(), List.of("rate_key"), "tokens", "updated_at")
+					, hash, tokens, now);
 
 				db.commitEndTransaction();
 
@@ -118,13 +121,21 @@ public final class DbRateLimitStore implements RateLimitStore {
 
 				DBVersion version = new DBVersion(TABLE, "流量制限");
 
-				version.add(1, """
-					create table %s (
-						rate_key bigint not null primary key
-						, tokens double not null
-						, updated_at bigint not null
-					) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
-					""".formatted(TABLE, version.placeholder()));
+				version.add(1)
+					.mysql("""
+						create table %s (
+							rate_key bigint not null primary key
+							, tokens double not null
+							, updated_at bigint not null
+						) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
+						""".formatted(TABLE, version.placeholder()))
+					.postgresql("""
+						create table %s (
+							rate_key bigint not null primary key
+							, tokens double precision not null
+							, updated_at bigint not null
+						)
+						""".formatted(TABLE));
 
 				if (!version.apply(db)) {
 					Log.error("%s テーブルを作れませんでした".formatted(TABLE));

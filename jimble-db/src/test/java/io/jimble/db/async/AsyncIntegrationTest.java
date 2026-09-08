@@ -1,5 +1,6 @@
 package io.jimble.db.async;
 
+import io.jimble.db.TestDdl;
 import io.jimble.core.context.BatchContext;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
@@ -7,6 +8,8 @@ import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.TestSchema;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
+import io.jimble.util.data.TableNest;
+import io.jimble.util.data.async.AsyncData;
 import io.jimble.util.data.async.AsyncList;
 import io.jimble.util.data.async.AsyncPrefetch;
 import org.junit.jupiter.api.AfterAll;
@@ -54,7 +57,7 @@ class AsyncIntegrationTest {
 		DB db = DBUtil.getMainDB();
 
 		db.execute("DROP TABLE IF EXISTS site");
-		db.execute("""
+		TestDdl.execute(db, """
 			CREATE TABLE site (
 				id          bigint unsigned auto_increment comment 'ID' primary key,
 				group_id    bigint unsigned not null comment 'グループID',
@@ -65,7 +68,7 @@ class AsyncIntegrationTest {
 			""");
 
 		db.execute("DROP TABLE IF EXISTS feed");
-		db.execute("""
+		TestDdl.execute(db, """
 			CREATE TABLE feed (
 				id       bigint unsigned auto_increment comment 'ID' primary key,
 				site_id  bigint unsigned not null comment 'サイトID',
@@ -511,6 +514,166 @@ class AsyncIntegrationTest {
 		});
 
 		assertEquals(0, sql, "走査だけで SQL が飛んでいる");
+
+	}
+
+	// endregion
+
+	// region テーブルネストの組み直し（要件 F-A-11）
+
+	/**
+	 * SELECT の結果をそのまま持つリスト
+	 *
+	 * <p>
+	 * <b>setData で形を決めない。</b>管理画面はネスト、ショップはフラット、
+	 * を同じクラスで出せることを確かめる。
+	 * </p>
+	 */
+	static class RawFeedList extends AsyncList {
+
+		private final long siteId;
+
+		RawFeedList (long siteId) {
+
+			this.siteId = siteId;
+
+		}
+
+		@Override
+		protected List<Data> load () {
+
+			return DBUtil.getMainDB().selectList(
+				SQL.select()
+					.from(TestSchema.Feed.instance())
+					.where(TestSchema.Feed.site_id.eq(siteId))
+					.orderBy(TestSchema.Feed.id));
+
+		}
+
+		@Override
+		protected void setData (Data data) {
+
+			// テーブルネストしたまま持つ
+			add(data.extractTableData(TestSchema.Feed.instance()));
+
+		}
+
+		@Override
+		protected String hashKey () { return "RawFeedList:" + siteId; }
+
+	}
+
+	/**
+	 * SELECT の結果を平らにして持つ1件
+	 */
+	static class FlatSite extends AsyncData {
+
+		private final long siteId;
+
+		FlatSite (long siteId) {
+
+			this.siteId = siteId;
+
+		}
+
+		@Override
+		protected Data load () {
+
+			return DBUtil.getMainDB().select(
+				SQL.select()
+					.from(TestSchema.Site.instance())
+					.where(TestSchema.Site.id.eq(siteId)));
+
+		}
+
+		@Override
+		protected void setData (Data data) {
+
+			putAll(data.flattenTable(TestSchema.Site.instance()));
+
+		}
+
+		@Override
+		protected void setRelationData (Data data) {
+
+			put("feeds", new RawFeedList(siteId));
+
+		}
+
+		@Override
+		protected String hashKey () { return "FlatSite:" + siteId; }
+
+	}
+
+	@Test
+	@DisplayName("実 DB でも、同じクラスからネストあり・なしの両方が出る（要件 F-A-11）")
+	void tableNestBothShapes () {
+
+		Long siteId = DBUtil.getMainDB().select(
+			SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.orderBy(TestSchema.Site.id)
+				.limit(1)).getLong(TestSchema.Site.id);
+
+		FlatSite site = new FlatSite(siteId);
+
+		String nested = site.getJsonString(TableNest.ON);
+		String flat = site.getJsonString(TableNest.OFF);
+
+		// ネストあり：サイトもフィードもテーブル名の下
+		assertTrue(nested.contains("\"site\":{"), nested);
+		assertTrue(nested.contains("\"feed\":{"), nested);
+
+		// ネストなし：どちらもテーブル名が消える
+		assertFalse(flat.contains("\"site\":{"), flat);
+		assertFalse(flat.contains("\"feed\":{"), flat);
+		assertTrue(flat.contains("\"title\":"), flat);
+
+	}
+
+	@Test
+	@DisplayName("組み直しても SQL は増えない")
+	void tableNestDoesNotAddSql () {
+
+		Long siteId = DBUtil.getMainDB().select(
+			SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.orderBy(TestSchema.Site.id)
+				.limit(1)).getLong(TestSchema.Site.id);
+
+		long sql = countSql("組み直し", () -> {
+
+			FlatSite site = new FlatSite(siteId);
+
+			site.getJsonString(TableNest.ON);
+			site.getJsonString(TableNest.OFF);
+			site.getJsonString();
+
+		});
+
+		// サイト1本 + フィード1本。3回 JSON にしても読み込みは1度きり
+		assertEquals(2, sql, "本数が想定と違う: " + sql);
+
+	}
+
+	@Test
+	@DisplayName("組み直しても元のノードは変わらない")
+	void tableNestDoesNotMutate () {
+
+		Long siteId = DBUtil.getMainDB().select(
+			SQL.select(TestSchema.Site.id)
+				.from(TestSchema.Site.instance())
+				.orderBy(TestSchema.Site.id)
+				.limit(1)).getLong(TestSchema.Site.id);
+
+		FlatSite site = new FlatSite(siteId);
+
+		String before = site.getJsonString();
+
+		site.getJsonString(TableNest.ON);
+		site.getJsonString(TableNest.OFF);
+
+		assertEquals(before, site.getJsonString());
 
 	}
 

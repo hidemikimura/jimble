@@ -147,12 +147,12 @@ public abstract class MqExecutor {
 	public long put (DB db, Data data, Date scheduledAt) {
 
 		long id = db.insert("""
-				INSERT INTO `%s` (
+				INSERT INTO %s (
 					execute_type, mq_key, status, scheduled_at, retry_count, data, created_at, updated_at
 				) VALUES (
 					?, ?, ?, ?, 0, ?, NOW(), NOW()
 				)
-			""".formatted(queueName())
+			""".formatted(db.dialect().identifier(queueName()))
 			, executeType().name()
 			, key()
 			, MqStatus.waiting.name()
@@ -210,7 +210,7 @@ public abstract class MqExecutor {
 	 */
 	protected boolean updateData (DB db, Data row, Data data) {
 
-		return db.update("UPDATE `%s` SET data = ?, updated_at = NOW() WHERE id = ?".formatted(queueName())
+		return db.update("UPDATE %s SET data = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName()))
 			, data, row.getLong("id")) >= 0;
 
 	}
@@ -225,7 +225,7 @@ public abstract class MqExecutor {
 	 */
 	protected boolean updateLogInfo (DB db, Data row, Data logInfo) {
 
-		return db.update("UPDATE `%s` SET log_info = ?, updated_at = NOW() WHERE id = ?".formatted(queueName())
+		return db.update("UPDATE %s SET log_info = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName()))
 			, logInfo, row.getLong("id")) >= 0;
 
 	}

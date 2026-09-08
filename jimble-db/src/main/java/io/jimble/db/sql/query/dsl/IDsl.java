@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl;
 
+import io.jimble.db.dialect.SqlWriter;
 /**
  * DSL
  */
@@ -8,9 +9,9 @@ public interface IDsl {
 	/**
 	 * DSL SQL
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void dslSql(StringBuilder sb);
+	void dslSql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定

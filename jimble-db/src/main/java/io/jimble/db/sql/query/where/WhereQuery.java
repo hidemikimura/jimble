@@ -1,7 +1,9 @@
 package io.jimble.db.sql.query.where;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
+import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.where.condition.*;
 
 import java.util.ArrayList;
@@ -277,7 +279,7 @@ public class WhereQuery implements IWhere {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void whereSql(StringBuilder sb) {
+	public void whereSql (SqlWriter sb) {
 
 		for (IWhere where : whereList) {
 			where.whereSql(sb);
@@ -314,6 +316,32 @@ public class WhereQuery implements IWhere {
 			}
 		}
 		return params;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * <b>この括弧の中に OR があれば、中身をまるごと捨てる。</b>
+	 * {@code a = 1 OR b = 2} から {@code a = 1} だけを取り出すと、
+	 * 「a = 1 の行に絞り込めている」と読み違える。
+	 * </p>
+	 */
+	@Override
+	public void terms (WhereTerms terms) {
+
+		WhereTerms group = new WhereTerms();
+
+		for (IWhere where : whereList) {
+			where.terms(group);
+		}
+
+		if (group.hasOr()) {
+			return;
+		}
+
+		terms.addAll(group.terms());
 
 	}
 
@@ -580,7 +608,7 @@ public class WhereQuery implements IWhere {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void whereSql(StringBuilder sb) {
+		public void whereSql (SqlWriter sb) {
 
 			if (this.logicalOperator != null && !this.logicalOperator.isEmpty()) {
 				sb.append(" ");
@@ -672,6 +700,37 @@ public class WhereQuery implements IWhere {
 			}
 
 			return params;
+
+		}
+
+
+		/**
+		 * {@inheritDoc}
+		 */
+		@Override
+		public void terms (WhereTerms terms) {
+
+			if ("OR".equals(this.logicalOperator)) {
+				terms.markOr();
+				return;
+			}
+
+			// 列 = 値 / 列 IN (...)
+			if (this.left instanceof IColumn column && this.right instanceof ICondition condition) {
+				terms.add(column, condition.operator(), condition.conditionValue());
+				return;
+			}
+
+			// 入れ子の括弧
+			if (this.left != null && this.right == null) {
+				this.left.terms(terms);
+			}
+
+			/*
+			 * それ以外（DSL・サブクエリ・全文検索）は読まない。
+			 * 読めないものは「絞り込めていない」扱いになるだけで、
+			 * 安全側（テーブルごと消す）に倒れる。
+			 */
 
 		}
 

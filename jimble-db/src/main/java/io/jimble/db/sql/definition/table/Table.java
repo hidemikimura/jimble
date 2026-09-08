@@ -1,5 +1,6 @@
 package io.jimble.db.sql.definition.table;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.ITable;
 
 import io.jimble.util.data.Data;
@@ -101,11 +102,10 @@ public class Table implements ITable, IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void fromSql(StringBuilder sb) {
+	public void fromSql (SqlWriter sb) {
 
-		sb.append(" `");
-		sb.append(name);
-		sb.append("`");
+		sb.append(' ');
+		sb.identifier(name);
 
 	}
 
@@ -286,6 +286,87 @@ public class Table implements ITable, IFrom {
 		}
 
 		isGetColumnList = true;
+
+	}
+
+	// endregion
+
+	// region キー（要件 F-D-28）
+
+	/**
+	 * 一意キーを宣言する
+	 *
+	 * <p>
+	 * <b>生成コードがこれを override する</b>（D-94）。
+	 * 1つのキーが複数列なら、その列を並べたリストにする。
+	 * </p>
+	 *
+	 * <p>
+	 * override しなかった場合は「一意キーを知らない」ことになり、
+	 * SQL 結果のキャッシュは<b>安全側（テーブルごと消す）に倒れる</b>。
+	 * </p>
+	 *
+	 * @return	一意キーの一覧（宣言しない場合は null）
+	 */
+	protected List<List<Column>> declareUniqueKeys () {
+
+		return null;
+
+	}
+
+	/**
+	 * 主キー
+	 *
+	 * @return	主キーの列（無ければ空）
+	 */
+	public List<Column> getPrimaryKeyList () {
+
+		List<Column> keys = new ArrayList<>();
+
+		for (Column column : getColumnList()) {
+			if (column.isPrimaryKey()) {
+				keys.add(column);
+			}
+		}
+
+		return keys;
+
+	}
+
+	/**
+	 * 一意キー（主キーを含まない）
+	 *
+	 * @return	一意キーの一覧
+	 */
+	public List<List<Column>> getUniqueKeyList () {
+
+		List<List<Column>> declared = declareUniqueKeys();
+
+		return declared == null ? List.of() : declared;
+
+	}
+
+	/**
+	 * 1行を特定できるキー（主キー + 一意キー）
+	 *
+	 * <p>
+	 * <b>SQL 結果のキャッシュはこれを見て「どの行か」を決める</b>（要件 F-D-28）。
+	 * </p>
+	 *
+	 * @return	キーの一覧（1つのキーは1列とは限らない）
+	 */
+	public List<List<Column>> getKeyList () {
+
+		List<List<Column>> keys = new ArrayList<>();
+
+		List<Column> primary = getPrimaryKeyList();
+		if (!primary.isEmpty()) {
+			keys.add(primary);
+		}
+
+		keys.addAll(getUniqueKeyList());
+
+		return keys;
 
 	}
 

@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
@@ -12,6 +13,7 @@ import io.jimble.db.sql.query.value.IValue;
 import io.jimble.db.sql.query.value.Value;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Arrays;
 import java.util.List;
 
@@ -202,21 +204,20 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public String sql() {
+	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		StringBuilder sb = new StringBuilder();
+		SqlWriter sb = new SqlWriter(dialect);
 
 		// INSERT句
 		sb.append("INSERT ");
 		if (this.ignore) {
-			sb.append("IGNORE ");
+			// MySQL は INSERT IGNORE、PostgreSQL は末尾の ON CONFLICT DO NOTHING（要件 F-D-30）
+			sb.append(sb.dialect().insertIgnorePrefix());
 		}
 		sb.append("INTO ");
 
 		// テーブル
-		sb.append("`");
-		sb.append(table.name());
-		sb.append("`");
+		sb.identifier(table.name());
 
 		// COLUMN句
 		sb.append(" (");
@@ -225,7 +226,7 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 				if (i > 0) {
 					sb.append(", ");
 				}
-				sb.append(columnList.get(i).name());
+				sb.identifier(columnList.get(i).name());
 			}
 		} else {
 			for (int i = 0; i < valueList.size(); i++) {
@@ -240,7 +241,7 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 		// VALUE句
 		if (selectBuilder != null) {
 			sb.append(" ");
-			sb.append(selectBuilder.sql());
+			sb.append(selectBuilder.sql(dialect));
 		} else {
 			sb.append(" VALUES (");
 			for (int i = 0; i < valueList.size(); i++) {
@@ -252,9 +253,17 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 			sb.append(")");
 		}
 
-		// ON DUPLICATE KEY UPDATE句
+		/*
+		 * 重複したら更新する（要件 F-D-30）。
+		 *
+		 * PostgreSQL は<b>どのキーで重複を見るかを書かせる</b>ので、
+		 * テーブル定義の主キーを渡す。分からなければ例外になる
+		 * （書けない SQL を組み立てて実行時に落とさない）。
+		 */
 		if (!setList.isEmpty()) {
-			sb.append(" ON DUPLICATE KEY UPDATE ");
+
+			sb.append(sb.dialect().onDuplicateKeyUpdate(conflictKeys()));
+
 			boolean isFirst = true;
 			for (ISet set : setList) {
 				if (!isFirst) {
@@ -263,6 +272,12 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 				isFirst = false;
 				set.setSql(sb);
 			}
+
+		}
+
+		// 重複を無視する（PostgreSQL はここに出る）
+		if (this.ignore) {
+			sb.append(sb.dialect().insertIgnoreSuffix());
 		}
 
 		return sb.toString();
@@ -310,5 +325,115 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 		return this;
 
 	}
+
+	/**
+	 * 重複を見るキー（要件 F-D-30）
+	 *
+	 * <p>主キーを使う。複合主キーなら全列。</p>
+	 *
+	 * @return	列名。分からなければ空
+	 */
+	private List<String> conflictKeys () {
+
+		if (!(table instanceof io.jimble.db.sql.definition.table.Table target)) {
+			return List.of();
+		}
+
+		/*
+		 * MySQL の ON DUPLICATE KEY UPDATE は<b>どの一意キーでも</b>発火するが、
+		 * PostgreSQL の ON CONFLICT は<b>どのキーで見るかを書かせる</b>。
+		 *
+		 * よくあるのは「auto_increment の主キー ＋ 業務上の一意キー」で、
+		 * INSERT には主キーを入れない。ここで主キーしか見ないと
+		 * <b>衝突を見つけられずに一意制約違反で落ちる</b>。
+		 * 入れようとしている列で埋まっているキーを選ぶ。
+		 */
+		java.util.Set<String> inserting = insertingColumns();
+
+		for (List<io.jimble.db.sql.definition.column.Column> key : target.getKeyList()) {
+
+			if (key.isEmpty()) {
+				continue;
+			}
+
+			List<String> names = new ArrayList<>();
+			boolean covered = true;
+
+			for (io.jimble.db.sql.definition.column.Column column : key) {
+				names.add(column.name());
+				if (!inserting.contains(column.name())) {
+					covered = false;
+				}
+			}
+
+			if (covered) {
+				return names;
+			}
+
+		}
+
+		// 埋まっているキーが無い。主キーで見るしかない（分からなければ空 = 例外）
+		List<String> names = new ArrayList<>();
+
+		for (io.jimble.db.sql.definition.column.Column column : target.getPrimaryKeyList()) {
+			names.add(column.name());
+		}
+
+		return names;
+
+	}
+
+	/**
+	 * この INSERT が値を入れる列
+	 *
+	 * @return	列名
+	 */
+	private java.util.Set<String> insertingColumns () {
+
+		java.util.Set<String> names = new LinkedHashSet<>();
+
+		for (IColumn column : columnList) {
+			names.add(column.name());
+		}
+
+		for (IValue value : valueList) {
+			names.add(value.column().name());
+		}
+
+		return names;
+
+	}
+
+	// region 内省（要件 F-D-28）
+
+	/**
+	 * 既存の行を書き換えうるか（{@code ON DUPLICATE KEY UPDATE}）
+	 *
+	 * <p>
+	 * <b>これが true なら、INSERT でも既存の行が変わる。</b>
+	 * SQL 結果のキャッシュは、その行だけを消すことができない
+	 * （どの行に当たるかは入れてみるまで分からない）。
+	 * </p>
+	 *
+	 * @return	書き換えうるなら true
+	 */
+	public boolean isUpsert () {
+
+		return !setList.isEmpty();
+
+	}
+
+	/**
+	 * {@code INSERT ... SELECT} か
+	 *
+	 * @return	そうなら true
+	 */
+	public boolean hasSelect () {
+
+		return selectBuilder != null;
+
+	}
+
+	// endregion
 
 }

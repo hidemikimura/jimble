@@ -19,6 +19,13 @@ import java.util.*;
  */
 public class Data extends LinkedHashMap<String, Object> {
 
+	/*
+	 * 直列化の版。
+	 * SQL 結果キャッシュ（要件 F-D-28）が置き場に書き出すので、
+	 * <b>クラスを直すたびに読めなくなる</b>ことがないよう固定する。
+	 */
+	private static final long serialVersionUID = 1L;
+
 	// region キー存在判定
 
 	/**
@@ -2124,8 +2131,43 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public String getJsonString (boolean isPrettyPrint) {
 
+		return getJsonString(isPrettyPrint, TableNest.AS_IS);
+
+	}
+
+	/**
+	 * JSON文字列を取得する（要件 F-A-11）
+	 *
+	 * <p>
+	 * {@code AsyncData} / {@code AsyncList} を<b>テーブル名でネストするかどうか</b>を選ぶ。
+	 * </p>
+	 *
+	 * <pre>
+	 * data.getJsonString(TableNest.ON);    // {"post": {"id": 1}, "comments": [...]}
+	 * data.getJsonString(TableNest.OFF);   // {"id": 1, "comments": [...]}
+	 * </pre>
+	 *
+	 * @param tableNest	テーブルネストの扱い
+	 * @return	JSON文字列
+	 */
+	public String getJsonString (TableNest tableNest) {
+
+		return getJsonString(false, tableNest);
+
+	}
+
+	/**
+	 * JSON文字列を取得する（要件 F-A-11）
+	 *
+	 * @param isPrettyPrint	整形表示
+	 * @param tableNest		テーブルネストの扱い
+	 * @return	JSON文字列
+	 */
+	public String getJsonString (boolean isPrettyPrint, TableNest tableNest) {
+
 		Configration configration = new Configration();
 		configration.isOutputIndent = isPrettyPrint;
+		configration.tableNest = tableNest == null ? TableNest.AS_IS : tableNest;
 
 		String res = Dson.encodes(configration, this);
 		if (res == null || res.isEmpty()) {

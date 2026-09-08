@@ -5,6 +5,7 @@ import io.jimble.db.DBSticky;
 import io.jimble.db.DBUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.web.server.Dispatcher;
 import io.jimble.web.server.ServerConf;
 import io.jimble.web.cookie.Cookies;
 import io.jimble.web.flash.Flash;
@@ -62,6 +63,12 @@ public final class WebContext extends Context<WebContext> {
 	/* 書き込み直後の参照先（遅延生成。要件 F-D-19） */
 	private DBSticky dbSticky;
 
+	/* 内部呼び出しの外側（要件 F-W-27）。通常のリクエストでは null */
+	private final WebContext outer;
+
+	/* このリクエストを捌いているディスパッチャ */
+	private Dispatcher dispatcher;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -70,12 +77,97 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	public WebContext (RequestSource source, ResponseSink sink) {
 
+		this(source, sink, null);
+
+	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param source	入力口
+	 * @param sink		出力口
+	 * @param outer		内部呼び出しの外側。通常のリクエストでは null
+	 */
+	private WebContext (RequestSource source, ResponseSink sink, WebContext outer) {
+
+		super(outer);
+
 		Objects.requireNonNull(source, "source");
 		Objects.requireNonNull(sink, "sink");
 
+		this.outer = outer;
 		this.source = source;
 		this.request = new Request(this, source);
 		this.response = new Response(this, this.request, sink);
+
+		if (outer != null) {
+			this.dispatcher = outer.dispatcher;
+		}
+
+	}
+
+	/**
+	 * 内部呼び出しのコンテキストを作る（要件 F-W-27）
+	 *
+	 * <p>
+	 * <b>実行IDを外側から引き継ぐ。</b>
+	 * 1本のリクエストの中で起きたことが、ログで1つに繋がる。
+	 * </p>
+	 *
+	 * <p>
+	 * アクセスログは出さない（外側がすでに1行出す）。
+	 * 書き込み直後の参照先（要件 F-D-19）も<b>外側のものを共有する</b>。
+	 * 内側で書き込んだことを外側が知らないと、
+	 * <b>内部呼び出しで登録した直後に外側で一覧を引くと、いま入れたものが無い。</b>
+	 * </p>
+	 *
+	 * @param source	入力口
+	 * @param sink		出力口
+	 * @param outer		外側のコンテキスト
+	 * @return	コンテキスト
+	 */
+	public static WebContext internal (RequestSource source, ResponseSink sink, WebContext outer) {
+
+		return new WebContext(source, sink, Objects.requireNonNull(outer, "outer"));
+
+	}
+
+	/**
+	 * 内部呼び出しか
+	 *
+	 * @return	内部呼び出しなら true
+	 */
+	public boolean isInternal () {
+
+		return outer != null;
+
+	}
+
+	/**
+	 * このリクエストを捌いているディスパッチャ
+	 *
+	 * <p>
+	 * <b>実装済みの API を内部から呼ぶ</b>ときの入口（要件 F-W-27）。
+	 * </p>
+	 *
+	 * @return	ディスパッチャ。ディスパッチ前は null
+	 */
+	public Dispatcher dispatcher () {
+
+		return dispatcher;
+
+	}
+
+	/**
+	 * ディスパッチャを設定する
+	 *
+	 * <p>フレームワーク内部から呼ぶ。アプリケーションからは呼ばない。</p>
+	 *
+	 * @param dispatcher	ディスパッチャ
+	 */
+	public void dispatcher (Dispatcher dispatcher) {
+
+		this.dispatcher = dispatcher;
 
 	}
 
@@ -137,6 +229,17 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	public Cookies cookies () {
 
+		/*
+		 * 内部呼び出しは外側と同じものを使う（要件 F-W-27）。
+		 * 別に持つと、内側で発行した Cookie が
+		 * <b>内側の出力口に書かれて捨てられる</b>。
+		 * セッションを新しく作った場合は、
+		 * DB には行ができるのに相手はその id を知らない、という形になる。
+		 */
+		if (outer != null) {
+			return outer.cookies();
+		}
+
 		if (cookies == null) {
 			cookies = new Cookies(source);
 		}
@@ -156,6 +259,11 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	public Flash flash () {
 
+		// 内部呼び出しは外側と同じもの（読むと同時に失効するので、2つ作ると片方が空になる）
+		if (outer != null) {
+			return outer.flash();
+		}
+
 		if (flash == null) {
 			flash = new Flash(cookies());
 		}
@@ -174,6 +282,18 @@ public final class WebContext extends Context<WebContext> {
 	 * @return	セッション
 	 */
 	public Session session () {
+
+		/*
+		 * 内部呼び出しは外側と同じものを使う（要件 F-W-27）。
+		 *
+		 * 別に持つと3つ壊れる。
+		 * (1) 内側で作ったセッションの id が相手に届かない（Cookie が捨てられる）
+		 * (2) 外側と内側が同じセッションを別々に読み書きし、あとに保存したほうが勝つ
+		 * (3) スコープごとに保存先を変えていると、内側だけ既定の保存先を読む
+		 */
+		if (outer != null) {
+			return outer.session();
+		}
 
 		if (session == null) {
 			session = new Session(this, sessionStore == null ? SessionStores.defaultStore() : sessionStore);
@@ -195,6 +315,12 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	public void sessionStore (SessionStore sessionStore) {
 
+		// 内部呼び出しはセッションを外側と共有しているので、保存先も外側のもの
+		if (outer != null) {
+			outer.sessionStore(sessionStore);
+			return;
+		}
+
 		if (session != null) {
 			throw new IllegalStateException("セッションを使い始めたあとで保存先は変えられません");
 		}
@@ -214,6 +340,15 @@ public final class WebContext extends Context<WebContext> {
 	 * @param sink	出力口
 	 */
 	public void flushCookies (ResponseSink sink) {
+
+		/*
+		 * 内部呼び出しは書き出さない（要件 F-W-27）。
+		 * Cookie は外側と共有していて、書き出しは1度だけしか効かない。
+		 * ここで内側の出力口に書くと、<b>外側が書くころには空になっている。</b>
+		 */
+		if (outer != null) {
+			return;
+		}
 
 		if (cookies == null) {
 			return;
@@ -250,6 +385,14 @@ public final class WebContext extends Context<WebContext> {
 	 * @return	参照先
 	 */
 	private DBSticky dbSticky () {
+
+		/*
+		 * 内部呼び出しは外側のものを使う（要件 F-W-27）。
+		 * 別々に持つと、内側で書き込んだことが外側に伝わらない。
+		 */
+		if (outer != null) {
+			return outer.dbSticky();
+		}
 
 		if (dbSticky == null) {
 			dbSticky = new DBSticky(stickyKey(), null);
@@ -309,6 +452,28 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	@Override
 	protected void doClose () {
+
+		/*
+		 * 内部呼び出し（要件 F-W-27）はアクセスログを出さない。
+		 * 外側がすでに1行出しているので、同じ実行IDで2行出ると
+		 * 「1リクエスト1行」で数えている集計がずれる。
+		 * 追える必要はあるので、デバッグには残す。
+		 */
+		if (outer != null) {
+
+			Log.debug("内部呼び出し: %s %s %d (%.1fms)".formatted(
+				request.method(), request.path(), response.code(), elapsed().toNanos() / 1000000d));
+
+			/*
+			 * セッションの保存し忘れ（要件 F-S-03）は外側が見る。
+			 * セッションも書き込み直後の参照先も外側と共有しているので、
+			 * ここで見ると同じことを2回言うことになる。
+			 */
+			source.cleanup();
+
+			return;
+
+		}
 
 		Data fields = new Data();
 		fields.put("method", request.method());

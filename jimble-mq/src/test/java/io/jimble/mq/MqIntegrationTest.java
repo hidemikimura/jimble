@@ -193,7 +193,7 @@ class MqIntegrationTest {
 	@BeforeEach
 	void clean () {
 
-		DBUtil.getMainDB().execute("TRUNCATE TABLE `%s`".formatted(QUEUE));
+		DBUtil.getMainDB().execute("TRUNCATE TABLE %s".formatted(quoted()));
 
 		MqRegistry.clear();
 		MqRegistry.add(OkExecutor::new);
@@ -242,7 +242,7 @@ class MqIntegrationTest {
 	 */
 	private int rowCount () {
 
-		Data row = DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM `%s`".formatted(QUEUE));
+		Data row = DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM %s".formatted(quoted()));
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -253,9 +253,20 @@ class MqIntegrationTest {
 	 *
 	 * @return	行
 	 */
+	/**
+	 * キューのテーブル名を製品に合わせて囲む（要件 F-D-30）
+	 *
+	 * @return	囲んだテーブル名
+	 */
+	private static String quoted () {
+
+		return DBUtil.getMainDB().dialect().identifier(QUEUE);
+
+	}
+
 	private Data firstRow () {
 
-		return DBUtil.getMainDB().select("SELECT * FROM `%s` ORDER BY id LIMIT 1".formatted(QUEUE));
+		return DBUtil.getMainDB().select("SELECT * FROM %s ORDER BY id LIMIT 1".formatted(quoted()));
 
 	}
 
@@ -439,9 +450,9 @@ class MqIntegrationTest {
 	void unknownKey () throws Exception {
 
 		DBUtil.getMainDB().insert("""
-				INSERT INTO `%s` (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
+				INSERT INTO %s (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
 				VALUES (?, ?, ?, 0, ?, NOW(), NOW())
-			""".formatted(QUEUE)
+			""".formatted(quoted())
 			, MqExecuteType.short_time.name()
 			, "not_registered"
 			, MqStatus.waiting.name()
@@ -474,13 +485,15 @@ class MqIntegrationTest {
 		 * running のまま永久に残り、誰も拾わない。
 		 */
 		DBUtil.getMainDB().insert("""
-				INSERT INTO `%s` (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
-				VALUES (?, ?, ?, 0, ?, NOW(), DATE_ADD(NOW(), INTERVAL -1 HOUR))
-			""".formatted(QUEUE)
+				INSERT INTO %s (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
+				VALUES (?, ?, ?, 0, ?, NOW(), %s)
+			""".formatted(quoted()
+				, DBUtil.getMainDB().dialect().intervalFromNow("HOUR", true))
 			, MqExecuteType.short_time.name()
 			, "ok"
 			, MqStatus.running.name()
-			, new Data().putData("name", "stranded"));
+			, new Data().putData("name", "stranded")
+			, 1);
 
 		assertEquals(MqStatus.running.name(), firstRow().getString("status"));
 
@@ -498,9 +511,9 @@ class MqIntegrationTest {
 	void recoverKeepsFresh () {
 
 		DBUtil.getMainDB().insert("""
-				INSERT INTO `%s` (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
+				INSERT INTO %s (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
 				VALUES (?, ?, ?, 0, ?, NOW(), NOW())
-			""".formatted(QUEUE)
+			""".formatted(quoted())
 			, MqExecuteType.short_time.name()
 			, "ok"
 			, MqStatus.running.name()

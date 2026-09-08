@@ -25,12 +25,12 @@ val sharedDatabase = gradle.sharedServices.registerIfAbsent("sharedDatabase", Sh
  * Maven Central は -SNAPSHOT を受け付けない（スナップショットは別のリポジトリ）。
  * リリースのときだけ
  *
- *   ./gradlew centralBundle -Pjimble.version=0.1.0
+ *   ./gradlew centralBundle -Pjimble.version=0.2.0
  *
- * のように渡す。既定を素の 0.1.0 にしないのは、
+ * のように渡す。既定を素の 0.2.0 にしないのは、
  * うっかり publish したものが「リリース版」として残るのを避けるためである。
  */
-val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.1.1-SNAPSHOT")
+val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.2.0-SNAPSHOT")
 
 /* doclint を切るモジュール（要件 D-15。潰したらここから外す） */
 val DOCLINT_OFF = setOf("jimble-util")
@@ -171,7 +171,7 @@ subprojects {
 	 * 実 DB が要るテストは @Tag("db") を付け、dbTest タスクで実行する（要件 D-16）。
 	 */
 	tasks.withType<Test>().configureEach {
-		val isDbTest = name == "dbTest"
+		val isDbTest = name == "dbTest" || name == "pgTest"
 		useJUnitPlatform {
 			if (isDbTest) includeTags("db") else excludeTags("db")
 		}
@@ -202,6 +202,37 @@ subprojects {
 		classpath = testSourceSet.runtimeClasspath
 
 		systemProperty("env", "dbtest")
+		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+
+		// 常に実行する（結果をキャッシュしない）
+		outputs.upToDateWhen { false }
+
+		testLogging {
+			events("passed", "failed")
+			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+		}
+	}
+
+	/*
+	 * 同じテストを PostgreSQL に対して実行する（要件 F-D-30）。
+	 *   ./gradlew :jimble-db:pgTest
+	 *
+	 * dbTest との違いは env だけ。application.pgtest.conf が
+	 * db.jimble_test.product = postgresql を持っているので、
+	 * <b>テストのコードは1行も変わらない</b>。
+	 * 接続先は JIMBLE_TEST_PG_URL / JIMBLE_TEST_PG_USER / JIMBLE_TEST_PG_PASSWORD で上書きできる。
+	 */
+	tasks.register<Test>("pgTest") {
+		group = "verification"
+		description = "実 PostgreSQL に接続するテストを実行する（開発用 DB が必要）"
+
+		// 開発用 DB は1つ。同時に走らせない
+		usesService(sharedDatabase)
+
+		testClassesDirs = testSourceSet.output.classesDirs
+		classpath = testSourceSet.runtimeClasspath
+
+		systemProperty("env", "pgtest")
 		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
 
 		// 常に実行する（結果をキャッシュしない）
@@ -275,8 +306,8 @@ fun MavenPom.jimblePom (moduleName: String, moduleDescription: Provider<String>)
  * 「中で何をしているか」が辿れなくなる（原則1）。
  * HTTP は JDK の HttpClient を使う（D-24 と同じ）。
  *
- *   ./gradlew centralBundle  -Pjimble.version=0.1.0     材料を作って zip にする
- *   ./gradlew centralUpload  -Pjimble.version=0.1.0     Portal へ送る（公開はまだ）
+ *   ./gradlew centralBundle  -Pjimble.version=0.2.0     材料を作って zip にする
+ *   ./gradlew centralUpload  -Pjimble.version=0.2.0     Portal へ送る（公開はまだ）
  *   ./gradlew centralStatus                              検証の結果を見る
  *   ./gradlew centralRelease                             公開する（取り消せない）
  *   ./gradlew centralDrop                                やめる
@@ -338,7 +369,7 @@ val centralBundle = tasks.register<Zip>("centralBundle") {
 			logger.lifecycle("バンドル: ${zip.absolutePath}")
 		} else {
 			logger.warn("版が $jimbleVersion です。Maven Central は -SNAPSHOT を受け付けません。")
-			logger.warn("  ./gradlew centralBundle -Pjimble.version=0.1.0")
+			logger.warn("  ./gradlew centralBundle -Pjimble.version=0.2.0")
 		}
 
 	}
@@ -476,7 +507,7 @@ tasks.register("centralUpload") {
 	doLast {
 
 		if (jimbleVersion.endsWith("-SNAPSHOT")) {
-			throw GradleException("Maven Central は -SNAPSHOT を受け付けません。-Pjimble.version=0.1.0 のように渡してください")
+			throw GradleException("Maven Central は -SNAPSHOT を受け付けません。-Pjimble.version=0.2.0 のように渡してください")
 		}
 
 		val zip = centralBundle.get().archiveFile.get().asFile

@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlFunction;
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -26,9 +28,9 @@ public class Min implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("MIN(");
+		sb.function(SqlFunction.MIN).append('(');
 		select.selectSql(sb);
 		sb.append(")");
 

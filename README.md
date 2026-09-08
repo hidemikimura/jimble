@@ -6,19 +6,19 @@ Java 製の Web アプリケーションフレームワーク。
 - **アノテーションと DI を使わない。**コードを上から辿れば処理が分かることを最優先にする
 - Web / バッチ / MQ を同じ `Context` で扱う
 
-**0.1.0 を Maven Central に公開している。ドキュメントは <https://jimble.io>。**
+**0.2.0 を Maven Central に公開している。ドキュメントは <https://jimble.io>。**
 
 ```kotlin
 plugins {
 	application
 	// src/main/jte を compileJava の前に Java へ変換する
-	id("io.jimble.jte") version "0.1.0"
+	id("io.jimble.jte") version "0.2.0"
 	// 開発用のホットリロード（./gradlew jimbleRun）
-	id("io.jimble.run") version "0.1.0"
+	id("io.jimble.run") version "0.2.0"
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:0.1.0")
+	implementation("io.jimble:jimble-web:0.2.0")
 }
 ```
 
@@ -391,7 +391,7 @@ Gradle 8 は Java 25 の上では動かない（ツールチェーンとして�
 
 ### 手元で試すとき
 
-公開済みの版（0.1.0）でよければ、何も要らない。
+公開済みの版（0.2.0）でよければ、何も要らない。
 **手元で直した jimble を試すとき**は、生成したプロジェクトが
 ローカルの Maven リポジトリを先に見るので、先に publish しておく。
 
@@ -568,7 +568,7 @@ public class ChatHandler implements WsHandler {
 ## 現在の状態
 
 **M1〜M8 完了 = Phase 1 完了。M9（SSE / MCP / WebSocket / ドキュメント / Maven Central / jimble.io）完了。M10（AsyncData の先読み）完了。**
-**0.1.0 を Maven Central に公開済み。ドキュメントは <https://jimble.io> で公開済み。**
+**0.2.0 を Maven Central に公開済み。ドキュメントは <https://jimble.io> で公開済み。**
 `examples/hello` と `examples/blog` が動き、テスト 514 件（+ 実 DB / Redis 結合テスト 159 件）が通る。
 `jimble new` で作ったプロジェクトが、手を入れずにビルドして起動する。
 機能カバレッジ表（要件 10.2）は、Phase 2 に回した2行を除いてすべて「済」。
@@ -702,8 +702,8 @@ export JIMBLE_SIGNING_PASSWORD='...'
 export JIMBLE_CENTRAL_USERNAME='...'
 export JIMBLE_CENTRAL_PASSWORD='...'
 
-./gradlew centralBundle  -Pjimble.version=0.1.0   # 署名つきの zip を作る
-./gradlew centralUpload  -Pjimble.version=0.1.0   # Portal へ送る（公開はまだ）
+./gradlew centralBundle  -Pjimble.version=0.2.0   # 署名つきの zip を作る
+./gradlew centralUpload  -Pjimble.version=0.2.0   # Portal へ送る（公開はまだ）
 ./gradlew centralStatus                           # 検証の結果を見る
 ./gradlew centralRelease                          # 公開する（取り消せない）
 ./gradlew centralDrop                             # やめる
@@ -712,7 +712,7 @@ export JIMBLE_CENTRAL_PASSWORD='...'
 - 公開先は **Central Portal**。Sonatype に公式の Gradle プラグインが無いので、
   **REST API を直に叩いている**（外部プラグインを足さない。要件 D-60）
 - **鍵もトークンも環境変数だけ。**無い環境では署名を飛ばしてビルドが通る
-- `-Pjimble.version` を渡さないと `0.1.1-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
+- `-Pjimble.version` を渡さないと `0.2.0-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
   （Central は `-SNAPSHOT` を受け付けず、公開したものは消せない）
 - Gradle プラグインは **Maven Central のマーカー**で配る。Plugin Portal には出さない（D-22）
 

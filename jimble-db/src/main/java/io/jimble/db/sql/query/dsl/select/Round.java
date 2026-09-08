@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -42,13 +43,10 @@ public class Round implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("ROUND(");
-		select.selectSql(sb);
-		sb.append(", ");
-		sb.append(digit);
-		sb.append(")");
+		// PostgreSQL の round(x, n) は numeric にしか無い（要件 F-D-30）
+		sb.dialect().round(sb.builder(), () -> select.selectSql(sb), digit);
 
 	}
 

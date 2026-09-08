@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 
@@ -26,13 +27,14 @@ public class Values implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("VALUES(`");
-		sb.append(column.table().name());
-		sb.append("`.`");
-		sb.append(column.name());
-		sb.append("`)");
+		/*
+		 * 入れようとした値を指す書き方は製品で違う（要件 F-D-30）。
+		 * MySQL は VALUES(col)、PostgreSQL は EXCLUDED.col。
+		 */
+		sb.dialect().insertedValue(sb.builder()
+			, column.table() == null ? null : column.table().name(), column.name());
 
 	}
 

@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -29,13 +30,9 @@ public class JsonExtract implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
-		sb.append("JSON_EXTRACT(");
-		field.selectSql(sb);
-		sb.append(", '");
-		sb.append(jsonPath);
-		sb.append("')");
+		sb.dialect().jsonExtract(sb.builder(), () -> field.selectSql(sb), jsonPath, false);
 
 	}
 

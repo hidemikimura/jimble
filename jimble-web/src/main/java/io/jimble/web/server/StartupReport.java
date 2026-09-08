@@ -3,6 +3,7 @@ package io.jimble.web.server;
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
 import io.jimble.db.cache.Cache;
+import io.jimble.db.sqlcache.SqlCacheConf;
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.hash.PasswordUtil;
@@ -23,7 +24,7 @@ import java.util.List;
  * </p>
  *
  * <pre>
- * jimble 構成: env=local / session=none / cache=db / redis=なし / db=[jimble_test] / パスワード暗号化=なし
+ * jimble 構成: env=local / session=none / cache=db / sql_cache=off / redis=なし / db=[jimble_test] / パスワード暗号化=なし
  * </pre>
  */
 public final class StartupReport {
@@ -40,6 +41,13 @@ public final class StartupReport {
 		fields.put("env", Conf.env());
 		fields.put("session", SessionConf.store());
 		fields.put("cache", Cache.type());
+
+		/*
+		 * SQL結果キャッシュ（要件 F-D-28）は<b>既定で off</b> である。
+		 * 書き忘れると「selectCached を呼んでいるのに効かない」になるので、
+		 * 何になっているかを起動時に見せる（D-95）。
+		 */
+		fields.put("sql_cache", sqlCache());
 		fields.put("redis", RedisClient.isConfigured());
 		fields.put("db", dataSourceNames());
 		fields.put("upload_max_file_size", UploadConf.maxFileSize());
@@ -57,14 +65,16 @@ public final class StartupReport {
 		 */
 		fields.put("conf_files", Conf.sources());
 
-		Log.info("jimble 構成: env=%s / session=%s / cache=%s / redis=%s / db=%s / パスワード暗号化=%s".formatted(
-			Conf.env()
-			, SessionConf.store()
-			, Cache.type()
-			, RedisClient.isConfigured() ? "あり" : "なし"
-			, dataSourceNames()
-			, PasswordUtil.isEncrypt() ? "あり" : "なし"
-		), fields);
+		Log.info("jimble 構成: env=%s / session=%s / cache=%s / sql_cache=%s / redis=%s / db=%s / パスワード暗号化=%s"
+			.formatted(
+				Conf.env()
+				, SessionConf.store()
+				, Cache.type()
+				, sqlCache()
+				, RedisClient.isConfigured() ? "あり" : "なし"
+				, dataSourceNames()
+				, PasswordUtil.isEncrypt() ? "あり" : "なし"
+			), fields);
 
 		logConfSources();
 
@@ -86,6 +96,17 @@ public final class StartupReport {
 	 * <b>共通の設定が丸ごと落ちる</b>。落ちていたら名指しで言う。
 	 * </p>
 	 */
+	/**
+	 * SQL結果キャッシュの状態
+	 *
+	 * @return	{@code off}、または置き場の名前
+	 */
+	private static String sqlCache () {
+
+		return SqlCacheConf.enabled() ? SqlCacheConf.store() : "off";
+
+	}
+
 	private static void logConfSources () {
 
 		List<String> sources = Conf.sources();
@@ -144,6 +165,10 @@ public final class StartupReport {
 
 		if (Cache.TYPE_REDIS.equalsIgnoreCase(Cache.type())) {
 			Log.warn("cache.type = redis ですが Redis が設定されていません。キャッシュを使うと失敗します");
+		}
+
+		if (SqlCacheConf.enabled() && SqlCacheConf.STORE_REDIS.equals(SqlCacheConf.store())) {
+			Log.warn("sql_cache.store = redis ですが Redis が設定されていません。メモリに置きます（台をまたいで消えません）");
 		}
 
 		if ("redis".equalsIgnoreCase(SessionConf.store())) {

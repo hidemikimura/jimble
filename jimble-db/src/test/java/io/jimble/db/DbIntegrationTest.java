@@ -52,7 +52,7 @@ class DbIntegrationTest {
 		DB db = DBUtil.getMainDB();
 
 		db.execute("DROP TABLE IF EXISTS site");
-		db.execute("""
+		TestDdl.execute(db, """
 			CREATE TABLE site (
 				id          bigint unsigned auto_increment comment 'ID' primary key,
 				group_id    bigint unsigned not null comment 'グループID',

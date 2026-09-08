@@ -44,7 +44,7 @@ class PagingIntegrationTest {
 		DB db = DBUtil.getMainDB();
 
 		db.execute("DROP TABLE IF EXISTS paging_item");
-		db.execute("""
+		TestDdl.execute(db, """
 			CREATE TABLE paging_item (
 				id   bigint unsigned auto_increment primary key,
 				name varchar(50) not null

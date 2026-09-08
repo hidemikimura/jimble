@@ -1,5 +1,7 @@
 package io.jimble.util.convertor;
 
+import io.jimble.util.data.TableNest;
+
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -68,6 +70,17 @@ public class Configration {
 	 * 自動クローズ
 	 */
 	public boolean isAutoClose = true;
+
+	/**
+	 * テーブルネストの扱い（要件 F-A-11）.
+	 *
+	 * <p>
+	 * {@code AsyncData} / {@code AsyncList} を書き出すときに、
+	 * テーブル名でネストするかどうか。既定は「そのまま」で、
+	 * <b>これまでと出力が変わらない</b>。
+	 * </p>
+	 */
+	public TableNest tableNest = TableNest.AS_IS;
 
 	/**
 	 * 循環参照ハッシュセット.

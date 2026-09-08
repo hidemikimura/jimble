@@ -165,14 +165,23 @@ public final class CodeMigration {
 	public static void init () {
 
 		DBVersion dbVersion = new DBVersion("migration_code", "コードマイグレーション情報");
-		dbVersion.add(1, """
-			create table migration_code (
-				version varchar(250) not null primary key
-				, state varchar(250) not null
-				, execute_info json null
-				, error_info json null
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
-		""".formatted(dbVersion.placeholder()));
+		dbVersion.add(1)
+			.mysql("""
+				create table migration_code (
+					version varchar(250) not null primary key
+					, state varchar(250) not null
+					, execute_info json null
+					, error_info json null
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table migration_code (
+					version varchar(250) not null primary key
+					, state varchar(250) not null
+					, execute_info jsonb null
+					, error_info jsonb null
+				)
+			""");
 
 		if (!dbVersion.apply(DBUtil.getMainDB())) {
 			throw new MigrationException("migration_code テーブルを作成できませんでした");

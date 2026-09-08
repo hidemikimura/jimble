@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.dsl;
 
+import io.jimble.db.dialect.SqlWriter;
 /**
  * 自由SQL
  */
@@ -26,7 +27,7 @@ public class FreeSQL implements IDsl {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void dslSql(StringBuilder sb) {
+	public void dslSql (SqlWriter sb) {
 
 		sb.append(sql);
 

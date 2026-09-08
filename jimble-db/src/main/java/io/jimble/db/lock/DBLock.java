@@ -4,6 +4,7 @@ import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.version.DBVersion;
 
 import java.util.ArrayList;
@@ -37,7 +38,9 @@ public class DBLock {
 			paramsList.add(new SQLParameterList(key));
 		}
 		List<Integer> results = db.executeBatch(
-			"INSERT IGNORE INTO db_lock (lock_key) VALUES (?)"
+			Sqls.insertIgnoreInto(db.dialect(), "db_lock")
+				+ " (lock_key) VALUES (?)"
+				+ Sqls.insertIgnoreTail(db.dialect())
 			, paramsList
 		);
 
@@ -129,19 +132,30 @@ public class DBLock {
 	public static void init (DB db) {
 
 		DBVersion dbVersion = new DBVersion("db_lock", "ロック情報");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table db_lock (
 					lock_key varchar(250) not null primary key
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT '%s'
-			""".formatted(dbVersion.placeholder())
-		);
-		dbVersion.add(2, """
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table db_lock (
+					lock_key varchar(250) not null primary key
+				)
+			""");
+		dbVersion.add(2)
+			.mysql("""
 				truncate table db_lock
 			"""
 			, """
 				alter table db_lock modify lock_key bigint not null
+			""")
+			.postgresql("""
+				truncate table db_lock
 			"""
-		);
+			, """
+				alter table db_lock alter column lock_key type bigint using lock_key::bigint
+			""");
 		dbVersion.apply(db);
 
 	}

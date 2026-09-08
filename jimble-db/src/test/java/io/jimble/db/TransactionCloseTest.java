@@ -38,13 +38,13 @@ class TransactionCloseTest {
 		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
 
 		try (DB setup = DBUtil.getMainDB()) {
-			setup.execute("""
-				CREATE TABLE IF NOT EXISTS `tx_leak` (
-					`id`   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-					`name` VARCHAR(100) NOT NULL
+			TestDdl.execute(setup, """
+				CREATE TABLE IF NOT EXISTS tx_leak (
+					id   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 			""");
-			setup.execute("TRUNCATE TABLE `tx_leak`");
+			setup.execute("TRUNCATE TABLE tx_leak");
 		}
 
 		DB db = DBUtil.getMainDB();
@@ -60,7 +60,7 @@ class TransactionCloseTest {
 				try {
 					DBTransaction transaction = new DBTransaction(db);
 					transaction.beginTransaction();
-					db.insert("INSERT INTO `tx_leak` (`name`) VALUES (?)", "漏れた行");
+					db.insert("INSERT INTO tx_leak (name) VALUES (?)", "漏れた行");
 					// commit も rollback も close もしない
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
@@ -72,7 +72,7 @@ class TransactionCloseTest {
 
 		// 実行が終わった時点で戻っている
 		try (DB check = DBUtil.getMainDB()) {
-			assertNull(check.select("SELECT `id` FROM `tx_leak` WHERE `name` = ?", "漏れた行")
+			assertNull(check.select("SELECT id FROM tx_leak WHERE name = ?", "漏れた行")
 				, "畳み忘れたトランザクションが戻っていない");
 		}
 
@@ -88,13 +88,13 @@ class TransactionCloseTest {
 		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
 
 		try (DB setup = DBUtil.getMainDB()) {
-			setup.execute("""
-				CREATE TABLE IF NOT EXISTS `tx_leak` (
-					`id`   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-					`name` VARCHAR(100) NOT NULL
+			TestDdl.execute(setup, """
+				CREATE TABLE IF NOT EXISTS tx_leak (
+					id   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 			""");
-			setup.execute("TRUNCATE TABLE `tx_leak`");
+			setup.execute("TRUNCATE TABLE tx_leak");
 		}
 
 		try (BatchContext context = new BatchContext("tx-ok-test")) {
@@ -105,7 +105,7 @@ class TransactionCloseTest {
 					 DBTransaction transaction = new DBTransaction(db)) {
 
 					transaction.beginTransaction();
-					db.insert("INSERT INTO `tx_leak` (`name`) VALUES (?)", "残る行");
+					db.insert("INSERT INTO tx_leak (name) VALUES (?)", "残る行");
 					transaction.commitEndTransaction();
 
 				} catch (Exception ex) {
@@ -117,7 +117,7 @@ class TransactionCloseTest {
 		}
 
 		try (DB check = DBUtil.getMainDB()) {
-			assertNotNull(check.select("SELECT `id` FROM `tx_leak` WHERE `name` = ?", "残る行")
+			assertNotNull(check.select("SELECT id FROM tx_leak WHERE name = ?", "残る行")
 				, "コミットしたのに戻されている");
 		}
 
@@ -133,13 +133,13 @@ class TransactionCloseTest {
 		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
 
 		try (DB setup = DBUtil.getMainDB()) {
-			setup.execute("""
-				CREATE TABLE IF NOT EXISTS `tx_leak` (
-					`id`   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-					`name` VARCHAR(100) NOT NULL
+			TestDdl.execute(setup, """
+				CREATE TABLE IF NOT EXISTS tx_leak (
+					id   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 			""");
-			setup.execute("TRUNCATE TABLE `tx_leak`");
+			setup.execute("TRUNCATE TABLE tx_leak");
 		}
 
 		/*
@@ -153,18 +153,18 @@ class TransactionCloseTest {
 
 			transaction.beginTransaction();
 
-			db.insert("INSERT INTO `tx_leak` (`name`) VALUES (?)", "1件目");
+			db.insert("INSERT INTO tx_leak (name) VALUES (?)", "1件目");
 			transaction.commit();
 
 			assertTrue(db.isTransaction(), "commit() でトランザクションが終わっている");
 
-			db.insert("INSERT INTO `tx_leak` (`name`) VALUES (?)", "2件目");
+			db.insert("INSERT INTO tx_leak (name) VALUES (?)", "2件目");
 			transaction.rollbackEndTransaction();
 
 		}
 
 		try (DB check = DBUtil.getMainDB()) {
-			assertEquals(1, check.select("SELECT COUNT(*) AS `cnt` FROM `tx_leak`").getInt("cnt")
+			assertEquals(1, check.select("SELECT COUNT(*) AS cnt FROM tx_leak").getInt("cnt")
 				, "commit() のあとがトランザクションの外になっている");
 		}
 

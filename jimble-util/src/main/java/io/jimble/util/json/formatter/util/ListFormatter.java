@@ -5,6 +5,7 @@ import io.jimble.util.json.formatter.Formatter;
 import io.jimble.util.json.formatter.IFormatter;
 import io.jimble.util.json.formatter.lang.NullFormatter;
 import io.jimble.util.json.formatter.stream.OutputStreamWriterWrapper;
+import io.jimble.util.data.TableNest;
 import io.jimble.util.data.async.AsyncList;
 
 import java.util.List;
@@ -54,6 +55,16 @@ public class ListFormatter implements IFormatter {
 		Class< ? > lastClass = null;
 
 		List< ? > list = (List< ? >) obj;
+
+		/*
+		 * テーブルネストの組み直し（要件 F-A-11）。
+		 *
+		 * 循環参照のハッシュは<b>組み直す前のノード</b>で取ってある。
+		 */
+		if (obj instanceof AsyncList asyncList && conf.tableNest != TableNest.AS_IS) {
+			list = asyncList.reshape(conf.tableNest);
+		}
+
 		int length = list.size();
 		int i = 0;
 		boolean isOutput = false;

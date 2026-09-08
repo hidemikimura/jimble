@@ -150,8 +150,9 @@ public class Generator {
 		// テーブル定義一覧を取得する
 		List<TableInfo> tableInfoList = getTableInfoList(dbSource);
 
-		// スキーマクラス
-		outputScheme(rootDir, packageName, dbSource, dbSource.name, schemeClassName, tableInfoList);
+		// スキーマクラス（SchemaSQL は製品ごとの DDL で書く。要件 F-D-30）
+		outputScheme(rootDir, packageName, dbSource, dbSource.name, schemeClassName, tableInfoList
+			, TableMetaReader.of(dbSource.dialect()));
 
 		// テーブルクラス
 		for (TableInfo tableInfo : tableInfoList) {
@@ -172,8 +173,9 @@ public class Generator {
 	 * @param schemeName        スキーマ名
 	 * @param schemeClassName   スキーマクラス名
 	 * @param tableInfoList     テーブル情報一覧
+	 * @param reader            テーブル定義の読み手（DDL の書き方も持つ）
 	 */
-	private static void outputScheme (File rootDir, String packageName, DBSource dbSource, String schemeName, String schemeClassName, List<TableInfo> tableInfoList) {
+	private static void outputScheme (File rootDir, String packageName, DBSource dbSource, String schemeName, String schemeClassName, List<TableInfo> tableInfoList, TableMetaReader reader) {
 
 		File sourceFile = new File(rootDir, schemeClassName + ".java");
 
@@ -265,12 +267,14 @@ public class Generator {
 						textOutput.write(" " + columnInfo.extra);
 					}
 					if (columnInfo.defaultValueString != null) {
-						textOutput.write(" default '" + columnInfo.defaultValueString + "'");
+						textOutput.write(" default " + reader.defaultValueSql(columnInfo.typeClass, columnInfo.defaultValueString));
 					}
 					if (!columnInfo.nullable) {
 						textOutput.write(" not null");
 					}
-					if (columnInfo.comment != null && !columnInfo.comment.isEmpty()) {
+					// PostgreSQL は列の定義にコメントを書けない。あとで COMMENT ON を出す
+					if (reader.inlineComment()
+						&& columnInfo.comment != null && !columnInfo.comment.isEmpty()) {
 						textOutput.write(" comment '" + escapeComment(columnInfo.comment) + "'");
 					}
 					if (i < tableInfo.columnList.size() - 1) {
@@ -280,19 +284,36 @@ public class Generator {
 				}
 
 				textOutput.write("\t\t\")");
-				if (tableComment != null && !tableComment.isEmpty()) {
+				if (reader.inlineComment() && tableComment != null && !tableComment.isEmpty()) {
 					textOutput.write(" comment '" + escapeComment(tableComment) + "'");
 				}
 				textOutput.write("; \" + \n");
 
 				for (IndexInfo indexInfo : tableInfo.indexList) {
 					if (indexInfo.isPrimary) {
-						textOutput.writeLine("\t\t\"alter table " + tableInfo.name + " add primary key (" + StringUtil.concat(", ", indexInfo.columnNameList) + ");\" +");
+						textOutput.writeLine("\t\t\"" + reader.addPrimaryKeySql(tableInfo.name, indexInfo.columnNameList) + "\" +");
 					} else if (indexInfo.isUnique) {
-						textOutput.writeLine("\t\t\"alter table " + tableInfo.name + " add unique index " + indexInfo.name + " (" + StringUtil.concat(", ", indexInfo.columnNameList) + ");\" +");
+						textOutput.writeLine("\t\t\"" + reader.addUniqueSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList) + "\" +");
 					} else {
-						textOutput.writeLine("\t\t\"alter table " + tableInfo.name + " add index " + indexInfo.name + " (" + StringUtil.concat(", ", indexInfo.columnNameList) + ");\" +");
+						textOutput.writeLine("\t\t\"" + reader.addIndexSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList, indexInfo.predicate) + "\" +");
 					}
+				}
+
+				// 列の定義に書けない製品では、コメントを別の文で出す
+				if (!reader.inlineComment()) {
+
+					if (tableComment != null && !tableComment.isEmpty()) {
+						textOutput.writeLine("\t\t\"" + escapeComment(reader.tableCommentSql(tableInfo.name, tableComment)) + "\" +");
+					}
+
+					for (ColumnInfo columnInfo : tableInfo.columnList) {
+						if (columnInfo.comment != null && !columnInfo.comment.isEmpty()) {
+							textOutput.writeLine("\t\t\""
+								+ escapeComment(reader.columnCommentSql(tableInfo.name, columnInfo.name, columnInfo.comment))
+								+ "\" +");
+						}
+					}
+
 				}
 			}
 			textOutput.writeLine("\t\"\";");
@@ -328,6 +349,36 @@ public class Generator {
 	 * @param schemeClassName   スキーマクラス名
 	 * @param tableInfo         テーブル情報
 	 */
+	/**
+	 * インデックスの列がすべて生成対象にあるか
+	 *
+	 * @param tableInfo	テーブル
+	 * @param indexInfo	インデックス
+	 * @return	すべてあれば true
+	 */
+	private static boolean hasAllColumns (TableInfo tableInfo, IndexInfo indexInfo) {
+
+		for (String columnName : indexInfo.columnNameList) {
+
+			boolean found = false;
+
+			for (ColumnInfo columnInfo : tableInfo.columnList) {
+				if (columnInfo.name.equals(columnName)) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				return false;
+			}
+
+		}
+
+		return !indexInfo.columnNameList.isEmpty();
+
+	}
+
 	private static void outputTable (File rootDir, String packageName, DBSource dbSource, String schemeClassName, TableInfo tableInfo) {
 
 		File tableRootDir = new File(rootDir, "table");
@@ -375,6 +426,37 @@ public class Generator {
 				textOutput.writeLine("");
 			}
 
+			/*
+			 * 一意キーを静的に出力する（要件 F-D-28 / D-94）。
+			 *
+			 * SHOW INDEX では取っていたのに、Java には出していなかった。
+			 * SQL 結果のキャッシュが「どの行か」を決めるのに要る。
+			 */
+			{
+				List<String> keys = new ArrayList<>();
+
+				for (IndexInfo indexInfo : tableInfo.indexList) {
+
+					// 主キーは Column.isPrimaryKey() で分かるので二重に持たない
+					if (indexInfo.isPrimary || !indexInfo.isUnique) {
+						continue;
+					}
+
+					// 生成していない列（別名など）が混ざっていたら、そのキーは出さない
+					if (!hasAllColumns(tableInfo, indexInfo)) {
+						continue;
+					}
+
+					keys.add("List.of(%s)".formatted(StringUtil.concat(", ", indexInfo.columnNameList)));
+
+				}
+
+				textOutput.writeLine("\t/* 一意キー（生成時に確定。要件 F-D-28） */");
+				textOutput.writeLine("\tprivate static final List<List<Column>> UNIQUE_KEYS = List.of(%s);"
+					.formatted(StringUtil.concat(", ", keys)));
+				textOutput.writeLine("");
+			}
+
 			textOutput.writeLine("\t/**");
 			textOutput.writeLine("\t * {@inheritDoc}");
 			textOutput.writeLine("\t */");
@@ -382,7 +464,17 @@ public class Generator {
 			textOutput.writeLine("\tprotected List<Column> declareColumns () { return COLUMNS; }");
 			textOutput.writeLine("");
 
+			textOutput.writeLine("\t/**");
+			textOutput.writeLine("\t * {@inheritDoc}");
+			textOutput.writeLine("\t */");
+			textOutput.writeLine("\t@Override");
+			textOutput.writeLine("\tprotected List<List<Column>> declareUniqueKeys () { return UNIQUE_KEYS; }");
+			textOutput.writeLine("");
+
 			textOutput.writeLine("\tpublic static List<Column> columns () { return COLUMNS; }");
+			textOutput.writeLine("");
+
+			textOutput.writeLine("\tpublic static List<List<Column>> uniqueKeys () { return UNIQUE_KEYS; }");
 			textOutput.writeLine("");
 
 			textOutput.writeLine("\tpublic %s (ISchema schema, String name) { super(schema, name); }".formatted(tableInfo.className));
@@ -533,47 +625,54 @@ public class Generator {
 			DB db = DBUtil.getDB(dbSource)
 		) {
 
-			List<Data> tableList = db.selectList("SHOW TABLE STATUS");
+			/*
+			 * 読み方は製品ごとに違う（要件 F-D-30 / D-98）。
+			 * MySQL は SHOW TABLE STATUS / SHOW FULL COLUMNS / SHOW INDEX、
+			 * PostgreSQL は pg_catalog。<b>キー名を揃えたあと</b>だけをここで見る。
+			 */
+			TableMetaReader reader = TableMetaReader.of(db.dialect());
+
+			List<Data> tableList = reader.tables(db);
 			for (Data table : tableList) {
 
 				// jimble の管理テーブルはアプリのテーブル定義に出さない
-				if (excludes.contains(table.getString("Name").toLowerCase())) {
+				if (excludes.contains(table.getString("name").toLowerCase())) {
 					continue;
 				}
 
 				TableInfo tableInfo = new TableInfo();
-				tableInfo.name = table.getString("Name");
+				tableInfo.name = table.getString("name");
 				tableInfo.className = upperCamel(tableInfo.name);
-				tableInfo.comment = table.getStringOptional("Comment");
+				tableInfo.comment = table.getStringOptional("comment");
 				if (tableInfo.comment.isEmpty()) {
 					tableInfo.comment = tableInfo.name;
 				}
 
-				List<Data> columnList = db.selectList("SHOW FULL COLUMNS FROM `" + tableInfo.name + "`");
+				List<Data> columnList = reader.columns(db, tableInfo.name);
 				for (Data column : columnList) {
 
 					ColumnInfo columnInfo = new ColumnInfo();
-					columnInfo.name = column.getString("Field");
-					columnInfo.type = column.getString("Type");
-					columnInfo.extra = column.getString("Extra");
+					columnInfo.name = column.getString("name");
+					columnInfo.type = column.getString("type");
+					columnInfo.extra = column.getString("extra");
 					columnInfo.typeClass = getColumnTypeClass(columnInfo.type);
-					columnInfo.nullable = "YES".equalsIgnoreCase(column.getString("Null"));
-					columnInfo.primaryKey = "PRI".equalsIgnoreCase(column.getString("Key"));
-					columnInfo.comment = column.getStringOptional("Comment");
+					columnInfo.nullable = column.getBoolean("nullable");
+					columnInfo.primaryKey = column.getBoolean("primary_key");
+					columnInfo.comment = column.getStringOptional("comment");
 					if (columnInfo.comment.isEmpty()) {
 						columnInfo.comment = columnInfo.name;
 					}
-					getColumnDefaultValue(columnInfo, column.getString("Default"));
+					getColumnDefaultValue(columnInfo, column.getString("default_value"));
 					tableInfo.columnList.add(columnInfo);
 
 				}
 
 				{
 					Map<String, List<Data>> tableIndexDataList = new HashMap<>();
-					List<Data> indexList = db.selectList("SHOW INDEX FROM `" + tableInfo.name + "`");
+					List<Data> indexList = reader.indexes(db, tableInfo.name);
 					for (Data index : indexList) {
 
-						String indexName = index.getString("Key_name");
+						String indexName = index.getString("name");
 						if (tableIndexDataList.containsKey(indexName)) {
 							tableIndexDataList.get(indexName).add(index);
 						} else {
@@ -590,16 +689,17 @@ public class Generator {
 						indexInfo.name = indexName;
 
 						List<Data> indexDataList = tableIndexDataList.get(indexName);
-						indexDataList.sort((o1, o2) -> o1.getInt("Seq_in_index") - o2.getInt("Seq_in_index"));
+						indexDataList.sort((o1, o2) -> o1.getInt("seq") - o2.getInt("seq"));
 						for (Data indexData : indexDataList) {
 
-							if ("PRIMARY".equalsIgnoreCase(indexName)) {
+							if (indexData.getBoolean("is_primary")) {
 								indexInfo.isPrimary = true;
-							} else if (indexData.getInt("Non_unique") == 0) {
+							} else if (indexData.getBoolean("is_unique")) {
 								indexInfo.isUnique = true;
 							}
 
-							indexInfo.columnNameList.add(indexData.getString("Column_name"));
+							indexInfo.columnNameList.add(indexData.getString("column_name"));
+							indexInfo.predicate = indexData.getString("predicate");
 
 						}
 
@@ -645,6 +745,24 @@ public class Generator {
 
 		String type = _type.toLowerCase();
 
+		/*
+		 * enum / set は<b>値そのものが型名に入る</b>（MySQL）。
+		 * 下は全部 contains で見ているので、enum('serial','parallel') が int になる、
+		 * といったことが起きる。ここで先に String に倒す（要件 F-D-30 / D-98）。
+		 */
+		if (type.startsWith("enum(") || type.startsWith("set(")) {
+			return String.class;
+		}
+
+		// PostgreSQL の連番（bigserial / serial / smallserial。要件 F-D-30）
+		if (type.contains("bigserial")) {
+			return long.class;
+		}
+
+		if (type.contains("serial")) {
+			return int.class;
+		}
+
 		if (type.contains("bigint")) {
 			return long.class;
 		}
@@ -659,7 +777,9 @@ public class Generator {
 		}
 
 		if (type.contains("decimal")
+			|| type.contains("numeric")
 			|| type.contains("float")
+			|| type.contains("real")
 			|| type.contains("double")) {
 			return double.class;
 		}
@@ -731,7 +851,7 @@ public class Generator {
 		}
 
 		if (int.class.equals(columnInfo.typeClass)) {
-			return columnInfo.defaultValueString;
+			return isNumber(columnInfo.defaultValueString) ? columnInfo.defaultValueString : "0";
 		}
 
 		if (boolean.class.equals(columnInfo.typeClass)) {
@@ -742,11 +862,11 @@ public class Generator {
 		}
 
 		if (long.class.equals(columnInfo.typeClass)) {
-			return "%sL".formatted(columnInfo.defaultValueString);
+			return isNumber(columnInfo.defaultValueString) ? "%sL".formatted(columnInfo.defaultValueString) : "0L";
 		}
 
 		if (double.class.equals(columnInfo.typeClass)) {
-			return "%sD".formatted(columnInfo.defaultValueString);
+			return isNumber(columnInfo.defaultValueString) ? "%sD".formatted(columnInfo.defaultValueString) : "0D";
 		}
 
 		if (Data.class.equals(columnInfo.typeClass)) {
@@ -754,6 +874,24 @@ public class Generator {
 		}
 
 		return columnInfo.defaultValueString;
+
+	}
+
+	/**
+	 * 数として書けるか
+	 *
+	 * <p>
+	 * <b>数の列に関数の既定値</b>（{@code nextval(...)} や {@code NaN}）が
+	 * 付いていることがある。そのまま書き出すと
+	 * <b>生成した Java がコンパイルできない</b>。
+	 * </p>
+	 *
+	 * @param value	既定値
+	 * @return	数として書ける場合 = true
+	 */
+	private static boolean isNumber (String value) {
+
+		return value != null && value.matches("[+-]?\\d+(\\.\\d+)?");
 
 	}
 

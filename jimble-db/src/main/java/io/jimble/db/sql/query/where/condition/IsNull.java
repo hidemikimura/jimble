@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.where.condition;
 
+import io.jimble.db.dialect.SqlWriter;
 /**
  * is null
  */
@@ -16,7 +17,7 @@ public class IsNull implements ICondition {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void conditionSql(StringBuilder sb) {
+	public void conditionSql (SqlWriter sb) {
 
 		sb.append(" IS NULL");
 

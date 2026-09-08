@@ -1,5 +1,7 @@
 package io.jimble.web.session;
 
+import java.util.List;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.version.DBVersion;
@@ -87,9 +89,11 @@ public final class DbSessionStore implements SessionStore {
 		}
 
 		Data row = DBUtil.getMainDB().select("""
-			SELECT * FROM `%s`
-			WHERE session_id = ? AND last_accessed_at >= CURRENT_TIMESTAMP + INTERVAL - ? MINUTE
-			""".formatted(tableName)
+			SELECT * FROM %s
+			WHERE session_id = ? AND last_accessed_at >= %s
+			""".formatted(
+				DBUtil.getMainDB().dialect().identifier(tableName)
+				, DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true))
 			, sessionId
 			, timeoutMinutes
 		);
@@ -115,14 +119,20 @@ public final class DbSessionStore implements SessionStore {
 		 * 移送元は「既存なら UPDATE / 無ければ INSERT IGNORE」で、
 		 * 同時実行のとき INSERT が黙って捨てられていた。
 		 */
-		DBUtil.getMainDB().insert("""
-			INSERT INTO `%s` (session_id, data, created_at, last_accessed_at)
-			VALUES (?, ?, NOW(), NOW())
-			ON DUPLICATE KEY UPDATE data = VALUES(data), last_accessed_at = VALUES(last_accessed_at)
-			""".formatted(tableName)
-			, sessionId
-			, entry.data()
-		);
+		try (DB db = DBUtil.getMainDB()) {
+
+			db.insert("""
+				INSERT INTO %s (session_id, data, created_at, last_accessed_at)
+				VALUES (?, ?, NOW(), NOW())
+				""".formatted(db.dialect().identifier(tableName))
+				+ Sqls.upsert(db.dialect(), List.of("session_id"), "data", "last_accessed_at")
+				, sessionId
+				, entry.data()
+			);
+
+		} catch (Exception ex) {
+			Log.error(ex, "セッションを保存できませんでした");
+		}
 
 	}
 
@@ -138,7 +148,8 @@ public final class DbSessionStore implements SessionStore {
 		}
 
 		DBUtil.getMainDB().update(
-			"UPDATE `%s` SET last_accessed_at = NOW() WHERE session_id = ?".formatted(tableName)
+			"UPDATE %s SET last_accessed_at = NOW() WHERE session_id = ?"
+				.formatted(DBUtil.getMainDB().dialect().identifier(tableName))
 			, sessionId
 		);
 
@@ -152,7 +163,8 @@ public final class DbSessionStore implements SessionStore {
 		String sessionId = SessionId.get(context);
 		if (sessionId != null && !sessionId.isEmpty()) {
 			DBUtil.getMainDB().delete(
-				"DELETE FROM `%s` WHERE session_id = ?".formatted(tableName)
+				"DELETE FROM %s WHERE session_id = ?"
+					.formatted(DBUtil.getMainDB().dialect().identifier(tableName))
 				, sessionId
 			);
 		}
@@ -179,9 +191,11 @@ public final class DbSessionStore implements SessionStore {
 		lastCleanup.set(Instant.now());
 
 		return DBUtil.getMainDB().delete("""
-			DELETE FROM `%s`
-			WHERE last_accessed_at < CURRENT_TIMESTAMP + INTERVAL - ? MINUTE
-			""".formatted(tableName)
+			DELETE FROM %s
+			WHERE last_accessed_at < %s
+			""".formatted(
+				DBUtil.getMainDB().dialect().identifier(tableName)
+				, DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true))
 			, timeoutMinutes
 		);
 
@@ -235,16 +249,25 @@ public final class DbSessionStore implements SessionStore {
 			}
 
 			DBVersion dbVersion = new DBVersion(tableName, "セッション");
-			dbVersion.add(1, """
-				CREATE TABLE `%s` (
-					session_id varchar(255) not null primary key
-					, data json null
-					, created_at datetime not null
-					, last_accessed_at datetime not null
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
-				""".formatted(tableName, dbVersion.placeholder())
-				, "create index %s__index_1 on `%s` (last_accessed_at)".formatted(tableName, tableName)
-			);
+			dbVersion.add(1)
+				.mysql("""
+					CREATE TABLE `%s` (
+						session_id varchar(255) not null primary key
+						, data json null
+						, created_at datetime not null
+						, last_accessed_at datetime not null
+					) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='%s'
+					""".formatted(tableName, dbVersion.placeholder())
+					, "create index %s__index_1 on `%s` (last_accessed_at)".formatted(tableName, tableName))
+				.postgresql("""
+					CREATE TABLE "%s" (
+						session_id varchar(255) not null primary key
+						, data jsonb null
+						, created_at timestamp not null
+						, last_accessed_at timestamp not null
+					)
+					""".formatted(tableName)
+					, "create index %s__index_1 on \"%s\" (last_accessed_at)".formatted(tableName, tableName));
 
 			DB db = DBUtil.getMainDB();
 			if (!dbVersion.apply(db)) {

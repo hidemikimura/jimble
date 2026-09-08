@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.order_by;
 
+import io.jimble.db.dialect.SqlWriter;
 /**
  * order by
  */
@@ -22,9 +23,9 @@ public interface IOrderBy {
 	/**
 	 * SQLを出力する
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 */
-	void orderBySql(StringBuilder sb);
+	void orderBySql (SqlWriter sb);
 
 	/**
 	 * パラメータ存在判定

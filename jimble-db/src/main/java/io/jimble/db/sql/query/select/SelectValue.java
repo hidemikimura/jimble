@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.select;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 
 /**
@@ -91,15 +92,13 @@ public class SelectValue implements ISelect {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void selectSql(StringBuilder sb) {
+	public void selectSql (SqlWriter sb) {
 
 		sb.append("?");
 
 		if (this.as != null && !this.as.isEmpty()) {
 			sb.append(" AS ");
-			sb.append("`");
-			sb.append(this.as);
-			sb.append("`");
+			sb.identifier(this.as);
 		}
 
 	}

@@ -200,13 +200,14 @@ public final class MqQueue {
 		for (DB db : DBUtil.getDBList()) {
 
 			int count = db.update("""
-					UPDATE `%s` SET
+					UPDATE %s SET
 						status = ?
 						, updated_at = NOW()
 					WHERE
 						status = ?
-						AND updated_at < CURRENT_TIMESTAMP + INTERVAL - ? SECOND
-				""".formatted(queueName)
+						AND updated_at < %s
+				""".formatted(db.dialect().identifier(queueName)
+					, db.dialect().intervalFromNow("SECOND", true))
 				, MqStatus.waiting.name()
 				, MqStatus.running.name()
 				, MqConf.staleSeconds());
@@ -291,7 +292,7 @@ public final class MqQueue {
 					SELECT
 						*
 					FROM
-						`%s`
+						%s
 					WHERE
 						execute_type = ?
 						AND status = ?
@@ -299,7 +300,7 @@ public final class MqQueue {
 					ORDER BY
 						id ASC
 					LIMIT 1 FOR UPDATE SKIP LOCKED
-				""".formatted(queueName)
+				""".formatted(db.dialect().identifier(queueName))
 				, type.name()
 				, MqStatus.waiting.name());
 
@@ -308,7 +309,7 @@ public final class MqQueue {
 				return null;
 			}
 
-			db.update("UPDATE `%s` SET status = ?, updated_at = NOW() WHERE id = ?".formatted(queueName)
+			db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
 				, MqStatus.running.name()
 				, row.getLong("id"));
 
@@ -414,7 +415,7 @@ public final class MqQueue {
 		long id = row.getLong("id");
 
 		if (status == MqStatus.completed) {
-			db.delete("DELETE FROM `%s` WHERE id = ?".formatted(queueName), id);
+			db.delete("DELETE FROM %s WHERE id = ?".formatted(db.dialect().identifier(queueName)), id);
 			return;
 		}
 
@@ -475,15 +476,16 @@ public final class MqQueue {
 			.formatted(queueName, id, nextRetry, waitSeconds));
 
 		db.update("""
-				UPDATE `%s` SET
+				UPDATE %s SET
 					status = ?
 					, retry_count = ?
-					, scheduled_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+					, scheduled_at = %s
 					, log_info = ?
 					, updated_at = NOW()
 				WHERE
 					id = ?
-			""".formatted(queueName)
+			""".formatted(db.dialect().identifier(queueName)
+				, db.dialect().intervalFromNow("SECOND", false))
 			, MqStatus.waiting.name()
 			, nextRetry
 			, waitSeconds
@@ -504,14 +506,14 @@ public final class MqQueue {
 
 		if (logInfo == null) {
 
-			db.update("UPDATE `%s` SET status = ?, updated_at = NOW() WHERE id = ?".formatted(queueName)
+			db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
 				, status.name(), id);
 
 			return;
 
 		}
 
-		db.update("UPDATE `%s` SET status = ?, log_info = ?, updated_at = NOW() WHERE id = ?".formatted(queueName)
+		db.update("UPDATE %s SET status = ?, log_info = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
 			, status.name(), logInfo, id);
 
 	}

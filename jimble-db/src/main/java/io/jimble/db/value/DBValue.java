@@ -1,5 +1,7 @@
 package io.jimble.db.value;
 
+import java.util.List;
+import io.jimble.db.dialect.Sqls;
 import io.jimble.util.convertor.PropertyUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
@@ -56,11 +58,7 @@ public class DBValue {
 					, ?
 					, ?
 				)
-				ON DUPLICATE KEY UPDATE
-					value = VALUES(value)
-					, cache_second = VALUES(cache_second)
-					, description = VALUES(description)
-			"""
+			""" + Sqls.upsert(db.dialect(), List.of("value_key"), "value", "cache_second", "description")
 			, key
 			, PropertyUtil.toString(value)
 			, cacheSecond
@@ -521,21 +519,34 @@ public class DBValue {
 	public static void init (DB db) {
 
 		DBVersion dbVersion = new DBVersion("db_value", "汎用値情報");
-		dbVersion.add(1, """
+		dbVersion.add(1)
+			.mysql("""
 				create table db_value
 				(
 					value_key varchar(250) not null primary key,
 					value     varchar(250) not null
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
-			""".formatted(dbVersion.placeholder())
-		);
-		dbVersion.add(2, """
+			""".formatted(dbVersion.placeholder()))
+			.postgresql("""
+				create table db_value
+				(
+					value_key varchar(250) not null primary key,
+					value     varchar(250) not null
+				)
+			""");
+		dbVersion.add(2)
+			.mysql("""
 				alter table db_value add cache_second bigint default -1 not null comment 'キャッシュ秒（0=無制限）'
 			"""
 			, """
 				alter table db_value add description text null comment '説明'
+			""")
+			.postgresql("""
+				alter table db_value add column cache_second bigint default -1 not null
 			"""
-		);
+			, """
+				alter table db_value add column description text null
+			""");
 		dbVersion.apply(db);
 
 	}

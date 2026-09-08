@@ -1,5 +1,6 @@
 package io.jimble.db.sql.query.where.condition;
 
+import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
@@ -35,7 +36,7 @@ public class BetWeen implements ICondition {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void conditionSql(StringBuilder sb) {
+	public void conditionSql (SqlWriter sb) {
 
 		sb.append(" BETWEEN ");
 		output(sb, value1);
@@ -73,17 +74,13 @@ public class BetWeen implements ICondition {
 	/**
 	 * SQL出力
 	 *
-	 * @param sb	StringBuilder
+	 * @param sb	書き出し先
 	 * @param value	値
 	 */
-	private void output (StringBuilder sb, Object value) {
+	private void output (SqlWriter sb, Object value) {
 
 		if (value instanceof IColumn column) {
-			sb.append("`");
-			sb.append(column.table().name());
-			sb.append("`.`");
-			sb.append(column.name());
-			sb.append("`");
+			sb.qualified(column);
 		} else if (value instanceof IDsl dsl) {
 			dsl.dslSql(sb);
 		} else if (value instanceof ISelect select) {
