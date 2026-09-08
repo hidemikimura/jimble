@@ -243,9 +243,30 @@ subprojects {
 	 * <b>テストのコードは1行も変わらない</b>。
 	 * 接続先は JIMBLE_TEST_PG_URL / JIMBLE_TEST_PG_USER / JIMBLE_TEST_PG_PASSWORD で上書きできる。
 	 */
+	/*
+	 * application.pgtest.conf を持っているか。
+	 *
+	 * <b>無いモジュールで pgTest を走らせてはいけない。</b>
+	 * Conf は環境別ファイルが無ければ application.conf に落ちるので、
+	 * <b>PostgreSQL のつもりで MySQL に繋ぎに行く</b>ことになる。
+	 * 手元では MySQL も立っているので気づけず、
+	 * CI の pg ジョブ（PostgreSQL しか無い）で初めて落ちた（examples/blog がそれ）。
+	 *
+	 * dbTest のほうは落ちた先が MySQL なので、
+	 * <b>application.conf に落ちるのが意図どおり</b>である（examples/blog はそれで動く）。
+	 * 同じ判定を dbTest には付けない。
+	 */
+	val hasPgTestConf = provider {
+		val sets = extensions.getByType<SourceSetContainer>()
+		(sets["main"].resources.srcDirs + sets["test"].resources.srcDirs)
+			.any { File(it, "application.pgtest.conf").exists() }
+	}
+
 	tasks.register<Test>("pgTest") {
 		group = "verification"
 		description = "実 PostgreSQL に接続するテストを実行する（開発用 DB が必要）"
+
+		onlyIf("application.pgtest.conf が無いモジュール") { hasPgTestConf.get() }
 
 		// 開発用 DB は1つ。同時に走らせない
 		usesService(sharedDatabase)

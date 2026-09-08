@@ -31,6 +31,7 @@
 |---|---|
 | **CI を入れた**（D-108） | GitHub Actions。`build`（DB なし）／`db`（MariaDB + Redis）／`pg`（PostgreSQL + Redis）の3ジョブ。`dbTest` / `pgTest` / `codegenCheck`（F-G-14）/ `migrate → codegen → compileJava` の連鎖（NF-T-07）/ サンプルアプリの疎通（NF-T-06）/ ドキュメントサイトの生成（NF-D-03）が毎回回る。**標準ランナーだけ**で、larger runner は使わない |
 | **待ち受けを始めてから止め方を預けていた**（D-110） | `JimbleServer` は `WebServer` を start したあとに `Shutdown.add(...)` していたので、**そのあいだに `jimbleRun` が止めに来ると何も止まらなかった**（古いアプリがポートを握ったまま残る）。start の前に預けるようにした。あわせて `stop()` は待ち受け前なら即座に抜ける（猶予のぶん黙って寝ないように） |
+| **`pgTest` が PostgreSQL のつもりで MySQL に繋ぎに行っていた**（D-112） | `application.pgtest.conf` が無いモジュール（`examples/blog`）では `application.conf` に落ちるため。**手元は MySQL も立っているので通ってしまい**、CI の PostgreSQL だけのジョブで初めて落ちた。conf が無いモジュールは `pgTest` を飛ばす（`SKIPPED` としてログに出る） |
 | **Gradle 9 でプラグインの検証が落ちていた**（D-111） | キャッシュの可否と入力の正規化の注釈が無かった。Gradle 8 は警告で流すが 9 はエラー。`enableStricterValidation` を入れて**手元でも 9 と同じ厳しさ**で見るようにし、あわせて javadoc の警告 14 件も潰した |
 | **サンプルアプリが、まっさらな DB では動かなかった**（D-109） | `examples/blog` は MQ のテーブルをバッチの入口でしか作っていないのに、**キューに積むのは Web** だった。まっさらな DB で記事を登録すると「トランザクションのコミットに失敗しました」で 500。**いちどでもバッチを動かしたマシンでは動く**ので手元では気づけず、**CI を入れた初回に出た**。起動時に用意するものを `Bootstrap` 1か所にまとめ、3つの入口とテストがそれを呼ぶようにした。落とし穴のページにも足した |
 | **依存の脆弱性を見る口を作った**（NF-S-07） | Gradle の依存グラフを GitHub に登録して Dependabot alerts に当てる。あわせて Dependabot で週1の更新 PR |
