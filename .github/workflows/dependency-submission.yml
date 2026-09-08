@@ -1,0 +1,40 @@
+# 依存ライブラリの一覧を GitHub に渡す（要件 NF-S-07）
+#
+# <b>脆弱性スキャンを自分で持たない。</b>
+# Gradle が解決した依存の一覧を GitHub の Dependency graph に登録すると、
+# Dependabot alerts が公開リポジトリでは無料で当たる。
+#
+# OWASP dependency-check を CI に入れる手もあるが、
+# NVD の API キーが要るうえに毎回数分かかり、<b>キーが切れた日に黙って何も見なくなる</b>。
+# 一覧を渡すだけにしておけば、見るのは GitHub の側である。
+#
+# main への push だけで足りる（PR で流しても、grap に載るのは既定ブランチのぶんだけ）。
+
+name: 依存の一覧を登録する
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+
+  submit:
+    name: dependency-submission
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: 依存を解決して登録する
+        uses: gradle/actions/dependency-submission@v4

@@ -29,6 +29,8 @@
 
 | | |
 |---|---|
+| **CI を入れた**（D-108） | GitHub Actions。`build`（DB なし）／`db`（MariaDB + Redis）／`pg`（PostgreSQL + Redis）の3ジョブ。`dbTest` / `pgTest` / `codegenCheck`（F-G-14）/ `migrate → codegen → compileJava` の連鎖（NF-T-07）/ サンプルアプリの疎通（NF-T-06）/ ドキュメントサイトの生成（NF-D-03）が毎回回る。**標準ランナーだけ**で、larger runner は使わない |
+| **依存の脆弱性を見る口を作った**（NF-S-07） | Gradle の依存グラフを GitHub に登録して Dependabot alerts に当てる。あわせて Dependabot で週1の更新 PR |
 | **`UrlUtil.normalizeUrl`**（D-107） | **未エンコードの URL でも、エンコード済みの URL でも、同じ答えになる**（2回通しても変わらない）。ホストは punycode にする。移送してきた `fullUrlEncode` は<b>エンコード済みを二重にし、ホストをパーセントエンコードしていた</b>（DNS が引けない）。`urlToEncodeUrl` は<b>パスの空白を `+` にしていた</b>（`+` が空白なのはフォームの書式だけ）。どちらも呼ばれていないので消さず、javadoc から新しいほうへ案内している |
 | **静的配信のルートを外から触れる**（D-70） | `AssetController` / `SpaController` / `MpaController` に `routes()`。`install` した子のルートに `AttributeKey`（認証の除外・流量制限）を付けられる |
 | **`NOT IN` の条件を読めるようにした**（D-105） | `NotIn` に `operator()` / `conditionValue()`。`In` と対称になった。**`IN` とは別の演算子（`WhereTerm.NOT_IN`）**にしてある（`NOT IN (1,3)` は「それ以外の全部」なので、1 と 3 の行タグだけ消すと**古い値が返り続ける**）。SQL 結果キャッシュは従来どおりテーブルごと消す安全側のまま |

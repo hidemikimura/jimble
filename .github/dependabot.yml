@@ -1,0 +1,30 @@
+# 依存の更新を拾う（要件 NF-S-07）
+#
+# 脆弱性の警告そのものは Dependency graph（dependency-submission.yml）と
+# GitHub の Dependabot alerts に任せる。ここは<b>版が上がったことを知る</b>ためのもの。
+#
+# 週1にしてあるのは、毎日だと PR が溜まって読まれなくなるからである。
+
+version: 2
+
+updates:
+
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # helidon は複数の artifact が同じ版で動くので、1本の PR にまとめる
+      helidon:
+        patterns:
+          - "io.helidon*"
+
+  # ワークフローで使う action も古くなる
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3

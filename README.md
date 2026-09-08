@@ -1,5 +1,7 @@
 # jimble
 
+[![CI](https://github.com/hidemikimura/jimble/actions/workflows/ci.yml/badge.svg)](https://github.com/hidemikimura/jimble/actions/workflows/ci.yml)
+
 Java 製の Web アプリケーションフレームワーク。
 
 - Web サーバーは [Helidon WebServer](https://helidon.io/) を使い、ルーティングは `routing.any()` で受けて自作の Router で処理する
@@ -127,6 +129,25 @@ JIMBLE_TEST_DB_USER=jimble \
 JIMBLE_TEST_DB_PASSWORD=jimble \
   ./gradlew :jimble-db:dbTest
 ```
+
+同じテストを PostgreSQL に対して流すのが `pgTest`（接続先は `application.pgtest.conf`）。
+
+```bash
+./gradlew :jimble-db:pgTest
+```
+
+### CI
+
+GitHub Actions（`.github/workflows/ci.yml`）で3つに分けて流している。
+
+| ジョブ | 中身 |
+| --- | --- |
+| `build` | **DB を使わない。**`build`（単体テスト・javadoc・`-Werror`）／ Gradle プラグイン ／ ドキュメントサイトの生成 |
+| `db` | MariaDB + Redis を立てて `dbTest`、`codegenCheck`、`migrate → codegen → compileJava` の連鎖 |
+| `pg` | PostgreSQL + Redis を立てて `pgTest` |
+
+**`db` と `pg` を分けてある。**1つにまとめると、落ちたときに製品差の問題なのかを
+ログを追わないと判別できない。
 
 ---
 
