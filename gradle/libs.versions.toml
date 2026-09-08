@@ -1,7 +1,7 @@
 [versions]
 junit = "5.14.4"
 helidon = "4.5.4"
-guava = "33.6.0-jre"
+guava = "33.7.1-jre"
 icu4j = "78.3"
 tika = "3.3.2"
 fastcsv = "4.4.0"
