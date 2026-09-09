@@ -30,6 +30,8 @@
 | **`in` の空一覧が JSON の `where` からだと素通りしていた** | `{"where": {"site": {"id|in": []}}}` が `IN (NULL)` になり、**例外もエラーも出ずに 0 件**（`not_in` なら本来の全件が 0 件）。`in(null)` も同じく落とすようにした |
 | **エラーハンドラが送信してから落ちると、後続のエラーハンドラが走っていた** | 「送信済みなら以降は実行しない」の判定を `catch` で飛ばしていた |
 | **ドキュメントだけでアプリを1本作れなかった**（`docs/docs-only-trial.md`） | ドキュメントと Maven Central の 0.2.0 だけでアプリを作る実地確認をしたところ、**そもそも始められませんでした**（依存の座標も動くビルドファイルもサイトに無い）。日英 35 ページずつに次を入れました：**そのまま動く `settings.gradle.kts` / `build.gradle.kts` の全文**とモジュールの表、リポジトリ URL、**「サイトは開発中の版に追従している」の明示と 0.2.0 に無い節の印**、`getString` / `getStringOptional` の説明の訂正（逆でした）、**`context.request()` から直接は読めない**、`DBUtil.load(...)` を DB のページに、クラスの置き場所の表、`gradle wrapper --gradle-version`。**フレームワークのコードは変えていません** |
+| **依存の一覧が GitHub に一度も登録できていなかった**（NF-S-07 / D-118） | `dependency-submission` が9回とも失敗していた。原因はワークフローではなく<b>リポジトリの設定で Dependency graph が無効</b>だったことで、`The Dependency graph is disabled for this repository` は**ログ本文ではなく Annotations にしか出ない**ため、最後まで読んでも成功したようにしか見えなかった。設定を有効にして通した。ワークフローの先頭にこの前提を書いた |
+| **GitHub Actions の action を上げた**（D-118） | Node 20 の非推奨警告を消すため、`actions/checkout` を v7、`actions/upload-artifact` を v7、`actions/setup-java` を v5 に。**`gradle/actions` は v5 で止めた**（v6 はキャッシュが MIT ではない非公開コンポーネントになり、使うと Gradle の Terms of Use への同意になる）。Dependabot が毎週 v6 を出してこないよう `ignore` を入れ、上限を 3 から 5 に上げた |
 | **ドキュメントの食い違い 3 件** | `execution.md`「送ったら止まる」で `after` も止まると書いていた（`after` と `onComplete` は `finally` にあるので必ず通る）／`config.md` の `migration.on_startup` の既定を `false` と書いていた（実際は `"auto"`）／`deploy.md` の起動ログ例が jar の外の conf を「クラスパスより優先」と書いていた（jimble はクラスパスしか見ない） |
 
 ### 足した

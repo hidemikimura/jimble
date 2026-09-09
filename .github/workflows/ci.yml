@@ -38,16 +38,18 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
+      # <b>v5 で止める。</b>v6 はキャッシュが MIT ではない
+      # 非公開コンポーネントになり、使うと Terms of Use への同意になる（D-118）
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       # -Werror と doclint が効いているので、警告が1つでも出たらここで落ちる（要件 D-15）
       - name: build（単体テスト・javadoc 込み）
@@ -72,7 +74,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-test-results
           path: '**/build/reports/tests/**'
@@ -91,23 +93,23 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: build（テスト・javadoc 込み）
         run: ./gradlew -p gradle-plugin build --stacktrace
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plugin-test-results
           path: 'gradle-plugin/build/reports/**'
@@ -156,16 +158,16 @@ jobs:
       JIMBLE_TEST_DB_PASSWORD: jimble
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: dbTest（@Tag("db") のテスト）
         run: ./gradlew dbTest --stacktrace
@@ -180,7 +182,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: db-test-results
           path: '**/build/reports/tests/**'
@@ -220,23 +222,23 @@ jobs:
           --health-retries=20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: pgTest（@Tag("db") のテストを PostgreSQL で）
         run: ./gradlew pgTest --stacktrace
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pg-test-results
           path: '**/build/reports/tests/**'

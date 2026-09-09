@@ -42,16 +42,16 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       # コード片は examples/ とテストの実コードから抜いている（要件 NF-D-03）。
       # 印が消えていればここで落ちる
@@ -80,8 +80,11 @@ jobs:
             exit 1
           fi
 
+      # checkout は v6 から<b>認証情報を .git/config ではなく別ファイルに持つ</b>。
+      # ここは取ってきた先で `git push` までやるので、
+      # 版を上げたら手で1回流して確かめること（D-118）
       - name: 配る先を取ってくる
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: hidemikimura/jimble-document
           token: ${{ secrets.DOCS_PUSH_TOKEN }}
