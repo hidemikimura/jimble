@@ -1,4 +1,7 @@
 plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+
 	application
 }
 

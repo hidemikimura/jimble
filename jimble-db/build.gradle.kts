@@ -1,3 +1,9 @@
+plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
+}
+
 description = "jimble の DB 層。SQL ビルダー / DB / トランザクション / キャッシュ / 分散ロック"
 
 /*
@@ -68,8 +74,4 @@ dependencies {
 		exclude(group = "io.projectreactor", module = "reactor-core")
 		exclude(group = "org.jodd", module = "jodd-util")
 	}
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }

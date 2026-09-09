@@ -1,392 +1,37 @@
 /*
- * 全モジュール共通のビルド設定。
+ * ルートのビルド。
  *
- * NOTE: モジュールが増えたら buildSrc の規約プラグインに移す（設計書 D-13）。
- *       今は Gradle Plugin Portal への依存を持ち込まないためにこの形にしている。
+ * <b>モジュール共通の設定はここには無い。</b>build-logic の規約プラグインにある（設計書 D-13）。
+ *
+ *   jimble.java-conventions     Java の共通設定（ツールチェーン / -Werror / doclint）
+ *   jimble.test-conventions     test / dbTest / pgTest / bench と junit
+ *   jimble.publish-conventions  Maven Central へ出すモジュールの設定（POM / 置き場 / 署名）
+ *
+ * どのモジュールが何を使っているかは、そのモジュールの build.gradle.kts の
+ * plugins {} を見れば分かる（原則1）。
+ *
+ * <b>ここに残してあるのは「リリースの手順」だけである。</b>
+ * 年に数回しか動かさないうえ、HTTP を直に叩いていて読む機会がまとまっているので、
+ * 規約プラグインへ散らさずに1ファイルに置いてある。
  */
 
 /*
- * 実 DB に繋ぐテスト（dbTest）は同時に走らせない。
+ * 版（-Pjimble.version で上書きできる）。
  *
- * 開発用 DB は1つしかない（要件 D-16）。org.gradle.parallel=true なので、
- * モジュールが増えると複数の dbTest が同じスキーマを同時に触る。
- * 実際、あるモジュールのテストが TRUNCATE した裏で
- * 別のモジュールのバッチが走っていて、拾えるはずの行が消えていた。
+ * 既定は gradle/libs.versions.toml の jimble にある。
+ * <b>ここに書き写さないこと。</b>規約プラグイン（JimbleBuild.version）と
+ * gradle-plugin も同じ表を見ている。
  */
-abstract class SharedDatabase : BuildService<BuildServiceParameters.None>
-
-val sharedDatabase = gradle.sharedServices.registerIfAbsent("sharedDatabase", SharedDatabase::class) {
-	maxParallelUsages = 1
-}
-
-/*
- * 版は -Pjimble.version で上書きできる。
- *
- * Maven Central は -SNAPSHOT を受け付けない（スナップショットは別のリポジトリ）。
- * リリースのときだけ
- *
- *   ./gradlew centralBundle -Pjimble.version=0.2.0
- *
- * のように渡す。既定を素の 0.2.0 にしないのは、
- * うっかり publish したものが「リリース版」として残るのを避けるためである。
- */
-val jimbleVersion = providers.gradleProperty("jimble.version").getOrElse("0.2.1-SNAPSHOT")
-
-/*
- * Maven Central へ出さないモジュール。
- *
- * jimble-docs は jimble.io のサイトを作るためのもので、
- * アプリが依存するものではない（このリポジトリの中でしか使い道がない）。
- * examples も同じ理由で出さない（こちらはパスで弾いている）。
- */
-val NOT_PUBLISHED = setOf("jimble-docs")
+val jimbleVersion = providers.gradleProperty("jimble.version")
+	.getOrElse(libs.versions.jimble.get())
 
 /*
  * Maven Central へ出すときの置き場（要件 NF-L-04）。
  *
  * ここへ Maven のレイアウトのまま publish し、centralBundle が zip にする。
- * gradle-plugin は別ビルド（settings.gradle.kts の includeBuild）なので、
- * 向こうからも同じ場所を指している。
+ * jimble.publish-conventions と gradle-plugin（別ビルド）も同じ場所を指している。
  */
 val centralRepoDir = layout.buildDirectory.dir("central")
-
-subprojects {
-
-	apply(plugin = "java-library")
-
-	group = "io.jimble"
-	version = jimbleVersion
-
-	extensions.configure<JavaPluginExtension> {
-		// Java 25（要件定義 5. 技術前提）
-		toolchain {
-			languageVersion = JavaLanguageVersion.of(25)
-		}
-		/*
-		 * Maven Central は jar ごとに -sources.jar と -javadoc.jar を要求する。
-		 * examples も付いてくるが、publish しないので出力されるだけである。
-		 */
-		withSourcesJar()
-		withJavadocJar()
-	}
-
-	tasks.withType<JavaCompile>().configureEach {
-		options.encoding = "UTF-8"
-		options.compilerArgs.addAll(
-			listOf(
-				"-Xlint:all",
-				"-Xlint:-serial",
-				/*
-				 * this-escape を切る（要件 D-15）。
-				 *
-				 * jimble は<b>ルートをコンストラクタで登録する</b>
-				 * （`class PostController extends Controller { { get("/posts", ...); } }`）。
-				 * javac から見ると「派生クラスの初期化が終わる前に this を触っている」ので、
-				 * <b>正しく書いたコントローラが必ず1件警告を出す。</b>
-				 *
-				 * 登録の口（Controller の get / post / before / error / install …）は
-				 * <b>全部 protected final</b> で、上書きされたメソッドを呼ぶことはない。
-				 * つまりこの形は安全である。
-				 *
-				 * 1つずつ @SuppressWarnings を付ける手もあるが、
-				 * <b>jimble を使う人が書くコントローラすべてに要ることになる</b>。
-				 * フレームワークの設計に由来する警告なので、ここで落とす。
-				 */
-				"-Xlint:-this-escape",
-				/*
-				 * <b>警告をエラーにする</b>（要件 D-15）。
-				 *
-				 * 「あとで潰す」で溜めた警告は潰されない。
-				 * 移送時点の警告を jimble-util だけ種別ごと落としていたせいで、
-				 * <b>本当に危ないものが山に埋もれて見えなくなっていた。</b>
-				 * 消せないものは、消せない理由を書いた @SuppressWarnings を
-				 * <b>その場所に</b>付ける（読めば理由が分かる）。
-				 */
-				"-Werror",
-				// リフレクションに頼らずパラメータ名を残す
-				"-parameters",
-			)
-		)
-	}
-
-	tasks.withType<Javadoc>().configureEach {
-
-		options.encoding = "UTF-8"
-
-		/*
-		 * doclint は<b>全モジュールで有効</b>である（要件 D-15）。
-		 * 移送してきた jimble-util だけ切っていたが、
-		 * <b>切っている場所で壊れても気づけない</b>（publishToMavenLocal が
-		 * javadoc で落ちて初めて分かる、という形でしか出てこない）。
-		 * 2026-09-08 に 45 件を潰して、切るのをやめた。
-		 */
-
-	}
-
-	/*
-	 * ローカルの Maven リポジトリへ publish できるようにする。
-	 *
-	 *   ./gradlew publishToMavenLocal
-	 *
-	 * これがないと「jimble new で作ったプロジェクトが本当にビルドできるか」を
-	 * 確かめられない（要件 F-X-01 / NF-T-06）。
-	 * Maven Central への公開は Phase 2（NF-L-04）。ここはその下ごしらえである。
-	 *
-	 * examples は publish しない。ライブラリではない。
-	 */
-	if (name !in NOT_PUBLISHED && !path.startsWith(":examples")) {
-
-		apply(plugin = "maven-publish")
-
-		extensions.configure<PublishingExtension> {
-
-			publications {
-				create<MavenPublication>("maven") {
-					from(components["java"])
-					pom { jimblePom(this@subprojects.name, provider { this@subprojects.description ?: this@subprojects.name }) }
-				}
-			}
-
-			/*
-			 * central: Maven Central へ出すためのバンドルの材料。
-			 *          ここへ出したものを centralBundle が zip にまとめる。
-			 */
-			repositories {
-				maven {
-					name = "central"
-					url = uri(centralRepoDir)
-				}
-			}
-
-		}
-
-		/*
-		 * 署名（要件 NF-L-04）。Maven Central は全ファイルに .asc を要求する。
-		 *
-		 * 鍵はファイルに置かず、環境変数から渡す。
-		 *   JIMBLE_SIGNING_KEY       gpg --armor --export-secret-keys の中身
-		 *   JIMBLE_SIGNING_PASSWORD  その鍵のパスフレーズ
-		 *
-		 * 鍵が無い環境では署名を飛ばす。CI でも手元でも、
-		 * 鍵を持っていない人のビルドが落ちないようにするためである。
-		 */
-		val signingKey = providers.environmentVariable("JIMBLE_SIGNING_KEY")
-
-		if (signingKey.isPresent) {
-
-			apply(plugin = "signing")
-
-			extensions.configure<SigningExtension> {
-				useInMemoryPgpKeys(
-					signingKey.get()
-					, providers.environmentVariable("JIMBLE_SIGNING_PASSWORD").getOrElse(""))
-				sign(extensions.getByType<PublishingExtension>().publications)
-			}
-
-		}
-
-	}
-
-	/*
-	 * 通常の test は DB もベンチマークも走らせない。
-	 * 実 DB が要るテストは @Tag("db") を付けて dbTest / pgTest で（要件 D-16）、
-	 * ベンチマークは @Tag("bench") を付けて bench タスクで実行する（要件 NF-P-06）。
-	 *
-	 * <b>ベンチマークを通常の test から外すのは、時間がかかるからだけではない。</b>
-	 * 数十万回まわして割り当てを測るので、<b>ほかのテストと同じ JVM で走らせると
-	 * 測り終わったころには JIT の状態が変わっている</b>（測った順で答えが変わる）。
-	 */
-	tasks.withType<Test>().configureEach {
-		val isDbTest = name == "dbTest" || name == "pgTest"
-		val isBench = name == "bench"
-		useJUnitPlatform {
-			when {
-				isBench -> includeTags("bench")
-				isDbTest -> includeTags("db")
-				else -> excludeTags("db", "bench")
-			}
-		}
-		// 標準出力の文字化け対策（要件 F-U-12）
-		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
-		testLogging {
-			events("failed")
-			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-			showStackTraces = true
-		}
-	}
-
-	/*
-	 * 実 DB に接続するテスト。開発用 DB が要る。
-	 *   ./gradlew :jimble-db:dbTest
-	 * 接続先は JIMBLE_TEST_DB_URL / JIMBLE_TEST_DB_USER / JIMBLE_TEST_DB_PASSWORD で上書きできる。
-	 */
-	val testSourceSet = extensions.getByType<SourceSetContainer>()["test"]
-
-	tasks.register<Test>("dbTest") {
-		group = "verification"
-		description = "実 DB に接続するテストを実行する（開発用 DB が必要）"
-
-		// 開発用 DB は1つ。同時に走らせない
-		usesService(sharedDatabase)
-
-		testClassesDirs = testSourceSet.output.classesDirs
-		classpath = testSourceSet.runtimeClasspath
-
-		systemProperty("env", "dbtest")
-		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
-
-		// 常に実行する（結果をキャッシュしない）
-		outputs.upToDateWhen { false }
-
-		testLogging {
-			events("passed", "failed")
-			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-		}
-	}
-
-	/*
-	 * 同じテストを PostgreSQL に対して実行する（要件 F-D-30）。
-	 *   ./gradlew :jimble-db:pgTest
-	 *
-	 * dbTest との違いは env だけ。application.pgtest.conf が
-	 * db.jimble_test.product = postgresql を持っているので、
-	 * <b>テストのコードは1行も変わらない</b>。
-	 * 接続先は JIMBLE_TEST_PG_URL / JIMBLE_TEST_PG_USER / JIMBLE_TEST_PG_PASSWORD で上書きできる。
-	 */
-	/*
-	 * application.pgtest.conf を持っているか。
-	 *
-	 * <b>無いモジュールで pgTest を走らせてはいけない。</b>
-	 * Conf は環境別ファイルが無ければ application.conf に落ちるので、
-	 * <b>PostgreSQL のつもりで MySQL に繋ぎに行く</b>ことになる。
-	 * 手元では MySQL も立っているので気づけず、
-	 * CI の pg ジョブ（PostgreSQL しか無い）で初めて落ちた（examples/blog がそれ）。
-	 *
-	 * dbTest のほうは落ちた先が MySQL なので、
-	 * <b>application.conf に落ちるのが意図どおり</b>である（examples/blog はそれで動く）。
-	 * 同じ判定を dbTest には付けない。
-	 */
-	val hasPgTestConf = provider {
-		val sets = extensions.getByType<SourceSetContainer>()
-		(sets["main"].resources.srcDirs + sets["test"].resources.srcDirs)
-			.any { File(it, "application.pgtest.conf").exists() }
-	}
-
-	tasks.register<Test>("pgTest") {
-		group = "verification"
-		description = "実 PostgreSQL に接続するテストを実行する（開発用 DB が必要）"
-
-		onlyIf("application.pgtest.conf が無いモジュール") { hasPgTestConf.get() }
-
-		// 開発用 DB は1つ。同時に走らせない
-		usesService(sharedDatabase)
-
-		testClassesDirs = testSourceSet.output.classesDirs
-		classpath = testSourceSet.runtimeClasspath
-
-		systemProperty("env", "pgtest")
-		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
-
-		// 常に実行する（結果をキャッシュしない）
-		outputs.upToDateWhen { false }
-
-		testLogging {
-			events("passed", "failed")
-			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-		}
-	}
-
-	/*
-	 * ベンチマーク（要件 NF-P-06）。
-	 *   ./gradlew :jimble-web:bench
-	 *
-	 * <b>落とすのは「1回あたりに割り当てた byte 数」だけで、時間では落とさない。</b>
-	 * CI の共用ランナーは走るたびに 20〜30% ぶれるので、
-	 * 「ベースライン比 -10%」を時間でやると<b>直していないのに赤くなる日</b>ができる。
-	 * 赤が信用されなくなると、本物の退行も見過ごされる（詳しくは Bench の javadoc）。
-	 *
-	 * 測った値は build/bench/bench.txt に出る。CI はこれを成果物として持ち帰るだけで、
-	 * <b>中身を見て落とすことはしない</b>（人が前後を見比べるためのもの）。
-	 */
-	/*
-	 * ベンチマークを持っているか。
-	 *
-	 * <b>持っていないモジュールで走らせると「テストが1つも見つからない」で落ちる。</b>
-	 * pgTest と同じで、飛ばしたことは SKIPPED としてログに出る。
-	 */
-	val hasBench = provider {
-		testSourceSet.java.srcDirs.any { dir ->
-			dir.isDirectory && dir.walkTopDown().any { it.isDirectory && it.name == "bench" }
-		}
-	}
-
-	tasks.register<Test>("bench") {
-		group = "verification"
-		description = "ベンチマークを実行する（要件 NF-P-06）"
-
-		onlyIf("ベンチマークが無いモジュール") { hasBench.get() }
-
-		testClassesDirs = testSourceSet.output.classesDirs
-		classpath = testSourceSet.runtimeClasspath
-
-		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
-
-		// 常に実行する（結果をキャッシュしない）
-		outputs.upToDateWhen { false }
-
-		// 測った表を流す
-		testLogging {
-			events("passed", "failed")
-			showStandardStreams = true
-			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-		}
-	}
-
-}
-
-/*
- * Maven Central が要求する POM の項目（要件 NF-L-04）。
- *
- *   name / description / url / licenses / developers / scm
- *
- * どれか1つでも欠けると、アップロードは通ってから検証で落ちる。
- * gradle-plugin は別ビルドなので、向こうにも同じものがある。
- * 直すときは両方直すこと（共有する仕組みを1つ増やすより、
- * 25 行を2箇所に置くほうが辿りやすい）。
- */
-fun MavenPom.jimblePom (moduleName: String, moduleDescription: Provider<String>) {
-
-	name = moduleName
-	description = moduleDescription
-	url = "https://jimble.io"
-
-	licenses {
-		license {
-			name = "The Apache License, Version 2.0"
-			url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-		}
-	}
-
-	developers {
-		developer {
-			id = "hidemikimura"
-			name = "Hidemi Kimura"
-			email = "hidemikimura@gmail.com"
-			organization = "ecx Inc."
-			organizationUrl = "https://www.ecx.co.jp/"
-		}
-	}
-
-	scm {
-		url = "https://github.com/hidemikimura/jimble"
-		connection = "scm:git:https://github.com/hidemikimura/jimble.git"
-		// 書き込む側は SSH
-		developerConnection = "scm:git:ssh://git@github.com/hidemikimura/jimble.git"
-	}
-
-}
-
-// region Maven Central（要件 NF-L-04）
 
 /*
  * Sonatype には公式の Gradle プラグインが無い（2026-09 時点。ドキュメントに
@@ -419,8 +64,23 @@ val CENTRAL_API = "https://central.sonatype.com/api/v1/publisher"
 /** アップロードした deployment の id を控えておく先 */
 val centralDeploymentIdFile = layout.buildDirectory.file("central-deployment-id.txt")
 
-/** publish する（= examples ではない）モジュール */
-val publishedProjects = subprojects.filterNot { it.name in NOT_PUBLISHED || it.path.startsWith(":examples") }
+/**
+ * publish するモジュール
+ *
+ * <p>
+ * <b>「jimble.publish-conventions を適用したか」で決める。</b>
+ * 以前は名前とパスで振り分けていたので、<b>publish するかどうかの判断が
+ * モジュールの外に1か所だけ別にあった</b>（増やすときに2か所直すことになる）。
+ * </p>
+ *
+ * <p>
+ * 全モジュールの設定が終わってから読む必要があるので provider に包んである
+ * （タスクの依存は設定がすべて終わったあとに組み立てられる）。
+ * </p>
+ */
+val publishedProjects = provider {
+	subprojects.filter { it.pluginManager.hasPlugin("jimble.publish-conventions") }
+}
 
 /**
  * バンドルの材料を build/central に出す。
@@ -432,7 +92,9 @@ val centralPublishLocal = tasks.register("centralPublishLocal") {
 	group = "publishing"
 	description = "Maven Central へ送る材料を build/central に出す"
 
-	dependsOn(publishedProjects.map { "${it.path}:publishMavenPublicationToCentralRepository" })
+	dependsOn(publishedProjects.map { list ->
+		list.map { "${it.path}:publishMavenPublicationToCentralRepository" }
+	})
 	dependsOn(gradle.includedBuild("gradle-plugin").task(":publishAllPublicationsToCentralRepository"))
 
 }
@@ -705,5 +367,3 @@ tasks.register("centralDrop") {
 	}
 
 }
-
-// endregion

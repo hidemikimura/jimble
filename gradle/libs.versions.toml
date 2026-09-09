@@ -1,4 +1,15 @@
 [versions]
+
+# jimble 自身の版（要件 NF-L-04）。
+#
+# -Pjimble.version で上書きできる。既定を素の 0.2.0 にしないのは、
+# うっかり publish したものが「リリース版」として残るのを避けるためである。
+# Maven Central は -SNAPSHOT を受け付けない。
+#
+# <b>本体・gradle-plugin・バンドルの3か所が同じ値を見る。</b>
+# ここに1つ置いてあるのはそのためで、既定値をビルドスクリプトに書き写さないこと。
+jimble = "0.2.1-SNAPSHOT"
+
 junit = "6.1.3"
 helidon = "4.5.4"
 tika = "4.0.0"

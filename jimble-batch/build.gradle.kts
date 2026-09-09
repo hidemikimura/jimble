@@ -1,3 +1,9 @@
+plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
+}
+
 description = "jimble のバッチ実行基盤。バッチ / スケジューラ"
 
 dependencies {
@@ -11,8 +17,4 @@ dependencies {
 
 	// 実 DB に繋ぐテスト（dbTest）用
 	testRuntimeOnly(libs.mariadb.client)
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }

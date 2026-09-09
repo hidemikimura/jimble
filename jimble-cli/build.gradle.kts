@@ -1,4 +1,8 @@
 plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
+
 	application
 }
 
@@ -10,10 +14,6 @@ dependencies {
 	 * ここが持つのは入口と雛形だけである。
 	 */
 	api(project(":jimble-db"))
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 /*

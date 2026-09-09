@@ -12,6 +12,14 @@ pluginManagement {
 		mavenCentral()
 	}
 
+	/*
+	 * ビルドの規約（設計書 D-13）。
+	 * jimble.java-conventions / jimble.test-conventions /
+	 * jimble.publish-conventions / jimble.central-publish がここから来る。
+	 * gradle-plugin も同じものを取り込んでいる（POM の必須項目を共有するため）。
+	 */
+	includeBuild("build-logic")
+
 	includeBuild("gradle-plugin")
 }
 

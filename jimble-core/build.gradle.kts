@@ -1,7 +1,7 @@
-description = "jimble のコア。HTTP を知らない層（Context / Executor）"
-
-dependencies {
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
+plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
 }
+
+description = "jimble のコア。HTTP を知らない層（Context / Executor）"

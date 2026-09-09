@@ -1,4 +1,7 @@
 plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+
 	application
 	id("io.jimble.db")
 	// src/main/jte を compileJava の前に Java へ変換する（要件 F-W-10 / O-13）
@@ -17,9 +20,6 @@ dependencies {
 	implementation(project(":jimble-mcp"))
 	runtimeOnly(libs.mariadb.client)
 
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 	testRuntimeOnly(libs.mariadb.client)
 	// pgTest 用（要件 F-D-30）。application.pgtest.conf が product = postgresql を持つ
 	testRuntimeOnly(libs.postgresql.client)

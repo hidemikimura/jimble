@@ -1,3 +1,9 @@
+plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
+}
+
 description = "jimble の共通ユーティリティ。Data / 型変換 / JSON / 文字列 / 日時 / IO / HTTP クライアントなど"
 
 /*
@@ -32,8 +38,4 @@ dependencies {
 	implementation(libs.caffeine)
 	implementation(libs.jbcrypt)
 	implementation(libs.brotli.dec)
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }

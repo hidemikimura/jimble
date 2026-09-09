@@ -1,4 +1,7 @@
 plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+
 	application
 	// サイトのテンプレートは jte。ドキュメントサイト自身が jimble の実例になる
 	id("io.jimble.jte")
@@ -19,10 +22,6 @@ dependencies {
 	 */
 	implementation(libs.commonmark)
 	implementation(libs.commonmark.tables)
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 application {

@@ -1,4 +1,8 @@
 plugins {
+	id("jimble.java-conventions")
+	id("jimble.test-conventions")
+	id("jimble.publish-conventions")
+
 	// テンプレートのテストのために src/test/jte を Java へ変換する
 	id("io.jimble.jte")
 }
@@ -40,8 +44,4 @@ dependencies {
 
 	// 実 DB に繋ぐテスト（dbTest）用
 	testRuntimeOnly(libs.mariadb.client)
-
-	testImplementation(platform(libs.junit.bom))
-	testImplementation(libs.junit.jupiter)
-	testRuntimeOnly(libs.junit.platform.launcher)
 }

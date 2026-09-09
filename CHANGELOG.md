@@ -70,6 +70,9 @@
 
 | | |
 |---|---|
+| **ビルドの規約を `build-logic` へ移した**（D-13。**完了**） | root の `build.gradle.kts` が 709 行になり、うち 293 行が全モジュール共通の設定でした。`jimble.java-conventions` / `jimble.test-conventions` / `jimble.publish-conventions` の3つに分け、各モジュールの `plugins {}` に書くようにしています。**どのモジュールが何を使っているかが、そのモジュールを見れば分かります。**あわせて **junit の3行が 12 か所から消え**、`examples` には `-sources.jar` / `-javadoc.jar` が作られなくなりました（publish しないので要りません）。root は 369 行、`gradle-plugin` は 199 → 117 行になりました。**フレームワークのコードは1行も変えていません**（`build/central` に出るファイル 330 個と POM 13 個が移行前と 1 byte も変わらないことを確認しています） |
+| **POM の必須項目を1か所にした**（NF-L-04 / D-13） | `licenses` / `developers` / `scm` の 25 行を本体と `gradle-plugin` に書き写していて、「直すときは両方直すこと」と注意書きを付けていました。`build-logic` を**別ビルド**（buildSrc ではなく）にしたので、別ビルドである `gradle-plugin` からも取り込めます。あわせて**版の既定値**も `gradle/libs.versions.toml` の `jimble` 1か所に寄せました（以前は3か所に同じ文字列がありました） |
+| **規約プラグインは Kotlin ではなく Java で書いた**（D-13 / D-22） | `plugins { kotlin-dsl }` の実体（`org.gradle.kotlin:gradle-kotlin-dsl-plugins`）は **Gradle の配布物に入っておらず、Plugin Portal からしか取れません**（Maven Central には `org.gradle.kotlin` というグループ自体がありません）。D-22 が「Plugin Portal への依存を持ち込まない」と決めていて、しかもその理由として D-13 を名指ししているので、`java-gradle-plugin`（Gradle 同梱）で書いています。`gradle-plugin` と同じ形なので、読み方も同じです |
 | **移送してきたコードの警告を全部潰し、`-Werror` にした**（D-15。**完了**） | `jimble-util` は移送時点の警告を種別ごと（`unchecked` / `rawtypes` / `fallthrough` / `deprecation` / `dangling-doc-comments` / `this-escape` / `cast` / `overloads`）落としていて、**javadoc の doclint も切っていた**。**コンパイル警告 81 件と doclint 45 件を潰して、抑止をやめた。**以降は警告が出たらビルドが落ちる。消せないものは、消せない理由を書いた `@SuppressWarnings` をその場所に付けてある |
 | **ヘルスチェックの要件を実態に合わせた**（NF-O-03 / D-106） | 要件は「標準で提供する」と書いてあったが、実装は無く、ドキュメントは「アプリが書いてください」だった。**グレースフルシャットダウンで「先にヘルスチェックだけ落とす」順番をアプリが決めるため**という理由を要件側に書いた |
 | **jimble が作るテーブルの名前を1か所に**（D-68） | `io.jimble.db.FrameworkTables`。作る側も codegen の除外側も同じ定数を使う。`GeneratorConf.FRAMEWORK_TABLES` は廃止 |

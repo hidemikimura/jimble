@@ -9,6 +9,12 @@ plugins {
 	 * java-gradle-plugin がプラグインマーカーも一緒に出す。
 	 */
 	`maven-publish`
+
+	/*
+	 * Maven Central へ出す設定（置き場・POM・署名）。
+	 * 本体と同じ build-logic から来る（設計書 D-13）。
+	 */
+	id("jimble.plugin-publish-conventions")
 }
 
 description = "jimble の Gradle プラグイン（migrate / codegen / jte 変換 / ホットリロード）"
@@ -19,7 +25,7 @@ group = "io.jimble"
  * 版は本体と揃える（-Pjimble.version）。
  * 外側のビルドに渡したプロパティは、取り込まれたこのビルドにも届く。
  */
-version = providers.gradleProperty("jimble.version").getOrElse("0.2.1-SNAPSHOT")
+version = io.jimble.build.JimbleBuild.version(project)
 
 java {
 	toolchain {
@@ -108,92 +114,4 @@ gradlePlugin {
 			description = "開発用のホットリロード。ソースを見張り、リクエストが来たら作り直してアプリを入れ替える"
 		}
 	}
-}
-
-/*
- * Maven Central へ出す（要件 NF-L-04 / D-22）。
- *
- * Gradle Plugin Portal には出さない。かわりに、jimble new が作る
- * settings.gradle.kts の pluginManagement で mavenCentral() を見に行かせる。
- * java-gradle-plugin が
- *
- *   io.jimble.jte:io.jimble.jte.gradle.plugin
- *
- * という形のプラグインマーカーも一緒に publish するので、
- * plugins { id("io.jimble.jte") version "..." } がそれで解決できる。
- *
- * 置き場はリポジトリの build/central。本体と同じ場所に出して、
- * 外側の centralBundle が丸ごと zip にする。
- */
-publishing {
-	repositories {
-		maven {
-			name = "central"
-			// rootDir はこの別ビルド（<repo>/gradle-plugin）。その隣の build/central を指す
-			url = uri(rootDir.resolveSibling("build").resolve("central"))
-		}
-	}
-}
-
-/*
- * POM の必須項目。本体（<repo>/build.gradle.kts の jimblePom）と同じ内容である。
- * 別ビルドなので共有できない。直すときは両方直すこと。
- *
- * プラグインマーカーの publication は java-gradle-plugin があとから足すので、
- * withType + configureEach で「これから増えるもの」にも掛ける。
- */
-publishing.publications.withType<MavenPublication>().configureEach {
-
-	pom {
-
-		// マーカーは name も description も空のまま出るので、ここで入れる
-		name = artifactId
-		description = provider { project.description ?: "jimble Gradle plugin" }
-		url = "https://jimble.io"
-
-		licenses {
-			license {
-				name = "The Apache License, Version 2.0"
-				url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-			}
-		}
-
-		developers {
-			developer {
-				id = "hidemikimura"
-				name = "Hidemi Kimura"
-				email = "hidemikimura@gmail.com"
-				organization = "ecx Inc."
-				organizationUrl = "https://www.ecx.co.jp/"
-			}
-		}
-
-		scm {
-			url = "https://github.com/hidemikimura/jimble"
-			connection = "scm:git:https://github.com/hidemikimura/jimble.git"
-			// 書き込む側は SSH
-			developerConnection = "scm:git:ssh://git@github.com/hidemikimura/jimble.git"
-		}
-
-	}
-
-}
-
-/*
- * 署名。鍵は環境変数から（本体と同じ）。
- * 鍵が無い環境では署名を飛ばす。
- */
-val signingKey = providers.environmentVariable("JIMBLE_SIGNING_KEY")
-
-if (signingKey.isPresent) {
-
-	apply(plugin = "signing")
-
-	extensions.configure<SigningExtension> {
-		useInMemoryPgpKeys(
-			signingKey.get()
-			, providers.environmentVariable("JIMBLE_SIGNING_PASSWORD").getOrElse(""))
-		sign(publishing.publications)
-	}
-
 }
