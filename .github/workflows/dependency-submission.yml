@@ -37,4 +37,4 @@ jobs:
           java-version: '25'
 
       - name: 依存を解決して登録する
-        uses: gradle/actions/dependency-submission@v4
+        uses: gradle/actions/dependency-submission@v6

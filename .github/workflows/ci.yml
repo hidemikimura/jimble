@@ -47,7 +47,7 @@ jobs:
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # -Werror と doclint が効いているので、警告が1つでも出たらここで落ちる（要件 D-15）
       - name: build（単体テスト・javadoc 込み）
@@ -100,7 +100,7 @@ jobs:
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: build（テスト・javadoc 込み）
         run: ./gradlew -p gradle-plugin build --stacktrace
@@ -165,7 +165,7 @@ jobs:
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: dbTest（@Tag("db") のテスト）
         run: ./gradlew dbTest --stacktrace
@@ -229,7 +229,7 @@ jobs:
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: pgTest（@Tag("db") のテストを PostgreSQL で）
         run: ./gradlew pgTest --stacktrace

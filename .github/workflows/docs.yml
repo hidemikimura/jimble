@@ -51,7 +51,7 @@ jobs:
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # コード片は examples/ とテストの実コードから抜いている（要件 NF-D-03）。
       # 印が消えていればここで落ちる
