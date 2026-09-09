@@ -10,7 +10,6 @@ caffeine = "3.2.4"
 commons-text = "1.15.0"
 commons-validator = "1.11.0"
 jbcrypt = "0.4"
-juniversalchardet = "2.5.0"
 brotli = "0.1.2"
 jspecify = "1.0.0"
 aircompressor = "3.7"
@@ -74,7 +73,6 @@ caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "c
 commons-text = { module = "org.apache.commons:commons-text", version.ref = "commons-text" }
 commons-validator = { module = "commons-validator:commons-validator", version.ref = "commons-validator" }
 jbcrypt = { module = "org.mindrot:jbcrypt", version.ref = "jbcrypt" }
-juniversalchardet = { module = "com.github.albfernandez:juniversalchardet", version.ref = "juniversalchardet" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 aircompressor = { module = "io.airlift:aircompressor-v3", version.ref = "aircompressor" }

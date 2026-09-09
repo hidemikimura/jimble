@@ -35,7 +35,6 @@ dependencies {
 	implementation(libs.commons.text)
 	implementation(libs.commons.validator)
 	implementation(libs.jbcrypt)
-	implementation(libs.juniversalchardet)
 	implementation(libs.brotli.dec)
 	implementation(libs.aircompressor)
 
