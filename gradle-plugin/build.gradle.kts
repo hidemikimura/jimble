@@ -25,7 +25,7 @@ group = "io.jimble"
  * 版は本体と揃える（-Pjimble.version）。
  * 外側のビルドに渡したプロパティは、取り込まれたこのビルドにも届く。
  */
-version = io.jimble.build.JimbleBuild.version(project)
+version = io.jimble.conventions.JimbleBuild.version(project)
 
 java {
 	toolchain {

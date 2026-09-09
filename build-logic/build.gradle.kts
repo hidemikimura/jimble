@@ -25,29 +25,37 @@ tasks.withType<JavaCompile>().configureEach {
 	options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror", "-parameters"))
 }
 
+/*
+ * <b>パッケージを io.jimble.build にしてはいけない。</b>
+ *
+ * .gitignore の `build/` は<b>どの階層でも「build という名前のディレクトリ」に当たる</b>ので、
+ * io/jimble/build/ ごと無視される。<b>手元では動くのに、commit されていない</b>ので
+ * CI だけが落ちる（compileJava が NO-SOURCE になり、実装クラスの入っていない jar ができて
+ * 「Could not find implementation class」になる）。実際にそれで1回赤くした。
+ */
 gradlePlugin {
 	plugins {
 		create("javaConventions") {
 			id = "jimble.java-conventions"
-			implementationClass = "io.jimble.build.JavaConventionsPlugin"
+			implementationClass = "io.jimble.conventions.JavaConventionsPlugin"
 			displayName = "jimble java conventions"
 			description = "Java の共通設定（ツールチェーン / -Werror / doclint）"
 		}
 		create("testConventions") {
 			id = "jimble.test-conventions"
-			implementationClass = "io.jimble.build.TestConventionsPlugin"
+			implementationClass = "io.jimble.conventions.TestConventionsPlugin"
 			displayName = "jimble test conventions"
 			description = "test / dbTest / pgTest / bench"
 		}
 		create("publishConventions") {
 			id = "jimble.publish-conventions"
-			implementationClass = "io.jimble.build.PublishConventionsPlugin"
+			implementationClass = "io.jimble.conventions.PublishConventionsPlugin"
 			displayName = "jimble publish conventions"
 			description = "Maven Central へ出すモジュールの設定"
 		}
 		create("pluginPublishConventions") {
 			id = "jimble.plugin-publish-conventions"
-			implementationClass = "io.jimble.build.PluginPublishConventionsPlugin"
+			implementationClass = "io.jimble.conventions.PluginPublishConventionsPlugin"
 			displayName = "jimble gradle-plugin publish conventions"
 			description = "gradle-plugin（別ビルド）を Maven Central へ出す設定"
 		}
