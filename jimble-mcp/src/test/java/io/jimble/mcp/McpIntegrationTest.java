@@ -26,6 +26,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -151,11 +152,23 @@ class McpIntegrationTest {
 	/** テスト用の MCP サーバー */
 	public static final class TestMcp extends McpController {
 
+		/** ページ分けを起こすために積む数（既定の100件を超える） */
+		static final int BULK = 150;
+
 		{
 			tool("get_weather", WeatherTool::new);
 			tool("broken", BrokenTool::new);
 			resource("config://app", ConfigResource::new);
 			prompt("summarize", SummarizePrompt::new);
+
+			/*
+			 * <b>ページ分けの確認用（要件 F-MCP-14）。</b>
+			 * 既定の1ページ100件を素の設定のまま超えさせたいので、実際に積む。
+			 * 設定を差し替えると、動いているサーバーの他の設定まで消えてしまう
+			 */
+			for (int i = 0; i < BULK; i++) {
+				resource("bulk://" + i, ConfigResource::new);
+			}
 		}
 
 	}
@@ -521,6 +534,316 @@ class McpIntegrationTest {
 			, "Origin", "https://evil.example");
 
 		assertEquals(403, response.statusCode());
+
+	}
+
+	// endregion
+
+	// region server/discover（仕様 MUST）
+
+	@Test
+	@DisplayName("server/discover が素性と対応している版を返す")
+	void discover () throws Exception {
+
+		Data result = call(McpProtocol.METHOD_SERVER_DISCOVER, null, "{}").getData("result");
+
+		/*
+		 * <b>仕様は「サーバーは実装しなければならない」と定めている。</b>
+		 * クライアントはこれで、今の版で話せる相手かどうかを最初に見分ける
+		 */
+		assertEquals(List.of(McpProtocol.VERSION), result.getStringList("supportedVersions"));
+
+		Data info = result.getData("_meta").getData(McpProtocol.META_SERVER_INFO);
+
+		assertFalse(info.getString("name").isEmpty(), result.getJsonString());
+
+		Data capabilities = result.getData("capabilities");
+
+		assertTrue(capabilities.containsKey("tools"), capabilities.getJsonString());
+		assertTrue(capabilities.containsKey("resources"), capabilities.getJsonString());
+		assertTrue(capabilities.containsKey("prompts"), capabilities.getJsonString());
+
+	}
+
+	@Test
+	@DisplayName("server/discover は版のヘッダが無くても答える")
+	void discoverWithoutVersion () throws Exception {
+
+		/*
+		 * <b>版を確かめるための呼び出しに、版を要求してはいけない。</b>
+		 * ここで断ると、クライアントは版を知る手立てが無くなる
+		 */
+		HttpResponse<String> response = send("POST"
+			, """
+				{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""");
+
+		assertEquals(200, response.statusCode(), response.body());
+
+		assertEquals(List.of(McpProtocol.VERSION)
+			, Data.fromJsonString(response.body()).getData("result").getStringList("supportedVersions"));
+
+	}
+
+	// endregion
+
+	// region ページ分け（要件 F-MCP-14）
+
+	@Test
+	@DisplayName("多いときはページに切って、続きのカーソルを付ける")
+	void pagination () throws Exception {
+
+		Data first = call("resources/list", null, "{}").getData("result");
+
+		assertEquals(McpPaging.DEFAULT_PAGE_SIZE, first.getDataList("resources").size());
+
+		String cursor = first.getString("nextCursor");
+
+		assertFalse(cursor.isEmpty(), first.getJsonString());
+
+		Data second = call("resources/list", null
+			, "{\"cursor\":\"%s\"}".formatted(cursor)).getData("result");
+
+		// 1 + 150 件を100件で切ったので、残りは51件
+		assertEquals(TestMcp.BULK + 1 - McpPaging.DEFAULT_PAGE_SIZE
+			, second.getDataList("resources").size());
+
+		// 最後のページにカーソルを付けると、クライアントは1周多く読みにくる
+		assertTrue(second.getStringOptional("nextCursor").isEmpty(), second.getJsonString());
+
+	}
+
+	@Test
+	@DisplayName("全部たどると、1件も落とさず1件も重ならない")
+	void paginationCoversEverything () throws Exception {
+
+		List<String> seen = new java.util.ArrayList<>();
+
+		String cursor = null;
+
+		for (int guard = 0; guard < 20; guard++) {
+
+			Data page = call("resources/list", null
+				, cursor == null ? "{}" : "{\"cursor\":\"%s\"}".formatted(cursor)).getData("result");
+
+			for (Data resource : page.getDataList("resources")) {
+				seen.add(resource.getString("uri"));
+			}
+
+			cursor = page.getStringOptional("nextCursor");
+
+			if (cursor.isEmpty()) {
+				break;
+			}
+
+		}
+
+		assertEquals(TestMcp.BULK + 1, seen.size());
+		assertEquals(seen.size(), seen.stream().distinct().count(), "同じものを2度返している");
+		assertEquals("config://app", seen.get(0));
+
+	}
+
+	@Test
+	@DisplayName("読めないカーソルは -32602 で断る（黙って先頭に倒さない）")
+	void paginationInvalidCursor () throws Exception {
+
+		/*
+		 * <b>黙って先頭に倒すと、クライアントは同じページを永遠に読み続ける。</b>
+		 * しかもエラーが1つも出ない
+		 */
+		Data error = call("resources/list", null, "{\"cursor\":\"こわれている\"}").getData("error");
+
+		assertEquals(McpErrors.INVALID_PARAMS, error.getInt("code"));
+
+	}
+
+	@Test
+	@DisplayName("少ないものにはカーソルを付けない（今までの応答が変わらない）")
+	void paginationNoCursorWhenSmall () throws Exception {
+
+		Data tools = call("tools/list", null, "{}").getData("result");
+
+		assertEquals(2, tools.getDataList("tools").size());
+		assertTrue(tools.getStringOptional("nextCursor").isEmpty(), tools.getJsonString());
+
+	}
+
+	// endregion
+
+	// region 購読（要件 F-MCP-13）
+
+	@Test
+	@DisplayName("subscriptions/listen が SSE になり、頼んだ更新だけ流れてくる")
+	void subscribe () throws Exception {
+
+		String body = """
+			{"jsonrpc":"2.0","id":99,"method":"subscriptions/listen","params":{\
+			"notifications":{"resourceSubscriptions":["config://app"]}}}""";
+
+		HttpRequest request = HttpRequest
+			.newBuilder(URI.create("http://127.0.0.1:" + server.port() + McpConf.DEFAULT_PATH))
+			.timeout(Duration.ofSeconds(30))
+			/*
+			 * <b>HTTP/1.1 で張る。</b>JDK のクライアントは既定で HTTP/2 への
+			 * 昇格を試み、その最中は本文を溜める。SSE では最初の1件が届かない
+			 */
+			.version(HttpClient.Version.HTTP_1_1)
+			.header("Content-Type", "application/json")
+			.header("Accept", "text/event-stream")
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION)
+			.header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_SUBSCRIPTIONS_LISTEN)
+			.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+			.build();
+
+		HttpResponse<java.io.InputStream> response
+			= client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+
+		assertEquals(200, response.statusCode());
+		assertTrue(response.headers().firstValue("content-type").orElse("").contains("text/event-stream")
+			, response.headers().toString());
+
+		java.io.BufferedReader lines = new java.io.BufferedReader(
+			new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8));
+
+		Data acknowledged = nextMessage(lines);
+
+		/*
+		 * <b>まず acknowledged を返す（仕様 MUST）。</b>
+		 * これが来ないと、クライアントは購読が始まったのかどうか分からないまま待つ
+		 */
+		assertEquals(McpProtocol.NOTIFICATION_SUBSCRIPTIONS_ACKNOWLEDGED, acknowledged.getString("method"));
+		assertEquals(99, acknowledged.getData("params").getData("_meta")
+			.getInt(McpProtocol.META_SUBSCRIPTION_ID));
+
+		// 別のスレッドから流す（アプリが McpNotify を呼んだつもり）
+		Thread notifier = Thread.ofVirtual().start(() -> {
+			try {
+				Thread.sleep(200);
+				McpNotify.resourceUpdated("config://other");   // 頼んでいない
+				McpNotify.resourceUpdated("config://app");     // 頼んだ
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			}
+		});
+
+		Data updated = nextMessage(lines);
+
+		notifier.join();
+
+		assertEquals(McpProtocol.NOTIFICATION_RESOURCES_UPDATED, updated.getString("method"));
+
+		// 頼んでいない config://other は<b>飛ばされている</b>
+		assertEquals("config://app", updated.getData("params").getString("uri"));
+
+		/*
+		 * <b>サーバー側から終わるときは、元の要求への応答を返してから切る</b>
+		 * （仕様の graceful closure）。返さずに切ると、
+		 * クライアントは「落ちた」と思って繋ぎ直す
+		 */
+		McpSubscriptions.complete(99);
+
+		Data closing = nextMessage(lines);
+
+		assertEquals(99, closing.getInt("id"));
+		assertEquals(McpProtocol.RESULT_TYPE_COMPLETE, closing.getData("result").getString("resultType"));
+
+	}
+
+	@Test
+	@DisplayName("取り消されたら、応答を返さずに閉じる（仕様 MUST NOT）")
+	void subscribeCancelled () throws Exception {
+
+		String body = """
+			{"jsonrpc":"2.0","id":55,"method":"subscriptions/listen","params":{}}""";
+
+		HttpRequest request = HttpRequest
+			.newBuilder(URI.create("http://127.0.0.1:" + server.port() + McpConf.DEFAULT_PATH))
+			.timeout(Duration.ofSeconds(30))
+			.version(HttpClient.Version.HTTP_1_1)
+			.header("Content-Type", "application/json")
+			.header("Accept", "text/event-stream")
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION)
+			.header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_SUBSCRIPTIONS_LISTEN)
+			.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+			.build();
+
+		HttpResponse<java.io.InputStream> response
+			= client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+
+		java.io.BufferedReader lines = new java.io.BufferedReader(
+			new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8));
+
+		assertEquals(McpProtocol.NOTIFICATION_SUBSCRIPTIONS_ACKNOWLEDGED
+			, nextMessage(lines).getString("method"));
+
+		long start = System.nanoTime();
+
+		HttpResponse<String> cancelled = send("POST"
+			, """
+				{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":55}}"""
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_METHOD, McpProtocol.NOTIFICATION_CANCELLED);
+
+		assertEquals(202, cancelled.statusCode());
+
+		/*
+		 * <b>応答は返さない</b>（仕様は「取り消された要求に応答を返してはならない」）。
+		 * ストリームがそのまま終わる
+		 */
+		assertNull(readLineOrNull(lines), "取り消したのに何か返している");
+
+		/*
+		 * <b>すぐ手放す。</b>空行を送る時間（15秒）まで居座るようだと、
+		 * 取り消しの意味が無い
+		 */
+		long ms = (System.nanoTime() - start) / 1_000_000;
+
+		assertTrue(ms < 5_000, "取り消しても接続を手放していない: " + ms + "ms");
+
+	}
+
+	/**
+	 * SSE から次の中身のある行を読む。無ければ null
+	 *
+	 * @param lines	行
+	 * @return	行。ストリームが終わっていれば null
+	 * @throws Exception 失敗した場合
+	 */
+	private static String readLineOrNull (java.io.BufferedReader lines) throws Exception {
+
+		String line;
+
+		while ((line = lines.readLine()) != null) {
+
+			if (line.startsWith("data:")) {
+				return line;
+			}
+
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * SSE から次のメッセージを1つ取り出す
+	 *
+	 * @param lines	行
+	 * @return	メッセージ
+	 */
+	private static Data nextMessage (java.io.BufferedReader lines) throws Exception {
+
+		String line;
+
+		while ((line = lines.readLine()) != null) {
+
+			if (line.startsWith("data:")) {
+				return Data.fromJsonString(line.substring("data:".length()).trim());
+			}
+
+		}
+
+		throw new IllegalStateException("メッセージが来ないままストリームが終わりました");
 
 	}
 

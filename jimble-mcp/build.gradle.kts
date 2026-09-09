@@ -4,7 +4,7 @@ plugins {
 	id("jimble.publish-conventions")
 }
 
-description = "MCP（Model Context Protocol）サーバー。Streamable HTTP / 仕様 2026-07-28"
+description = "MCP（Model Context Protocol）サーバー。Streamable HTTP と stdio / 仕様 2026-07-28"
 
 dependencies {
 	api(project(":jimble-web"))

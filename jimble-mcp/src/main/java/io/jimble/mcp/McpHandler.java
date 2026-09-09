@@ -1,57 +1,46 @@
 package io.jimble.mcp;
 
-import io.jimble.mcp.prompt.McpPrompt;
-import io.jimble.mcp.resource.McpResource;
-import io.jimble.mcp.tool.McpTool;
-import io.jimble.mcp.tool.ToolResult;
 import io.jimble.util.data.Data;
-import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.sse.SseEvent;
+import io.jimble.web.sse.SseStream;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Supplier;
+import java.util.Locale;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
- * MCP の POST を1本で受ける（仕様 Streamable HTTP / 2026-07-28）
- *
- * <pre>
- * POST /mcp
- *   本文が通知      → 202 Accepted（本文なし）
- *   本文が要求      → application/json で1個返す
- *   知らないメソッド → 404 ＋ JSON-RPC -32601
- * </pre>
+ * MCP を HTTP で受ける（Streamable HTTP）
  *
  * <p>
- * <b>GET と DELETE は 405 で断る。</b>2025-11-25 までは
- * GET で常時接続を開き、{@code Mcp-Session-Id} でセッションを持っていたが、
- * <b>2026-07-28 でどちらも消えた。</b>
- * 古いクライアントが来たときに「動くように見えて途中で壊れる」より、
- * はっきり断るほうがよい。
+ * <b>ここは HTTP の層だけである。</b>{@code Origin} の検証、ヘッダと本文の突き合わせ、
+ * ステータスコード、SSE。JSON-RPC の中身は {@link McpDispatch} が見る。
+ * stdio（要件 F-MCP-12）が同じ {@link McpDispatch} を通すので、
+ * <b>振る舞いが2つに分かれない</b>。
  * </p>
  */
 public final class McpHandler {
 
-	/** 受け取れる中身の型 */
+	/** 応答の種別 */
 	private static final String CONTENT_TYPE_JSON = "application/json";
 
-	/* 公開しているもの */
-	private final McpRegistry registry;
+	/** 振り分け */
+	private final McpDispatch dispatch;
 
 	/**
 	 * コンストラクタ
 	 *
-	 * @param registry	公開しているもの
+	 * @param registry	登録簿
 	 */
 	public McpHandler (McpRegistry registry) {
 
-		this.registry = registry;
+		this.dispatch = new McpDispatch(registry);
 
 	}
 
 	/**
-	 * POST を受ける
+	 * 受ける
 	 *
 	 * @param context	コンテキスト
 	 * @throws Exception	どうしようもない失敗
@@ -74,371 +63,205 @@ public final class McpHandler {
 		// 2. 本文を読む
 		Data body = context.request().bodyJson();
 
-		if (body.isEmpty() || body.getStringOptional("method").isEmpty()) {
-			send(context, 400, McpErrors.of(null, McpErrors.PARSE_ERROR, "JSON-RPC の要求として読めません"));
-			return;
-		}
-
-		Object id = body.get("id");
-		String method = body.getString("method");
+		Object id = body == null ? null : body.get("id");
 
 		/*
-		 * 3. 通知（id が無い）は 202 で受け取るだけ。本文は付けない（仕様 MUST）。
-		 *
-		 * code(202).send() ではいけない。Accept に application/json があると
-		 * 「JSON を求められている」と見なして空の {} を返してしまう。
-		 * send(202) は本文なしで送る。
+		 * 3. ヘッダと本文の突き合わせ（要件 F-MCP-05）。
+		 *    <b>版より先に見る。</b>ヘッダが本文と食い違っているのに
+		 *    版だけ通してしまうと、あとの検証が「どちらの値で」通ったのか分からなくなる。
 		 */
-		if (id == null) {
-			context.response().send(202);
-			return;
-		}
-
-		// 4. プロトコルの版
 		String version = header(context, McpProtocol.HEADER_PROTOCOL_VERSION);
 
-		if (version == null) {
+		/*
+		 * <b>server/discover だけは版のヘッダを求めない。</b>
+		 * 版を知るための呼び出しに版を要求すると、初めて繋ぐクライアントは詰む。
+		 * 判断は {@link McpDispatch} と揃えてある
+		 */
+		boolean discover = body != null
+			&& McpProtocol.METHOD_SERVER_DISCOVER.equals(body.getStringOptional("method"));
+
+		if (id != null && version == null && !discover) {
 			send(context, 400, McpErrors.of(id, McpErrors.HEADER_MISMATCH
 				, "%s ヘッダがありません".formatted(McpProtocol.HEADER_PROTOCOL_VERSION)));
 			return;
 		}
 
-		if (!McpProtocol.VERSION.equals(version)) {
-			send(context, 400, McpErrors.unsupportedVersion(id, version));
-			return;
-		}
+		if (id != null && McpProtocol.VERSION.equals(version)) {
 
-		String metaVersion = body.getDataOptional("params")
-			.getDataOptional("_meta")
-			.getStringOptional(McpProtocol.META_PROTOCOL_VERSION);
+			String mismatch = McpHeaders.validate(context, body);
 
-		if (!metaVersion.isEmpty() && !metaVersion.equals(version)) {
-			send(context, 400, McpErrors.of(id, McpErrors.HEADER_MISMATCH
-				, "%s ヘッダの値 '%s' が本文の _meta の '%s' と一致しません"
-					.formatted(McpProtocol.HEADER_PROTOCOL_VERSION, version, metaVersion)));
-			return;
-		}
-
-		// 5. ヘッダと本文の突き合わせ
-		String mismatch = McpHeaders.validate(context, body);
-
-		if (mismatch != null) {
-			send(context, 400, McpErrors.of(id, McpErrors.HEADER_MISMATCH, mismatch));
-			return;
-		}
-
-		// 6. 振り分ける
-		dispatch(context, id, method, body.getDataOptional("params"));
-
-	}
-
-	/**
-	 * 振り分ける
-	 *
-	 * @param context	コンテキスト
-	 * @param id		要求の識別子
-	 * @param method	メソッド
-	 * @param params	引数
-	 * @throws Exception	どうしようもない失敗
-	 */
-	private void dispatch (WebContext context, Object id, String method, Data params) throws Exception {
-
-		switch (method) {
-
-			case McpProtocol.METHOD_TOOLS_LIST -> send(context, 200, result(id, toolsList()));
-			case McpProtocol.METHOD_TOOLS_CALL -> toolsCall(context, id, params);
-
-			case McpProtocol.METHOD_RESOURCES_LIST -> send(context, 200, result(id, resourcesList()));
-			case McpProtocol.METHOD_RESOURCES_READ -> resourcesRead(context, id, params);
-
-			case McpProtocol.METHOD_PROMPTS_LIST -> send(context, 200, result(id, promptsList()));
-			case McpProtocol.METHOD_PROMPTS_GET -> promptsGet(context, id, params);
-
-			/*
-			 * 知らないメソッドは 404。
-			 * 仕様がこう決めているのは、古い HTTP+SSE のサーバーが返す 404 と
-			 * 区別できるようにするためである（本文に JSON-RPC のエラーが入っているかで見る）。
-			 */
-			default -> send(context, 404, McpErrors.of(id, McpErrors.METHOD_NOT_FOUND
-				, "知らないメソッドです: " + method));
-
-		}
-
-	}
-
-	// region ツール
-
-	/**
-	 * ツールの一覧
-	 *
-	 * @return	一覧
-	 */
-	private Data toolsList () {
-
-		List<Data> list = new ArrayList<>();
-
-		for (Map.Entry<String, Supplier<McpTool>> entry : registry.tools().entrySet()) {
-
-			McpTool tool = entry.getValue().get();
-
-			Data data = new Data();
-			data.put("name", entry.getKey());
-
-			if (tool.title() != null) {
-				data.put("title", tool.title());
+			if (mismatch != null) {
+				send(context, 400, McpErrors.of(id, McpErrors.HEADER_MISMATCH, mismatch));
+				return;
 			}
 
-			data.put("description", tool.description());
-			data.put("inputSchema", tool.inputSchema().toData());
-
-			if (tool.outputSchema() != null) {
-				data.put("outputSchema", tool.outputSchema().toData());
-			}
-
-			list.add(data);
-
 		}
 
-		Data result = new Data();
-		result.put("resultType", McpProtocol.RESULT_TYPE_COMPLETE);
-		result.put("tools", list);
+		// 4. 中身は共通の振り分けへ
+		McpResponse response = dispatch.handle(context, body, version);
 
-		return result;
+		if (response.stream()) {
+			listen(context, id, body.getDataOptional("params"));
+			return;
+		}
+
+		if (response.body() == null) {
+			/*
+			 * 通知は 202 を本文なしで返す（仕様 MUST）。
+			 *
+			 * code(202).send() ではいけない。Accept に application/json があると
+			 * 「JSON を求められている」と見なして空の {} を返してしまう。
+			 * send(202) は本文なしで送る。
+			 */
+			context.response().send(response.httpStatus());
+			return;
+		}
+
+		send(context, response.httpStatus(), response.body());
 
 	}
 
+	// region 購読（要件 F-MCP-13）
+
 	/**
-	 * ツールを実行する
+	 * 購読を開いて、切られるまで流し続ける
+	 *
+	 * <p>
+	 * <b>この POST の応答が、そのまま長い SSE のストリームになる。</b>
+	 * 2026-07-28 で GET のストリームが仕様から消えたので、
+	 * サーバーからの通知はここを通るしかない。
+	 * </p>
+	 *
+	 * <h2>書くのはこのスレッドだけ</h2>
+	 * <p>
+	 * <b>通知は別のスレッドから来る</b>（アプリが {@code McpNotify} を呼んだところ）。
+	 * そこから応答のストリームへ直接書くと、<b>書けたように見えて相手には届かない</b>——
+	 * helidon の応答は要求を処理しているスレッドに紐づいていて、
+	 * ほかのスレッドが書いたぶんは socket へ流れない。例外も出ない。
+	 * </p>
+	 * <p>
+	 * そこで通知はいったん<b>待ち行列</b>に入れ、
+	 * <b>この輪だけが書く</b>。SSE の1本を1スレッドで扱うのは、
+	 * 書き込みが混ざらない形でもある。
+	 * </p>
 	 *
 	 * @param context	コンテキスト
-	 * @param id		要求の識別子
+	 * @param id		要求の識別子（＝購読の識別子）
 	 * @param params	引数
-	 * @throws Exception	どうしようもない失敗
 	 */
-	private void toolsCall (WebContext context, Object id, Data params) throws Exception {
+	private void listen (WebContext context, Object id, Data params) {
 
-		String name = params.getStringOptional("name");
+		/*
+		 * <b>上限を置かない。</b>置くと、溢れたときに
+		 * 「通知が1つ黙って消える」形になる。通知は詰まるより溜まったほうがよい
+		 */
+		BlockingQueue<Data> pending = new LinkedBlockingQueue<>();
 
-		Supplier<McpTool> supplier = registry.tools().get(name);
+		/*
+		 * <b>接続を1本、長く握る。</b>SSE と同じ費用がかかる（要件 NF-P-07）。
+		 * 上限は SSE の設定（sse.max_duration_seconds）に従う。
+		 * <b>永遠に張らせない</b>のは、相手が切ったことを検知できないためである。
+		 */
+		try (SseStream sse = context.response().sse()) {
 
-		if (supplier == null) {
 			/*
-			 * 知らないツールは「プロトコルのエラー」。
-			 * isError で返すと、モデルは存在しないツールを呼び直す。
+			 * 閉じたことを輪に知らせる合図。
+			 * <b>中身は見ずに同一性で見分ける</b>ので、空でよい。
+			 * これが無いと、取り消されても<b>空行を送る時間まで接続が居座る</b>
 			 */
-			send(context, 200, McpErrors.of(id, McpErrors.INVALID_PARAMS, "知らないツールです: " + name));
-			return;
-		}
+			Data closed = new Data();
 
-		// 呼ばれるたびに1つ作る（原則3）
-		McpTool tool = supplier.get();
+			// acknowledged もここで行列に入る（書くのは下の輪）
+			McpSubscriptions.Subscription subscription
+				= McpSubscriptions.open(id, params, new McpSubscriptions.Sink() {
 
-		Data arguments = params.getDataOptional("arguments");
+					@Override
+					public void write (Data message) {
 
-		String missing = missingRequired(tool, arguments);
+						pending.add(message);
 
-		if (missing != null) {
+					}
+
+					@Override
+					public void close () {
+
+						pending.add(closed);
+
+					}
+
+				});
+
+			while (sse.isOpen()) {
+
+				Data message = pending.poll(KEEP_ALIVE_SECONDS, TimeUnit.SECONDS);
+
+				if (message == closed) {
+					break;
+				}
+
+				if (message != null) {
+
+					if (!sse.sendWithoutCounting(SseEvent.of(message.getJsonString()))) {
+						break;
+					}
+
+					continue;
+
+				}
+
+				// 行列が空のまま時間が来た。閉じられていれば終わり
+				if (subscription.isClosed()) {
+					break;
+				}
+
+				// 途中の機器に切られないよう、たまに空行を送る
+				if (!sse.keepAlive()) {
+					break;
+				}
+
+			}
+
 			/*
-			 * 引数が足りないのは「モデルが直せる」種類なので、
-			 * プロトコルのエラーではなく isError で返す。
+			 * <b>こちらから終わるときは応答を返す</b>（仕様の graceful closure）。
+			 * 返さずに切ると、クライアントは「落ちた」と思って繋ぎ直す。
+			 * 取り消しで閉じられていた場合は、ここは何もしない
+			 * （仕様は「取り消された要求に応答を返してはならない」と定めている）。
 			 */
-			send(context, 200, result(id, ToolResult.error(missing).toData()));
-			return;
-		}
+			McpSubscriptions.complete(id);
 
-		try {
+			// 締めの応答を含め、行列に残っているものを書き切る
+			for (Data message = pending.poll(); message != null; message = pending.poll()) {
 
-			send(context, 200, result(id, tool.call(context, arguments).toData()));
+				if (message == closed) {
+					break;
+				}
+
+				if (!sse.sendWithoutCounting(SseEvent.of(message.getJsonString()))) {
+					break;
+				}
+
+			}
 
 		} catch (Exception ex) {
 
 			/*
-			 * ツールが例外を投げた。
-			 * 中身は外に出さない（何が動いているか教えることになる）。
-			 * ログには残す。
+			 * <b>黙って閉じない。</b>ここで落ちると、クライアントには
+			 * 「何も来ないまま切れた」としか見えない。理由はサーバー側にしか残らない
 			 */
-			Log.error(ex, "ツールの実行に失敗しました: " + name);
+			io.jimble.util.log.Log.error(ex, "MCP の購読が途中で終わりました: id=%s".formatted(id));
 
-			send(context, 200, result(id, ToolResult.error(
-				"ツールの実行に失敗しました: " + name).toData()));
+			McpSubscriptions.cancel(id);
 
 		}
 
 	}
 
-	/**
-	 * 足りない必須の引数
-	 *
-	 * @param tool		ツール
-	 * @param arguments	引数
-	 * @return	足りなければ内容。足りていれば null
-	 */
-	private static String missingRequired (McpTool tool, Data arguments) {
-
-		List<String> missing = new ArrayList<>();
-
-		for (String name : tool.inputSchema().requiredNames()) {
-			if (!arguments.containsKey(name) || arguments.get(name) == null) {
-				missing.add(name);
-			}
-		}
-
-		if (missing.isEmpty()) {
-			return null;
-		}
-
-		// まとめて言う（要件 F-U-03 / F-X-05 と同じ考え方）
-		return "必須の引数がありません: " + String.join(", ", missing);
-
-	}
-
-	// endregion
-
-	// region リソース
-
-	/**
-	 * リソースの一覧
-	 *
-	 * @return	一覧
-	 */
-	private Data resourcesList () {
-
-		List<Data> list = new ArrayList<>();
-
-		for (Map.Entry<String, Supplier<McpResource>> entry : registry.resources().entrySet()) {
-
-			McpResource resource = entry.getValue().get();
-
-			Data data = new Data();
-			data.put("uri", entry.getKey());
-			data.put("name", resource.title() == null ? entry.getKey() : resource.title());
-			data.put("description", resource.description());
-			data.put("mimeType", resource.mimeType());
-
-			list.add(data);
-
-		}
-
-		Data result = new Data();
-		result.put("resultType", McpProtocol.RESULT_TYPE_COMPLETE);
-		result.put("resources", list);
-
-		return result;
-
-	}
-
-	/**
-	 * リソースを読む
-	 *
-	 * @param context	コンテキスト
-	 * @param id		要求の識別子
-	 * @param params	引数
-	 * @throws Exception	どうしようもない失敗
-	 */
-	private void resourcesRead (WebContext context, Object id, Data params) throws Exception {
-
-		String uri = params.getStringOptional("uri");
-
-		Supplier<McpResource> supplier = registry.resources().get(uri);
-
-		if (supplier == null) {
-			send(context, 200, McpErrors.of(id, McpErrors.INVALID_PARAMS, "知らないリソースです: " + uri));
-			return;
-		}
-
-		McpResource resource = supplier.get();
-
-		send(context, 200, result(id, resource.toContents(uri, resource.read(context, uri))));
-
-	}
-
-	// endregion
-
-	// region プロンプト
-
-	/**
-	 * プロンプトの一覧
-	 *
-	 * @return	一覧
-	 */
-	private Data promptsList () {
-
-		List<Data> list = new ArrayList<>();
-
-		for (Map.Entry<String, Supplier<McpPrompt>> entry : registry.prompts().entrySet()) {
-
-			McpPrompt prompt = entry.getValue().get();
-
-			List<Data> arguments = new ArrayList<>();
-			for (McpPrompt.Argument argument : prompt.arguments()) {
-				arguments.add(argument.toData());
-			}
-
-			Data data = new Data();
-			data.put("name", entry.getKey());
-			data.put("description", prompt.description());
-			data.put("arguments", arguments);
-
-			list.add(data);
-
-		}
-
-		Data result = new Data();
-		result.put("resultType", McpProtocol.RESULT_TYPE_COMPLETE);
-		result.put("prompts", list);
-
-		return result;
-
-	}
-
-	/**
-	 * プロンプトを取る
-	 *
-	 * @param context	コンテキスト
-	 * @param id		要求の識別子
-	 * @param params	引数
-	 * @throws Exception	どうしようもない失敗
-	 */
-	private void promptsGet (WebContext context, Object id, Data params) throws Exception {
-
-		String name = params.getStringOptional("name");
-
-		Supplier<McpPrompt> supplier = registry.prompts().get(name);
-
-		if (supplier == null) {
-			send(context, 200, McpErrors.of(id, McpErrors.INVALID_PARAMS, "知らないプロンプトです: " + name));
-			return;
-		}
-
-		McpPrompt prompt = supplier.get();
-		Data arguments = params.getDataOptional("arguments");
-
-		send(context, 200, result(id
-			, McpPrompt.toResult(prompt.description(), prompt.get(context, arguments))));
-
-	}
+	/** 空行を送る間隔（秒） */
+	private static final long KEEP_ALIVE_SECONDS = 15;
 
 	// endregion
 
 	// region 送る
-
-	/**
-	 * 成功の応答を組み立てる
-	 *
-	 * @param id		要求の識別子
-	 * @param result	結果
-	 * @return	応答
-	 */
-	private static Data result (Object id, Data result) {
-
-		Data response = new Data();
-		response.put("jsonrpc", McpProtocol.JSONRPC_VERSION);
-		response.put("id", id);
-		response.put("result", result);
-
-		return response;
-
-	}
 
 	/**
 	 * 送る
@@ -464,7 +287,7 @@ public final class McpHandler {
 	 */
 	private static String header (WebContext context, String name) {
 
-		String value = context.request().header().getStringOptional(name.toLowerCase(java.util.Locale.ROOT));
+		String value = context.request().header().getStringOptional(name.toLowerCase(Locale.ROOT));
 
 		return value.isEmpty() ? null : value;
 

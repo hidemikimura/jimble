@@ -71,7 +71,31 @@ public final class McpProtocol {
 	/** メソッド：プロンプトの取得 */
 	public static final String METHOD_PROMPTS_GET = "prompts/get";
 
+	/** メソッド：サーバーの素性と対応している版（仕様 MUST） */
+	public static final String METHOD_SERVER_DISCOVER = "server/discover";
+
+	/** メソッド：通知の購読（要件 F-MCP-13） */
+	public static final String METHOD_SUBSCRIPTIONS_LISTEN = "subscriptions/listen";
+
+	/** 通知：購読を受け付けた */
+	public static final String NOTIFICATION_SUBSCRIPTIONS_ACKNOWLEDGED = "notifications/subscriptions/acknowledged";
+
+	/** 通知：リソースが変わった */
+	public static final String NOTIFICATION_RESOURCES_UPDATED = "notifications/resources/updated";
+
+	/** 通知：リソースの一覧が変わった */
+	public static final String NOTIFICATION_RESOURCES_LIST_CHANGED = "notifications/resources/list_changed";
+
+	/** 通知：要求を取り消した */
+	public static final String NOTIFICATION_CANCELLED = "notifications/cancelled";
+
 	// endregion
+
+	/** _meta：サーバーの素性 */
+	public static final String META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+
+	/** _meta：購読の識別子 */
+	public static final String META_SUBSCRIPTION_ID = "io.modelcontextprotocol/subscriptionId";
 
 	/** 結果の種別（完了） */
 	public static final String RESULT_TYPE_COMPLETE = "complete";

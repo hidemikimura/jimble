@@ -63,4 +63,30 @@ public final class Calls {
 
 	}
 
+	/**
+	 * 外側の無いリクエストを1本走らせる
+	 *
+	 * <p>
+	 * <b>HTTP を通らない入口のためのものである。</b>
+	 * MCP を stdio で受けるとき（要件 F-MCP-12）、リクエストは標準入力から来る。
+	 * 中で {@code RouteTool} が内部呼び出しをすると、これが「外側」になる。
+	 * </p>
+	 *
+	 * @param request	呼び出すもの
+	 * @param body		コンテキストを回す処理
+	 * @return	結果
+	 */
+	public static CallResponse root (CallRequest request, Consumer<WebContext> body) {
+
+		RequestSource source = request.toRootSource();
+		CallSink sink = new CallSink();
+
+		try (WebContext context = new WebContext(source, sink)) {
+			body.accept(context);
+		}
+
+		return sink.toResponse();
+
+	}
+
 }

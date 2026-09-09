@@ -1,6 +1,6 @@
 ---
 title: MCP
-summary: Stand up a Model Context Protocol server (2026-07-28 / Streamable HTTP)
+summary: Stand up a Model Context Protocol server (2026-07-28 / Streamable HTTP and stdio)
 section: Protocols
 order: 3
 ---
@@ -8,7 +8,8 @@ order: 3
 # MCP
 
 Expose your application's features in a form an AI can call.
-What jimble implements is the **2026-07-28** revision of Streamable HTTP.
+What jimble implements is the **2026-07-28** revision, over two transports:
+**Streamable HTTP** and **stdio**.
 
 ## Listing what you expose
 
@@ -166,9 +167,104 @@ prompt("summarize", SummarizePrompt::new);
 
 A resource is read-only data. A prompt is a canned instruction.
 
+## Running it over standard input and output
+
+You can also skip HTTP entirely and let **the client start the process**.
+This is what you want for local tooling, and anywhere you would rather not open a port.
+
+```java
+public class BlogStdio {
+
+	public static void main (String[] args) throws Exception {
+
+		Bootstrap.load();
+
+		App app = new App();
+
+		McpStdio.run(app, app.mcp().registry());
+
+	}
+
+}
+```
+
+```json
+{
+	"mcpServers": {
+		"blog": {
+			"command": "java",
+			"args": ["-cp", "app.jar", "blog.BlogStdio"]
+		}
+	}
+}
+```
+
+**No port is opened, but the route table is still built.**
+`RouteTool` (exposing an API you already have) and the `before` checks on those routes
+behave exactly as they do over HTTP.
+
+There is also `McpStdio.run(registry)`, without the application.
+`RouteTool` cannot work there — with no route table, calling one says so instead.
+
+### Do not write anything to standard output
+
+The spec says **a server MUST NOT write anything but MCP messages to stdout**.
+One stray log line and the client treats it as malformed JSON and drops the connection.
+
+`McpStdio.run` does not ask you to be careful about this — **it makes it impossible**.
+`McpStdio` keeps the real stdout to itself and replaces `System.out` with stderr.
+Whatever the application prints, and whatever logback writes, goes to stderr
+(clients are allowed to ignore stderr).
+
+**It stops when standard input closes.** Open subscriptions are closed cleanly first,
+then whatever was handed to `Shutdown` is stopped.
+
+## Telling the client something changed
+
+A client opens a subscription with `subscriptions/listen`.
+That request never finishes: it becomes an SSE stream over HTTP, or the same stdout over stdio.
+
+On your side it is one line, where the change happens.
+
+```java
+postDao.save(post);
+
+McpNotify.resourceUpdated("blog://posts/" + post.getId());
+```
+
+- **Only what was asked for is delivered.** Other URIs are skipped
+- With nobody subscribed, nothing happens
+- `notifications/subscriptions/acknowledged` comes back first, carrying
+  **only the kinds that were accepted**, so the client can compare it against what it asked for
+
+**Only the two resource notifications can ever fire** (`resources/updated` and
+`resources/list_changed`). Tools and prompts are registered explicitly at startup, so they
+cannot appear or disappear while the server runs. Claiming support for something that will
+never arrive is worse than saying no, so `toolsListChanged` is dropped from the acknowledgement.
+
+## When a list gets long
+
+`tools/list` and friends come back in pages.
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{"cursor":"..."}}
+```
+
+- `nextCursor` is only present when there is more
+- **The default is 100.** An application with fewer than that registered sees no change at all
+- The cursor is opaque — **do not read it**
+- **An unreadable cursor is refused** (`-32602`). Quietly restarting from the top would
+  have the client read the same page forever, with no error anywhere
+
+```conf
+mcp {
+	page_size = 100
+}
+```
+
 ## One way in
 
-The only thing exposed is `POST /mcp`.
+Over HTTP, the only thing exposed is `POST /mcp`.
 
 - **GET and DELETE are both refused with a 405.** Both left the spec in 2026-07-28
 - **There are no sessions.** `Mcp-Session-Id` is not used
@@ -182,6 +278,8 @@ mcp {
 	name            = "blog"
 	version         = "1.0.0"
 	allowed_origins = ["https://example.com"]
+	page_size       = 100
+	instructions    = "Search and post articles"
 }
 ```
 
@@ -203,3 +301,7 @@ The more local the server, the more dangerous it is (`localhost` exists on every
 	}
 }
 ```
+
+A client starts with `server/discover` to find out which revisions the server speaks
+and what it has. **That one call does not need the version header** — it is the call
+you make to learn the version.

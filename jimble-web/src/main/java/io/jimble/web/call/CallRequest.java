@@ -232,4 +232,32 @@ public final class CallRequest {
 
 	}
 
+	/**
+	 * 外側の無い入力口を作る
+	 *
+	 * <p>
+	 * <b>HTTP を通らない入口のためのものである。</b>
+	 * MCP を stdio で受けるとき（要件 F-MCP-12）、リクエストは標準入力から来るので
+	 * 引き継ぐ外側が無い。ヘッダも Cookie も、この組み立てに書いたものだけになる。
+	 * </p>
+	 *
+	 * <p>フレームワーク内部から呼ぶ。</p>
+	 *
+	 * @return	入力口
+	 */
+	public RequestSource toRootSource () {
+
+		Map<String, String> requestHeaders = new LinkedHashMap<>(headers);
+
+		byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
+
+		if (body.length > 0) {
+			requestHeaders.put("content-length", String.valueOf(body.length));
+		}
+
+		return new CallRequestSource(this, null, requestHeaders
+			, new LinkedHashMap<>(cookies), queryParams, formParams, bodyText);
+
+	}
+
 }

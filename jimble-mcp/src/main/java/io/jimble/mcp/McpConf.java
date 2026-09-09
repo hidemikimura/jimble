@@ -30,6 +30,9 @@ public final class McpConf {
 	/** 設定キー：サーバーの版 */
 	public static final String KEY_VERSION = "mcp.version";
 
+	/** 設定キー：モデルへの手引き（server/discover で返す） */
+	public static final String KEY_INSTRUCTIONS = "mcp.instructions";
+
 	/** 既定のパス */
 	public static final String DEFAULT_PATH = "/mcp";
 
@@ -84,6 +87,22 @@ public final class McpConf {
 	public static String version () {
 
 		return Conf.conf().getString(KEY_VERSION, "0.1.0");
+
+	}
+
+	/**
+	 * モデルへの手引き
+	 *
+	 * <p>
+	 * {@code server/discover} で返す。<b>このサーバーをどう使うと良いか</b>を
+	 * 自然文で書く（「日付は YYYY-MM-DD で渡すこと」など）。空なら返さない。
+	 * </p>
+	 *
+	 * @return 手引き。無ければ空文字
+	 */
+	public static String instructions () {
+
+		return Conf.conf().getString(KEY_INSTRUCTIONS, "");
 
 	}
 

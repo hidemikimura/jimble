@@ -294,8 +294,11 @@ public final class RouteTool implements Supplier<McpTool> {
 			Dispatcher dispatcher = context.dispatcher();
 
 			if (dispatcher == null) {
-				throw new IllegalStateException(
-					"ディスパッチャがありません。RouteTool は jimble のサーバー上でしか使えません");
+				throw new IllegalStateException("""
+					ディスパッチャがありません。RouteTool はアプリのルート表を通して API を呼ぶので、それが要ります。
+					  HTTP:  JimbleServer が組み立てるので、そのままで動きます。
+					  stdio: McpStdio.run(app, registry) のように、アプリを渡してください
+					         （McpStdio.run(registry) だけだとルート表が無く、ここへ来ます）。""");
 			}
 
 			Data given = arguments == null ? new Data() : arguments;

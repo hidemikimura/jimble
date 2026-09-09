@@ -1,6 +1,6 @@
 ---
 title: MCP
-summary: Model Context Protocol のサーバーを立てる（2026-07-28 / Streamable HTTP）
+summary: Model Context Protocol のサーバーを立てる（2026-07-28 / Streamable HTTP と stdio）
 section: プロトコル
 order: 3
 ---
@@ -8,7 +8,8 @@ order: 3
 # MCP
 
 アプリの機能を、AI から呼べる形で公開します。
-jimble が実装しているのは **2026-07-28** 版の Streamable HTTP です。
+jimble が実装しているのは **2026-07-28** 版で、
+トランスポートは **Streamable HTTP** と **stdio** の2つです。
 
 ## 公開するものを並べる
 
@@ -166,9 +167,104 @@ prompt("summarize", SummarizePrompt::new);
 
 リソースは読み取り専用のデータ、プロンプトは定型の指示です。
 
+## 標準入出力で動かす
+
+HTTP を立てずに、**クライアントにプロセスを起こしてもらう**形でも動きます。
+手元で使う道具や、ポートを開けたくないところで使います。
+
+```java
+public class BlogStdio {
+
+	public static void main (String[] args) throws Exception {
+
+		Bootstrap.load();
+
+		App app = new App();
+
+		McpStdio.run(app, app.mcp().registry());
+
+	}
+
+}
+```
+
+```json
+{
+	"mcpServers": {
+		"blog": {
+			"command": "java",
+			"args": ["-cp", "app.jar", "blog.BlogStdio"]
+		}
+	}
+}
+```
+
+**ポートは開きませんが、ルート表は組みます。**
+`RouteTool`（すでにある API をそのまま出すもの）も `before` の認証も、
+HTTP のときとまったく同じに動きます。
+
+アプリを渡さない `McpStdio.run(registry)` もあります。
+こちらは `RouteTool` が使えません（ルート表が無いので、呼ばれたらその旨を返します）。
+
+### 標準出力に何も書かないでください
+
+仕様は「**サーバーは標準出力に MCP のメッセージ以外を書いてはならない**」と決めています。
+ログが1行混ざるだけで、クライアントは「壊れた JSON が来た」として接続を切ります。
+
+`McpStdio.run` は、これを**気をつけて避けるのではなく、書けなくします**。
+本物の標準出力は `McpStdio` だけが持ち、`System.out` は標準エラーに差し替えます。
+アプリが `System.out.println` を書いても、logback がそこへ出しても、
+全部が標準エラーへ流れます（クライアントは標準エラーを無視してよいと決まっています）。
+
+**終わり方は標準入力が閉じたときです。** 開いている購読をきれいに閉じてから、
+`Shutdown` に預けたものを止めます。
+
+## 変わったことを知らせる
+
+クライアントは `subscriptions/listen` で購読を開きます。
+これは**終わらない要求**で、HTTP なら SSE、stdio なら同じ標準出力に流れます。
+
+アプリ側は、変わったときに1行呼ぶだけです。
+
+```java
+postDao.save(post);
+
+McpNotify.resourceUpdated("blog://posts/" + post.getId());
+```
+
+- **頼まれたものにしか届きません。** 購読していない URI は飛ばします
+- 誰も購読していなければ何も起きません
+- 開いた直後に `notifications/subscriptions/acknowledged` が返ります。
+  ここに**受け付けた種類だけ**が入るので、クライアントは頼んだものと突き合わせられます
+
+**流せるのはリソースの2つだけです**（`resources/updated` と `resources/list_changed`）。
+ツールとプロンプトは起動時に明示登録するので、動いているあいだに増えも減りもしません。
+「対応している」と答えて一生届かないほうが困るので、
+`toolsListChanged` を頼まれても `acknowledged` には入れません。
+
+## 一覧が多いとき
+
+`tools/list` などは、多いとページに分かれます。
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{"cursor":"..."}}
+```
+
+- 続きがあるときだけ `nextCursor` が付きます
+- **既定は 100 件です。** それ以下しか登録していないアプリの応答は今までと変わりません
+- カーソルは**中身を読まないでください**（不透明な文字列です）
+- **読めないカーソルは断ります**（`-32602`）。黙って先頭に戻すと、
+  クライアントは同じページを永遠に読み続けることになります
+
+```conf
+mcp {
+	page_size = 100
+}
+```
+
 ## 口は1本
 
-公開されるのは `POST /mcp` の1本だけです。
+HTTP で公開されるのは `POST /mcp` の1本だけです。
 
 - **GET も DELETE も 405 で断ります。** どちらも 2026-07-28 で仕様から消えました
 - **セッションはありません。** `Mcp-Session-Id` は使いません
@@ -182,6 +278,8 @@ mcp {
 	name            = "blog"
 	version         = "1.0.0"
 	allowed_origins = ["https://example.com"]
+	page_size       = 100
+	instructions    = "記事の検索と投稿ができます"
 }
 ```
 
@@ -203,3 +301,7 @@ mcp {
 	}
 }
 ```
+
+クライアントは最初に `server/discover` を投げて、
+話せる版と、そのサーバーが何を持っているかを見ます。
+**この呼び出しにだけは版のヘッダが要りません**（版を知るための呼び出しなので）。
