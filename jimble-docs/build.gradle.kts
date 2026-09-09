@@ -19,7 +19,6 @@ dependencies {
 	 */
 	implementation(libs.commonmark)
 	implementation(libs.commonmark.tables)
-	implementation(libs.commonmark.anchor)
 
 	testImplementation(platform(libs.junit.bom))
 	testImplementation(libs.junit.jupiter)

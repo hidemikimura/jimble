@@ -1,7 +1,7 @@
 package io.jimble.db.cache;
 
 import io.jimble.db.FrameworkTables;
-import com.google.common.base.Utf8;
+import io.jimble.util.string.StringUtil;
 import io.jimble.db.cache.AbstractCache;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.CacheData;
@@ -250,7 +250,7 @@ public class DBCache extends AbstractCache {
 			, value
 			, null
 			, contentType
-			, Utf8.encodedLength(value)
+			, StringUtil.utf8Length(value)
 		);
 
 		return res >= 0;
@@ -286,7 +286,7 @@ public class DBCache extends AbstractCache {
 			, value
 			, group
 			, contentType
-			, Utf8.encodedLength(value)
+			, StringUtil.utf8Length(value)
 		);
 
 		return res >= 0;

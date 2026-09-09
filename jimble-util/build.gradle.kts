@@ -25,17 +25,13 @@ dependencies {
 	// エンコーダのテストで logback のイベントを組み立てる
 	testImplementation(libs.logback.classic)
 
-	implementation(libs.guava)
 	implementation(libs.tika.core)
 	implementation(libs.tika.parser.text)
 	implementation(libs.fastcsv)
 	implementation(libs.jts.core)
 	implementation(libs.caffeine)
-	implementation(libs.commons.text)
-	implementation(libs.commons.validator)
 	implementation(libs.jbcrypt)
 	implementation(libs.brotli.dec)
-	implementation(libs.aircompressor)
 
 	testImplementation(platform(libs.junit.bom))
 	testImplementation(libs.junit.jupiter)

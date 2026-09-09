@@ -1,7 +1,5 @@
 package io.jimble.util.string;
 
-import com.google.common.base.CharMatcher;
-
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -157,18 +155,86 @@ public class StringUtil {
 
 	}
 
-	/* 改行、タブ以外の制御文字マッチャー */
-	private static final CharMatcher CC_W_NLT = CharMatcher.javaIsoControl().and(CharMatcher.anyOf("\r\n\t").negate());
-
 	/**
 	 * 改行、タブ以外の制御文字を除去する
+	 *
+	 * <p>
+	 * 制御文字は {@code U+0000}〜{@code U+001F} と {@code U+007F}〜{@code U+009F}
+	 * （{@link Character#isISOControl(char)} と同じ）。
+	 * もとは guava の {@code CharMatcher} を使っていた（要件 D-121）。
+	 * </p>
 	 *
 	 * @param value 文字列
 	 * @return  文字列
 	 */
 	public static String removeControlCharacterWithoutNewLineAndTab (String value) {
 
-		return CC_W_NLT.removeFrom(value);
+		StringBuilder sb = new StringBuilder(value.length());
+
+		for (int i = 0; i < value.length(); i++) {
+
+			char c = value.charAt(i);
+
+			if (Character.isISOControl(c) && c != '\r' && c != '\n' && c != '\t') {
+				continue;
+			}
+
+			sb.append(c);
+
+		}
+
+		return sb.toString();
+
+	}
+
+	/**
+	 * UTF-8 にしたときの byte 数を数える
+	 *
+	 * <p>
+	 * <b>実際に byte 配列を作らない。</b>キャッシュに入れる大きさを測るために呼ぶので、
+	 * 大きな文字列でもう1つコピーを作りたくない。
+	 * もとは guava の {@code Utf8.encodedLength} を使っていた（要件 D-121）。
+	 * </p>
+	 *
+	 * @param value 文字列
+	 * @return  UTF-8 にしたときの byte 数
+	 * @throws IllegalArgumentException 対になっていないサロゲートがあるとき
+	 */
+	public static int utf8Length (String value) {
+
+		if (value == null || value.isEmpty()) {
+			return 0;
+		}
+
+		int length = 0;
+
+		for (int i = 0; i < value.length(); i++) {
+
+			char c = value.charAt(i);
+
+			if (c < 0x80) {
+				length += 1;
+			} else if (c < 0x800) {
+				length += 2;
+			} else if (!Character.isSurrogate(c)) {
+				length += 3;
+			} else {
+
+				// 上位・下位の対になっていなければ UTF-8 にできない
+				if (!Character.isHighSurrogate(c)
+					|| i + 1 >= value.length()
+					|| !Character.isLowSurrogate(value.charAt(i + 1))) {
+					throw new IllegalArgumentException("対になっていないサロゲートがあります（%d 文字目）".formatted(i));
+				}
+
+				length += 4;
+				i++;
+
+			}
+
+		}
+
+		return length;
 
 	}
 

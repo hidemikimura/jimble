@@ -1,6 +1,6 @@
 package io.jimble.db.redis;
 
-import com.google.common.base.Utf8;
+import io.jimble.util.string.StringUtil;
 import io.jimble.db.cache.AbstractCache;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.CacheData;
@@ -242,7 +242,7 @@ public class RedisCache extends AbstractCache {
 			}
 			{
 				RBucket<String> bucket = client.getBucket(key + "__content_length");
-				bucket.set(String.valueOf(Utf8.encodedLength(value)));
+				bucket.set(String.valueOf(StringUtil.utf8Length(value)));
 			}
 
 			return true;

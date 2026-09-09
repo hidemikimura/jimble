@@ -1,8 +1,6 @@
 package io.jimble.util.url;
 
-import com.google.common.net.InternetDomainName;
 import io.jimble.util.charset.CharDetecter;
-import org.apache.commons.validator.routines.InetAddressValidator;
 
 import java.net.*;
 import java.util.ArrayList;
@@ -28,14 +26,21 @@ public class UrlUtil {
 
 			URI uri = new URI(url);
 
-			InetAddressValidator validator = InetAddressValidator.getInstance();
+			String host = uri.getHost();
 
-			if (validator.isValidInet4Address(uri.getHost())
-				|| validator.isValidInet6Address(uri.getHost())) {
-				return true;
+			if (host == null) {
+				return false;
 			}
 
-			return false;
+			/*
+			 * <b>IPv6 は角かっこ付きで返ってくる</b>（http://[::1]/ なら "[::1]"）。
+			 * 外さないと IPv6 が一度も当たらない。<b>ここは実際に当たっていなかった</b>（要件 D-121）
+			 */
+			if (host.length() > 1 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
+				host = host.substring(1, host.length() - 1);
+			}
+
+			return IpAddress.isV4(host) || IpAddress.isV6(host);
 
 		} catch (Exception ex) {
 
@@ -288,8 +293,8 @@ public class UrlUtil {
 		String domain = getDomain(url);
 		try {
 
-			InternetDomainName domainName = InternetDomainName.from(domain);
-			return domainName.topDomainUnderRegistrySuffix().toString();
+			String top = PublicSuffix.topDomainUnderRegistrySuffix(domain);
+			return top == null ? domain : top;
 
 		} catch (Exception ex) {
 
@@ -315,8 +320,8 @@ public class UrlUtil {
 		String domain = getDomain(url);
 		try {
 
-			InternetDomainName domainName = InternetDomainName.from(domain);
-			return domainName.registrySuffix().toString();
+			String suffix = PublicSuffix.registrySuffix(domain);
+			return suffix == null ? domain : suffix;
 
 		} catch (Exception ex) {
 

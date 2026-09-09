@@ -1,6 +1,5 @@
 package io.jimble.util.xml;
 
-import org.apache.commons.text.StringEscapeUtils;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -101,7 +100,7 @@ public class XmlBuilder {
 			outputStreamWriter.write(" ");
 			outputStreamWriter.write(attribute.getKey());
 			outputStreamWriter.write("=\"");
-			outputStreamWriter.write(StringEscapeUtils.escapeXml10(attribute.getValue()));
+			outputStreamWriter.write(XmlEscape.escape(attribute.getValue()));
 			outputStreamWriter.write("\"");
 		}
 
@@ -112,7 +111,7 @@ public class XmlBuilder {
 			String text = xmlData.getConvertedText();
 
 			if (text != null && !text.isEmpty()) {
-				outputStreamWriter.write(StringEscapeUtils.escapeXml10(text));
+				outputStreamWriter.write(XmlEscape.escape(text));
 			}
 
 		}

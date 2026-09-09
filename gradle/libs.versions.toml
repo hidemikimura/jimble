@@ -1,17 +1,13 @@
 [versions]
 junit = "5.14.4"
 helidon = "4.5.4"
-guava = "33.6.0-jre"
 tika = "4.0.0"
 fastcsv = "4.4.0"
 jts = "1.20.0"
 caffeine = "3.2.4"
-commons-text = "1.15.0"
-commons-validator = "1.11.0"
 jbcrypt = "0.4"
 brotli = "0.1.2"
 jspecify = "1.0.0"
-aircompressor = "3.7"
 hikaricp = "7.1.0"
 agroal = "3.2.1"
 mariadb = "3.5.10"
@@ -57,23 +53,18 @@ directory-watcher = { module = "io.methvin:directory-watcher", version.ref = "di
 # ビルド時にだけ使う。アプリの実行時クラスパスには入らない。
 commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
 commonmark-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
-commonmark-anchor = { module = "org.commonmark:commonmark-ext-heading-anchor", version.ref = "commonmark" }
 
 # cron のパース（要件 F-B-04）。Apache-2.0
 cron-utils = { module = "com.cronutils:cron-utils", version.ref = "cron-utils" }
 
-guava = { module = "com.google.guava:guava", version.ref = "guava" }
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
 tika-parser-text = { module = "org.apache.tika:tika-parser-text-module", version.ref = "tika" }
 fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
 jts-core = { module = "org.locationtech.jts:jts-core", version.ref = "jts" }
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
-commons-text = { module = "org.apache.commons:commons-text", version.ref = "commons-text" }
-commons-validator = { module = "commons-validator:commons-validator", version.ref = "commons-validator" }
 jbcrypt = { module = "org.mindrot:jbcrypt", version.ref = "jbcrypt" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
-aircompressor = { module = "io.airlift:aircompressor-v3", version.ref = "aircompressor" }
 
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 agroal-pool = { module = "io.agroal:agroal-pool", version.ref = "agroal" }

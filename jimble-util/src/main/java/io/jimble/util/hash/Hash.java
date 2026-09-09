@@ -1,6 +1,5 @@
 package io.jimble.util.hash;
 
-import com.google.common.hash.Hashing;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -51,7 +50,7 @@ public class Hash {
 
 			byte[] bytes = key.getBytes(StandardCharsets.UTF_8);
 
-			return Hashing.sipHash24().hashBytes(bytes).asLong();
+			return SipHash.hash(bytes);
 
 		} catch (Exception ex) {
 

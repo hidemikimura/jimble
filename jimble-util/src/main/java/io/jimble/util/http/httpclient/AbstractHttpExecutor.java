@@ -334,7 +334,9 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 	 */
 	public E setMacChromeHeader () {
 		addHeader("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
-		addHeader("accept-Encoding", "gzip, deflate, br, zstd");
+		// zstd は<b>あえて名乗らない</b>。展開に aircompressor（2.9MB）が要り、
+		// この1行のためだけに抱えるには大きすぎた（要件 D-121）
+		addHeader("accept-Encoding", "gzip, deflate, br");
 		addHeader("accept-language", "ja,en-US;q=0.9,en;q=0.8");
 		addHeader("cache-control", "0");
 		addHeader("priority", "u=0, i");
@@ -1451,10 +1453,14 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 			return new BufferedInputStream(new DeflaterInputStream(response.body()));
 		} else if (contentEncoding.contains("br")) {
 			return new BufferedInputStream(new BrotliInputStream(response.body()));
-		} else if (contentEncoding.contains("zstd")) {
-			return new BufferedInputStream(new io.airlift.compress.v3.zstd.ZstdInputStream(response.body()));
-//			return new BufferedInputStream(new ZstdInputStream(response.body()));
 		}
+
+		/*
+		 * <b>zstd は扱わない</b>（要件 D-121）。
+		 * Accept-Encoding でも名乗っていないので、まともなサーバは送ってこない。
+		 * それでも送ってきたら、ここは<b>そのまま返して呼び出し側で壊れる</b>——
+		 * 黙って空を返すより、読めない中身が来たと分かるほうがよい。
+		 */
 
 		return new BufferedInputStream(response.body());
 

@@ -14,6 +14,13 @@ dependencies {
 	// multipart（ファイルアップロード。要件 F-W-06）
 	implementation(libs.helidon.media.multipart)
 	// 応答の gzip 圧縮（要件 F-H-03）。server.compression = false で切れる
+	/*
+	 * 応答の gzip 圧縮（要件 F-H-03）。
+	 *
+	 * <b>import が1つも無いが消してはいけない。</b>
+	 * META-INF/services の ContentEncodingProvider として helidon が拾うので、
+	 * 依存を外すと<b>コンパイルは通ったまま gzip が黙って止まる</b>。
+	 */
 	implementation(libs.helidon.encoding.gzip)
 	/*
 	 * WebSocket（要件 F-W-22）。+3 jar / 0.1MB。
