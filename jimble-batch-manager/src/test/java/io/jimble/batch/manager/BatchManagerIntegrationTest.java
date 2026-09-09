@@ -483,12 +483,15 @@ class BatchManagerIntegrationTest {
 		/*
 		 * 移送元は中断・やり直し・実行が GET だった。
 		 * リンクを踏んだだけで、クローラが辿っただけでバッチが動く。
+		 *
+		 * <b>405 であって 200 でないことがここの要点である</b>（要件 F-R-25 で
+		 * 404 から 405 に変わった。どちらでも「GET では動かない」ことは変わらない）。
 		 */
 		long id = insertHistory(BatchHistoryStatus.in_process);
 
-		assertEquals(404, request("GET", PATH + "/api/history/" + id + "/cancel", null).statusCode());
-		assertEquals(404, request("GET", PATH + "/api/history/" + id + "/re-execute", null).statusCode());
-		assertEquals(404, request("GET"
+		assertEquals(405, request("GET", PATH + "/api/history/" + id + "/cancel", null).statusCode());
+		assertEquals(405, request("GET", PATH + "/api/history/" + id + "/re-execute", null).statusCode());
+		assertEquals(405, request("GET"
 			, PATH + "/api/master/" + SampleBatch.class.getName() + "/execute", null).statusCode());
 
 	}

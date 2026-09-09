@@ -6,6 +6,8 @@ import io.jimble.web.call.CallRequest;
 import io.jimble.web.call.CallResponse;
 import io.jimble.web.call.Calls;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.http.HttpReasons;
+import io.jimble.web.http.MethodNotAllowedException;
 import io.jimble.web.http.NotFoundException;
 import io.jimble.web.ratelimit.RateLimit;
 import io.jimble.web.ratelimit.RateLimits;
@@ -155,7 +157,18 @@ public final class Dispatcher {
 			stage.run(app::onRequest);
 
 			if (!stage.isDone() && !match.matched()) {
+
+				/*
+				 * <b>パスはあるのにメソッドだけ違うなら 405</b>（要件 F-R-25）。
+				 * 404 にしてしまうと、{@code post} と書くべきところを {@code get} と
+				 * 書いただけの間違いが「パスが違う」に見える。
+				 */
+				if (!match.allowedMethods().isEmpty()) {
+					throw new MethodNotAllowedException(context.request().path(), match.allowedMethods());
+				}
+
 				throw new NotFoundException(context.request().path());
+
 			}
 
 			/*
@@ -248,6 +261,17 @@ public final class Dispatcher {
 		context.response().code(statusCode);
 
 		/*
+		 * 405 には {@code Allow} を付けなければならない（RFC 9110 / 要件 F-R-25）。
+		 *
+		 * <b>エラーハンドラより先に入れる。</b>アプリが独自の 405 ページを書いても、
+		 * ヘッダは付いたままにするためである
+		 * （付け忘れると、クライアントは<b>何なら通るのか知る手がかりが無い</b>）。
+		 */
+		if (cause instanceof MethodNotAllowedException notAllowed) {
+			context.response().setResponseHeader("Allow", notAllowed.allowHeader());
+		}
+
+		/*
 		 * エラー経路も Stage を通す（要件 F-C-13）。
 		 *
 		 * ここだけ自前で isSent() を見ていると、
@@ -270,6 +294,17 @@ public final class Dispatcher {
 		 * ハンドラは動いているし例外も出ないので、
 		 * 「404 は返るが本文が空」という形でしか表に出ない。
 		 */
+		/*
+		 * <b>誰も本文を用意しなかったときの既定</b>（要件 F-C-17 / D-11）。
+		 *
+		 * 前はここが空のまま {@code send()} に落ちていて、
+		 * <b>JSON を求められていると {@code {}} が返って</b>いた——
+		 * 空の成功と見分けが付かない形である。
+		 */
+		if (!stage.isDone()) {
+			context.response().errorBody(statusCode, HttpReasons.of(statusCode));
+		}
+
 		stage.send();
 
 	}

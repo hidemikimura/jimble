@@ -70,16 +70,15 @@ Override it to assign codes to your own exceptions.
 
 ## Who builds the body
 
-**The framework has no default error page.** The order is this.
+The order is this.
 
 1. `context.response().code(statusCode)` goes in **first** (so a handler can override it)
 2. `error(...)` handlers are called from the inside out. **It stops the moment one of them sends**
-3. If nobody sends, `response().send()` is called
+3. If nobody has built a body, the **default error response** goes in
+4. `response().send()` is called
 
-The point of step 3 is that it is `send()`, not `send(statusCode)`.
+The point of step 4 is that it is `send()`, not `send(statusCode)`.
 Whatever a handler built up with `json(...)` or the like is **sent, not thrown away.**
-
-So if you set `code(...)` and never build a body, only the status comes back.
 
 ```java
 error((context, cause, statusCode) -> {
@@ -95,7 +94,51 @@ error((context, cause, statusCode) -> {
 });
 ```
 
-`acceptJson()` checks whether `Accept` carries `application/json` or `text/javascript`.
+> [!WARN]
+> Putting `cause.getMessage()` in the body, as above, means **whatever is in it goes out.**
+> On a 500 that is the DB's error text and your internal paths.
+> Hand a `Throwable` straight to `json(...)` and **the whole stack trace goes out.**
+> The default response below carries neither, but **what you write is yours to keep clean.**
+
+## When you write nothing
+
+With no `error(...)` at all — or one that never builds a body — jimble returns a **fixed shape.**
+
+If `Accept` names JSON, it is JSON.
+
+```json
+{"error": {"status": 404, "message": "Not Found"}}
+```
+
+Otherwise it is a short line of text (`Content-Type: text/plain; charset=UTF-8`).
+
+```
+404 Not Found
+```
+
+- **`message` is the short phrase from RFC 9110** (`Not Found`, `Internal Server Error`) —
+  the same wording you see in the status line and in client libraries
+- **The cause is not in there.** No exception message, no SQL, no stack trace.
+  The cause is in the log (5xx goes to `Log.error`)
+- **`*/*` gets text.** "Anything will do" is not "JSON, please"
+- **An `error(...)` handler wins**, even one that built a body without sending it
+
+`acceptJson()` asks whether `Accept` **names** `application/json` or `text/javascript`.
+Parameters are fine — `application/json;q=0.9` counts. `q=0` (don't want it) and `*/*`
+(anything will do) do not.
+
+## 405 and 404 are different answers
+
+When the path matches and only the method is wrong, you get a 405 with an `Allow` header.
+
+```
+$ curl -i -X POST http://localhost:9000/hello
+HTTP/1.1 405 Method Not Allowed
+Allow: GET
+```
+
+404 means "there is no such thing"; 405 means "there is, but not by that name".
+Merge them and writing `get` where you meant `post` looks like a wrong path.
 
 ## When the handler itself fails
 

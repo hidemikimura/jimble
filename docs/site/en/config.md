@@ -126,6 +126,7 @@ server {
 	idle_timeout_seconds = 60
 	compression          = true
 	bot_access_log       = true
+	strict_routes        = false    # throw on routes nothing can reach (turn this on in CI)
 
 	shutdown_grace_seconds   = 0    # from starting the stop until new requests are refused
 	shutdown_timeout_seconds = 15   # how long to wait for work in flight

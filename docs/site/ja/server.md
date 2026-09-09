@@ -17,6 +17,7 @@ server {
 	trust_proxy          = false      # X-Forwarded-* を信じるか
 	compression          = true       # 応答を gzip で返すか
 	bot_access_log       = true       # ボットのアクセスログを分けるか
+	strict_routes        = false      # 一生呼ばれないルートを例外にするか（CI では true に）
 
 	shutdown_grace_seconds   = 0      # 止め始めてから新規を断つまで（秒）
 	shutdown_timeout_seconds = 15     # 処理中を待つ上限（秒）

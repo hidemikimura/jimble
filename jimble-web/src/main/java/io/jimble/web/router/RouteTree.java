@@ -1,8 +1,10 @@
 package io.jimble.web.router;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -244,14 +246,129 @@ final class RouteTree {
 		State state = new State();
 
 		if (!find(state, method, segments, 0)) {
-			// 未マッチでもトップレベルの error は適用する（アプリ全体の404ページ用）
-			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), rootErrors);
+
+			/*
+			 * 未マッチでもトップレベルの error は適用する（アプリ全体の404ページ用）。
+			 * <b>パスは合っていてメソッドだけ違う</b>のなら、それも一緒に返す（要件 F-R-25）。
+			 */
+			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), rootErrors
+				, allowed(segments, method));
+
 		}
 
 		Route route = state.route;
 
 		return new RouteMatch(
 			route, state.variables, route.beforeHooks(), route.afterHooks(), route.errorHooks());
+
+	}
+
+	/**
+	 * このパスに当たりうるメソッド（自分のメソッドは除く）
+	 *
+	 * @param segments	セグメント列
+	 * @param method	求められたメソッド
+	 * @return	当たりうるメソッド。無ければ空
+	 */
+	private Set<String> allowed (PathSegments segments, String method) {
+
+		Set<String> result = new LinkedHashSet<>();
+
+		collectAllowed(segments, 0, result);
+
+		result.remove(method);
+
+		/*
+		 * <b>WebSocket は HTTP のメソッドではない。</b>
+		 * 同じ木に載せているだけなので、Allow に出すと嘘になる
+		 * （{@code Allow: WS} を見たクライアントはそれを試す）。
+		 */
+		result.remove(io.jimble.web.ws.WsRoutes.METHOD);
+
+		return result;
+
+	}
+
+	/**
+	 * このパスに当たりうるメソッドを全部集める（要件 F-R-25）
+	 *
+	 * <p>
+	 * <b>未マッチだったときにだけ呼ぶ。</b>パスは合っているのにメソッドだけ違うのか、
+	 * そもそもそんなパスが無いのかを見分けて、405 と 404 を分けるためである。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>探索と違って、途中で打ち切らない。</b>{@code find} は最初に当たった1つを返すが、
+	 * ここは<b>当たりうるものを全部</b>見たいので、枝を全部歩く。
+	 * 404 のときにしか通らないので、遅くても構わない。
+	 * </p>
+	 *
+	 * @param segments	セグメント列
+	 * @param index		現在位置
+	 * @param result	結果
+	 */
+	void collectAllowed (PathSegments segments, int index, Set<String> result) {
+
+		if (index == segments.size()) {
+			result.addAll(routes.keySet());
+			return;
+		}
+
+		String segment = segments.get(index);
+
+		RouteTree staticChild = statics.get(segment);
+
+		if (staticChild != null) {
+			staticChild.collectAllowed(segments, index + 1, result);
+		}
+
+		for (RouteTree child : variables.values()) {
+			child.collectAllowed(segments, index + 1, result);
+		}
+
+		result.addAll(wildcards.keySet());
+
+	}
+
+	/**
+	 * 試しに1本流してみる（要件 F-R-13）
+	 *
+	 * <p>
+	 * <b>到達不能ルートの検出は、判定を書き起こさずに本物のマッチャに聞く。</b>
+	 * 別に書き起こすと、片方を直したときにもう片方が黙って古くなる
+	 * ——そして<b>ずれていることは、ずれた分だけ気づけない</b>。
+	 * </p>
+	 *
+	 * @param method	メソッド
+	 * @param segments	セグメント列
+	 * @return	当たったルート。当たらなければ null
+	 */
+	Route probe (String method, PathSegments segments) {
+
+		State state = new State();
+
+		return find(state, method, segments, 0) ? state.route : null;
+
+	}
+
+	/**
+	 * 固定セグメントの名前を集める
+	 *
+	 * <p>試しのパスに使う語が、どの固定セグメントとも重ならないようにするため。</p>
+	 *
+	 * @param result	結果
+	 */
+	void collectStaticNames (Set<String> result) {
+
+		result.addAll(statics.keySet());
+
+		for (RouteTree child : statics.values()) {
+			child.collectStaticNames(result);
+		}
+
+		for (RouteTree child : variables.values()) {
+			child.collectStaticNames(result);
+		}
 
 	}
 

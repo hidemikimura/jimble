@@ -837,6 +837,88 @@ public class Response extends Data {
 
 	}
 
+	// region 既定のエラー応答（要件 F-C-17 / D-11）
+
+	/** 既定のエラー応答の入れ物の名前 */
+	public static final String ERROR_KEY = "error";
+
+	/**
+	 * 何も組み立てられていないか
+	 *
+	 * <p>ハンドラが本文を1つも用意していないときだけ true。</p>
+	 *
+	 * @return	空なら true
+	 */
+	public boolean isEmpty () {
+
+		return !isResponseJson
+			&& !isResponseJsonL
+			&& responseText == null
+			&& modelAndViewResponse == null
+			&& redirectResponse == null
+			&& downloadFileResponse == null
+			&& fileResponse == null
+			&& streamResponse == null
+			&& cacheResponse == null;
+
+	}
+
+	/**
+	 * 既定のエラー応答を用意する（要件 F-C-17 / D-11）
+	 *
+	 * <p>
+	 * <b>アプリが何も返さなかったときだけ入る。</b>
+	 * {@code error(...)} で本文を組み立てていれば、そちらがそのまま出る。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>中身は決め打ちである。</b>例外のメッセージも、スタックトレースも、
+	 * SQL も入れない（要件 NF-S-06）。ここに原因を書くと、
+	 * <b>本番かどうかの判断を1か所忘れただけで外に漏れる</b>。
+	 * 原因はログに残っている（{@code Dispatcher} が 500 番台を出している）。
+	 * </p>
+	 *
+	 * <p>
+	 * JSON を名指しされていれば JSON、そうでなければ短いテキストを返す。
+	 * <b>{@code *&#47;*}（何でもいい）はテキストにする</b>——
+	 * 「何でもいい」相手に構造を返しても読み手が居ない。
+	 * </p>
+	 *
+	 * @param statusCode	ステータスコード
+	 * @param reason		短い理由（{@code "Not Found"} のような、内部情報を含まない語）
+	 */
+	public void errorBody (int statusCode, String reason) {
+
+		if (!isEmpty()) {
+			return;
+		}
+
+		if (request.acceptJson()) {
+
+			Data error = new Data();
+			error.put("status", statusCode);
+			error.put("message", reason);
+
+			json(ERROR_KEY, error);
+
+			return;
+
+		}
+
+		/*
+		 * ここでは送らずに<b>組み立てるだけ</b>にする。
+		 * 送ってしまうと、この経路だけ {@code Stage} を通らない形になり、
+		 * 「送信済みなら打ち切る」の判定が2か所に増える（要件 F-C-13）。
+		 */
+		setResponseHeader(HEADER_CONTENT_TYPE, "text/plain; charset=UTF-8");
+
+		text("%d %s".formatted(statusCode, reason));
+
+	}
+
+	// endregion
+
+
 	// region レスポンス送信
 
 	/**

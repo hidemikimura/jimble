@@ -1,6 +1,7 @@
 package io.jimble.web.router;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * ルートのマッチ結果
@@ -33,6 +34,9 @@ public final class RouteMatch {
 	/* error */
 	private final List<ErrorHandler> errorHooks;
 
+	/* 未マッチのとき、そのパスに当たりうる別のメソッド */
+	private final Set<String> allowedMethods;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -50,11 +54,35 @@ public final class RouteMatch {
 		, List<ErrorHandler> errorHooks
 	) {
 
+		this(route, variables, beforeHooks, afterHooks, errorHooks, Set.of());
+
+	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param route				ルート。未マッチなら null
+	 * @param variables			パス変数
+	 * @param beforeHooks		before
+	 * @param afterHooks		after
+	 * @param errorHooks		error
+	 * @param allowedMethods	未マッチのとき、そのパスに当たりうる別のメソッド
+	 */
+	RouteMatch (
+		Route route
+		, PathVariables variables
+		, List<Handler> beforeHooks
+		, List<Handler> afterHooks
+		, List<ErrorHandler> errorHooks
+		, Set<String> allowedMethods
+	) {
+
 		this.route = route;
 		this.variables = variables;
 		this.beforeHooks = List.copyOf(beforeHooks);
 		this.afterHooks = List.copyOf(afterHooks);
 		this.errorHooks = List.copyOf(errorHooks);
+		this.allowedMethods = Set.copyOf(allowedMethods);
 
 	}
 
@@ -125,13 +153,31 @@ public final class RouteMatch {
 	}
 
 	/**
+	 * 未マッチのとき、そのパスに当たりうる別のメソッド（要件 F-R-25）
+	 *
+	 * <p>
+	 * <b>空でなければ 404 ではなく 405 である。</b>
+	 * パスはあるのにメソッドだけ違う、という状態を見分けるためにある。
+	 * </p>
+	 *
+	 * @return	メソッド。無ければ空
+	 */
+	public Set<String> allowedMethods () {
+
+		return allowedMethods;
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	public String toString () {
 
 		if (!matched()) {
-			return "RouteMatch(未マッチ)";
+			return allowedMethods.isEmpty()
+				? "RouteMatch(未マッチ)"
+				: "RouteMatch(未マッチ / メソッド違い: " + allowedMethods + ")";
 		}
 
 		return "RouteMatch(%s %s)".formatted(route, variables);

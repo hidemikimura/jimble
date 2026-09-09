@@ -325,15 +325,89 @@ public class Request extends Data {
 			return;
 		}
 
-		header.put("accept-json", false);
+		header.put("accept-json", isJsonAccepted(accept()));
 
-		String[] accepts = accept().split(Pattern.quote(","));
-		for (String accept : accepts) {
-			if ("application/json".equalsIgnoreCase(accept)
-				|| "text/javascript".equalsIgnoreCase(accept)) {
-				header.put("accept-json", true);
-			}
+	}
+
+	/**
+	 * Accept が JSON を名指ししているか
+	 *
+	 * <p>
+	 * <b>付いているパラメータを落としてから比べる。</b>
+	 * {@code Accept: application/json;q=0.9} や
+	 * {@code Accept: application/json, text/plain} のように、
+	 * <b>JSON を名指ししているのに素通りしていた</b>（丸ごと1つの文字列として
+	 * {@code application/json} と比べていたため）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code q=0} は「要らない」の意味</b>なので、書いてあっても false にする。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code *&#47;*} は true にしない。</b>「何でもいい」であって
+	 * 「JSON がいい」ではない。ここを true にすると、
+	 * <b>ビュー（画面）を返すはずのルートが JSON を返す</b>ようになる——
+	 * {@code curl} の既定も、ブラウザが画像を取りにくるときも {@code *&#47;*} である。
+	 * </p>
+	 *
+	 * @param accept	Accept ヘッダの値
+	 * @return	名指ししていれば true
+	 */
+	static boolean isJsonAccepted (String accept) {
+
+		if (accept == null || accept.isEmpty()) {
+			return false;
 		}
+
+		for (String entry : accept.split(Pattern.quote(","))) {
+
+			String[] parts = entry.split(Pattern.quote(";"));
+			String type = parts[0].trim();
+
+			if (!"application/json".equalsIgnoreCase(type)
+				&& !"text/javascript".equalsIgnoreCase(type)) {
+				continue;
+			}
+
+			if (isRefused(parts)) {
+				continue;
+			}
+
+			return true;
+
+		}
+
+		return false;
+
+	}
+
+	/**
+	 * q=0（要らない）が付いているか
+	 *
+	 * @param parts	";" で割った並び（先頭は型）
+	 * @return	要らないと書いてあれば true
+	 */
+	private static boolean isRefused (String[] parts) {
+
+		for (int index = 1; index < parts.length; index++) {
+
+			String parameter = parts[index].trim();
+
+			if (!parameter.regionMatches(true, 0, "q=", 0, 2)) {
+				continue;
+			}
+
+			try {
+				return Double.parseDouble(parameter.substring(2).trim()) <= 0;
+			} catch (NumberFormatException ex) {
+				// 読めない q は無視する（付いていないのと同じ）
+				return false;
+			}
+
+		}
+
+		return false;
 
 	}
 

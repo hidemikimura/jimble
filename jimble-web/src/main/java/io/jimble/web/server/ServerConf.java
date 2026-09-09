@@ -54,6 +54,9 @@ public final class ServerConf {
 	/** 設定キー：ボットのアクセスログを分けるか */
 	public static final String KEY_BOT_ACCESS_LOG = "server.bot_access_log";
 
+	/** 設定の鍵：到達不能ルートを例外にするか */
+	public static final String KEY_STRICT_ROUTES = "server.strict_routes";
+
 	/** 設定キー：止め始めてから新規を断つまでの猶予（秒） */
 	public static final String KEY_SHUTDOWN_GRACE_SECONDS = "server.shutdown_grace_seconds";
 
@@ -220,6 +223,27 @@ public final class ServerConf {
 	public static boolean botAccessLog () {
 
 		return Conf.conf().getBoolean(KEY_BOT_ACCESS_LOG, true);
+
+	}
+
+	/**
+	 * 到達不能ルートを例外にするか（要件 F-R-13 / D-10）
+	 *
+	 * <p>
+	 * <b>既定は false（警告だけ）。</b>いま動いているアプリを、
+	 * 版を上げただけで起動しなくするわけにはいかない。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>CI では true にすること。</b>警告は起動ログの何十行にも紛れるので、
+	 * <b>出しただけでは誰も見ない</b>。
+	 * </p>
+	 *
+	 * @return	例外にする場合 = true
+	 */
+	public static boolean strictRoutes () {
+
+		return Conf.conf().getBoolean(KEY_STRICT_ROUTES, false);
 
 	}
 

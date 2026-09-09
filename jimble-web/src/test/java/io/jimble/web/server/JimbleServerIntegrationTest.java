@@ -267,10 +267,31 @@ class JimbleServerIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("メソッドが違えば 404")
+	@DisplayName("メソッドが違えば 405。何なら通るかを Allow で言う")
 	void wrongMethod () throws Exception {
 
-		assertEquals(404, request("POST", "/hello").statusCode());
+		HttpResponse<String> response = request("POST", "/hello");
+
+		/*
+		 * <b>404 にしない。</b>404 は「そんなものは無い」、405 は「あるが、その呼び方ではない」。
+		 * 一緒にすると、{@code get} と書くべきところを {@code post} と書いただけの間違いが
+		 * 「パスが違う」に見える
+		 */
+		assertEquals(405, response.statusCode());
+
+		// Allow を付けるのは仕様（RFC 9110）の MUST。無いと何を試せばよいか分からない
+		assertEquals("GET", response.headers().firstValue("allow").orElse(null));
+
+	}
+
+	@Test
+	@DisplayName("そんなパスが無ければ、いままでどおり 404")
+	void unknownPath () throws Exception {
+
+		HttpResponse<String> response = request("GET", "/nope");
+
+		assertEquals(404, response.statusCode());
+		assertTrue(response.headers().firstValue("allow").isEmpty(), "Allow が付いている");
 
 	}
 

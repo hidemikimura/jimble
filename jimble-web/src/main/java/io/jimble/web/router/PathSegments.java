@@ -60,6 +60,25 @@ public final class PathSegments {
 	}
 
 	/**
+	 * セグメントの並びからそのまま作る
+	 *
+	 * <p>
+	 * <b>デコードもしない。</b>到達不能ルートの検出（要件 F-R-13）で、
+	 * パターンから作った試しのパスを流すのに使う。
+	 * ここでデコードすると、`/a%20b` のような<b>パターン側の字面</b>が変わってしまい、
+	 * 実際のマッチと違う答えが出る。
+	 * </p>
+	 *
+	 * @param segments	セグメント
+	 * @return	セグメント列
+	 */
+	static PathSegments of (List<String> segments) {
+
+		return new PathSegments(List.copyOf(segments));
+
+	}
+
+	/**
 	 * 分割する
 	 *
 	 * @param path		パス

@@ -40,6 +40,49 @@ get("/users/{id}", context ->
 
 When several routes match the same path, **the more specific one wins**
 (`/users/me` comes before `/users/{id}`).
+The order is **fixed path > path parameter > wildcard**, and when a level has several
+path parameters they are tried **in registration order.**
+
+**Registering the same path and method twice throws right there** — better than finding out
+after it is running.
+
+### Routes that are never called
+
+Even without a duplicate, a route can be one that **no request ever reaches.**
+
+```java
+get("/users/{id}", ...);
+get("/users/{userId}", ...);   // ← never called
+```
+
+Only the name differs, so it registers fine, but `/users/5` always hits the first one.
+**We find it at startup and warn.**
+
+```
+WARN  ルート: GET     /users/{userId} は一生呼ばれません（GET     /users/{id} が先に当たります）
+```
+
+A warning gets lost among the dozens of startup log lines, so **make it throw in CI.**
+
+```conf
+server {
+	strict_routes = true
+}
+```
+
+`/users/me` winning over `/users/{id}` is correct behaviour, so it is not reported —
+`{id}` still serves everything that is not `me`. What this looks for is routes that get
+**no request at all.**
+
+### When only the method is wrong
+
+If the path matches and only the method differs, you get **405**, not 404, with an `Allow` header.
+
+```
+$ curl -i -X POST http://localhost:9000/hello
+HTTP/1.1 405 Method Not Allowed
+Allow: GET
+```
 
 ## Grouping
 

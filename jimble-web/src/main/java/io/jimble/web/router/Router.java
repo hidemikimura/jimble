@@ -1,7 +1,9 @@
 package io.jimble.web.router;
 
 import io.jimble.core.executor.Executor;
+import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.server.ServerConf;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -464,6 +466,42 @@ public final class Router {
 
 		scope.root().seal();
 		rootTree.forEachRoute(Route::seal);
+
+		checkUnreachable();
+
+	}
+
+	/**
+	 * 一生呼ばれないルートを知らせる（要件 F-R-13 / D-10）
+	 *
+	 * <p>
+	 * <b>既定は警告だけ。</b>いま動いているアプリを、版を上げただけで
+	 * 起動しなくするわけにはいかない。{@code server.strict_routes = true} で例外になる。
+	 * </p>
+	 */
+	private void checkUnreachable () {
+
+		List<UnreachableRoutes.Finding> findings = UnreachableRoutes.detect(rootTree);
+
+		if (findings.isEmpty()) {
+			return;
+		}
+
+		if (ServerConf.strictRoutes()) {
+
+			StringBuilder message = new StringBuilder("一生呼ばれないルートがあります:");
+
+			for (UnreachableRoutes.Finding finding : findings) {
+				message.append("\n  ").append(finding);
+			}
+
+			throw new IllegalStateException(message.toString());
+
+		}
+
+		for (UnreachableRoutes.Finding finding : findings) {
+			Log.warn("ルート: " + finding);
+		}
 
 	}
 

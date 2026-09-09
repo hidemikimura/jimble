@@ -251,4 +251,65 @@ class RouterMatchingTest {
 
 	}
 
+	// region メソッド違いの見分け（要件 F-R-25）
+
+	@Test
+	@DisplayName("パスは合っていてメソッドだけ違うとき、何なら通るかを返す")
+	void allowedMethods () {
+
+		Router router = new Router();
+
+		router.get("/users/{id}", NOOP);
+		router.delete("/users/{id}", NOOP);
+
+		RouteMatch match = router.match("POST", "/users/42");
+
+		assertFalse(match.matched());
+		assertEquals(java.util.Set.of("GET", "DELETE"), match.allowedMethods());
+
+	}
+
+	@Test
+	@DisplayName("そんなパスが無ければ空（404 と 405 を取り違えない）")
+	void allowedMethodsEmpty () {
+
+		Router router = new Router();
+
+		router.get("/users/{id}", NOOP);
+
+		assertTrue(router.match("GET", "/nope").allowedMethods().isEmpty());
+
+	}
+
+	@Test
+	@DisplayName("ワイルドカードの下でもメソッドを拾う")
+	void allowedMethodsUnderWildcard () {
+
+		Router router = new Router();
+
+		router.get("/files/*", NOOP);
+
+		assertEquals(java.util.Set.of("GET"), router.match("POST", "/files/a/b").allowedMethods());
+
+	}
+
+	@Test
+	@DisplayName("WebSocket は Allow に出さない")
+	void allowedMethodsExcludesWebSocket () {
+
+		Router router = new Router();
+
+		router.get("/chat", NOOP);
+		router.ws("/chat", () -> null);
+
+		/*
+		 * <b>{@code WS} は HTTP のメソッドではない。</b>同じ木に載せているだけである。
+		 * {@code Allow: GET, WS} を見たクライアントは<b>WS を試して必ず失敗する</b>
+		 */
+		assertEquals(java.util.Set.of("GET"), router.match("POST", "/chat").allowedMethods());
+
+	}
+
+	// endregion
+
 }

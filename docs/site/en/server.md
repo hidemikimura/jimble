@@ -17,6 +17,7 @@ server {
 	trust_proxy          = false      # Whether to believe X-Forwarded-*
 	compression          = true       # Whether to gzip responses
 	bot_access_log       = true       # Whether to split out the bot access log
+	strict_routes        = false      # Throw on routes nothing can reach (turn this on in CI)
 
 	shutdown_grace_seconds   = 0      # From "start stopping" to refusing new requests (seconds)
 	shutdown_timeout_seconds = 15     # How long to wait for in-flight work (seconds)

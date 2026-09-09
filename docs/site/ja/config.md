@@ -119,6 +119,7 @@ server {
 	idle_timeout_seconds = 60
 	compression          = true
 	bot_access_log       = true
+	strict_routes        = false    # 一生呼ばれないルートを例外にする（CI では true に）
 
 	shutdown_grace_seconds   = 0    # 止め始めてから新規を断つまで
 	shutdown_timeout_seconds = 15   # 処理中を待つ上限

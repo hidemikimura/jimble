@@ -70,16 +70,15 @@ void handle (WebContext context, Throwable cause, int statusCode) throws Excepti
 
 ## 本文は誰が作るか
 
-**フレームワークは既定のエラーページを持ちません。** 順番はこうです。
+順番はこうです。
 
 1. `context.response().code(statusCode)` を**先に**入れる（ハンドラが上書きできる）
 2. `error(...)` を内側から順に呼ぶ。**送った時点で止まる**
-3. 誰も送らなければ `response().send()` を呼ぶ
+3. 誰も本文を用意していなければ、**既定のエラー応答**を入れる
+4. `response().send()` を呼ぶ
 
-3 が `send(statusCode)` ではなく `send()` なのが要点です。
+4 が `send(statusCode)` ではなく `send()` なのが要点です。
 ハンドラが `json(...)` などで組み立てた中身を、**捨てずに送る**ためです。
-
-つまり `code(...)` だけ入れて本文を作らなければ、ステータスだけが返ります。
 
 ```java
 error((context, cause, statusCode) -> {
@@ -95,7 +94,53 @@ error((context, cause, statusCode) -> {
 });
 ```
 
-`acceptJson()` は `Accept` に `application/json` か `text/javascript` があるかを見ます。
+> [!WARN]
+> この例のように `cause.getMessage()` を本文に出すのは、**中身次第では外に見せてはいけないもの**です。
+> 500 のときは DB のエラー文や内部のパスがそのまま入ります。
+> `Throwable` をそのまま `json(...)` に渡すと、**スタックトレースが丸ごと出ます**。
+> 既定のエラー応答（次の節）はどちらも載せませんが、**自分で書いたぶんは自分で抑えてください**。
+
+## 何も書かなかったとき
+
+`error(...)` を1つも書いていない、あるいは書いたけれど本文を作らなかったとき、
+jimble が**決まった形**を返します。
+
+`Accept` が JSON を名指ししていれば JSON です。
+
+```json
+{"error": {"status": 404, "message": "Not Found"}}
+```
+
+そうでなければ、短いテキストです（`Content-Type: text/plain; charset=UTF-8`）。
+
+```
+404 Not Found
+```
+
+- **`message` は RFC 9110 の短い語**です（`Not Found` / `Internal Server Error`）。
+  ステータス行やクライアントのライブラリに出てくる語と同じにしてあります
+- **原因は入りません。** 例外のメッセージも SQL もスタックトレースも載せません。
+  原因はログに出ています（500 番台は `Log.error`）
+- **`*/*` はテキスト**です。「何でもいい」であって「JSON がいい」ではありません
+- **`error(...)` で組み立てていれば、そちらが勝ちます。** 送信まで済んでいなくてもです
+
+`acceptJson()` は `Accept` が `application/json` か `text/javascript` を
+**名指ししているか**を見ます。`application/json;q=0.9` のようにパラメータが付いていても効きます。
+`q=0`（要らない）と `*/*`（何でもいい）は名指しに数えません。
+
+## 405 と 404 は分かれます
+
+パスは合っていて**メソッドだけ違う**ときは 405 で、`Allow` が付きます。
+
+```
+$ curl -i -X POST http://localhost:9000/hello
+HTTP/1.1 405 Method Not Allowed
+Allow: GET
+```
+
+404 は「そんなものは無い」、405 は「あるが、その呼び方ではない」です。
+一緒にすると、`post` と書くべきところを `get` と書いただけの間違いが
+「パスが違う」に見えてしまいます。
 
 ## ハンドラ自身が失敗したら
 

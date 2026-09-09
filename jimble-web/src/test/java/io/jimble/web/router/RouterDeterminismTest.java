@@ -15,6 +15,13 @@ class RouterDeterminismTest {
 	/* 何もしないハンドラ */
 	private static final Handler NOOP = context -> { };
 
+	/*
+	 * <b>ここで登録している2本目は、実は一生呼ばれない。</b>
+	 * それが「登録順で先勝ち」の裏返しなので、このテストにはそれで正しい。
+	 * 起動時の検出（要件 F-R-13 / {@link UnreachableRoutesTest}）が
+	 * <b>まさにこれを警告する</b>ので、実行するとログに警告が並ぶ。
+	 */
+
 	@Test
 	@DisplayName("T-5 【回帰】同一階層に複数のパスパラメータがあるとき、登録順に試される")
 	void variableNodesAreTriedInRegistrationOrder () {
