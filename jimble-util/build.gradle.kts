@@ -26,7 +26,6 @@ dependencies {
 	testImplementation(libs.logback.classic)
 
 	implementation(libs.guava)
-	implementation(libs.icu4j)
 	implementation(libs.tika.core)
 	implementation(libs.tika.parser.text)
 	implementation(libs.fastcsv)

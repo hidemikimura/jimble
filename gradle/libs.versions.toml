@@ -2,7 +2,6 @@
 junit = "5.14.4"
 helidon = "4.5.4"
 guava = "33.6.0-jre"
-icu4j = "78.3"
 tika = "4.0.0"
 fastcsv = "4.4.0"
 jts = "1.20.0"
@@ -64,7 +63,6 @@ commonmark-anchor = { module = "org.commonmark:commonmark-ext-heading-anchor", v
 cron-utils = { module = "com.cronutils:cron-utils", version.ref = "cron-utils" }
 
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
-icu4j = { module = "com.ibm.icu:icu4j", version.ref = "icu4j" }
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
 tika-parser-text = { module = "org.apache.tika:tika-parser-text-module", version.ref = "tika" }
 fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
