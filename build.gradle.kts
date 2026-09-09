@@ -188,13 +188,23 @@ subprojects {
 	}
 
 	/*
-	 * 通常の test は DB を要求しない。
-	 * 実 DB が要るテストは @Tag("db") を付け、dbTest タスクで実行する（要件 D-16）。
+	 * 通常の test は DB もベンチマークも走らせない。
+	 * 実 DB が要るテストは @Tag("db") を付けて dbTest / pgTest で（要件 D-16）、
+	 * ベンチマークは @Tag("bench") を付けて bench タスクで実行する（要件 NF-P-06）。
+	 *
+	 * <b>ベンチマークを通常の test から外すのは、時間がかかるからだけではない。</b>
+	 * 数十万回まわして割り当てを測るので、<b>ほかのテストと同じ JVM で走らせると
+	 * 測り終わったころには JIT の状態が変わっている</b>（測った順で答えが変わる）。
 	 */
 	tasks.withType<Test>().configureEach {
 		val isDbTest = name == "dbTest" || name == "pgTest"
+		val isBench = name == "bench"
 		useJUnitPlatform {
-			if (isDbTest) includeTags("db") else excludeTags("db")
+			when {
+				isBench -> includeTags("bench")
+				isDbTest -> includeTags("db")
+				else -> excludeTags("db", "bench")
+			}
 		}
 		// 標準出力の文字化け対策（要件 F-U-12）
 		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
@@ -282,6 +292,52 @@ subprojects {
 
 		testLogging {
 			events("passed", "failed")
+			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+		}
+	}
+
+	/*
+	 * ベンチマーク（要件 NF-P-06）。
+	 *   ./gradlew :jimble-web:bench
+	 *
+	 * <b>落とすのは「1回あたりに割り当てた byte 数」だけで、時間では落とさない。</b>
+	 * CI の共用ランナーは走るたびに 20〜30% ぶれるので、
+	 * 「ベースライン比 -10%」を時間でやると<b>直していないのに赤くなる日</b>ができる。
+	 * 赤が信用されなくなると、本物の退行も見過ごされる（詳しくは Bench の javadoc）。
+	 *
+	 * 測った値は build/bench/bench.txt に出る。CI はこれを成果物として持ち帰るだけで、
+	 * <b>中身を見て落とすことはしない</b>（人が前後を見比べるためのもの）。
+	 */
+	/*
+	 * ベンチマークを持っているか。
+	 *
+	 * <b>持っていないモジュールで走らせると「テストが1つも見つからない」で落ちる。</b>
+	 * pgTest と同じで、飛ばしたことは SKIPPED としてログに出る。
+	 */
+	val hasBench = provider {
+		testSourceSet.java.srcDirs.any { dir ->
+			dir.isDirectory && dir.walkTopDown().any { it.isDirectory && it.name == "bench" }
+		}
+	}
+
+	tasks.register<Test>("bench") {
+		group = "verification"
+		description = "ベンチマークを実行する（要件 NF-P-06）"
+
+		onlyIf("ベンチマークが無いモジュール") { hasBench.get() }
+
+		testClassesDirs = testSourceSet.output.classesDirs
+		classpath = testSourceSet.runtimeClasspath
+
+		jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+
+		// 常に実行する（結果をキャッシュしない）
+		outputs.upToDateWhen { false }
+
+		// 測った表を流す
+		testLogging {
+			events("passed", "failed")
+			showStandardStreams = true
 			exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 		}
 	}

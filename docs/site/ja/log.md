@@ -1,6 +1,6 @@
 ---
 title: ログ
-summary: Log の使い方、アクセスログ、実行 ID、logback の設定
+summary: Log の使い方、アクセスログ、実行 ID、メトリクス、logback の設定
 section: 開発
 order: 7
 ---
@@ -173,6 +173,83 @@ jimble は logback とエンコーダを持っていますが、**設定ファ�
 ```
 
 `Log.sink(...)` は**全体を差し替えます**。`@AfterEach` で `Log.resetSink()` を忘れないでください。
+
+## メトリクス
+
+`Metrics.snapshot()` が、いまの値をまとめて返します。
+
+```java
+get("/metrics", context -> context.response().json(Metrics.snapshot()));
+```
+
+> [!WARN]
+> **jimble は `/metrics` のルートを用意しません。**外に晒すかどうか、認証を付けるかどうかは
+> アプリの都合なので、フレームワークが握ると閉じたいときに閉じられません
+> （[ヘルスチェック](./server)と同じ考え方です）。
+> 上の1行は**そのまま書くと誰でも見られます。**社内からだけ見せる、
+> 認証を通す、といった手当てをしてください。
+
+返る形はこうです。
+
+```json
+{
+  "counter": { "http.request": 1234, "http.status.2xx": 1230, "http.status.5xx": 4 },
+  "latency": {
+    "http.GET /posts/{id}": {
+      "count": 1200, "sum_ms": 4321.0, "max_ms": 812.3,
+      "p50_ms": 10, "p95_ms": 100, "p99_ms": 500,
+      "bucket": { "1": 300, "5": 700, "10": 150, "50": 40, "100": 8, "500": 1, "1000": 1, "5000": 0, "over": 0 }
+    }
+  },
+  "gauge": { "db.pool.main.active": 3, "db.pool.main.idle": 5 }
+}
+```
+
+### 何が勝手に入っているか
+
+| 名前 | 何 |
+| --- | --- |
+| `http.request` | リクエスト数 |
+| `http.status.2xx` … `5xx` | ステータスの百の位ごとの数 |
+| `http.GET /posts/{id}` | ルートごとのレイテンシの分布 |
+| `db.pool.<名前>.{active,idle,total,waiting}` | 接続プールの使用数 |
+| `mq.<キュー>.received` / `.completed` / `.error` … | MQ の件数（終わり方ごと） |
+| `mq.<キュー>` | MQ のレイテンシの分布 |
+
+### 自分で入れる
+
+```java
+Metrics.count("posts.created");
+Metrics.record("search.elapsed", elapsedNanos);
+Metrics.gauge("cache.size", () -> cache.size());
+```
+
+> [!TRAP]
+> **`Metrics.gauge(...)` に渡すものが I/O をしてはいけません。**
+> `Metrics.snapshot()` のたびに呼ばれるので、DB を触ると
+> **DB が詰まっているときに限ってメトリクスも取れなくなります**——いちばん見たいときに見えません。
+> MQ の滞留数（`MqQueue#pendingCount()`）を jimble が自動で登録していないのはこのためです。
+> 承知のうえで要るなら、自分で登録してください。
+>
+> ```java
+> Metrics.gauge("mq.notice.pending", () -> noticeQueue.pendingCount());
+> ```
+
+> [!WARN]
+> **利用者の入力を名前にしないでください。**`Metrics.count(request.path())` と書くと、
+> `/aaa` `/aab` … と叩かれるだけでヒープが埋まります。名前は **1000 種類**が上限で、
+> 超えると1回だけ警告を出して、それ以上は数えません（**そのあとは本物のルートも数えられません**）。
+> jimble 自身がレイテンシに生のパスではなく `GET /posts/{id}` を使い、
+> どのルートにも当たらなかったものを `(unmatched)` 1つにまとめているのも同じ理由です。
+
+> [!NOTE]
+> **分布は固定のバケット**（1 / 5 / 10 / 50 / 100 / 500 / 1000 / 5000ms ＋ あふれ）に数を入れるだけで、
+> ひとつひとつの値は覚えません。何件入れてもメモリは増えませんが、
+> **パーセンタイルは「入ったバケットの上限」まで**しか言えません（`p95_ms: 100` は「100ms 以下」）。
+> あふれに入ったぶんは実測の最大を返します。
+
+> [!NOTE]
+> `Metrics.reset()` は**テストのためのもの**です。動いているアプリで呼ぶと、それまで数えたものが消えます。
 
 ## 設定キー
 

@@ -72,6 +72,25 @@ jobs:
           echo "HTML: $count ページ"
           test "$count" -ge 70
 
+      # 1回あたりに割り当てた byte 数で退行を見る（要件 NF-P-06）。
+      #
+      # <b>時間では落とさない。</b>共用ランナーは走るたびに 20〜30% ぶれるので、
+      # 「ベースライン比 -10%」を時間でやると<b>直していないのに赤くなる日</b>ができる。
+      # 赤が信用されなくなると、本物の退行も見過ごされる（理由は Bench の javadoc）。
+      # 時間は bench.txt に記録するだけで、落とす材料にはしない。
+      - name: ベンチマーク
+        run: ./gradlew bench --stacktrace
+
+      # 人が前後を見比べるためのもの。<b>中身を見て落とすことはしない</b>
+      - name: ベンチマークの結果を残す
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench
+          path: '**/build/bench/bench.txt'
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: テスト結果を残す
         if: always()
         uses: actions/upload-artifact@v7

@@ -1,6 +1,6 @@
 ---
 title: Logging
-summary: How to use Log, access logs, execution IDs, configuring logback
+summary: How to use Log, access logs, execution IDs, metrics, configuring logback
 section: Development
 order: 7
 ---
@@ -174,6 +174,80 @@ instead of using `logback.xml`.
 ```
 
 `Log.sink(...)` **replaces the whole thing**. Do not forget `Log.resetSink()` in `@AfterEach`.
+
+## Metrics
+
+`Metrics.snapshot()` returns everything it has right now.
+
+```java
+get("/metrics", context -> context.response().json(Metrics.snapshot()));
+```
+
+> [!WARN]
+> **jimble does not register a `/metrics` route for you.** Whether to expose it, and behind what
+> authentication, is the application's call — if the framework owned the route you could not close it
+> when you needed to (same reasoning as [the health check](./server)).
+> The one-liner above is **readable by anyone**; put it behind your network or your auth.
+
+The shape:
+
+```json
+{
+  "counter": { "http.request": 1234, "http.status.2xx": 1230, "http.status.5xx": 4 },
+  "latency": {
+    "http.GET /posts/{id}": {
+      "count": 1200, "sum_ms": 4321.0, "max_ms": 812.3,
+      "p50_ms": 10, "p95_ms": 100, "p99_ms": 500,
+      "bucket": { "1": 300, "5": 700, "10": 150, "50": 40, "100": 8, "500": 1, "1000": 1, "5000": 0, "over": 0 }
+    }
+  },
+  "gauge": { "db.pool.main.active": 3, "db.pool.main.idle": 5 }
+}
+```
+
+### What you get without asking
+
+| Name | What |
+| --- | --- |
+| `http.request` | Request count |
+| `http.status.2xx` … `5xx` | Count per status class |
+| `http.GET /posts/{id}` | Latency distribution per route |
+| `db.pool.<name>.{active,idle,total,waiting}` | Connection pool usage |
+| `mq.<queue>.received` / `.completed` / `.error` … | MQ counts, by how the message ended |
+| `mq.<queue>` | MQ latency distribution |
+
+### Adding your own
+
+```java
+Metrics.count("posts.created");
+Metrics.record("search.elapsed", elapsedNanos);
+Metrics.gauge("cache.size", () -> cache.size());
+```
+
+> [!TRAP]
+> **What you pass to `Metrics.gauge(...)` must not do I/O.** It is called on every
+> `Metrics.snapshot()`, so if it touches the database you **lose your metrics exactly when the
+> database is congested** — which is when you want them most. That is why jimble does not register
+> the MQ backlog (`MqQueue#pendingCount()`) for you. Register it yourself if you want it anyway:
+>
+> ```java
+> Metrics.gauge("mq.notice.pending", () -> noticeQueue.pendingCount());
+> ```
+
+> [!WARN]
+> **Never build a name out of user input.** `Metrics.count(request.path())` fills the heap as soon as
+> someone hits `/aaa`, `/aab`, … There is a cap of **1000 names**; past it jimble warns once and stops
+> counting — and **your real routes stop being counted too**. That is also why jimble keys latency on
+> `GET /posts/{id}` rather than the raw path, and collapses everything unmatched into `(unmatched)`.
+
+> [!NOTE]
+> **Distributions are fixed buckets** (1 / 5 / 10 / 50 / 100 / 500 / 1000 / 5000ms, plus an overflow
+> bucket) — individual samples are never stored. Memory does not grow with the number of samples, but
+> **a percentile can only name the bucket's upper bound** (`p95_ms: 100` means "100ms or less").
+> Samples in the overflow bucket report the observed maximum instead.
+
+> [!NOTE]
+> `Metrics.reset()` is **for tests**. Calling it in a running application throws away everything counted so far.
 
 ## Configuration keys
 

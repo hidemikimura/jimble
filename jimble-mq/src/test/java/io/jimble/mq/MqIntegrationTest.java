@@ -10,6 +10,7 @@ import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.util.thread.VirtualThreadManager;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -556,6 +557,106 @@ class MqIntegrationTest {
 		assertEquals(1, types.size(), "テストの Executor はすべて short_time");
 		assertEquals(MqExecuteType.short_time, types.getFirst());
 		assertEquals(2, MqConf.threadCount(MqExecuteType.short_time), "設定が効いていない");
+
+	}
+
+	// endregion
+
+	// region メトリクス（要件 NF-O-04）
+
+	@Test
+	@DisplayName("受け取った数・終わり方・かかった時間を数える")
+	void metrics () throws Exception {
+
+		Metrics.reset();
+
+		DB db = DBUtil.getMainDB();
+
+		new OkExecutor().put(db, new Data().putData("name", "one"));
+		new OkExecutor().put(db, new Data().putData("name", "two"));
+
+		runUntil(10000, () -> DONE.get() >= 2);
+
+		Data counter = Metrics.snapshot().getData("counter");
+
+		assertEquals(2, counter.getLong("mq.%s.received".formatted(QUEUE)));
+		assertEquals(2, counter.getLong("mq.%s.completed".formatted(QUEUE)));
+
+		Data latency = Metrics.snapshot().getData("latency").getData("mq.%s".formatted(QUEUE));
+
+		assertNotNull(latency, "かかった時間を入れていない");
+		assertEquals(2, latency.getLong("count"));
+
+	}
+
+	@Test
+	@DisplayName("落ちたぶんは終わり方ごとに分けて数える")
+	void metricsByStatus () throws Exception {
+
+		Metrics.reset();
+
+		// maxRetry = 1 なので、error のあと dead_letter で終わる
+		new AlwaysNgExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "ng"));
+
+		runUntil(10000, () -> FAILED.get() >= 2);
+
+		Data counter = Metrics.snapshot().getData("counter");
+
+		assertEquals(2, counter.getLong("mq.%s.received".formatted(QUEUE)), counter.toString());
+		assertTrue(counter.getLong("mq.%s.error".formatted(QUEUE)) >= 1, counter.toString());
+
+		// 完了は1件も無い（0 ではなく、名前ごと出てこない）
+		assertFalse(counter.containsKey("mq.%s.completed".formatted(QUEUE)), counter.toString());
+
+	}
+
+	@Test
+	@DisplayName("キューの名前がそのまま名前になる（無限には増えない）")
+	void metricsNameIsQueue () throws Exception {
+
+		Metrics.reset();
+
+		for (int i = 0; i < 20; i++) {
+			new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "n" + i));
+		}
+
+		runUntil(20000, () -> DONE.get() >= 20);
+
+		Data data = Metrics.snapshot();
+
+		// メッセージが 20 件でも、名前は received と completed の2つだけ
+		assertEquals(2, data.getData("counter").size(), data.getData("counter").keySet().toString());
+		assertEquals(1, data.getData("latency").size(), data.getData("latency").keySet().toString());
+
+	}
+
+	@Test
+	@DisplayName("滞留数は自分で数えにいく（勝手にゲージにしない）")
+	void pendingCount () {
+
+		/*
+		 * <b>frame側でゲージに登録してしまうと、Metrics.snapshot() のたびに SQL が飛ぶ。</b>
+		 * DB が詰まっているときに限ってメトリクスも取れなくなるので、
+		 * 登録するかどうかはアプリが決める（原則5）
+		 */
+		Metrics.reset();
+
+		assertEquals(0, queue.pendingCount());
+
+		Date future = new Date(System.currentTimeMillis() + 60_000);
+
+		new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "later"), future);
+		new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "later2"), future);
+
+		assertEquals(2, queue.pendingCount());
+
+		// 呼ばないかぎりメトリクスには出ない
+		assertFalse(Metrics.snapshot().getData("gauge").containsKey("mq.%s.pending".formatted(QUEUE)));
+
+		// アプリが1行書けば出る
+		Metrics.gauge("mq.%s.pending".formatted(QUEUE), () -> queue.pendingCount());
+
+		assertEquals(2, Metrics.snapshot().getData("gauge").getLong("mq.%s.pending".formatted(QUEUE)));
 
 	}
 

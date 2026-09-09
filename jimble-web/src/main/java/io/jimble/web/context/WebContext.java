@@ -5,6 +5,7 @@ import io.jimble.db.DBSticky;
 import io.jimble.db.DBUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.web.server.Dispatcher;
 import io.jimble.web.server.ServerConf;
 import io.jimble.web.cookie.Cookies;
@@ -446,6 +447,33 @@ public final class WebContext extends Context<WebContext> {
 	}
 
 	/**
+	 * メトリクスに入れる（要件 NF-O-04）
+	 *
+	 * <p>
+	 * <b>名前には「マッチしたルートの型」を使う。</b>{@code request.path()} をそのまま使うと、
+	 * {@code /aaa} {@code /aab} … と叩かれるだけで名前が無限に増える（`Metrics` の上限に当たって
+	 * 数えるのをやめてしまう）。どのルートにも当たらなかったものは1つにまとめる。
+	 * </p>
+	 *
+	 * <p>
+	 * 内部呼び出し（要件 F-W-27）はここへ来ない（先に戻っている）。
+	 * アクセスログと同じで、<b>数えると1リクエストが2回になる</b>。
+	 * </p>
+	 */
+	private void recordMetrics () {
+
+		Metrics.count("http.request");
+		Metrics.count("http.status.%dxx".formatted(response.code() / 100));
+
+		String name = route != null && route.matched()
+			? "%s %s".formatted(request.method(), route.route().pattern())
+			: "(unmatched)";
+
+		Metrics.record("http.%s".formatted(name), elapsed().toNanos());
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>アクセスログを出力する（要件 F-U-05 / NF-O-02）。</p>
@@ -492,6 +520,8 @@ public final class WebContext extends Context<WebContext> {
 		fields.put("bot", isBot);
 
 		Log.access("%s %s %d".formatted(request.method(), request.path(), response.code()), fields, isBot);
+
+		recordMetrics();
 
 		warnUnsavedSession();
 

@@ -9,6 +9,7 @@ import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.util.thread.SleepManager;
 import io.jimble.util.thread.VirtualThreadManager;
 
@@ -223,6 +224,50 @@ public final class MqQueue {
 
 	}
 
+	/**
+	 * まだ処理されていない件数（要件 NF-O-04）
+	 *
+	 * <p>
+	 * <b>呼ぶたびに SQL を1本打つ。</b>だから jimble は<b>これを勝手にメトリクスへ登録しない</b>——
+	 * {@code Metrics.snapshot()} が DB を触ると、<b>DB が詰まっているときに限ってメトリクスも取れなくなる</b>。
+	 * いちばん見たいときに見えないのでは意味がない（原則5）。
+	 * </p>
+	 *
+	 * <p>
+	 * 滞留数を見たいなら、<b>アプリが承知のうえで登録する</b>：
+	 * </p>
+	 *
+	 * <pre>{@code
+	 * Metrics.gauge("mq.notice.pending", () -> noticeQueue.pendingCount());
+	 * }</pre>
+	 *
+	 * <p>
+	 * SQL を打ちたくないなら、{@code mq.<キュー名>.received} と
+	 * {@code mq.<キュー名>.completed} の差でおおよそは分かる（こちらは常に数えている）。
+	 * </p>
+	 *
+	 * @return	待っている件数
+	 */
+	public long pendingCount () {
+
+		long total = 0;
+
+		for (DB db : DBUtil.getDBList()) {
+
+			Data row = db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
+				.formatted(db.dialect().identifier(queueName))
+				, MqStatus.waiting.name());
+
+			if (row != null) {
+				total += row.getLong("pending");
+			}
+
+		}
+
+		return total;
+
+	}
+
 	// endregion
 
 	// region ワーカー
@@ -358,6 +403,8 @@ public final class MqQueue {
 
 		executor.bind(cancelOrderNotify, row);
 
+		Metrics.count("mq.%s.received".formatted(queueName));
+
 		// メッセージ1件ごとに Context を作る（要件 F-M-01）
 		try (MqContext context = new MqContext(queueName, id, retryCount + 1)) {
 
@@ -380,6 +427,9 @@ public final class MqQueue {
 				finish(db, row, executor, normalize(status));
 
 			});
+
+			// 1件にかかった時間（要件 NF-O-04）
+			Metrics.record("mq.%s".formatted(queueName), context.elapsed().toNanos());
 
 		}
 
@@ -413,6 +463,9 @@ public final class MqQueue {
 	private void finish (DB db, Data row, MqExecutor executor, MqStatus status) {
 
 		long id = row.getLong("id");
+
+		// どう終わったかを数える（要件 NF-O-04）
+		Metrics.count("mq.%s.%s".formatted(queueName, status.name()));
 
 		if (status == MqStatus.completed) {
 			db.delete("DELETE FROM %s WHERE id = ?".formatted(db.dialect().identifier(queueName)), id);

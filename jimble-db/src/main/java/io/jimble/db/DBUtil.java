@@ -3,6 +3,7 @@ package io.jimble.db;
 import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 import io.agroal.api.AgroalDataSource;
 import io.agroal.api.configuration.AgroalConnectionFactoryConfiguration;
 import io.agroal.api.configuration.AgroalConnectionPoolConfiguration;
@@ -11,6 +12,7 @@ import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplie
 import io.agroal.api.security.NamePrincipal;
 import io.agroal.api.security.SimplePassword;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.util.io.IOUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.cache.DBCache;
@@ -407,6 +409,9 @@ public class DBUtil {
 
 		}
 
+		// 接続プールの使用率をメトリクスへ（要件 NF-O-04）
+		registerPoolMetrics();
+
 		if (mainDataSource != null) {
 			// DB sticky
 			DBSticky.init();
@@ -482,6 +487,117 @@ public class DBUtil {
 
 	// endregion
 
+	// region 接続プールのメトリクス
+
+	/** 接続プールのメトリクスの名前の頭 */
+	private static final String POOL_METRICS_PREFIX = "db.pool.";
+
+	/**
+	 * 接続プールの使用率をメトリクスに登録する（要件 NF-O-04）
+	 *
+	 * <p>
+	 * <b>読むだけで、SQL は打たない。</b>プールが自分で持っている数を引くだけである
+	 * （{@code Metrics.snapshot()} が DB を触ると、<b>DB が詰まっているときに限って
+	 * メトリクスも取れなくなる</b>）。
+	 * </p>
+	 */
+	private static void registerPoolMetrics () {
+
+		for (DBSource source : dataSources.values()) {
+
+			registerPoolMetrics(source.name, source);
+
+			for (Map.Entry<String, DBSource> sub : source.subsDbSourceMap.entrySet()) {
+				registerPoolMetrics("%s.%s".formatted(source.name, sub.getKey()), sub.getValue());
+			}
+
+		}
+
+	}
+
+	/**
+	 * 1つ登録する（読み取り用があればそれも）
+	 *
+	 * @param name		名前
+	 * @param source	データソース
+	 */
+	private static void registerPoolMetrics (String name, DBSource source) {
+
+		registerPoolMetrics(name, source.dataSource);
+
+		if (source.readSource != null) {
+			registerPoolMetrics("%s.read".formatted(name), source.readSource.dataSource);
+		}
+
+	}
+
+	/**
+	 * プールの数をゲージにする
+	 *
+	 * @param name			名前
+	 * @param dataSource	データソース
+	 */
+	private static void registerPoolMetrics (String name, DataSource dataSource) {
+
+		String prefix = POOL_METRICS_PREFIX + name + ".";
+
+		if (dataSource instanceof HikariDataSource hikari) {
+
+			Metrics.gauge(prefix + "active", () -> hikariValue(hikari, HikariPoolMXBean::getActiveConnections));
+			Metrics.gauge(prefix + "idle", () -> hikariValue(hikari, HikariPoolMXBean::getIdleConnections));
+			Metrics.gauge(prefix + "total", () -> hikariValue(hikari, HikariPoolMXBean::getTotalConnections));
+			Metrics.gauge(prefix + "waiting", () -> hikariValue(hikari, HikariPoolMXBean::getThreadsAwaitingConnection));
+
+			return;
+
+		}
+
+		if (dataSource instanceof AgroalDataSource agroal) {
+
+			Metrics.gauge(prefix + "active", () -> agroal.getMetrics().activeCount());
+			Metrics.gauge(prefix + "idle", () -> agroal.getMetrics().availableCount());
+			Metrics.gauge(prefix + "total", () -> agroal.getMetrics().activeCount() + agroal.getMetrics().availableCount());
+			Metrics.gauge(prefix + "waiting", () -> agroal.getMetrics().awaitingCount());
+
+		}
+
+	}
+
+	/**
+	 * Hikari から1つ引く
+	 *
+	 * <p>
+	 * <b>プールが立ち上がる前と閉じたあとは MXBean が null になる。</b>
+	 * そのまま呼ぶと、メトリクスを見るたびに警告が出る
+	 * </p>
+	 *
+	 * @param hikari	データソース
+	 * @param reader	引くもの
+	 * @return 値。取れなければ 0
+	 */
+	private static long hikariValue (HikariDataSource hikari, java.util.function.ToIntFunction<HikariPoolMXBean> reader) {
+
+		HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
+
+		return pool == null ? 0 : reader.applyAsInt(pool);
+
+	}
+
+	/**
+	 * 登録したゲージを外す
+	 */
+	private static void removePoolMetrics () {
+
+		for (String name : Metrics.gaugeNames()) {
+			if (name.startsWith(POOL_METRICS_PREFIX)) {
+				Metrics.removeGauge(name);
+			}
+		}
+
+	}
+
+	// endregion
+
 	// region 終了処理
 
 	/**
@@ -522,6 +638,8 @@ public class DBUtil {
 			}
 		}
 
+		removePoolMetrics();
+
 		dataSources.clear();
 
 		Log.info("DB stoppped");
@@ -544,7 +662,12 @@ public class DBUtil {
 			try {
 				return AgroalDataSource.from(new AgroalDataSourceConfigurationSupplier()
 					.dataSourceImplementation(AgroalDataSourceConfiguration.DataSourceImplementation.AGROAL)
-					.metricsEnabled(false)
+					/*
+					 * 接続プールの使用率を出すため（要件 NF-O-04）。
+					 * Agroal は<b>これを切ると getMetrics() が 0 しか返さない</b>。
+					 * 中身は取得・返却のたびのカウンタで、費用は無視できる
+					 */
+					.metricsEnabled(true)
 					.connectionPoolConfiguration(cp -> {
 							cp
 								.connectionValidator(AgroalConnectionPoolConfiguration.ConnectionValidator.defaultValidator())
