@@ -58,6 +58,18 @@ jobs:
       - name: ドキュメントサイトの生成
         run: ./gradlew site --stacktrace
 
+      # <b>0 ページでも site タスクは成功する。</b>
+      # 原稿がクローンに入っていないと、上のステップは通るのに何も作られない
+      # （実際、docs/site を .gitignore で外していたあいだ、この確認は空振りしていた）
+      - name: 生成されたか確かめる
+        run: |
+          set -eu
+          test -f docs/site/build/ja/index.html
+          test -f docs/site/build/en/index.html
+          count=$(find docs/site/build -name '*.html' | wc -l)
+          echo "HTML: $count ページ"
+          test "$count" -ge 70
+
       - name: テスト結果を残す
         if: always()
         uses: actions/upload-artifact@v4

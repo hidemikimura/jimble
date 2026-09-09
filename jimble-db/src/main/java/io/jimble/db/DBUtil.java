@@ -337,6 +337,7 @@ public class DBUtil {
 					try {
 						start = System.currentTimeMillis();
 						DBSource subDbSource = new DBSource();
+						subDbSource.parent = dbSource;
 						subDbSource.name = dbName;
 						DBConf subDbConf = DBConf.from(writeDbConf);
 						read(subDbConf, subConfig);

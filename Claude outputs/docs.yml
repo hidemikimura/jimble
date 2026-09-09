@@ -1,0 +1,132 @@
+# jimble.io への反映（要件 NF-D-01 / D-117）
+#
+# サイトの原稿は本体（docs/site/{ja,en}）にあり、配るのは別のリポジトリ
+# （hidemikimura/jimble-document）である。Cloudflare はそちらを見ていて、
+# push すると自動でデプロイされる。
+#
+# ここがやるのは「本体でサイトを作って、向こうの dist/ を置き換えて push する」だけ。
+#
+# **リリース（タグ）のときだけ動かす。**
+# push のたびに反映すると、<b>サイトだけが公開されている版より先に進む</b>。
+# 実地確認（docs/docs-only-trial.md の B-2）で、
+# 「サイトに載っているのに 0.2.0 では動かない」が実際に起きた。
+#
+# ドキュメントだけを直したときは、手で流す（Actions の画面から Run workflow）。
+
+name: docs
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'なぜ手で出すか（実行の記録に残ります）'
+        required: true
+        default: 'ドキュメントだけの修正'
+
+# 反映は並べない。途中で打ち切ると dist/ が半端なまま残る
+concurrency:
+  group: docs-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+
+  publish:
+    name: jimble.io へ反映
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # コード片は examples/ とテストの実コードから抜いている（要件 NF-D-03）。
+      # 印が消えていればここで落ちる
+      - name: サイトを作る
+        run: ./gradlew :jimble-docs:site --stacktrace
+
+      # <b>0 ページでも site タスクは成功する。</b>
+      # 原稿がクローンに入っていないと（.gitignore の書き間違いなど）
+      # 空のサイトができあがり、そのまま配ると全ページが消える
+      - name: できたものを確かめる
+        run: |
+          set -eu
+
+          for f in ja/index.html en/index.html ja/quickstart.html \
+                   _headers _redirects sitemap.xml robots.txt 404.html; do
+            if [ ! -f "docs/site/build/$f" ]; then
+              echo "::error::$f がありません。原稿がクローンに入っていない可能性があります"
+              exit 1
+            fi
+          done
+
+          count=$(find docs/site/build -name '*.html' | wc -l)
+          echo "HTML: $count ページ"
+          if [ "$count" -lt 70 ]; then
+            echo "::error::ページが少なすぎます（$count）。ふだんは 72 です"
+            exit 1
+          fi
+
+      - name: 配る先を取ってくる
+        uses: actions/checkout@v4
+        with:
+          repository: hidemikimura/jimble-document
+          token: ${{ secrets.DOCS_PUSH_TOKEN }}
+          path: jimble-document
+
+      # dist/ は<b>まるごと置き換える</b>。上書きだけにすると、
+      # 消したページが向こうに残り続ける
+      - name: dist/ を置き換える
+        run: |
+          set -eu
+          rm -rf jimble-document/dist
+          mkdir -p jimble-document/dist
+          cp -R docs/site/build/. jimble-document/dist/
+
+      - name: push する
+        env:
+          SOURCE_REF: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -eu
+          cd jimble-document
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A dist
+
+          if git diff --cached --quiet; then
+            echo "変わっていません。push しません"
+            echo "変わっていません（push なし）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          message="docs: ${SOURCE_REF} (${SOURCE_SHA})"
+          if [ -n "${REASON:-}" ]; then
+            message="${message}"$'\n\n'"${REASON}"
+          fi
+
+          git commit -m "${message}"
+          git push
+
+          {
+            echo "## jimble.io へ反映しました"
+            echo ""
+            echo "- もと: \`${SOURCE_REF}\` (\`${SOURCE_SHA}\`)"
+            echo "- Cloudflare は jimble-document を見ているので、push でデプロイが走ります"
+          } >> "$GITHUB_STEP_SUMMARY"

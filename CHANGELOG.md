@@ -37,6 +37,7 @@
 | | |
 |---|---|
 | **マイグレーション SQL を製品ごとに分けられる**（F-G-20 / D-113） | ファイル名の接尾辞（`001_create_post.mysql.sql` / `001_create_post.postgresql.sql`）。**接尾辞の無いファイルはどちらでも流れる**ので、両製品で通る SQL は分けなくてよい。接尾辞は `db.<名前>.product` に書ける名前と同じ表で見る（`mariadb` は `mysql`）。飛ばしたファイルは起動ログに出る。`examples/blog` の DDL を両製品で書き、**`pgTest` に載せた**（D-112 の残り） |
+| **ドキュメントサイトの反映を自動化した**（NF-D-01 / D-117） | **タグを打つと** GitHub Actions がサイトを作り、配る先（`jimble-document`）の `dist/` を置き換えて push します。Cloudflare はそこを見ているので、そのままデプロイされます。**push のたびには反映しません**（サイトだけが公開版より先に進むのを止めるため）。ドキュメントだけ直したときは Actions の画面から手で流せます。あわせて**サイトの原稿をリポジトリに入れました**（`.gitignore`）。それまで原稿が入っていなかったので、CI の「ドキュメントサイトの生成」は**0 ページのサイトを作って成功していました**（`site` タスクは 0 ページでも成功します）。ページ数の確認を CI と反映の両方に入れてあります |
 | **CI を入れた**（D-108） | GitHub Actions。`build`（DB なし）／`db`（MariaDB + Redis）／`pg`（PostgreSQL + Redis）の3ジョブ。`dbTest` / `pgTest` / `codegenCheck`（F-G-14）/ `migrate → codegen → compileJava` の連鎖（NF-T-07）/ サンプルアプリの疎通（NF-T-06）/ ドキュメントサイトの生成（NF-D-03）が毎回回る。**標準ランナーだけ**で、larger runner は使わない |
 | **待ち受けを始めてから止め方を預けていた**（D-110） | `JimbleServer` は `WebServer` を start したあとに `Shutdown.add(...)` していたので、**そのあいだに `jimbleRun` が止めに来ると何も止まらなかった**（古いアプリがポートを握ったまま残る）。start の前に預けるようにした。あわせて `stop()` は待ち受け前なら即座に抜ける（猶予のぶん黙って寝ないように） |
 | **`pgTest` が PostgreSQL のつもりで MySQL に繋ぎに行っていた**（D-112） | `application.pgtest.conf` が無いモジュール（`examples/blog`）では `application.conf` に落ちるため。**手元は MySQL も立っているので通ってしまい**、CI の PostgreSQL だけのジョブで初めて落ちた。conf が無いモジュールは `pgTest` を飛ばす（`SKIPPED` としてログに出る） |

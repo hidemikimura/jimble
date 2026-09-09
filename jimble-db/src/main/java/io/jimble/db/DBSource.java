@@ -15,6 +15,9 @@ public class DBSource {
 	/* DBソース名 */
 	public String name;
 
+	/* 親DBソース */
+	public DBSource parent = null;
+
 	/* データソース */
 	public DataSource dataSource;
 
@@ -87,6 +90,10 @@ public class DBSource {
 	 * @return	サブDBソース
 	 */
 	public DBSource getSubDBSource (String name) {
+
+		if (parent != null) {
+			return parent.getSubDBSource(name);
+		}
 
 		return subsDbSourceMap.get(name);
 
