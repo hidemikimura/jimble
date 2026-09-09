@@ -450,6 +450,16 @@ public final class MySqlDialect implements Dialect {
 
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public SqlSyntax sqlSyntax () {
+
+		return SqlSyntax.MYSQL;
+
+	}
+
 	@Override
 	public boolean isJsonType (String typeName) {
 

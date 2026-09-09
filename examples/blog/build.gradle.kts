@@ -21,6 +21,8 @@ dependencies {
 	testImplementation(libs.junit.jupiter)
 	testRuntimeOnly(libs.junit.platform.launcher)
 	testRuntimeOnly(libs.mariadb.client)
+	// pgTest 用（要件 F-D-30）。application.pgtest.conf が product = postgresql を持つ
+	testRuntimeOnly(libs.postgresql.client)
 }
 
 jimble {

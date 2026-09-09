@@ -13,6 +13,9 @@
 | **`in()` / `not_in()` に空の一覧を渡すと例外になる**（F-D-07 / D-102） | いままでは `IN ()` という構文エラーの SQL を組み立てて DB に投げていた。**SQL を組み立てたところで `SqlBuildException`** にする。「空なら条件ごと外す」ことはしない（`in(空)` は「どれにも当たらない」、条件を外すと**全件**。取り違えると静かに全件消したり全件見せたりする）。空になりうるところは `if (ids.isEmpty())` で分けること |
 | **ウィンドウ関数を `where` / `having` に書くと例外になる**（D-103） | `Dsl.rowNumber().over(...).eq(1)` は SQL の決まりで書けない。いままでは書けてしまい、**DB に投げるまで気づけなかった** |
 | **バッチの登録が0件のまま `BatchRegistry.sync` を呼ぶと、`batch_master` の行が全部 `nothing` になる**（D-104） | いままでは0件のとき何もしなかったため、**最後の1つを消したときだけ行が `enable` のまま残って**いた。「1つも登録されていない = 全部消えた」に揃えた。**`sync` は登録を済ませてから呼ぶこと。**バッチを持たないアプリは呼ばないこと |
+| **`Dialect` に `sqlSyntax()` が増えた**（D-114） | SQL の字面の決まり（文字列・識別子・コメントの見分け方）を返す。`jimble-db` の `MySqlDialect` / `PostgreSqlDialect` は対応済み。**自分で `Dialect` を実装している場合は追加が要る**（`SqlSyntax.MYSQL` / `SqlSyntax.POSTGRESQL` をそのまま返せます）。既定値を持たせなかったのは、黙って MySQL の読み方になるほうが危ないためです |
+| **マイグレーションで1文も取り出せなかったら失敗にする**（D-114） | up や down が全部コメントだったとき、いままでは成功として通していた。down でこれが起きると<b>テーブルは残ったまま履歴だけ消える</b> |
+| **適用済みのマイグレーション SQL の名前を変えると、起動時に止まる**（F-G-20 / D-113） | 適用済みはファイル名で覚えているので、`001_create_post.sql` を `001_create_post.mysql.sql` に変えると**別のファイルとして同じ SQL がもう一度流れる**（`Table 'post' already exists`）。**製品の接尾辞を落とした名前**でそれを見分けて止め、**履歴を付け替える `UPDATE` 文を出す**（中身も変わっていれば `hash` も）。`examples/blog` を使っている環境では、その `UPDATE` を流すか `blog_example` を作り直すこと |
 | **`codegen` が `sql_cache` / `sql_cache_tag` / `rate_limit` を生成しなくなった**（D-68） | jimble が作るテーブルなのに除外一覧から漏れていて、**アプリのテーブル定義クラスとして生成されていた**（`rate_limit` は `io.jimble.web.ratelimit.RateLimit` と単純名がぶつかる）。これらのテーブルがある環境では `codegen` の出力が変わるので、**生成物をコミットしているなら流し直すこと** |
 
 ### 直した
@@ -20,6 +23,8 @@
 | | |
 |---|---|
 | **`jimbleRun` を止めて動かし直すと、次のビルドが起動しない**（D-101） | helidon が起動のときに JVM 全体の直列化フィルタを張る。`jimbleRun` はアプリを Gradle デーモンの中で動かす（D-77）ので、**フィルタがデーモンに残り**、次のビルドが `Couldn't populate class org.gradle.api.services.BuildServiceParameters$None > filter status: REJECTED` で落ちていた。`jimbleRun` のあいだだけ `helidon.serialFilter.missing.action = IGNORE` にする。**本番の挙動は変わらない** |
+| **マイグレーション SQL の切り分けが、製品にかかわらず MySQL の読み方だった**（F-G-05 / D-114） | バックスラッシュを常にエスケープとして読むので、PostgreSQL の `insert into t values ('c:\');` で**文字列が閉じず、後ろの SQL が全部1文にくっついて**いた。文字列・識別子・コメントの見分け方を方言に聞くようにした（`Dialect.sqlSyntax()`）。`#` の行コメント（MySQL だけ）、`--` のあとの空白（MySQL は要る）、ドル引用符 `$tag$ ... $tag$`（PostgreSQL の関数の本体・`DO` ブロック）、入れ子のブロックコメント（PostgreSQL）も読み分ける |
+| **行コメントを書くと、そこから先の SQL が全部コメントになっていた**（D-114） | 読んだ直後に改行を空白へ潰していたので、`--` や `#` が**行末で終わらなかった**。潰すのは**ハッシュを取るときだけ**にした（潰し方は変えていないので、適用済みのハッシュは変わりません）。コメントだけになった断片は捨てます（MySQL の `/*! ... */` は実行されるコメントなので捨てません） |
 | **SPA を `/` に置くとトップページだけ 404** | `"/*"` はセグメントが0個の `/` に当たらないのに、`/` 自身を登録していなかった。`/any` は 200 で返るので気づきにくかった |
 | **`in` の空一覧が JSON の `where` からだと素通りしていた** | `{"where": {"site": {"id|in": []}}}` が `IN (NULL)` になり、**例外もエラーも出ずに 0 件**（`not_in` なら本来の全件が 0 件）。`in(null)` も同じく落とすようにした |
 | **エラーハンドラが送信してから落ちると、後続のエラーハンドラが走っていた** | 「送信済みなら以降は実行しない」の判定を `catch` で飛ばしていた |
@@ -29,6 +34,7 @@
 
 | | |
 |---|---|
+| **マイグレーション SQL を製品ごとに分けられる**（F-G-20 / D-113） | ファイル名の接尾辞（`001_create_post.mysql.sql` / `001_create_post.postgresql.sql`）。**接尾辞の無いファイルはどちらでも流れる**ので、両製品で通る SQL は分けなくてよい。接尾辞は `db.<名前>.product` に書ける名前と同じ表で見る（`mariadb` は `mysql`）。飛ばしたファイルは起動ログに出る。`examples/blog` の DDL を両製品で書き、**`pgTest` に載せた**（D-112 の残り） |
 | **CI を入れた**（D-108） | GitHub Actions。`build`（DB なし）／`db`（MariaDB + Redis）／`pg`（PostgreSQL + Redis）の3ジョブ。`dbTest` / `pgTest` / `codegenCheck`（F-G-14）/ `migrate → codegen → compileJava` の連鎖（NF-T-07）/ サンプルアプリの疎通（NF-T-06）/ ドキュメントサイトの生成（NF-D-03）が毎回回る。**標準ランナーだけ**で、larger runner は使わない |
 | **待ち受けを始めてから止め方を預けていた**（D-110） | `JimbleServer` は `WebServer` を start したあとに `Shutdown.add(...)` していたので、**そのあいだに `jimbleRun` が止めに来ると何も止まらなかった**（古いアプリがポートを握ったまま残る）。start の前に預けるようにした。あわせて `stop()` は待ち受け前なら即座に抜ける（猶予のぶん黙って寝ないように） |
 | **`pgTest` が PostgreSQL のつもりで MySQL に繋ぎに行っていた**（D-112） | `application.pgtest.conf` が無いモジュール（`examples/blog`）では `application.conf` に落ちるため。**手元は MySQL も立っているので通ってしまい**、CI の PostgreSQL だけのジョブで初めて落ちた。conf が無いモジュールは `pgTest` を飛ばす（`SKIPPED` としてログに出る） |

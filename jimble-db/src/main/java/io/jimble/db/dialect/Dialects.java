@@ -43,11 +43,56 @@ public final class Dialects {
 			return MySqlDialect.INSTANCE;
 		}
 
+		Dialect dialect = find(name);
+
+		if (dialect == null) {
+			throw new DialectException(
+				"db.<name>.product に使えない値です: %s（mysql / mariadb / postgresql / postgres / pgsql）"
+					.formatted(product));
+		}
+
+		return dialect;
+
+	}
+
+	/**
+	 * 製品名として読めるか
+	 *
+	 * <p>
+	 * <b>別名も同じ答えに畳む。</b>{@code mariadb} は {@code mysql}、
+	 * {@code postgres} は {@code postgresql} になる。
+	 * マイグレーション SQL のファイル名（{@code 001_x.mariadb.sql}）を
+	 * 見分けるのに使う（要件 F-G-20）。<b>設定に書ける名前とここが食い違うと、
+	 * 書いたのに流れない SQL ができる</b>ので、{@link #of(String)} と同じ表を通す。
+	 * </p>
+	 *
+	 * @param value	名前
+	 * @return	正規の方言名（{@code mysql} / {@code postgresql}）。製品名でなければ null
+	 */
+	public static String productNameOrNull (String value) {
+
+		if (value == null || value.isEmpty()) {
+			return null;
+		}
+
+		Dialect dialect = find(value.trim().toLowerCase());
+
+		return dialect == null ? null : dialect.name();
+
+	}
+
+	/**
+	 * 名前から方言を引く
+	 *
+	 * @param name	小文字にした名前
+	 * @return	方言（無ければ null）
+	 */
+	private static Dialect find (String name) {
+
 		return switch (name) {
 			case MySqlDialect.NAME, "mariadb" -> MySqlDialect.INSTANCE;
 			case PostgreSqlDialect.NAME, "postgres", "pgsql" -> PostgreSqlDialect.INSTANCE;
-			default -> throw new DialectException(
-				"db.<name>.product に使えない値です: %s（mysql / mariadb / postgresql）".formatted(product));
+			default -> null;
 		};
 
 	}

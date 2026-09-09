@@ -677,6 +677,16 @@ public final class PostgreSqlDialect implements Dialect {
 
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public SqlSyntax sqlSyntax () {
+
+		return SqlSyntax.POSTGRESQL;
+
+	}
+
 	@Override
 	public boolean isJsonType (String typeName) {
 

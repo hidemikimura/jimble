@@ -426,6 +426,18 @@ public interface Dialect {
 	boolean isUnknownDatabase (String message);
 
 	/**
+	 * SQL の字面の決まり（要件 F-G-05）
+	 *
+	 * <p>
+	 * どこからどこまでが文字列やコメントなのかは製品で違う。
+	 * マイグレーションの SQL を「;」で切り分けるときに要る。
+	 * </p>
+	 *
+	 * @return	決まり
+	 */
+	SqlSyntax sqlSyntax ();
+
+	/**
 	 * この型名は JSON か
 	 *
 	 * @param typeName	{@code ResultSetMetaData#getColumnTypeName}

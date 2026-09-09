@@ -4,6 +4,7 @@ import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
+import io.jimble.db.dialect.Dialects;
 import io.jimble.db.lock.DBLock;
 import io.jimble.db.migration.code.CodeMigration;
 import io.jimble.db.version.DBVersion;
@@ -20,7 +21,9 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -136,7 +139,14 @@ public final class Migration {
 
 		createTables(dbSource);
 
-		List<MigrationInfo> sorted = sortByName(fileList);
+		/*
+		 * 「いまの製品で流すもの」と「置いてあるもの全部」の両方を持つ。
+		 * 消えた判定（down）は<b>全部</b>を見なければならない。
+		 * 製品で絞ったほうを見ると、他の製品向けのファイルが「消えた」ことになり、
+		 * <b>相手の製品で流したテーブルを down する</b>（要件 F-G-20）。
+		 */
+		List<MigrationInfo> all = sortByName(fileList);
+		List<MigrationInfo> sorted = forProduct(dbSource, all);
 
 		// 複数インスタンスが同時に起動しても一度しか適用しない（要件 F-G-15。D-1 ロックテーブル方式）
 		DB lockDB = DBUtil.getDB(dbSource.name);
@@ -155,7 +165,7 @@ public final class Migration {
 				);
 			}
 
-			apply(dbSource, sorted);
+			apply(dbSource, sorted, all);
 
 			lockDB.commitEndTransaction();
 
@@ -208,17 +218,26 @@ public final class Migration {
 	 * 適用本体
 	 *
 	 * @param dbSource	データソース
-	 * @param fileList	SQL ファイル一覧
+	 * @param fileList	SQL ファイル一覧（いまの製品で流すもの）
+	 * @param allFiles	SQL ファイル一覧（製品で絞る前の全部）
 	 */
-	private static void apply (DBSource dbSource, List<MigrationInfo> fileList) {
+	private static void apply (DBSource dbSource, List<MigrationInfo> fileList, List<MigrationInfo> allFiles) {
 
 		DB db = DBUtil.getDB(dbSource.name);
 
 		List<Data> appliedList = sortedApplied(db);
 
-		// 1. SQL ファイルが消えたものを down する（新しいものから）
+		// 0. 名前だけ変わったものを見つけたら、そこで止める
+		checkRenamed(dbSource, allFiles, appliedList);
+
+		/*
+		 * 1. SQL ファイルが消えたものを down する（新しいものから）
+		 *
+		 * 見るのは<b>製品で絞る前</b>の一覧である。他の製品向けのファイルは
+		 * 「置いてあるが流さない」だけで、消えたわけではない。
+		 */
 		for (Data applied : appliedList.reversed()) {
-			if (!containsFile(fileList, applied.getString("name"))) {
+			if (!containsFile(allFiles, applied.getString("name"))) {
 				downRemoved(db, applied);
 			}
 		}
@@ -227,6 +246,138 @@ public final class Migration {
 		for (MigrationInfo info : fileList) {
 			applyOne(db, info, findApplied(appliedList, info.sqlFileName));
 		}
+
+	}
+
+	/**
+	 * 名前が変わっただけのファイルを見つける
+	 *
+	 * <p>
+	 * 適用済みは<b>ファイル名で覚えている</b>ので、名前を変えると別のファイルになる。
+	 * {@code 001_create_post.sql} を製品ごとに分けて {@code 001_create_post.mysql.sql} に
+	 * 変えると（要件 F-G-20）、<b>同じ SQL がもう一度流れて
+	 * 「Table 'post' already exists」になる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 見分けるのは<b>製品の接尾辞を落とした名前</b>である。中身のハッシュで見ると、
+	 * 分けた先の SQL は製品ごとに中身が違うので<b>片方の製品でしか気づけない</b>し、
+	 * たまたま中身が同じだけの別のファイルを取り違える。
+	 * </p>
+	 *
+	 * <p>
+	 * 履歴の付け替えは<b>やらない</b>。名前が同じでも別の意図かもしれないし、
+	 * 履歴を黙って書き換えるのは後から追えない。
+	 * <b>何をすれば直るかだけを出して止める。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * {@code up_error}（up が失敗したまま）は見送る。<b>そちらは元から
+	 * 履歴を消してやり直す道がある</b>（{@link #downRemoved}）ので、
+	 * ここで止めると自力で直らなくなる。
+	 * </p>
+	 *
+	 * @param dbSource		データソース
+	 * @param allFiles		SQL ファイル一覧（製品で絞る前の全部）
+	 * @param appliedList	適用済みレコード
+	 */
+	private static void checkRenamed (DBSource dbSource, List<MigrationInfo> allFiles, List<Data> appliedList) {
+
+		String product = dbSource.dialect().name();
+
+		// まとめて出す。1件ずつ止めると、名前を変えた数だけ流し直すことになる
+		List<String> renamed = new ArrayList<>();
+		List<String> sqls = new ArrayList<>();
+		List<String> others = new ArrayList<>();
+
+		for (Data applied : appliedList) {
+
+			String oldName = applied.getString("name");
+
+			if (containsFile(allFiles, oldName)) {
+				// ファイルはある。名前は変わっていない
+				continue;
+			}
+
+			if ("up_error".equals(applied.getString("state"))) {
+				continue;
+			}
+
+			String base = baseName(oldName);
+			MigrationInfo hit = null;
+			boolean forOtherProduct = false;
+
+			for (MigrationInfo info : allFiles) {
+
+				if (!base.equals(baseName(info.sqlFileName))
+					|| findApplied(appliedList, info.sqlFileName) != null) {
+					continue;
+				}
+
+				String suffix = productSuffix(info.sqlFileName);
+
+				if (suffix == null || suffix.equals(product)) {
+					hit = info;
+					break;
+				}
+
+				forOtherProduct = true;
+
+			}
+
+			if (hit != null) {
+
+				renamed.add("%s → %s".formatted(oldName, hit.sqlFileName));
+
+				/*
+				 * 中身まで変わっているなら hash も一緒に入れ替える。
+				 * 名前だけ直すと、次は「書き換えられています」（要件 F-G-10）で止まる。
+				 * その版は<b>すでに当たっている</b>ので、当て直すのではなく記録を合わせる。
+				 */
+				String hash = Hash.md5(hashText(readSqlText(hit)));
+
+				sqls.add(hash.equals(applied.getString("hash"))
+					? "  UPDATE migration SET name = '%s' WHERE name = '%s';"
+						.formatted(hit.sqlFileName, oldName)
+					: "  UPDATE migration SET name = '%s', hash = '%s' WHERE name = '%s';"
+						.formatted(hit.sqlFileName, hash, oldName));
+
+				sqls.add("  UPDATE migration_history SET name = '%s' WHERE name = '%s';"
+					.formatted(hit.sqlFileName, oldName));
+
+			} else if (forOtherProduct) {
+				others.add(oldName);
+			}
+
+		}
+
+		if (!others.isEmpty()) {
+			throw new MigrationException("""
+				適用済みのマイグレーション SQL が、他の製品向けの名前に変わっています（いまは %s）:
+				  %s
+				いまの製品で流すファイルが無いので、この DB では二度と読まれません。
+				%s 向けのファイルを置くか、履歴を消してください。
+				  DELETE FROM migration_history WHERE name = '%s';
+				  DELETE FROM migration WHERE name = '%s';"""
+				.formatted(product, String.join("\n  ", others), product
+					, others.getFirst(), others.getFirst()));
+		}
+
+		if (renamed.isEmpty()) {
+			return;
+		}
+
+		throw new MigrationException("""
+			マイグレーション SQL の名前が変わったようです（いまは %s）:
+			  %s
+			適用済みはファイル名で覚えているので、このままだと同じ SQL がもう一度流れます。
+			履歴の名前も変えてください。
+			%s
+			この SQL はこの DB（%s）のものです。他の製品の DB では、その製品向けのファイル名に読み替えてください。
+			履歴に残る up / down は古いままになります（migration.down = true のときだけ効きます）。
+			名前を変えたのではなく、同じ SQL を別のものとして流したいのなら、番号を変えてください。"""
+			.formatted(product, String.join("\n  ", renamed)
+				, String.join("\n", sqls), product));
 
 	}
 
@@ -279,7 +430,7 @@ public final class Migration {
 
 		String name = info.sqlFileName;
 		String sqlText = readSqlText(info);
-		String hash = Hash.md5(sqlText);
+		String hash = Hash.md5(hashText(sqlText));
 		String[] upDown = MigrationSql.toUpDown(sqlText);
 		String up = upDown[0];
 		String down = upDown[1];
@@ -419,6 +570,14 @@ public final class Migration {
 	/**
 	 * SQL を実行する
 	 *
+	 * <p>
+	 * <b>書いてあるのに1文も取り出せなかったら失敗にする。</b>
+	 * 全部コメントだったということなので、成功として通すと
+	 * <b>「down したことにして履歴だけ消す」</b>（{@link #downRemoved}）が起きる。
+	 * テーブルは残ったまま履歴だけ消えるので、次の適用が
+	 * 「already exists」で落ちるまで気づけない。
+	 * </p>
+	 *
 	 * @param db	DB
 	 * @param name	SQL ファイル名
 	 * @param kind	種別（up / down）
@@ -427,7 +586,13 @@ public final class Migration {
 	 */
 	private static String execute (DB db, String name, String kind, String sqls) {
 
-		for (String sql : MigrationSql.split(sqls)) {
+		List<String> list = MigrationSql.split(sqls, db.dialect());
+
+		if (list.isEmpty()) {
+			return "実行できる SQL がありません（%s が全部コメントです）".formatted(kind);
+		}
+
+		for (String sql : list) {
 
 			db.execute(sql);
 
@@ -548,6 +713,164 @@ public final class Migration {
 	}
 
 	/**
+	 * いまの製品で流すものだけに絞る（要件 F-G-20）
+	 *
+	 * <p>
+	 * ファイル名の接尾辞で分ける。{@code 001_create_post.mysql.sql} は MySQL のときだけ、
+	 * {@code 001_create_post.postgresql.sql} は PostgreSQL のときだけ流す。
+	 * <b>接尾辞の無いファイルはどの製品でも流す</b>（両方で同じ SQL が通るなら分けなくていい）。
+	 * </p>
+	 *
+	 * <p>
+	 * 別名も同じものとして扱う（{@code .mariadb.sql} は MySQL）。
+	 * 判定は {@link Dialects#productNameOrNull} に任せる。
+	 * <b>設定に書ける名前とファイル名の判定がずれると、置いたのに流れない SQL ができる</b>ため。
+	 * </p>
+	 *
+	 * <p>
+	 * 適用済みの記録はファイル名で持つので、製品ごとに別の名前になる。
+	 * <b>MySQL で流したものを PostgreSQL の記録が「消えた」と見なして down することはない。</b>
+	 * 逆に、片方の製品でしか使わない SQL を後から消したときは、その製品でだけ down が走る。
+	 * </p>
+	 *
+	 * @param dbSource	データソース
+	 * @param fileList	SQL ファイル一覧
+	 * @return	いまの製品で流すもの
+	 */
+	private static List<MigrationInfo> forProduct (DBSource dbSource, List<MigrationInfo> fileList) {
+
+		String product = dbSource.dialect().name();
+
+		List<MigrationInfo> list = new ArrayList<>();
+		List<String> skipped = new ArrayList<>();
+
+		for (MigrationInfo info : fileList) {
+
+			String suffix = productSuffix(info.sqlFileName);
+
+			if (suffix == null || suffix.equals(product)) {
+				list.add(info);
+			} else {
+				skipped.add(info.sqlFileName);
+			}
+
+		}
+
+		if (!skipped.isEmpty()) {
+			// 黙って飛ばすと「置いたのに流れない」に気づけない
+			Log.info("マイグレーション: 他の製品向けを飛ばしました（いまは %s）: %s"
+				.formatted(product, String.join(", ", skipped)));
+		}
+
+		checkSameVersion(product, list);
+
+		return list;
+
+	}
+
+	/**
+	 * 同じ版が二重に流れないか見る
+	 *
+	 * <p>
+	 * 製品名には別名があるので（{@code .mariadb.sql} も {@code .mysql.sql} も MySQL）、
+	 * 両方置くと<b>同じ SQL が2回流れる</b>。接尾辞なしと接尾辞つきを同じ版に置いた場合も同じ。
+	 * ファイル名が違うので適用済みの記録も別々になり、<b>2つ目が
+	 * 「already exists」で落ちるまで気づけない。</b>
+	 * </p>
+	 *
+	 * @param product	いまの製品
+	 * @param list		いまの製品で流すファイル一覧
+	 */
+	private static void checkSameVersion (String product, List<MigrationInfo> list) {
+
+		Map<String, String> seen = new HashMap<>();
+
+		for (MigrationInfo info : list) {
+
+			String before = seen.put(baseName(info.sqlFileName), info.sqlFileName);
+
+			if (before != null) {
+				throw new MigrationException(
+					"同じ版のマイグレーション SQL が、いまの製品（%s）で2つとも流れます: %s / %s（どちらかにしてください）"
+						.formatted(product, before, info.sqlFileName));
+			}
+
+		}
+
+	}
+
+	/**
+	 * ファイル名から製品名を取り出す
+	 *
+	 * <p>
+	 * {@code 001_create_post.postgresql.sql} なら {@code postgresql}。
+	 * 拡張子の手前が製品名として読めないとき（{@code 001_create_post.sql}、
+	 * {@code v1.2_create.sql}）は null を返す。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code .sql} で終わらない名前も null を返す（{@link #migrate(DBSource, List)} は
+	 * 一覧を外から渡せるので、<b>拡張子を当てにして切り落としてはいけない</b>）。
+	 * </p>
+	 *
+	 * @param fileName	SQL ファイル名
+	 * @return	正規の製品名。製品の指定が無ければ null
+	 */
+	private static String productSuffix (String fileName) {
+
+		String base = withoutSqlExtension(fileName);
+
+		int dot = base.lastIndexOf('.');
+		if (dot < 0) {
+			return null;
+		}
+
+		return Dialects.productNameOrNull(base.substring(dot + 1));
+
+	}
+
+	/**
+	 * 製品名の接尾辞も拡張子も落とした名前
+	 *
+	 * <p>
+	 * {@code 001_create_post.sql} も {@code 001_create_post.mysql.sql} も
+	 * {@code 001_create_post} になる。<b>製品ごとに分けたときに
+	 * 「同じ版」だと分かるのはこの名前である</b>（要件 F-G-20）。
+	 * </p>
+	 *
+	 * @param fileName	SQL ファイル名
+	 * @return	名前
+	 */
+	private static String baseName (String fileName) {
+
+		String base = withoutSqlExtension(fileName);
+
+		int dot = base.lastIndexOf('.');
+		if (dot < 0 || Dialects.productNameOrNull(base.substring(dot + 1)) == null) {
+			return base;
+		}
+
+		return base.substring(0, dot);
+
+	}
+
+	/**
+	 * {@code .sql} を落とす（付いていなければそのまま）
+	 *
+	 * @param fileName	SQL ファイル名
+	 * @return	名前
+	 */
+	private static String withoutSqlExtension (String fileName) {
+
+		String name = fileName == null ? "" : fileName;
+
+		return name.toLowerCase().endsWith(".sql")
+			? name.substring(0, name.length() - ".sql".length())
+			: name;
+
+	}
+
+	/**
 	 * ディレクトリから SQL ファイル一覧を取得する
 	 *
 	 * @param url	リソースディレクトリの URL
@@ -617,7 +940,11 @@ public final class Migration {
 	/**
 	 * SQL 全文を読む
 	 *
-	 * <p>タブと改行は空白に潰す（ハッシュを改行コードに左右させないため）。</p>
+	 * <p>
+	 * <b>読んだままを返す（改行を潰さない）。</b>潰すと {@code --} や {@code #} の
+	 * 行コメントが行末で終わらなくなり、<b>そこから先の SQL が全部コメントになる</b>。
+	 * ハッシュを取るときだけ {@link #hashText} で潰す。
+	 * </p>
 	 *
 	 * @param info		SQL ファイル
 	 * @return	SQL 全文
@@ -632,7 +959,25 @@ public final class Migration {
 			throw new MigrationException("マイグレーション SQL を読めませんでした: " + info.sqlFileName);
 		}
 
-		return text.replace("\t", " ").replaceAll("\\R", " ").trim();
+		return text;
+
+	}
+
+	/**
+	 * ハッシュを取るための形にする
+	 *
+	 * <p>
+	 * タブと改行は空白に潰す（改行コードでハッシュが変わらないように）。
+	 * <b>この潰し方を変えると、適用済みのマイグレーションが
+	 * すべて「書き換えられた」ことになる</b>（要件 F-G-10）ので変えないこと。
+	 * </p>
+	 *
+	 * @param sqlText	SQL 全文
+	 * @return	潰した SQL
+	 */
+	private static String hashText (String sqlText) {
+
+		return sqlText.replace("\t", " ").replaceAll("\\R", " ").trim();
 
 	}
 

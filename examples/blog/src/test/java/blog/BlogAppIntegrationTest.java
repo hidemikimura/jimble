@@ -133,9 +133,7 @@ class BlogAppIntegrationTest {
 		assertTrue(id > 0, response.body());
 
 		// お知らせが同じトランザクションで積まれている（要件 F-M-03）
-		Data queued = BlogExample.db().select(
-			"SELECT COUNT(*) AS `cnt` FROM `mq_blog` WHERE `data` LIKE ?", "%" + id + "%");
-		assertEquals(1, queued.getInt("cnt"), "キューに積まれていない");
+		assertEquals(1, queuedCount(id), "キューに積まれていない");
 
 		delete("/posts/" + id);
 
@@ -576,9 +574,7 @@ class BlogAppIntegrationTest {
 		assertTrue(id > 0);
 
 		// MQ にも積まれている（同じトランザクション）
-		Data queued = BlogExample.db().select(
-			"SELECT COUNT(*) AS `cnt` FROM `mq_blog` WHERE `data` LIKE ?", "%" + id + "%");
-		assertEquals(1, queued.getInt("cnt"));
+		assertEquals(1, queuedCount(id));
 
 		delete("/posts/" + id);
 
@@ -830,6 +826,48 @@ class BlogAppIntegrationTest {
 		}
 
 		return client.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+	}
+
+	/**
+	 * キューに積まれた件数
+	 *
+	 * <p>
+	 * MQ の {@code data} 列は<b>製品で型が違う</b>（MySQL は {@code json}、
+	 * PostgreSQL は {@code jsonb}）。jsonb には {@code LIKE} が使えないので、
+	 * <b>SQL では絞らずに読んでから Java で数える</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code LIKE '%5%'} のような当て方にしないのは、記事を消して作り直すと
+	 * ID が1から振り直され、<b>残っているキューの {@code post_id=500} が
+	 * {@code 5} に当たる</b>ためである。
+	 * </p>
+	 *
+	 * @param id	記事ID
+	 * @return	件数
+	 */
+	private static int queuedCount (long id) {
+
+		List<Data> rows = BlogExample.db().selectList("SELECT data FROM mq_blog");
+
+		assertNotNull(rows, "mq_blog を読めませんでした");
+
+		int count = 0;
+
+		for (Data row : rows) {
+
+			// json / jsonb の列は Data になって返る。生の文字列で返る製品もありうる
+			Object raw = row.get("data");
+			Data data = raw instanceof Data value ? value : Data.fromJsonString(String.valueOf(raw));
+
+			if (data != null && data.getLong("post_id") == id) {
+				count++;
+			}
+
+		}
+
+		return count;
 
 	}
 
