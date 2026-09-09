@@ -139,6 +139,18 @@ public class FileCharDetecter {
 	 */
 	private static String detect (TikaInputStream in, String defaultCharset) throws Exception {
 
+		/*
+		 * <b>BOM は自分で見る。</b>tika にも BOM を見る判定器はあるが、
+		 * どの判定器から先に聞くかが<b>クラスパスに jar が並ぶ順で決まる</b>ため、
+		 * 統計で当てる判定器が先に来ると<b>BOM が無視される</b>
+		 * （手元では UTF-16LE、CI では GB18030 になった。要件 D-122）
+		 */
+		String bom = bomCharset(in);
+
+		if (bom != null) {
+			return bom;
+		}
+
 		List<EncodingResult> results = DETECTOR.detect(in, new Metadata(), new ParseContext());
 
 		if (results == null || results.isEmpty()) {
@@ -153,6 +165,73 @@ public class FileCharDetecter {
 		}
 
 		return top.getCharset().name();
+
+	}
+
+	/**
+	 * 先頭の BOM を読む
+	 *
+	 * <p>
+	 * 読んだぶんは巻き戻すので、呼んだあとも先頭から読める。
+	 * </p>
+	 *
+	 * @param in 入力
+	 * @return BOM が指す文字コード。BOM が無ければ null
+	 * @throws Exception 例外
+	 */
+	private static String bomCharset (TikaInputStream in) throws Exception {
+
+		in.mark(4);
+
+		byte[] head = in.readNBytes(4);
+
+		in.reset();
+
+		// <b>UTF-32LE は UTF-16LE と頭2 byte が同じ</b>ので、先に見る
+		if (starts(head, 0xFF, 0xFE, 0x00, 0x00)) {
+			return "UTF-32LE";
+		}
+
+		if (starts(head, 0x00, 0x00, 0xFE, 0xFF)) {
+			return "UTF-32BE";
+		}
+
+		if (starts(head, 0xEF, 0xBB, 0xBF)) {
+			return "UTF-8";
+		}
+
+		if (starts(head, 0xFF, 0xFE)) {
+			return "UTF-16LE";
+		}
+
+		if (starts(head, 0xFE, 0xFF)) {
+			return "UTF-16BE";
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * 先頭のバイト列が一致するか
+	 *
+	 * @param head	読んだ先頭
+	 * @param bytes	見比べる値
+	 * @return 一致すれば true
+	 */
+	private static boolean starts (byte[] head, int... bytes) {
+
+		if (head.length < bytes.length) {
+			return false;
+		}
+
+		for (int i = 0; i < bytes.length; i++) {
+			if ((head[i] & 0xFF) != bytes[i]) {
+				return false;
+			}
+		}
+
+		return true;
 
 	}
 

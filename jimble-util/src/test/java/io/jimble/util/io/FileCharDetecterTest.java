@@ -94,6 +94,12 @@ class FileCharDetecterTest {
 	@DisplayName("BOM があればそれに従う")
 	void bom () throws IOException {
 
+		/*
+		 * <b>中身の統計より BOM を優先する。</b>UTF-16 の日本語は、
+		 * 統計で見ると GB18030 に見える。判定器の並び順しだいでそちらが勝つので、
+		 * BOM は自分で読むようにしてある（要件 D-122）
+		 */
+
 		assertEquals("UTF-8", FileCharDetecter.detector(
 			bytes("bom8.txt", concat(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF}, PROSE.getBytes(StandardCharsets.UTF_8)))));
 
@@ -102,6 +108,17 @@ class FileCharDetecterTest {
 
 		assertEquals("UTF-16BE", FileCharDetecter.detector(
 			bytes("bom16be.txt", concat(new byte[]{(byte) 0xFE, (byte) 0xFF}, PROSE.getBytes(StandardCharsets.UTF_16BE)))));
+
+		// <b>UTF-32LE の BOM は UTF-16LE と頭2 byte が同じ</b>
+		assertEquals("UTF-32LE", FileCharDetecter.detector(
+			bytes("bom32le.txt", concat(new byte[]{(byte) 0xFF, (byte) 0xFE, 0, 0}, PROSE.getBytes("UTF-32LE")))));
+
+		assertEquals("UTF-32BE", FileCharDetecter.detector(
+			bytes("bom32be.txt", concat(new byte[]{0, 0, (byte) 0xFE, (byte) 0xFF}, PROSE.getBytes("UTF-32BE")))));
+
+		// BOM だけでも読める
+		assertEquals("UTF-8", FileCharDetecter.detector(
+			bytes("bomonly.txt", new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF})));
 
 	}
 
