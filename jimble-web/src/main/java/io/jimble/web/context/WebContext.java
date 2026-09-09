@@ -5,6 +5,9 @@ import io.jimble.db.DBSticky;
 import io.jimble.db.DBUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 import io.jimble.util.metrics.Metrics;
 import io.jimble.web.server.Dispatcher;
 import io.jimble.web.server.ServerConf;
@@ -67,8 +70,22 @@ public final class WebContext extends Context<WebContext> {
 	/* 内部呼び出しの外側（要件 F-W-27）。通常のリクエストでは null */
 	private final WebContext outer;
 
+	/** W3C Trace Context のヘッダ名（受け取るときは小文字で入っている） */
+	public static final String TRACEPARENT = "traceparent";
+
 	/* このリクエストを捌いているディスパッチャ */
 	private Dispatcher dispatcher;
+
+	/*
+	 * トレースの区間（要件 NF-O-05）。
+	 *
+	 * <b>コンストラクタで始めて doClose() で閉じる。</b>
+	 * SQL や外部 API のスパンがこの子になるので、
+	 * <b>リクエストの処理が始まる前に開いていないといけない</b>
+	 * （終わってから作ると、子が親を見つけられない）。
+	 * トレースが無効なときは Span.NOOP で、費用は静的な変数を1つ読むだけである。
+	 */
+	private final Span span;
 
 	/**
 	 * コンストラクタ
@@ -104,6 +121,44 @@ public final class WebContext extends Context<WebContext> {
 		if (outer != null) {
 			this.dispatcher = outer.dispatcher;
 		}
+
+		this.span = startSpan();
+
+	}
+
+	/**
+	 * トレースの区間を始める（要件 NF-O-05）
+	 *
+	 * <p>
+	 * <b>名前はここでは仮のものである。</b>どのルートに当たったかは
+	 * ルーティングのあとにしか分からないので、{@link #doClose()} で付け直す。
+	 * </p>
+	 *
+	 * <p>
+	 * 内部呼び出し（要件 F-W-27）は {@code internal} にする。
+	 * <b>外から来たリクエストではない</b>ので、{@code server} にすると
+	 * トレースを見る道具の側で「入口が2つある」ように見える。
+	 * </p>
+	 *
+	 * @return 区間。トレースが無効なら {@link Span#NOOP}
+	 */
+	private Span startSpan () {
+
+		if (!Tracing.enabled()) {
+			return Span.NOOP;
+		}
+
+		String name = "%s %s".formatted(source.method(), source.path());
+
+		if (outer != null) {
+			return Tracing.start(name, SpanKind.internal);
+		}
+
+		/*
+		 * 入ってきた traceparent（W3C Trace Context）に繋ぐ。
+		 * <b>ヘッダの名前は小文字で入っている</b>（HelidonRequestSource が落としている）
+		 */
+		return Tracing.startServer(name, source.headers().get(TRACEPARENT));
 
 	}
 
@@ -474,6 +529,44 @@ public final class WebContext extends Context<WebContext> {
 	}
 
 	/**
+	 * トレースの区間を閉じる（要件 NF-O-05）
+	 *
+	 * <p>
+	 * <b>名前をここで付け直す。</b>マッチしたルートの型（{@code GET /posts/{id}}）にする。
+	 * 生のパスのままだと、トレースを見る道具の側で<b>種類が無限に増える</b>
+	 * （メトリクスの名前と同じ話。D-124）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>5xx だけを失敗として扱う。</b>404 や 400 は<b>アプリが正しく返した答え</b>であって、
+	 * トレースの上で赤くするものではない（OpenTelemetry の決まりでもそうなっている）。
+	 * </p>
+	 */
+	private void closeSpan () {
+
+		if (span == Span.NOOP) {
+			return;
+		}
+
+		String name = route != null && route.matched()
+			? "%s %s".formatted(request.method(), route.route().pattern())
+			: "%s (unmatched)".formatted(request.method());
+
+		span.name(name);
+		span.attribute("http.request.method", request.method());
+		span.attribute("http.route", route != null && route.matched() ? route.route().pattern() : null);
+		span.attribute("http.response.status_code", response.code());
+		span.attribute("db.sql.execute_count", sqlExecuteCount());
+
+		if (response.code() >= 500) {
+			span.attribute("error.type", String.valueOf(response.code()));
+		}
+
+		span.close();
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>アクセスログを出力する（要件 F-U-05 / NF-O-02）。</p>
@@ -488,6 +581,8 @@ public final class WebContext extends Context<WebContext> {
 		 * 追える必要はあるので、デバッグには残す。
 		 */
 		if (outer != null) {
+
+			closeSpan();
 
 			Log.debug("内部呼び出し: %s %s %d (%.1fms)".formatted(
 				request.method(), request.path(), response.code(), elapsed().toNanos() / 1000000d));
@@ -522,6 +617,8 @@ public final class WebContext extends Context<WebContext> {
 		Log.access("%s %s %d".formatted(request.method(), request.path(), response.code()), fields, isBot);
 
 		recordMetrics();
+
+		closeSpan();
 
 		warnUnsavedSession();
 

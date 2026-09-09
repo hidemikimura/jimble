@@ -5,6 +5,8 @@ import io.jimble.util.net.LocalAddress;
 import io.jimble.util.string.StringUtil;
 import io.jimble.util.data.Data;
 import io.jimble.core.context.Context;
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.Tracing;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -749,6 +751,29 @@ public class Log {
 
 		// 実行ID
 		logData.put("request_id", requestId());
+
+		/*
+		 * トレース ID（要件 NF-O-05）。
+		 *
+		 * <b>実行 ID（要件 NF-O-01）はそのままにして、別の項目で出す。</b>
+		 * 実行 ID の形を変えると、それを見て集計しているものが黙って壊れる。
+		 *
+		 * <b>ここで直に読んでいるのは、登録し忘れを無くすためである。</b>
+		 * ログに項目を足す仕組み（FieldProvider）はあるが、
+		 * それだと Web・バッチ・MQ・CLI の入口すべてで登録する必要があり、
+		 * <b>1つ忘れるとそこのログだけトレースと突き合わせられない</b>。
+		 * トレースが無効なときは静的な変数を1つ読むだけである。
+		 */
+		if (Tracing.enabled()) {
+
+			Span span = Tracing.current();
+
+			if (span.traceId() != null) {
+				logData.put("trace_id", span.traceId());
+				logData.put("span_id", span.spanId());
+			}
+
+		}
 
 		// SQL実行回数
 		logData.put("sql_execute_count", sqlExecuteCount());

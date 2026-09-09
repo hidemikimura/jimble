@@ -4,6 +4,9 @@ import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 import io.jimble.util.data.Data;
 
 import java.util.Date;
@@ -146,20 +149,43 @@ public abstract class MqExecutor {
 	 */
 	public long put (DB db, Data data, Date scheduledAt) {
 
-		long id = db.insert("""
-				INSERT INTO %s (
-					execute_type, mq_key, status, scheduled_at, retry_count, data, created_at, updated_at
-				) VALUES (
-					?, ?, ?, ?, 0, ?, NOW(), NOW()
-				)
-			""".formatted(db.dialect().identifier(queueName()))
-			, executeType().name()
-			, key()
-			, MqStatus.waiting.name()
-			, scheduledAt
-			, data == null ? new Data() : data);
+		/*
+		 * 積んだところを1区間として残す（要件 NF-O-05）。
+		 *
+		 * <b>この区間の traceparent を行に書く。</b>あとで処理する側がそれを親にするので、
+		 * 積んだところと処理したところが1本のトレースで繋がる
+		 * （処理は別のスレッド、たいていは別のプロセスで、何分もあとに起きる）。
+		 */
+		try (Span span = Tracing.enabled()
+				? Tracing.start("mq.put %s".formatted(queueName()), SpanKind.producer)
+				: Span.NOOP) {
 
-		return db.isError() ? -1 : id;
+			span.attribute("messaging.destination.name", queueName());
+			span.attribute("messaging.operation.name", key());
+
+			long id = db.insert("""
+					INSERT INTO %s (
+						execute_type, mq_key, status, scheduled_at, retry_count, data, traceparent, created_at, updated_at
+					) VALUES (
+						?, ?, ?, ?, 0, ?, ?, NOW(), NOW()
+					)
+				""".formatted(db.dialect().identifier(queueName()))
+				, executeType().name()
+				, key()
+				, MqStatus.waiting.name()
+				, scheduledAt
+				, data == null ? new Data() : data
+				, span.traceparent());
+
+			if (db.isError()) {
+				return -1;
+			}
+
+			span.attribute("messaging.message.id", id);
+
+			return id;
+
+		}
 
 	}
 

@@ -1,5 +1,8 @@
 package io.jimble.batch;
 
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 import io.jimble.batch.status.BatchHistoryStatus;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.context.BatchContext;
@@ -600,6 +603,18 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 		BatchResult[] result = { BatchResult.completed };
 
+		/*
+		 * バッチ1回を1区間として残す（要件 NF-O-05）。
+		 *
+		 * <b>親は無い。</b>バッチは外から呼ばれたのではなく、時刻が来たから動いている。
+		 * 中で SQL を打てば、そのスパンがこの子になる。
+		 */
+		Span span = Tracing.enabled()
+			? Tracing.start("batch %s".formatted(batchName()), SpanKind.internal)
+			: Span.NOOP;
+
+		span.attribute("code.namespace", className());
+
 		try (BatchContext context = new BatchContext(batchName())) {
 
 			context.run(() -> {
@@ -633,6 +648,8 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					batchEnded = true;
 					result[0] = BatchResult.error;
 
+					span.error(ex);
+
 					Log.error(ex, "バッチが失敗しました: %s (%s)".formatted(batchName(), className()));
 
 					putException(ex);
@@ -652,6 +669,8 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 			});
 
+		} finally {
+			span.close();
 		}
 
 		return result[0];

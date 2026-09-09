@@ -1,6 +1,9 @@
 package io.jimble.core.context;
 
 import io.jimble.core.executor.Executor;
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -337,6 +340,15 @@ public abstract class Context<SELF extends Context<SELF>> implements AutoCloseab
 	/* SQL実行時間（ナノ秒） */
 	private long sqlExecuteNanos = 0;
 
+	/** スパンの名前に使う操作の長さの上限 */
+	private static final int SQL_OPERATION_MAX = 16;
+
+	/** スパンの名前に使う表の名前の長さの上限 */
+	private static final int SQL_TABLE_MAX = 64;
+
+	/** 表の名前が続く語 */
+	private static final String[] SQL_TABLE_KEYWORDS = {" FROM ", " INTO ", "UPDATE ", " TABLE "};
+
 	/**
 	 * SQL実行を記録する
 	 *
@@ -349,15 +361,161 @@ public abstract class Context<SELF extends Context<SELF>> implements AutoCloseab
 	 */
 	public static void recordSqlExecution (long nanos) {
 
-		if (!CURRENT.isBound()) {
+		recordSqlExecution(nanos, null);
+
+	}
+
+	/**
+	 * SQL実行を記録する
+	 *
+	 * <p>
+	 * コンテキストのスコープ外で呼ばれた場合は、回数と時間は数えない（バッチの初期化中など）。
+	 * <b>トレース（要件 NF-O-05）はスコープ外でも残す。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>スパンは「終わってから」作る。</b>SQL を実行しているところは
+	 * {@code DB} の中に 10 か所あり、そのすべてを {@code try} で囲むと
+	 * <b>いちばん熱い経路に手を入れる</b>ことになる。実行時間はすでに測ってあるので、
+	 * その分だけさかのぼった区間として1つ残せば同じ絵が描ける。
+	 * </p>
+	 *
+	 * @param nanos	実行時間（ナノ秒）
+	 * @param sql	実行した SQL。null なら残さない
+	 */
+	public static void recordSqlExecution (long nanos, String sql) {
+
+		if (CURRENT.isBound()) {
+
+			Context<?> context = CURRENT.get();
+			synchronized (context) {
+				context.sqlExecuteCount++;
+				context.sqlExecuteNanos += nanos;
+			}
+
+		}
+
+		if (sql == null || !Tracing.enabled()) {
 			return;
 		}
 
-		Context<?> context = CURRENT.get();
-		synchronized (context) {
-			context.sqlExecuteCount++;
-			context.sqlExecuteNanos += nanos;
+		try (Span span = Tracing.past(sqlSpanName(sql), SpanKind.client, nanos)) {
+			span.attribute("db.statement", sql);
 		}
+
+	}
+
+	/**
+	 * SQL のスパンの名前
+	 *
+	 * <p>
+	 * <b>SQL 文をそのまま名前にしない。</b>{@code WHERE id = 1} と {@code WHERE id = 2} が
+	 * 別の名前になると、トレースを見る道具の側で<b>種類が無限に増える</b>
+	 * （メトリクスの名前で同じ問題を扱った。D-124）。
+	 * 「操作＋表」までにして、全文は {@code db.statement} に入れる。
+	 * </p>
+	 *
+	 * @param sql SQL
+	 * @return 名前（{@code SELECT post} など）
+	 */
+	private static String sqlSpanName (String sql) {
+
+		String trimmed = sql.stripLeading();
+
+		int space = indexOfWhitespace(trimmed, 0);
+		String operation = space < 0 ? trimmed : trimmed.substring(0, space);
+
+		if (operation.length() > SQL_OPERATION_MAX) {
+			operation = operation.substring(0, SQL_OPERATION_MAX);
+		}
+
+		String table = sqlTable(trimmed);
+
+		return table == null ? operation : operation + " " + table;
+
+	}
+
+	/**
+	 * SQL から表の名前を拾う
+	 *
+	 * <p>
+	 * {@code FROM} / {@code INTO} / {@code UPDATE} の次の語を見るだけである。
+	 * <b>当たらないことがある</b>（副問い合わせ、結合、方言）が、
+	 * そのときは操作だけの名前になる。<b>名前を良くするために SQL を解析しない</b>——
+	 * 解析器を1つ抱えるほどの値打ちは無い。
+	 * </p>
+	 *
+	 * @param sql ならした SQL
+	 * @return 表の名前。分からなければ null
+	 */
+	private static String sqlTable (String sql) {
+
+		String upper = sql.toUpperCase(java.util.Locale.ROOT);
+
+		for (String keyword : SQL_TABLE_KEYWORDS) {
+
+			int at = upper.indexOf(keyword);
+
+			if (at < 0) {
+				continue;
+			}
+
+			int from = at + keyword.length();
+			int to = indexOfWhitespaceOrPunctuation(sql, from);
+			String table = (to < 0 ? sql.substring(from) : sql.substring(from, to)).trim();
+
+			// 引用符（`post` / "post"）を外す
+			table = table.replace("`", "").replace("\"", "");
+
+			if (!table.isEmpty() && table.length() <= SQL_TABLE_MAX) {
+				return table;
+			}
+
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * 空白の位置
+	 *
+	 * @param value	文字列
+	 * @param from	探し始める位置
+	 * @return 位置。無ければ -1
+	 */
+	private static int indexOfWhitespace (String value, int from) {
+
+		for (int i = from; i < value.length(); i++) {
+			if (Character.isWhitespace(value.charAt(i))) {
+				return i;
+			}
+		}
+
+		return -1;
+
+	}
+
+	/**
+	 * 空白か区切り記号の位置
+	 *
+	 * @param value	文字列
+	 * @param from	探し始める位置
+	 * @return 位置。無ければ -1
+	 */
+	private static int indexOfWhitespaceOrPunctuation (String value, int from) {
+
+		for (int i = from; i < value.length(); i++) {
+
+			char c = value.charAt(i);
+
+			if (Character.isWhitespace(c) || c == '(' || c == ')' || c == ',' || c == ';') {
+				return i;
+			}
+
+		}
+
+		return -1;
 
 	}
 

@@ -1,6 +1,6 @@
 ---
 title: Logging
-summary: How to use Log, access logs, execution IDs, metrics, configuring logback
+summary: How to use Log, access logs, execution IDs, metrics, tracing, configuring logback
 section: Development
 order: 7
 ---
@@ -248,6 +248,121 @@ Metrics.gauge("cache.size", () -> cache.size());
 
 > [!NOTE]
 > `Metrics.reset()` is **for tests**. Calling it in a running application throws away everything counted so far.
+
+## Tracing
+
+Follow one request across services (requirement NF-O-05). **You only pay for it if you use it.**
+
+```kotlin
+// build.gradle.kts
+implementation("io.jimble:jimble-otel:0.2.1")
+```
+
+```java
+public static void main (String[] args) {
+
+    JimbleOtel.install("my-app", "http://localhost:4318");
+
+    new JimbleServer(...).start();
+
+}
+```
+
+That is all. Spans then appear for:
+
+| Span | Name | Kind |
+| --- | --- | --- |
+| An HTTP request | `GET /posts/{id}` | `server` |
+| One SQL statement | `SELECT post` | `client` |
+| Putting a message on a queue | `mq.put notice` | `producer` |
+| Handling a queued message | `mq notice` | `consumer` |
+| One batch run | `batch daily-rollup` | `internal` |
+
+Add your own wherever you want more detail.
+
+```java
+try (Span span = Tracing.start("convert image", SpanKind.internal)) {
+    span.attribute("file", name);
+    convert(file);
+}
+```
+
+> [!NOTE]
+> **An application that does not add it grows by zero bytes.** `jimble-core` carries only the
+> interfaces (`Tracer` / `Span`); the OpenTelemetry implementation lives in `jimble-otel`. While
+> nothing is registered, `Tracing.start(...)` costs **one static read and a branch** — measured at
+> 0 bytes allocated per call.
+
+### Across services
+
+An incoming `traceparent` (W3C Trace Context) is **picked up automatically**, and jimble's HTTP
+client **adds it automatically** on the way out.
+
+```java
+// the other side's trace continues yours
+new HttpGetExecutor("https://api.example.com/users").execute();
+```
+
+MQ is linked too. **The request that queued the message and the process that handled it minutes
+later end up on the same trace.** The `traceparent` is kept in its own column on the queue table —
+never inside `data`.
+
+> [!WARN]
+> **Applications using MQ get one extra column on the queue table** (`traceparent varchar(64)`).
+> `MqTables.install(...)` applies it at startup; there is nothing to run by hand.
+
+For any other way of reaching out, pass it yourself.
+
+```java
+String traceparent = Tracing.traceparent();   // null when tracing is off
+```
+
+### Joining logs to traces
+
+While tracing is on, **every log line carries `trace_id` and `span_id`**. The execution ID
+(`request_id`) is unchanged, so anything already parsing your logs keeps working.
+
+```json
+{"request_id":"mttvgm93-10676dj-1","trace_id":"4bf92f35...","span_id":"00f067aa...", ...}
+```
+
+### Sampling
+
+At volume your backend will not keep up. Pass a ratio.
+
+```java
+JimbleOtel.install("my-app", "http://localhost:4318", 0.1);   // one in ten
+```
+
+> [!NOTE]
+> **The decision is made per trace**, so you never get a trace with the middle missing.
+
+### Where it goes
+
+OTLP over HTTP (`/v1/traces`), protobuf encoded. An OpenTelemetry Collector, Jaeger, Grafana
+Tempo — anything that speaks OTLP will do.
+
+> [!TRAP]
+> **Forgetting `/v1/traces` still works** — jimble appends it. Without that, the endpoint just
+> answers 404 and **nothing arrives, with nothing in the log to tell you**.
+
+> [!NOTE]
+> Sending uses the **JDK `HttpClient`**. OpenTelemetry's default (okhttp) drags in okhttp 851KB +
+> okio 374KB + kotlin-stdlib 1.7MB, so it is excluded. Adding `jimble-otel` costs **0.9MB**.
+
+### Writing your own destination
+
+`Tracer` is a two-method interface. Write one to print to stdout, to feed an in-house system, or to
+inspect spans in a test. A `RecordingTracer` for tests ships in `jimble-core`.
+
+```java
+RecordingTracer tracer = new RecordingTracer();
+Tracing.use(tracer);
+
+// ... the code under test ...
+
+assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
+```
 
 ## Configuration keys
 

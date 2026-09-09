@@ -10,6 +10,9 @@ import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
+import io.jimble.core.trace.RecordingTracer;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 import io.jimble.util.metrics.Metrics;
 import io.jimble.util.thread.VirtualThreadManager;
 import org.junit.jupiter.api.AfterAll;
@@ -657,6 +660,90 @@ class MqIntegrationTest {
 		Metrics.gauge("mq.%s.pending".formatted(QUEUE), () -> queue.pendingCount());
 
 		assertEquals(2, Metrics.snapshot().getData("gauge").getLong("mq.%s.pending".formatted(QUEUE)));
+
+	}
+
+	// endregion
+
+	// region トレース（要件 NF-O-05）
+
+	@Test
+	@DisplayName("積んだところと処理したところが1本のトレースになる")
+	void trace () throws Exception {
+
+		/*
+		 * <b>これがトレースの一番の値打ちである。</b>「注文を登録したリクエスト」と
+		 * 「何分もあとに別のプロセスでメールを送った処理」が1本で繋がる。
+		 * 積むときと処理するときはスレッドもプロセスも違うので、
+		 * <b>行に traceparent を書いておくしか繋ぐ方法が無い</b>。
+		 */
+		RecordingTracer tracer = new RecordingTracer();
+		Tracing.use(tracer);
+
+		try {
+
+			new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "one"));
+
+			runUntil(10000, () -> DONE.get() >= 1);
+
+			RecordingTracer.Recorded put = tracer.find("mq.put %s".formatted(QUEUE));
+			RecordingTracer.Recorded handle = tracer.find("mq %s".formatted(QUEUE));
+
+			assertNotNull(put, "積んだところのスパンが無い");
+			assertNotNull(handle, "処理したところのスパンが無い");
+
+			assertEquals(SpanKind.producer, put.kind());
+			assertEquals(SpanKind.consumer, handle.kind());
+
+			// 積んだ側の traceparent が、処理する側の親になっている
+			assertEquals(put.traceparent(), handle.traceId());
+
+			assertEquals(QUEUE, put.attributes().get("messaging.destination.name"));
+			assertEquals("ok", handle.attributes().get("messaging.operation.name"));
+
+		} finally {
+			Tracing.off();
+		}
+
+	}
+
+	@Test
+	@DisplayName("traceparent は行に持つ（data には入れない）")
+	void traceparentIsItsOwnColumn () {
+
+		RecordingTracer tracer = new RecordingTracer();
+		Tracing.use(tracer);
+
+		try {
+
+			new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "one"));
+
+			Data row = firstRow();
+
+			assertNotNull(row.getString("traceparent"), "列に入っていない");
+
+			/*
+			 * <b>アプリの内容には触らない。</b>data に混ぜると、
+			 * アプリが自分で入れた覚えの無い鍵が増える
+			 */
+			Data data = row.getDataOptional("data");
+
+			assertEquals(1, data.size(), data.toString());
+			assertEquals("one", data.getString("name"));
+
+		} finally {
+			Tracing.off();
+		}
+
+	}
+
+	@Test
+	@DisplayName("トレースが無効なら traceparent は書かない")
+	void noTraceparentWhenDisabled () {
+
+		new OkExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "one"));
+
+		assertNull(firstRow().getString("traceparent"));
 
 	}
 

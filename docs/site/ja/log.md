@@ -1,6 +1,6 @@
 ---
 title: ログ
-summary: Log の使い方、アクセスログ、実行 ID、メトリクス、logback の設定
+summary: Log の使い方、アクセスログ、実行 ID、メトリクス、トレース、logback の設定
 section: 開発
 order: 7
 ---
@@ -250,6 +250,121 @@ Metrics.gauge("cache.size", () -> cache.size());
 
 > [!NOTE]
 > `Metrics.reset()` は**テストのためのもの**です。動いているアプリで呼ぶと、それまで数えたものが消えます。
+
+## トレース
+
+サービスをまたいだ1本の流れを見る（要件 NF-O-05）。**使うときだけ依存が増えます。**
+
+```kotlin
+// build.gradle.kts
+implementation("io.jimble:jimble-otel:0.2.1")
+```
+
+```java
+public static void main (String[] args) {
+
+    JimbleOtel.install("my-app", "http://localhost:4318");
+
+    new JimbleServer(...).start();
+
+}
+```
+
+これだけで、次のものに自動で区間が付きます。
+
+| 区間 | 名前 | 種類 |
+| --- | --- | --- |
+| HTTP リクエスト | `GET /posts/{id}` | `server` |
+| SQL 1文 | `SELECT post` | `client` |
+| MQ に積む | `mq.put notice` | `producer` |
+| MQ を処理する | `mq notice` | `consumer` |
+| バッチ1回 | `batch 日次集計` | `internal` |
+
+アプリの中を細かく見たいところは自分で足せます。
+
+```java
+try (Span span = Tracing.start("画像の変換", SpanKind.internal)) {
+    span.attribute("file", name);
+    convert(file);
+}
+```
+
+> [!NOTE]
+> **足さないアプリは1 byte も増えません。**`jimble-core` が持っているのは口（`Tracer` / `Span`）だけで、
+> OpenTelemetry の実体は `jimble-otel` にあります。登録しないあいだ、`Tracing.start(...)` の費用は
+> **静的な変数を1つ読んで分岐するだけ**（実測で 1 回あたり 0 byte）です。
+
+### サービスをまたぐ
+
+入ってきた `traceparent`（W3C Trace Context）は**自動で引き継ぎます**。
+jimble の HTTP クライアントから出るときも**自動で付きます**。
+
+```java
+// 相手側のトレースが、こちらの続きとして繋がる
+new HttpGetExecutor("https://api.example.com/users").execute();
+```
+
+MQ も繋がります。**積んだリクエストと、何分もあとに別のプロセスで動いた処理が1本になります。**
+そのために `traceparent` をキューの行に持っています（`data` には入れません）。
+
+> [!WARN]
+> **MQ を使っているアプリは、キューのテーブルに列が1つ増えます**（`traceparent varchar(64)`）。
+> `MqTables.install(...)` が起動時に当てるので、手で流す必要はありません。
+
+それ以外の経路で外へ渡すときは自分で入れてください。
+
+```java
+String traceparent = Tracing.traceparent();   // トレースが無効なら null
+```
+
+### ログと突き合わせる
+
+トレースが有効なとき、**すべてのログに `trace_id` と `span_id` が入ります**。
+実行 ID（`request_id`）はそのままなので、いままでの集計は壊れません。
+
+```json
+{"request_id":"mttvgm93-10676dj-1","trace_id":"4bf92f35...","span_id":"00f067aa...", ...}
+```
+
+### 全部は拾わない
+
+流量が多いと送る先が持ちません。割合を渡してください。
+
+```java
+JimbleOtel.install("my-app", "http://localhost:4318", 0.1);   // 10 本に1本
+```
+
+> [!NOTE]
+> **拾うかどうかはトレース単位で決まります。**1本のトレースの途中だけ欠けることはありません。
+
+### 送り先
+
+OTLP の HTTP（`/v1/traces`）へ protobuf で送ります。OpenTelemetry Collector でも、
+Jaeger でも、Grafana Tempo でも、OTLP を受けるものなら何でも構いません。
+
+> [!TRAP]
+> **`/v1/traces` を付け忘れても動くようにしてあります。**付け忘れると 404 が返るだけで、
+> **ログにも出ずに何も届きません**。
+
+> [!NOTE]
+> 送信は **JDK の `HttpClient`** です。OpenTelemetry の既定（okhttp）は
+> okhttp 851KB ＋ okio 374KB ＋ kotlin-stdlib 1.7MB を連れてくるので、外してあります。
+> `jimble-otel` を足したときに増えるのは **0.9MB** です。
+
+### 自分で出す先を書く
+
+`Tracer` は 2 メソッドの interface です。標準出力に出す、社内の仕組みへ送る、
+テストで中身を見る、といったときは自分で書けます。テスト用の
+`RecordingTracer` は `jimble-core` に入っています。
+
+```java
+RecordingTracer tracer = new RecordingTracer();
+Tracing.use(tracer);
+
+// ... テストしたい処理 ...
+
+assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
+```
 
 ## 設定キー
 

@@ -49,6 +49,14 @@ include("jimble-cli")
 include("jimble-mcp")
 include("jimble-docs")
 
+/*
+ * OpenTelemetry（要件 NF-O-05）。
+ *
+ * <b>本体からは参照しない。</b>jimble-core が持っているのは口（Tracer）だけで、
+ * 実装をここに分けてあるので、使わないアプリの実行時クラスパスは1 byte も増えない。
+ */
+include("jimble-otel")
+
 include("examples:hello")
 include("examples:blog")
 

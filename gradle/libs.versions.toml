@@ -10,6 +10,7 @@
 # ここに1つ置いてあるのはそのためで、既定値をビルドスクリプトに書き写さないこと。
 jimble = "0.2.1-SNAPSHOT"
 
+opentelemetry = "1.65.0"
 junit = "6.1.3"
 helidon = "4.5.4"
 tika = "4.0.0"
@@ -33,6 +34,11 @@ directory-watcher = "0.19.1"
 commonmark = "0.30.0"
 
 [libraries]
+# OpenTelemetry（要件 NF-O-05）。jimble-otel だけが使う
+opentelemetry-sdk-trace = { module = "io.opentelemetry:opentelemetry-sdk-trace", version.ref = "opentelemetry" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "opentelemetry" }
+opentelemetry-exporter-sender-jdk = { module = "io.opentelemetry:opentelemetry-exporter-sender-jdk", version.ref = "opentelemetry" }
+
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

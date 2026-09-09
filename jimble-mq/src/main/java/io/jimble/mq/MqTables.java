@@ -86,6 +86,25 @@ public final class MqTables {
 			, "create index %s__index_2 on \"%s\" (status, updated_at)"
 				.formatted(queueName, queueName));
 
+		/*
+		 * 分散トレーシング（要件 NF-O-05）。
+		 *
+		 * 積んだところと処理したところを1本のトレースで繋ぐために、
+		 * W3C Trace Context の traceparent を持つ。トレースを使わないアプリでは
+		 * <b>ずっと null のまま</b>で、書き込みも読み出しもしない。
+		 *
+		 * <b>data（アプリの内容）には入れない。</b>そちらに入れると、
+		 * アプリが自分で入れた覚えのない鍵が増える。
+		 *
+		 * traceparent は「00-<32桁>-<16桁>-<2桁>」の 55 文字と決まっているが、
+		 * 版が上がると伸びうるので少し余裕を持たせてある。
+		 */
+		dbVersion.add(2)
+			.mysql("alter table `%s` add column traceparent varchar(64) null comment 'トレース'"
+				.formatted(queueName))
+			.postgresql("alter table \"%s\" add column traceparent varchar(64)"
+				.formatted(queueName));
+
 		dbVersion.apply(db);
 
 	}

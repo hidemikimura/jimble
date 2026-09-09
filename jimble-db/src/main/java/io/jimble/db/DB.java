@@ -928,7 +928,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			rs = st.executeQuery();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// 結果を保持する
 			// 列の型は接続先の製品で見分ける（要件 F-D-30）
@@ -1015,7 +1015,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			int count = st.executeUpdate();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// DB sticky
 			DBSticky.updated();
@@ -1123,7 +1123,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			long result = st.executeUpdate();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// DB sticky
 			DBSticky.updated();
@@ -1214,7 +1214,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			int result = st.executeUpdate();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// DB sticky
 			DBSticky.updated();
@@ -1305,7 +1305,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			int result = st.executeUpdate();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// DB sticky
 			DBSticky.updated();
@@ -1366,7 +1366,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQLを実行する
 			boolean result = st.execute();
 
-			Context.recordSqlExecution(System.nanoTime() - start);
+			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 			// DB sticky
 			DBSticky.updated();
@@ -1476,7 +1476,7 @@ public class DB implements Closeable, AutoCloseable {
 
 					int[] temp = st.executeBatch();
 
-					Context.recordSqlExecution(System.nanoTime() - start);
+					Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 					if (!isBatchSuccess(temp)) {
 						throw new Exception("failed execute batch");
@@ -1495,7 +1495,7 @@ public class DB implements Closeable, AutoCloseable {
 
 				int[] temp = st.executeBatch();
 
-				Context.recordSqlExecution(System.nanoTime() - start);
+				Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 				if (!isBatchSuccess(temp)) {
 					throw new Exception("failed execute batch");
@@ -1609,7 +1609,7 @@ public class DB implements Closeable, AutoCloseable {
 
 					int[] temp = st.executeBatch();
 
-					Context.recordSqlExecution(System.nanoTime() - start);
+					Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 					if (!isBatchSuccess(temp)) {
 						throw new Exception("failed execute batch");
@@ -1630,7 +1630,7 @@ public class DB implements Closeable, AutoCloseable {
 
 				int[] temp = st.executeBatch();
 
-				Context.recordSqlExecution(System.nanoTime() - start);
+				Context.recordSqlExecution(System.nanoTime() - start, sql);
 
 				if (!isBatchSuccess(temp)) {
 					throw new Exception("failed execute batch");

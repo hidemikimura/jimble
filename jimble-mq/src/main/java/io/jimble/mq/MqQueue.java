@@ -7,6 +7,9 @@ import io.jimble.db.DBTransaction;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
+import io.jimble.core.trace.Span;
+import io.jimble.core.trace.SpanKind;
+import io.jimble.core.trace.Tracing;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import io.jimble.util.metrics.Metrics;
@@ -405,6 +408,23 @@ public final class MqQueue {
 
 		Metrics.count("mq.%s.received".formatted(queueName));
 
+		/*
+		 * 積んだところに繋ぐ（要件 NF-O-05）。
+		 *
+		 * <b>いまのスパンの子にはしない。</b>この処理を回しているのはワーカーのループで、
+		 * 積んだのは別のリクエストである。行に書いてある traceparent を親にすることで、
+		 * <b>「その注文を登録したリクエスト」から「何分もあとにメールを送った処理」まで</b>が
+		 * 1本のトレースになる。
+		 */
+		Span span = Tracing.enabled()
+			? Tracing.start("mq %s".formatted(queueName), SpanKind.consumer, row.getString("traceparent"), 0)
+			: Span.NOOP;
+
+		span.attribute("messaging.destination.name", queueName);
+		span.attribute("messaging.operation.name", key);
+		span.attribute("messaging.message.id", id);
+		span.attribute("messaging.message.retry_count", retryCount);
+
 		// メッセージ1件ごとに Context を作る（要件 F-M-01）
 		try (MqContext context = new MqContext(queueName, id, retryCount + 1)) {
 
@@ -419,6 +439,7 @@ public final class MqQueue {
 				} catch (Throwable ex) {
 
 					Log.error(ex, "MQ の処理が失敗しました: %s / %s / id=%d".formatted(queueName, key, id));
+					span.error(ex);
 					fail(db, row, ex);
 					return;
 
@@ -431,6 +452,8 @@ public final class MqQueue {
 			// 1件にかかった時間（要件 NF-O-04）
 			Metrics.record("mq.%s".formatted(queueName), context.elapsed().toNanos());
 
+		} finally {
+			span.close();
 		}
 
 	}

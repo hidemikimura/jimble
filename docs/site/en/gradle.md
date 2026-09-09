@@ -130,6 +130,7 @@ jimbleRun {
 | `io.jimble:jimble-batch` | Batches and the DB scheduler | `jimble-db` / `jimble-mq` |
 | `io.jimble:jimble-batch-manager` | The batch admin screen | `jimble-web` / `jimble-batch` |
 | `io.jimble:jimble-mcp` | The MCP server | `jimble-web` |
+| `io.jimble:jimble-otel` | Sends traces to OpenTelemetry (**adds 0.9MB, but only if you add it**) | `jimble-core` |
 
 **You do not need a JDBC driver** — `jimble-db` carries MySQL / MariaDB and PostgreSQL.
 

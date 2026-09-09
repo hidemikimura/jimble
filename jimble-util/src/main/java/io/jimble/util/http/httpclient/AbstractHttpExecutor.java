@@ -8,6 +8,7 @@ import io.jimble.util.string.StringUtil;
 import io.jimble.util.thread.ThreadUtil;
 import io.jimble.util.xml.XmlData;
 import io.jimble.util.xml.XmlParser;
+import io.jimble.core.trace.Tracing;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import org.brotli.dec.BrotliInputStream;
@@ -1251,6 +1252,26 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 
 	// endregion
 
+	/** W3C Trace Context のヘッダ名 */
+	private static final String TRACEPARENT = "traceparent";
+
+	/**
+	 * 呼ぶ側が自分で traceparent を足しているか
+	 *
+	 * @return 足していれば true
+	 */
+	private boolean hasTraceparent () {
+
+		for (String key : this.headers.keySet()) {
+			if (TRACEPARENT.equalsIgnoreCase(key)) {
+				return true;
+			}
+		}
+
+		return false;
+
+	}
+
 	/**
 	 * リクエストを実行する
 	 *
@@ -1286,6 +1307,21 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 			if (this.timeout > 0) {
 				requestBuilder.timeout(Duration.ofMillis(this.timeout));
 			}
+			/*
+			 * 分散トレーシング（要件 NF-O-05）。
+			 *
+			 * <b>いまのトレースを相手にも渡す。</b>これが無いと、相手側のトレースが
+			 * こちらと繋がらず、<b>サービスをまたいだ1本の流れとして見られない</b>。
+			 * トレースが無効なときは null が返るので何も足さない。
+			 *
+			 * <b>自分で traceparent を足していたら、そちらを尊重する。</b>
+			 */
+			String traceparent = Tracing.traceparent();
+
+			if (traceparent != null && (this.headers == null || !hasTraceparent())) {
+				requestBuilder.header(TRACEPARENT, traceparent);
+			}
+
 			// ヘッダー
 			if (this.headers != null) {
 				for (Map.Entry<String, String> entry : this.headers.entrySet()) {
