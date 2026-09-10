@@ -78,6 +78,7 @@ include("examples:blog")
 include("examples:approval-auth")
 include("examples:approval-forms")
 include("examples:approval-list")
+include("examples:approval-ops")
 
 // 以降のマイルストーンで追加する
 // include("jimble-migration")       M3（jimble-db に同居させた）

@@ -60,6 +60,7 @@
 
 | | |
 |---|---|
+| **サンプル4本目：動いている中を見る**（N-3 / D-136） | `examples/approval-ops` を足しました（**ヘルスチェックとグレースフルシャットダウン・メトリクス・トレース・流量制限・Bot ブロック・内部呼び出し**）。<b>DB を使わない</b>ので `./gradlew :examples:approval-ops:run` だけで起動します。`BotBlocker` / `Metrics.snapshot()` のルート / `JimbleOtel.install` / `dispatcher().call(...)` / `rateLimit` は<b>アプリのコードとしては初の実例</b>です |
 | **サンプル3本目：たくさんの中から探す**（N-3 / D-134） | `examples/approval-list` を足しました（**ページング・JOIN・絞り込み・集計・条件付き集計・CSV の書き出し・SQL 結果キャッシュ**）。`Paging` / `groupBy` / `ScopeCache` / `Column#urlPathPlaceholder` を<b>サンプルで初めて通しています</b>（どれも実例がありませんでした） |
 | **サンプル2本目：入力を確かめる**（N-3 / D-133） | `examples/approval-forms` を足しました（**バリデーション・明細のネストパラメータ・下書きと提出で必須が変わる・添付・生成した型付きアクセサ**）。<b>生成された `AbstractXxxData` を実際に使う最初のサンプル</b>です（いままで生成はされていて、誰も使っていませんでした） |
 | **機能ごとのサンプルを置き始めました**（N-3 / D-132） | `examples/approval-auth` を足しました（**ログイン・セッション・ルート属性による認可・CSRF・パスワード照合・Basic 認証**）。題材は「社内の申請・承認」で、以降のサンプルも同じ題材から機能ごとに切り出します（全7本の予定。`docs/design-n3.md`）。**1本ずつ単体で完結します**——テーブルもマイグレーションも設定も各アプリが自分で持つので、<b>1本開けば真似できます</b>。**PostgreSQL 単独**です（方言の両対応は `examples/blog` が引き続き担保します）。`examples/blog` はそのまま残ります |
