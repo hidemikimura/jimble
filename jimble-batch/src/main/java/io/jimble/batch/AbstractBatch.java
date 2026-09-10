@@ -86,9 +86,27 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	/**
 	 * スケジューラ自身のバッチか
 	 *
-	 * <p>スケジューラはマスタにも履歴にも載せない。</p>
+	 * <p>
+	 * <b>「スケジューラに載せるか」ではない。</b>
+	 * これは<b>「このバッチがスケジューラそのものか」</b>を聞いている。
+	 * true にすると、そのバッチは<b>マスタにも履歴にも載らない</b>
+	 * （スケジューラを自分自身で管理させないため）。
+	 * </p>
 	 *
-	 * @return	スケジューラの場合 = true
+	 * <p>
+	 * <b>cron で回したいバッチが true にしてはいけない。</b>
+	 * 名前が紛らわしく、実際に取り違えた（サンプル {@code approval-jobs} を書いたとき）。
+	 * true にすると {@code BatchRegistry.sync()} が飛ばすので
+	 * <b>マスタに行ができず、スケジューラからは見えないまま</b>になる。
+	 * それでも手で流せば動いて履歴も残るので、<b>気づきにくい。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * cron で回すのに要るのは {@link #cron()} を書くことだけである
+	 * （{@link #isEnableScheduler()} は既定で true）。
+	 * </p>
+	 *
+	 * @return	このバッチがスケジューラ自身の場合 = true（ふつうは false のまま）
 	 */
 	public boolean isScheduler () {
 
@@ -98,6 +116,12 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 	/**
 	 * スケジューラに登録してよいか
+	 *
+	 * <p>
+	 * <b>cron で回すかどうかはこちらである</b>（{@link #isScheduler()} ではない）。
+	 * 既定は true なので、{@link #cron()} を書けばスケジューラが拾う。
+	 * false にすると、cron が書いてあっても回らない。
+	 * </p>
 	 *
 	 * @return	登録する場合 = true
 	 */
