@@ -178,6 +178,15 @@ JIMBLE_TEST_PG_PASSWORD=jimble \
   ./gradlew :jimble-db:pgTest
 ```
 
+These are for **jimble's own tests**.
+The samples under `examples/` read different names: **`JIMBLE_SAMPLE_DB_*` / `JIMBLE_SAMPLE_PG_*`**.
+
+> [!NOTE]
+> **The names are separate because mixing them causes real damage.**
+> The samples used to read `JIMBLE_TEST_*` too, so setting these variables sent
+> <b>the samples' migrations into `jimble_test`</b>, mixing up the history and
+> <b>failing jimble's own migration tests</b> — in a way that looks like a framework bug.
+
 > [!NOTE]
 > The skeleton `jimble new` creates does not carry the test scaffolding yet
 > (the JUnit dependency and `dbTest`).

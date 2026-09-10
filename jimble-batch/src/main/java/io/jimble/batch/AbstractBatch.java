@@ -638,6 +638,15 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 					Log.info("バッチが終わりました: %s (%s)".formatted(batchName(), className()));
 
+					/*
+					 * ここは {@code isCancelOrder()} ではなくフィールドを見る。
+					 * {@code batchEnded} を立てた後なので、
+					 * {@code isCancelOrder()} は必ず true を返してしまう。
+					 *
+					 * フィールドは「中断が指示された」ときだけ立つ。
+					 * 指示元は {@link #doCancel()}、履歴の {@code cancel_status}、
+					 * そして親（スケジューラ）である。
+					 */
 					result[0] = cancelOrder ? BatchResult.canceled : BatchResult.completed;
 
 					finishHistory(db, result[0] == BatchResult.canceled
@@ -824,7 +833,17 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			return true;
 		}
 
+		/*
+		 * 親（スケジューラ）が止まると言っている。
+		 *
+		 * <b>ここで cancelOrder を立てておく。</b>
+		 * 立てずに true だけ返していたので、
+		 * バッチがこれを見てループを抜けても {@code cancelOrder} は false のままで、
+		 * 履歴が {@code completed} になっていた。
+		 * <b>スケジューラを止めて抜けたバッチが「完了」として残る</b>ということである。
+		 */
 		if (parentNotify != null && parentNotify.isCancelOrder()) {
+			cancelOrder = true;
 			return true;
 		}
 

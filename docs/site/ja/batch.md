@@ -51,6 +51,98 @@ while (!isCancelOrder()) {
 管理画面から中断を押すと `isCancelOrder()` が `true` になります。
 **長く回る処理では必ず見てください。** 見ていないバッチは止められません。
 
+## 一定件数ずつ読んでまとめて書く
+
+100万件を1つのトランザクションで抱えたくないときは `AbstractChunkBatch` を継承します。
+**読む → 加工する → まとめて書く**を繰り返し、`chunkSize()` 件ごとに確定します。
+
+```java
+public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
+
+	@Override public String batchName ()   { return "古い申請の書庫入れ"; }
+	@Override public boolean isScheduler () { return true; }
+	@Override public String cron ()        { return "0 4 * * *"; }
+	@Override public int chunkSize ()      { return 500; }
+
+	@Override
+	protected Iterator<Data> reader (BatchArgs args, DB db) {
+
+		// キー順に少しずつ読む
+		return KeyPagingReader.of("id", 0L, chunkSize(), (lastKey, limit) -> db.selectList("""
+				SELECT id, amount FROM request
+				WHERE status = ? AND id > ?
+				ORDER BY id ASC
+				LIMIT ?
+			""", "approved", lastKey, limit));
+
+	}
+
+	@Override
+	protected Data process (Data item) {
+
+		// 書かないものは null を返す（既定は素通し）
+		return item.getLong("amount") == 0 ? null : item;
+
+	}
+
+	@Override
+	protected void write (List<Data> items, DB db) {
+
+		for (Data item : items) {
+			db.update("UPDATE request SET status = 'archived' WHERE id = ?", item.getLong("id"));
+		}
+
+	}
+
+}
+```
+
+登録の仕方も、管理画面での見え方も、ふつうのバッチと同じです。
+
+- **1回の `write()` が1トランザクション**です。抜けた時点で確定します
+- **中断はかたまりの切れ目で見ます。**`isCancelOrder()` を自分で呼ぶ必要はありません
+- `execute()` は `final` です。手を入れるのは `reader()` / `process()` / `write()` の3つだけです
+
+### 途中で落ちたとき
+
+**そのかたまりだけ戻して、バッチ全体を失敗にします。**黙って次へ進むことはしません。
+
+どこまで確定したかは `batch_history.execute_info` に残ります。
+
+| キー | 中身 |
+|---|---|
+| `chunk_read` | 読んだ件数 |
+| `chunk_filtered` | `process()` が `null` を返してよけた件数 |
+| `chunk_written` | 確定した件数 |
+| `chunk_committed` | 確定したかたまりの数 |
+| `chunk_failed_at` | 何かたまり目で落ちたか |
+| `chunk_canceled` | 中断で抜けたか |
+
+`chunk_written` は **`batch.progress_seconds`（既定5秒）ごとに書き換わる**ので、
+走っている最中でも管理画面から「いま何件目か」が見えます。
+
+### 読む DB と書く DB は別です
+
+`reader()` に渡る `db` と `write()` に渡る `db` は**別のインスタンス**です。
+**渡されたものをそのまま使ってください。**
+
+`DBTransaction` を閉じるとコネクションがプールへ返るので、
+同じ `DB` で読んでいると**最初のかたまりを確定した時点で読みかけが死にます。**
+
+> [!TIP]
+> **カーソル（`selectListWithFetcher`）ではなく `KeyPagingReader` を勧めます。**
+> カーソルは開いているあいだ、ずっとコネクションを1本押さえます。
+> 数時間かかるバッチではそれが効いてきます。
+> ページングはページとページの間はコネクションを持ちません。
+
+`KeyPagingReader` に渡すキーは、**一意で、`ORDER BY` と揃っていて、走っているあいだ書き換わらない**列にしてください。
+キーが進まないまま満杯のページが返ってきたときは例外になります（黙って無限に回るより落ちたほうがよいためです）。
+
+> [!WARNING]
+> **`db.insert()` などは失敗しても例外を投げません。**
+> `db.isError()` に**その直前の1文**の結果が入るだけです。
+> `write()` の中で複数の文を流すなら、1文ごとに見るか、自分で例外を投げてください。
+
 ## 二重起動
 
 同じバッチが同時に走る本数は `allowConcurrentExecutionCount()` で決まります。

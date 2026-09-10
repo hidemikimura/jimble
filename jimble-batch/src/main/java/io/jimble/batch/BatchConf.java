@@ -14,6 +14,7 @@ import java.net.InetAddress;
  *   heartbeat_seconds       = 3     # 実行中であることを知らせる間隔
  *   alive_seconds           = 10    # この秒数だけ更新が無ければ「実行中ではない」とみなす
  *   cancel_check_seconds    = 3     # 中断指示を見にいく間隔
+ *   progress_seconds        = 5     # チャンクバッチが進み具合を履歴に書く間隔
  *   all_stop_hours          = 1     # 全停止フラグが効く時間
  * }
  * </pre>
@@ -31,6 +32,9 @@ public final class BatchConf {
 
 	/** 設定キー：中断指示を見にいく間隔（秒） */
 	public static final String KEY_CANCEL_CHECK_SECONDS = "batch.cancel_check_seconds";
+
+	/** 設定キー：進み具合を履歴に書く間隔（秒） */
+	public static final String KEY_PROGRESS_SECONDS = "batch.progress_seconds";
 
 	/** 設定キー：全停止フラグが効く時間（時間） */
 	public static final String KEY_ALL_STOP_HOURS = "batch.all_stop_hours";
@@ -118,6 +122,22 @@ public final class BatchConf {
 	public static long cancelCheckSeconds () {
 
 		return Conf.conf().getLong(KEY_CANCEL_CHECK_SECONDS, 3);
+
+	}
+
+	/**
+	 * 進み具合を履歴に書く間隔（秒）
+	 *
+	 * <p>
+	 * {@link AbstractChunkBatch} が {@code batch_history.execute_info} を
+	 * 上書きする間隔である。0 以下にすると<b>チャンクごとに毎回書く。</b>
+	 * </p>
+	 *
+	 * @return	秒数
+	 */
+	public static long progressSeconds () {
+
+		return Conf.conf().getLong(KEY_PROGRESS_SECONDS, 5);
 
 	}
 

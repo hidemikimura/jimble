@@ -2,6 +2,7 @@ package io.jimble.batch;
 
 import io.jimble.batch.status.BatchHistoryStatus;
 import io.jimble.batch.status.BatchMasterStatus;
+import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.util.conf.Conf;
@@ -622,6 +623,53 @@ class BatchIntegrationTest {
 		assertEquals(BatchResult.canceled, result.get());
 
 		assertEquals(BatchHistoryStatus.canceled.name(), history(LoopBatch.class).getString("status"));
+
+	}
+
+	@Test
+	@DisplayName("親（スケジューラ）から止められても履歴が canceled になる")
+	void cancelFromParent () throws Exception {
+
+		/*
+		 * スケジューラは自分を親として渡す（DbScheduler が batch.run(args, this) を呼ぶ）。
+		 *
+		 * <b>親の中断は cancelOrder に残っていなかった。</b>
+		 * バッチは isCancelOrder() を見てループを抜けるのに、
+		 * 抜けた後の判定はフィールドを見るので、
+		 * <b>スケジューラを止めて抜けたバッチが「完了」として残っていた。</b>
+		 */
+		register();
+
+		java.util.concurrent.atomic.AtomicBoolean parentStop =
+			new java.util.concurrent.atomic.AtomicBoolean(false);
+
+		CancelOrderNotify parent = new CancelOrderNotify() {
+			@Override public boolean isCancelOrder () { return parentStop.get(); }
+			@Override public void doCancel () { parentStop.set(true); }
+		};
+
+		LoopBatch batch = new LoopBatch();
+		java.util.concurrent.atomic.AtomicReference<BatchResult> result =
+			new java.util.concurrent.atomic.AtomicReference<>();
+
+		Thread thread = Thread.ofVirtual().start(() -> result.set(batch.run(args(LoopBatch.class), parent)));
+
+		for (int i = 0; i < 500 && batch.batchId() <= 0 && result.get() == null; i++) {
+			Thread.sleep(20);
+		}
+
+		assertTrue(batch.batchId() > 0, "履歴ができていない: " + result.get());
+
+		parent.doCancel();
+		thread.join();
+
+		assertEquals(BatchResult.canceled, result.get());
+
+		Data row = history(LoopBatch.class);
+
+		assertEquals(BatchHistoryStatus.canceled.name(), row.getString("status"));
+		assertTrue(row.getDataOptional("execute_info").getInt("stopped_at") >= 0
+			, "最後まで回りきっている: " + row.getStringOptional("execute_info"));
 
 	}
 

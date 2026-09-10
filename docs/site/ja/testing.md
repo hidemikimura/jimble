@@ -171,6 +171,16 @@ JIMBLE_TEST_PG_PASSWORD=jimble \
   ./gradlew :jimble-db:pgTest
 ```
 
+これは **jimble 本体のテスト用**です。
+`examples/` のサンプルは **`JIMBLE_SAMPLE_DB_*` / `JIMBLE_SAMPLE_PG_*`** という別の名前を見ます。
+
+> [!NOTE]
+> **名前を分けているのは、混ぜると事故になるためです。**
+> 以前はサンプルも `JIMBLE_TEST_*` を見ていたので、
+> この環境変数を立てると<b>サンプルのマイグレーションが `jimble_test` に流れ込み</b>、
+> 履歴が混ざって<b>jimble 本体のマイグレーションテストが落ちて</b>いました。
+> 落ち方が「フレームワークの不具合」に見えるのが厄介なところでした。
+
 > [!NOTE]
 > `jimble new` が作る雛形には、まだテストの足場（JUnit の依存と `dbTest`）が入っていません。
 > 上のとおり手で足してください。
