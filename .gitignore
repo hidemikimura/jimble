@@ -53,6 +53,3 @@ application.local.conf
 # 入っていないと 0 ページのサイトができあがる（site タスクは成功してしまう）
 !/docs/site/
 /docs/site/build/
-
-# 開発中のjimble-ui
-/jimble-ui/

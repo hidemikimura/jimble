@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8">
+	<title>手引き</title>
+	<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+	<main>
+		<h1>手引き（MPA）</h1>
+
+		<p>
+			<b>静的サイトジェネレータの出力をそのまま配る形</b>です。
+			拡張子が無いパスは <code>&lt;パス&gt;/index.html</code> を返します。
+		</p>
+
+		<ul>
+			<li><a href="/guide/rules/">/guide/rules/</a> → guide/rules/index.html</li>
+		</ul>
+
+		<p>
+			SPA と違い、<b>上へ遡りません</b>。
+			<code>/guide/nothing</code> は guide/nothing/index.html が無いので 404 です。
+		</p>
+	</main>
+</body>
+</html>

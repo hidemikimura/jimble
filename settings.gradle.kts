@@ -80,6 +80,7 @@ include("examples:approval-forms")
 include("examples:approval-jobs")
 include("examples:approval-list")
 include("examples:approval-ops")
+include("examples:approval-pages")
 
 // 以降のマイルストーンで追加する
 // include("jimble-migration")       M3（jimble-db に同居させた）

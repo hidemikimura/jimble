@@ -23,8 +23,15 @@ during development it is read from `build/resources/main`. **The behaviour is th
 ```java snippet=assets-mount
 ```
 
-`src/main/resources/test-assets/app.css` comes out at `/assets/app.css`.
-Two routes are registered: `GET` and `HEAD`.
+The second argument is a **directory on the classpath**, not a filesystem path.
+With `AssetHandler.mount("/assets", "assets")`,
+`src/main/resources/assets/app.css` comes out at `/assets/app.css`.
+
+Two routes are registered: `GET` and `HEAD` on `/assets/*`.
+
+> [!WARNING]
+> **`/assets` itself (no trailing path) is not served.** Only `/assets/*` is registered.
+> SPA and MPA also register the bare prefix, so they differ here.
 
 `routes()` hands those routes back, so **you can attach attributes to them.**
 
@@ -36,7 +43,9 @@ for (Route route : assets.routes()) {
 install(() -> assets);
 ```
 
-`SpaHandler.mount(...)` and `MpaHandler.mount(...)` work the same way.
+`routes()` works the same way for `SpaHandler.mount(...)` and `MpaHandler.mount(...)`.
+The **count differs**, though — SPA and MPA also register the bare prefix, so there are four
+(`GET` and `HEAD` on both `/app` and `/app/*`).
 
 ### Caching
 

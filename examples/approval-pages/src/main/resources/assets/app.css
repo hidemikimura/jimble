@@ -1,0 +1,29 @@
+/*
+ * 静的配信の題材（要件 F-W-18）。
+ *
+ * 拡張子が .css なので「変わらないもの」として扱われ、
+ *   Cache-Control: public,max-age=31536000,immutable
+ * が付く。
+ *
+ * <b>拡張子だけで判断している。</b>だから app.css を書き換えても、
+ * ブラウザは1年間取りに来ない。ファイル名にハッシュを入れる
+ * （app.8f3a1c.css）か、assets.immutable_max_age を下げること。
+ */
+
+body {
+	font-family: system-ui, sans-serif;
+	margin: 0;
+	color: #222;
+}
+
+nav ul { display: flex; gap: 1rem; list-style: none; padding: 1rem; margin: 0; background: #f4f4f5; }
+nav a { text-decoration: none; color: #444; }
+nav a.current { font-weight: bold; color: #000; }
+
+main { padding: 1rem; max-width: 48rem; }
+
+.card { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+.card h2 { margin-top: 0; font-size: 1rem; }
+.note { color: #666; font-size: 0.85rem; }
+
+footer { padding: 1rem; color: #888; font-size: 0.85rem; }

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8">
+	<!--title--><title>申請アプリ</title>
+	<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+	<main>
+		<h1>申請アプリ（SPA）</h1>
+
+		<p>
+			<b>どのパスでもこの1枚が返ります。</b>
+			/app/items/1 も /app/settings も、サーバーは同じ index.html を返し、
+			あとはブラウザの中のルーターが決めます。
+		</p>
+
+		<p>
+			ただし <a href="/app/app.js">/app/app.js</a> のように
+			<b>実ファイルがあるものはそれが返ります</b>（先に実ファイルを探すため）。
+		</p>
+
+		<ul>
+			<li><a href="/app/items/1">/app/items/1</a>（title が差し替わります）</li>
+			<li><a href="/app/settings">/app/settings</a></li>
+		</ul>
+	</main>
+</body>
+</html>

@@ -23,8 +23,15 @@ order: 7
 ```java snippet=assets-mount
 ```
 
-`src/main/resources/test-assets/app.css` が `/assets/app.css` で出ます。
-`GET` と `HEAD` の2本が登録されます。
+第2引数は**クラスパス上のディレクトリ**です。ファイルシステムのパスではありません。
+`AssetHandler.mount("/assets", "assets")` なら
+`src/main/resources/assets/app.css` が `/assets/app.css` で出ます。
+
+`GET` と `HEAD` の2本（`/assets/*`）が登録されます。
+
+> [!WARNING]
+> **`/assets` 自身（末尾なし）には応えません。**登録されるのは `/assets/*` だけです。
+> SPA と MPA は接頭辞そのものも登録するので、そこだけ形が違います。
 
 登録されたルートは `routes()` で受け取れます。**属性を付けられます。**
 
@@ -36,7 +43,9 @@ for (Route route : assets.routes()) {
 install(() -> assets);
 ```
 
-`SpaHandler.mount(...)` / `MpaHandler.mount(...)` も同じです。
+`SpaHandler.mount(...)` / `MpaHandler.mount(...)` でも `routes()` は同じように使えます。
+ただし**本数が違います**——SPA と MPA は接頭辞自身も登録するので4本です
+（`/app` と `/app/*` の `GET` と `HEAD`）。
 
 ### キャッシュ
 
