@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * 暗号化（改ざん検知つき）
@@ -144,6 +145,48 @@ public final class Aead {
 			return null;
 
 		}
+
+	}
+
+	/**
+	 * 鍵を順に試して復号する（鍵の入れ替え用）
+	 *
+	 * <p>
+	 * <b>先頭が「いま書くのに使っている鍵」である。</b>
+	 * 先頭から順に試し、最初に読めたところで止める。
+	 * </p>
+	 *
+	 * <p>
+	 * GCM は改ざん検知つきなので、<b>鍵が違えば必ず読めない</b>——
+	 * 「間違った鍵でうっかり読めてしまう」ことがない。だから順に試して安全である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>古い鍵で読めたことを呼び出し側に返す。</b>返さないと、
+	 * <b>いつ古い鍵を捨ててよいのか永遠に分からない</b>。
+	 * </p>
+	 *
+	 * @param cipherText	暗号文
+	 * @param secrets		鍵（先頭が新しいもの）
+	 * @return	結果。どの鍵でも読めなければ null
+	 */
+	public static KeyMatch decryptAny (String cipherText, List<String> secrets) {
+
+		if (cipherText == null || secrets == null || secrets.isEmpty()) {
+			return null;
+		}
+
+		for (int index = 0; index < secrets.size(); index++) {
+
+			String value = decrypt(cipherText, secrets.get(index));
+
+			if (value != null) {
+				return new KeyMatch(value, index == 0);
+			}
+
+		}
+
+		return null;
 
 	}
 

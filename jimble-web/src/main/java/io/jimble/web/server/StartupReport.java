@@ -9,7 +9,9 @@ import io.jimble.util.conf.Conf;
 import io.jimble.util.hash.PasswordUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.web.cookie.CookieConf;
 import io.jimble.web.session.SessionConf;
+import io.jimble.web.session.SessionStores;
 import io.jimble.web.upload.UploadConf;
 
 import java.util.ArrayList;
@@ -60,12 +62,20 @@ public final class StartupReport {
 		fields.put("password_encrypt", PasswordUtil.isEncrypt());
 
 		/*
+		 * 鍵が何本あるか（要件 NF-S-09）。
+		 * <b>2本以上なら入れ替えの最中である。</b>
+		 * 終わったのに previous_secrets を消し忘れている、が起動ログで分かる。
+		 */
+		fields.put("cookie_secrets", CookieConf.secrets().size());
+		fields.put("session_secrets", SessionConf.secrets().size());
+
+		/*
 		 * どの設定ファイルを読んだか（要件 D-80）。
 		 * 「直したはずの設定が効いていない」の原因がここに出る。
 		 */
 		fields.put("conf_files", Conf.sources());
 
-		Log.info("jimble 構成: env=%s / session=%s / cache=%s / sql_cache=%s / redis=%s / db=%s / パスワード暗号化=%s"
+		Log.info("jimble 構成: env=%s / session=%s / cache=%s / sql_cache=%s / redis=%s / db=%s / パスワード暗号化=%s / 鍵=%s"
 			.formatted(
 				Conf.env()
 				, SessionConf.store()
@@ -74,11 +84,26 @@ public final class StartupReport {
 				, RedisClient.isConfigured() ? "あり" : "なし"
 				, dataSourceNames()
 				, PasswordUtil.isEncrypt() ? "あり" : "なし"
+				, secretCounts()
 			), fields);
 
 		logConfSources();
 
 		warnUnusableCombination();
+
+	}
+
+	/**
+	 * 鍵の本数（要件 NF-S-09）
+	 *
+	 * <p>2本以上なら入れ替えの最中である。</p>
+	 *
+	 * @return	{@code cookie=1 / session=2} のような形
+	 */
+	private static String secretCounts () {
+
+		return "cookie=%d, session=%d".formatted(
+			CookieConf.secrets().size(), SessionConf.secrets().size());
 
 	}
 
@@ -159,6 +184,8 @@ public final class StartupReport {
 	 */
 	private static void warnUnusableCombination () {
 
+		warnMissingSecrets();
+
 		if (RedisClient.isConfigured()) {
 			return;
 		}
@@ -174,6 +201,54 @@ public final class StartupReport {
 		if ("redis".equalsIgnoreCase(SessionConf.store())) {
 			Log.warn("session.store = redis ですが Redis が設定されていません。セッションを使うと失敗します");
 		}
+
+	}
+
+	/**
+	 * 鍵が無いことを言う（要件 F-S-08 / NF-S-09）
+	 *
+	 * <p>
+	 * <b>鍵が無いと、署名の機能が丸ごと黙って無効になる。</b>
+	 * 例外も出ないし、Cookie は普通に読み書きできるので、
+	 * <b>動いているように見える</b>——効いていないことに気づく手がかりが1つも無い。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>止めはしない。</b>手元で動かすだけのときに鍵を強制すると、
+	 * 「とりあえず動かす」ができなくなる。
+	 * </p>
+	 */
+	private static void warnMissingSecrets () {
+
+		for (String message : missingSecretWarnings()) {
+			Log.warn(message);
+		}
+
+	}
+
+	/**
+	 * 鍵が無いことの言い分（要件 F-S-08 / NF-S-09）
+	 *
+	 * <p><b>出す・出さないの判断だけを分けてある。</b>ログを覗かずに確かめられるように。</p>
+	 *
+	 * @return	言うこと。無ければ空
+	 */
+	static List<String> missingSecretWarnings () {
+
+		List<String> warnings = new ArrayList<>();
+
+		if (!CookieConf.isSigned()) {
+			warnings.add(("%s が空です。Cookie に署名しません"
+				+ "（セッション ID も CSRF トークンも改ざんを検知できません）。本番では必ず設定してください")
+				.formatted(CookieConf.KEY_SECRET));
+		}
+
+		if (SessionStores.COOKIE.equalsIgnoreCase(SessionConf.store()) && SessionConf.secret().isEmpty()) {
+			warnings.add("session.store = cookie ですが %s が空です。セッションを使うと起動できません"
+				.formatted(SessionConf.KEY_SECRET));
+		}
+
+		return warnings;
 
 	}
 

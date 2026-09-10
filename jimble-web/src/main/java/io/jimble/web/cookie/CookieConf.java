@@ -1,6 +1,8 @@
 package io.jimble.web.cookie;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.crypto.Secrets;
+import java.util.List;
 
 /**
  * Cookie の既定値
@@ -20,6 +22,9 @@ public final class CookieConf {
 
 	/** 設定キー：署名鍵 */
 	public static final String KEY_SECRET = "cookie.secret";
+
+	/** 設定キー：入れ替え前の署名鍵（読むときだけ試す） */
+	public static final String KEY_PREVIOUS_SECRETS = "cookie.previous_secrets";
 
 	/** 設定キー：HTTPS のみ */
 	public static final String KEY_SECURE = "cookie.secure";
@@ -51,6 +56,30 @@ public final class CookieConf {
 	public static String secret () {
 
 		return Conf.conf().getString(KEY_SECRET, "");
+
+	}
+
+	/**
+	 * 署名鍵の並び（要件 NF-S-09）
+	 *
+	 * <p>
+	 * <b>先頭が「いま書くのに使う鍵」</b>で、残りは
+	 * {@code cookie.previous_secrets} に書いた古い鍵である。
+	 * 読むときだけ順に試す。
+	 * </p>
+	 *
+	 * <pre>
+	 * cookie {
+	 *     secret           = ${?COOKIE_SECRET}
+	 *     previous_secrets = [${?COOKIE_SECRET_OLD}]
+	 * }
+	 * </pre>
+	 *
+	 * @return	鍵の並び（1つも無ければ空）
+	 */
+	public static List<String> secrets () {
+
+		return Secrets.of(secret(), Conf.conf().getStringListOptional(KEY_PREVIOUS_SECRETS));
 
 	}
 

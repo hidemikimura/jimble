@@ -1,12 +1,17 @@
 package io.jimble.web.cookie;
 
+import io.jimble.util.crypto.KeyMatch;
 import io.jimble.util.crypto.Signer;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.util.data.Data;
 import io.jimble.web.http.RequestSource;
 import io.jimble.web.http.ResponseSink;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Cookie の読み書き（要件 F-S-05）
@@ -41,6 +46,12 @@ public final class Cookies {
 	/* 吐き出し済み */
 	private boolean flushed = false;
 
+	/* 古い鍵で読めた Cookie の名前（要件 NF-S-09） */
+	private final Set<String> stale = new LinkedHashSet<>();
+
+	/** メトリクス名：古い鍵で読めた Cookie の数 */
+	public static final String METRIC_STALE = "cookie.stale_secret";
+
 	/**
 	 * コンストラクタ
 	 *
@@ -53,7 +64,13 @@ public final class Cookies {
 		}
 
 		boolean signed = CookieConf.isSigned();
-		String secret = CookieConf.secret();
+
+		/*
+		 * <b>鍵の並びは、要るときまで作らない。</b>
+		 * Cookie が1つも来ないリクエストは多く、そこで毎回1つ作ると
+		 * <b>1リクエストあたりの割り当てが黙って増える</b>（要件 NF-P-06）。
+		 */
+		List<String> secrets = null;
 
 		for (Map.Entry<String, String> entry : source.cookies().entrySet()) {
 
@@ -64,11 +81,34 @@ public final class Cookies {
 				continue;
 			}
 
-			String value = Signer.unsign(entry.getValue(), secret);
-			if (value != null) {
-				verified.put(entry.getKey(), value);
+			if (secrets == null) {
+				secrets = CookieConf.secrets();
 			}
-			// 検証に落ちた値は入れない。改ざんされた値をアプリに渡さないため
+
+			/*
+			 * 鍵を順に試す（要件 NF-S-09）。
+			 * <b>先頭が「いま書くのに使う鍵」</b>で、残りは入れ替え前の古い鍵。
+			 */
+			KeyMatch match = Signer.unsignAny(entry.getValue(), secrets);
+
+			if (match == null) {
+				// 検証に落ちた値は入れない。改ざんされた値をアプリに渡さないため
+				continue;
+			}
+
+			verified.put(entry.getKey(), match.value());
+
+			if (match.isStale()) {
+
+				stale.add(entry.getKey());
+
+				/*
+				 * <b>数えておく。</b>これが 0 になるまで古い鍵を捨てられない。
+				 * 数えないと、手順書に「しばらく待つ」としか書けなくなる
+				 */
+				Metrics.count(METRIC_STALE);
+
+			}
 
 		}
 
@@ -121,6 +161,43 @@ public final class Cookies {
 	public String raw (String name) {
 
 		return raw.get(name);
+
+	}
+
+	/**
+	 * 古い鍵で読めたか（要件 NF-S-09）
+	 *
+	 * <p>
+	 * <b>true なら、今の鍵で書き直さないと入れ替えが終わらない。</b>
+	 * 枠組みが発行する {@code sid} と {@code csrf_token} は自分で書き直すが、
+	 * <b>アプリが自分で書いた Cookie は自分で書き直すしかない</b>——
+	 * 有効期限をいくつにすべきかは、書いた側にしか分からないためである
+	 * （ブラウザは有効期限を送ってこない）。
+	 * </p>
+	 *
+	 * <pre>
+	 * if (context.cookies().isStale("mine")) {
+	 *     context.cookies().put("mine", context.cookies().get("mine"), 30 * 24 * 60 * 60);
+	 * }
+	 * </pre>
+	 *
+	 * @param name	名前
+	 * @return	古い鍵で読めた場合 = true
+	 */
+	public boolean isStale (String name) {
+
+		return stale.contains(name);
+
+	}
+
+	/**
+	 * 古い鍵で読めた Cookie の名前（要件 NF-S-09）
+	 *
+	 * @return	名前
+	 */
+	public Set<String> staleNames () {
+
+		return Set.copyOf(stale);
 
 	}
 
@@ -227,6 +304,7 @@ public final class Cookies {
 			return value;
 		}
 
+		// 書くときは必ず「いまの鍵」。古い鍵で書いたら入れ替えが終わらない
 		return Signer.sign(value, CookieConf.secret());
 
 	}

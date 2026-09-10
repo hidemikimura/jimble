@@ -2,6 +2,8 @@ package io.jimble.web.session;
 
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.crypto.Secrets;
+import java.util.List;
 
 /**
  * セッションの設定
@@ -36,6 +38,9 @@ public final class SessionConf {
 
 	/** 設定キー：Cookie セッションの暗号鍵 */
 	public static final String KEY_SECRET = "session.secret";
+
+	/** 設定キー：入れ替え前の暗号鍵（読むときだけ試す） */
+	public static final String KEY_PREVIOUS_SECRETS = "session.previous_secrets";
 
 	/** 既定のタイムアウト（分） */
 	public static final long DEFAULT_TIMEOUT_MINUTES = 30;
@@ -100,6 +105,23 @@ public final class SessionConf {
 	public static String secret () {
 
 		return Conf.conf().getString(KEY_SECRET, "");
+
+	}
+
+	/**
+	 * Cookie セッションの暗号鍵の並び（要件 NF-S-09）
+	 *
+	 * <p>
+	 * <b>先頭が「いま書くのに使う鍵」</b>で、残りは
+	 * {@code session.previous_secrets} に書いた古い鍵である。
+	 * 読むときだけ順に試し、<b>古い鍵で読めたらその場で新しい鍵で保存し直す</b>。
+	 * </p>
+	 *
+	 * @return	鍵の並び（1つも無ければ空）
+	 */
+	public static List<String> secrets () {
+
+		return Secrets.of(secret(), Conf.conf().getStringListOptional(KEY_PREVIOUS_SECRETS));
 
 	}
 

@@ -126,13 +126,16 @@ server {
 }
 
 cookie {
-	secure = true            # ローカルでは false（下を参照）
-	secret = ${?COOKIE_SECRET}
+	secure           = true            # ローカルでは false（下を参照）
+	secret           = ${?COOKIE_SECRET}
+	previous_secrets = [${?COOKIE_SECRET_OLD}]   # 鍵の入れ替え中だけ
 }
 
 session {
-	store       = "none"     # none | db | redis | cookie
-	cookie_name = "sid"
+	store            = "none"     # none | db | redis | cookie
+	cookie_name      = "sid"
+	secret           = ${?SESSION_SECRET}        # store = cookie のとき必須
+	previous_secrets = [${?SESSION_SECRET_OLD}]  # 鍵の入れ替え中だけ
 }
 
 upload {

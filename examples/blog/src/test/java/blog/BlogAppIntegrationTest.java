@@ -711,19 +711,42 @@ class BlogAppIntegrationTest {
 	/**
 	 * Cookie に載った CSRF トークン
 	 *
+	 * <p>
+	 * <b>署名を外して返す。</b>{@code cookie.secret} を設定してあるので、
+	 * Cookie に入っているのは {@code 署名|トークン} である
+	 * （サーバーは受け取ったときに署名を外す）。
+	 * フォームに埋まっているのは<b>外したほう</b>なので、
+	 * ここで外さないと突き合わせられない。
+	 * </p>
+	 *
 	 * @return	トークン
 	 */
 	private static String csrfToken () {
-
-		CookieManager manager = (CookieManager) CookieHandler.getDefault();
 
 		return client.cookieHandler()
 			.map(handler -> ((CookieManager) handler).getCookieStore().getCookies().stream()
 				.filter(cookie -> Csrf.COOKIE_NAME.equals(cookie.getName()))
 				.map(java.net.HttpCookie::getValue)
+				.map(BlogAppIntegrationTest::unsign)
 				.findFirst()
 				.orElse(null))
 			.orElse(null);
+
+	}
+
+	/**
+	 * 署名を外す
+	 *
+	 * <p>署名していなければそのまま返す。</p>
+	 *
+	 * @param value	Cookie の値
+	 * @return	中身
+	 */
+	private static String unsign (String value) {
+
+		int index = value.indexOf('|');
+
+		return index < 0 ? value : value.substring(index + 1);
 
 	}
 

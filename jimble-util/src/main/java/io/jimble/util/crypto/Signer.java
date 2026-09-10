@@ -5,6 +5,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.Base64;
 
 /**
@@ -77,6 +78,44 @@ public final class Signer {
 		}
 
 		return value;
+
+	}
+
+	/**
+	 * 鍵を順に試して、署名を検証して値を取り出す（鍵の入れ替え用）
+	 *
+	 * <p>
+	 * <b>先頭が「いま書くのに使っている鍵」である。</b>
+	 * 先頭から順に試し、最初に通ったところで止める。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>古い鍵で通ったことを呼び出し側に返す。</b>
+	 * 返さないと、<b>いつ古い鍵を捨ててよいのか永遠に分からない</b>——
+	 * 「たぶんもう誰も使っていないだろう」で消すことになる。
+	 * </p>
+	 *
+	 * @param signed	署名つきの値
+	 * @param secrets	鍵（先頭が新しいもの）
+	 * @return	結果。どの鍵でも通らなければ null
+	 */
+	public static KeyMatch unsignAny (String signed, List<String> secrets) {
+
+		if (signed == null || secrets == null || secrets.isEmpty()) {
+			return null;
+		}
+
+		for (int index = 0; index < secrets.size(); index++) {
+
+			String value = unsign(signed, secrets.get(index));
+
+			if (value != null) {
+				return new KeyMatch(value, index == 0);
+			}
+
+		}
+
+		return null;
 
 	}
 

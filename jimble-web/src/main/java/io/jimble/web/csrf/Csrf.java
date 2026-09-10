@@ -69,7 +69,18 @@ public final class Csrf {
 		String token = context.cookies().get(COOKIE_NAME);
 
 		if (token != null && !token.isEmpty()) {
+
+			/*
+			 * 古い鍵で読めたなら、<b>今の鍵で署名し直す</b>（要件 NF-S-09）。
+			 * トークンの値は変えない——変えると、いま開いているフォームが
+			 * <b>送信した瞬間に 403 になる</b>
+			 */
+			if (context.cookies().isStale(COOKIE_NAME)) {
+				context.cookies().put(COOKIE_NAME, token);
+			}
+
 			return token;
+
 		}
 
 		token = generate();

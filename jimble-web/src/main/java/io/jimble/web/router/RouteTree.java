@@ -226,6 +226,35 @@ final class RouteTree {
 		/* パス変数 */
 		private final PathVariables variables = PathVariables.empty();
 
+		/*
+		 * パスは合っていたが、メソッドが違ったもの（要件 F-R-25）。
+		 *
+		 * <b>要るときだけ作る。</b>どのルートにも当たらない
+		 * ——つまりパスそのものが無い——のがいちばん多く、
+		 * そこで毎回1つ作ると<b>外れたときだけ高い</b>形になる。
+		 * それは<b>叩かれると効く</b>（RouterBench が見ている）。
+		 */
+		private Set<String> allowed;
+
+		/**
+		 * 当たりうるメソッドを覚える
+		 *
+		 * @param methods	メソッド
+		 */
+		private void allow (Set<String> methods) {
+
+			if (methods.isEmpty()) {
+				return;
+			}
+
+			if (allowed == null) {
+				allowed = new LinkedHashSet<>();
+			}
+
+			allowed.addAll(methods);
+
+		}
+
 	}
 
 	/**
@@ -252,7 +281,7 @@ final class RouteTree {
 			 * <b>パスは合っていてメソッドだけ違う</b>のなら、それも一緒に返す（要件 F-R-25）。
 			 */
 			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), rootErrors
-				, allowed(segments, method));
+				, allowed(state, method));
 
 		}
 
@@ -264,69 +293,33 @@ final class RouteTree {
 	}
 
 	/**
-	 * このパスに当たりうるメソッド（自分のメソッドは除く）
+	 * パスは合っていたのに使えなかったメソッド（要件 F-R-25）
 	 *
-	 * @param segments	セグメント列
+	 * <p>
+	 * <b>探索のついでに集めてある。</b>失敗してから木を舐め直すと、
+	 * <b>外れたときだけ高い</b>形になる——それは叩かれると効く（{@code RouterBench}）。
+	 * </p>
+	 *
+	 * @param state		探索状態
 	 * @param method	求められたメソッド
 	 * @return	当たりうるメソッド。無ければ空
 	 */
-	private Set<String> allowed (PathSegments segments, String method) {
+	private static Set<String> allowed (State state, String method) {
 
-		Set<String> result = new LinkedHashSet<>();
+		if (state.allowed == null) {
+			return Set.of();
+		}
 
-		collectAllowed(segments, 0, result);
-
-		result.remove(method);
+		state.allowed.remove(method);
 
 		/*
 		 * <b>WebSocket は HTTP のメソッドではない。</b>
 		 * 同じ木に載せているだけなので、Allow に出すと嘘になる
 		 * （{@code Allow: WS} を見たクライアントはそれを試す）。
 		 */
-		result.remove(io.jimble.web.ws.WsRoutes.METHOD);
+		state.allowed.remove(io.jimble.web.ws.WsRoutes.METHOD);
 
-		return result;
-
-	}
-
-	/**
-	 * このパスに当たりうるメソッドを全部集める（要件 F-R-25）
-	 *
-	 * <p>
-	 * <b>未マッチだったときにだけ呼ぶ。</b>パスは合っているのにメソッドだけ違うのか、
-	 * そもそもそんなパスが無いのかを見分けて、405 と 404 を分けるためである。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>探索と違って、途中で打ち切らない。</b>{@code find} は最初に当たった1つを返すが、
-	 * ここは<b>当たりうるものを全部</b>見たいので、枝を全部歩く。
-	 * 404 のときにしか通らないので、遅くても構わない。
-	 * </p>
-	 *
-	 * @param segments	セグメント列
-	 * @param index		現在位置
-	 * @param result	結果
-	 */
-	void collectAllowed (PathSegments segments, int index, Set<String> result) {
-
-		if (index == segments.size()) {
-			result.addAll(routes.keySet());
-			return;
-		}
-
-		String segment = segments.get(index);
-
-		RouteTree staticChild = statics.get(segment);
-
-		if (staticChild != null) {
-			staticChild.collectAllowed(segments, index + 1, result);
-		}
-
-		for (RouteTree child : variables.values()) {
-			child.collectAllowed(segments, index + 1, result);
-		}
-
-		result.addAll(wildcards.keySet());
+		return state.allowed;
 
 	}
 
@@ -390,12 +383,18 @@ final class RouteTree {
 
 		// 終端
 		if (index == segments.size()) {
+
 			Route route = routes.get(method);
+
 			if (route == null) {
+				// パスはここまで合っている。メソッドが違うだけなら 405（要件 F-R-25）
+				state.allow(routes.keySet());
 				return false;
 			}
+
 			state.route = route;
 			return true;
+
 		}
 
 		String segment = segments.get(index);
@@ -416,11 +415,15 @@ final class RouteTree {
 
 		// 3. ワイルドカード
 		Route wildcard = wildcards.get(method);
+
 		if (wildcard != null) {
 			state.route = wildcard;
 			state.variables.put(PathVariables.WILDCARD, segments.joinFrom(index));
 			return true;
 		}
+
+		// ワイルドカードはあるが、そのメソッドでは受けていない（要件 F-R-25）
+		state.allow(wildcards.keySet());
 
 		return false;
 

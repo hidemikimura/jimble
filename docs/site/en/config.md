@@ -133,13 +133,16 @@ server {
 }
 
 cookie {
-	secure = true            # false locally (see below)
-	secret = ${?COOKIE_SECRET}
+	secure           = true            # false locally (see below)
+	secret           = ${?COOKIE_SECRET}
+	previous_secrets = [${?COOKIE_SECRET_OLD}]   # only while rotating
 }
 
 session {
-	store       = "none"     # none | db | redis | cookie
-	cookie_name = "sid"
+	store            = "none"     # none | db | redis | cookie
+	cookie_name      = "sid"
+	secret           = ${?SESSION_SECRET}        # required when store = cookie
+	previous_secrets = [${?SESSION_SECRET_OLD}]  # only while rotating
 }
 
 upload {
