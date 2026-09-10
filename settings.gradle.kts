@@ -68,6 +68,15 @@ include("jimble-load")
 include("examples:hello")
 include("examples:blog")
 
+/*
+ * 機能ごとのサンプル（残件 N-3。docs/design-n3.md）。
+ *
+ * <b>1本ずつ単体で読めるようにしてある。</b>共通モジュールを持たないので、
+ * テーブルもマイグレーションも設定もそれぞれが自分で持つ。
+ * <b>PostgreSQL 単独</b>である（方言の両対応は examples/blog が担保する）。
+ */
+include("examples:approval-auth")
+
 // 以降のマイルストーンで追加する
 // include("jimble-migration")       M3（jimble-db に同居させた）
 // include("jimble-codegen")         M3（jimble-db に同居させた）

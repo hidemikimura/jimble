@@ -1,0 +1,156 @@
+package approval.auth;
+
+import db.approval_auth_example.ApprovalAuthExample;
+import db.approval_auth_example.table.staff.Staff;
+import io.jimble.db.sql.SQL;
+import io.jimble.util.data.Data;
+import io.jimble.util.hash.PasswordUtil;
+import io.jimble.web.context.WebContext;
+import io.jimble.web.csrf.Csrf;
+
+/**
+ * ログインとログアウト（要件 F-S-02 / F-S-06 / F-S-07 / F-Y-10）
+ *
+ * <pre>
+ * GET  /login   フォームを出す（CSRF トークンを発行する）
+ * POST /login   照合して、セッションに入れて、リダイレクトする
+ * POST /logout  セッションを捨てる
+ * </pre>
+ *
+ * <p>
+ * <b>POST のあとはリダイレクトする</b>（PRG）。そのままページを返すと、
+ * リロードで二重投稿になる。リダイレクト先へ渡すメッセージが Flash である。
+ * </p>
+ */
+public final class LoginController {
+
+	/** ログイン後に行くところ */
+	private static final String AFTER_LOGIN = "/me";
+
+	private LoginController () {
+	}
+
+	/**
+	 * フォームを出す
+	 *
+	 * @param context	コンテキスト
+	 */
+	static void show (WebContext context) {
+
+		// ここで Cookie にトークンが載る（要件 F-S-06）
+		context.response().putData("csrf_token", Csrf.token(context));
+
+		// 直前の POST が残したメッセージ。読んだ時点で消える（要件 F-S-07）
+		context.response().putData("message", context.flash().get("message"));
+
+		context.response().view("auth/login.jte");
+
+	}
+
+	/**
+	 * 照合する
+	 *
+	 * @param context	コンテキスト
+	 */
+	static void submit (WebContext context) {
+
+		Csrf.verify(context);
+
+		/*
+		 * <b>{@code request()} から直接は読めない。</b>
+		 * 送られてきた値は {@code bodyAll()} の中にある
+		 * （パス変数・クエリ・フォームをまとめたもの）。
+		 * {@code request().getString("login_id")} と書くと<b>黙って null が返る</b>——
+		 * 例外にならないので、気づくまで「パスワードが違う」と言われ続ける。
+		 */
+		Data request = context.request().bodyAll();
+
+		String loginId = request.getString("login_id");
+		String password = request.getString("password");
+
+		Data staff = findStaff(loginId);
+
+		/*
+		 * <b>「そのIDは無い」と「パスワードが違う」を分けない。</b>
+		 * 分けると、<b>どのIDが存在するかを外から数えられる</b>。
+		 * ログには分けて残す（運用では区別が要る）。
+		 */
+		if (staff.isEmpty() || !PasswordUtil.check(password, staff.getString("password_hash"))) {
+
+			context.flash().put("message", "ログインIDかパスワードが違います");
+			context.response().redirect("/login");
+
+			return;
+
+		}
+
+		context.session().put(AuthApp.SESSION_STAFF_ID, staff.getLong("id"));
+		context.session().put(AuthApp.SESSION_STAFF_NAME, staff.getString("name"));
+		context.session().put(AuthApp.SESSION_ROLE, staff.getString("role"));
+
+		/*
+		 * <b>save() を呼ばないと保存されない</b>（要件 F-S-02）。
+		 * 呼び忘れると、閉じるときに警告が出る（要件 F-S-03）
+		 */
+		context.session().save();
+
+		context.response().redirect(AFTER_LOGIN);
+
+	}
+
+	/**
+	 * ログアウトする
+	 *
+	 * @param context	コンテキスト
+	 */
+	static void logout (WebContext context) {
+
+		Csrf.verify(context);
+
+		context.session().destroy();
+
+		context.response().redirect("/login");
+
+	}
+
+	/**
+	 * ログインIDで1件引く
+	 *
+	 * <p>
+	 * <b>SQL は文字列で書かない。</b>生成した {@link Staff} の列で組む（要件 F-D-03）ので、
+	 * 列名を変えてマイグレーションを流し直すと<b>ここがコンパイルエラーになる</b>。
+	 * 文字列で書いてあると、動かしてみるまで気づけない。
+	 * </p>
+	 *
+	 * @param loginId	ログインID
+	 * @return	見つからなければ空
+	 */
+	private static Data findStaff (String loginId) {
+
+		if (loginId == null || loginId.isEmpty()) {
+			return new Data();
+		}
+
+		Data row = ApprovalAuthExample.db().select(
+			SQL.select()
+				.from(Staff.instance())
+				.where(Staff.login_id.eq(loginId)));
+
+		if (row == null) {
+			return new Data();
+		}
+
+		/*
+		 * <b>結果はテーブル名でネストされている</b>（要件 F-D-02）。
+		 * {@code row} の中身は {@code {staff: {id: .., name: ..}}} なので、
+		 * {@code row.getString("name")} は空を返す。
+		 *
+		 * <b>{@code extractTableData} ではない。</b>あちらは JOIN の結果から
+		 * 1つのテーブルぶんを<b>ネストしたまま</b>取り出すもので、
+		 * ここで使うと {@code {staff: {...}}} が返ってきて何も変わらない（実際に踏んだ）。
+		 */
+		return row.getData(Staff.instance());
+
+	}
+
+}
