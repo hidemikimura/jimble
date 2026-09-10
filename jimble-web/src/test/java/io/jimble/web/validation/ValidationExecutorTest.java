@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -194,6 +195,77 @@ class ValidationExecutorTest {
 			}
 
 			assertEquals(List.of("入力してください"), executor.errors().get("name"));
+
+		}
+
+	}
+
+	// endregion
+
+	// region 入力値の返り（要件 F-W-09 / D-133）
+
+	@Test
+	@DisplayName("F-W-09 検証に落ちたら、送られてきた値が応答にも入る")
+	void submittedValuesComeBack () {
+
+		ValidationExecutor executor = new ValidationExecutor() {
+			@Override
+			protected void validate (WebContext context) {
+				addError("title", "入力してください");
+			}
+		};
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/items");
+		source.form("title", "");
+		source.form("body", "書きかけの本文");
+
+		try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+
+			try {
+				executor.execute(context);
+			} catch (Exception ex) {
+				throw new IllegalStateException(ex);
+			}
+
+			try {
+				executor.onCancel(context);
+			} catch (Exception ex) {
+				throw new IllegalStateException(ex);
+			}
+
+			/*
+			 * <b>ここが無いと画面を組み直せない。</b>
+			 * 前は putForm が誰も読まないフィールドに書いていただけで、
+			 * <b>応答にもテンプレートにも出てこなかった</b>（D-133）。
+			 * ドキュメント（errors.md）は最初から「入力値も一緒に返る」と書いてある
+			 */
+			assertEquals("書きかけの本文", context.response().getString("body")
+				, "入力値が応答に入っていません: " + context.response());
+
+			assertEquals(422, context.response().code());
+
+			assertNotNull(context.response().getData(ValidationExecutor.RESPONSE_KEY)
+				, "検証エラーが応答に入っていません");
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-09 putForm に入れたものは getForm でも応答でも読める")
+	void putFormIsReadableBothWays () {
+
+		try (WebContext context = new WebContext(
+			new Fakes.FakeRequestSource("POST", "/items"), new Fakes.FakeResponseSink())) {
+
+			context.response().putForm("title", "書きかけ");
+
+			// 記録としても残る（何を送られたかを後から見るため）
+			assertEquals("書きかけ", context.response().getForm().getString("title"));
+			assertTrue(context.response().hasForm());
+
+			// 応答にも入る（テンプレートが読むのはこちら）
+			assertEquals("書きかけ", context.response().getString("title"));
 
 		}
 

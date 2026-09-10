@@ -216,13 +216,35 @@ public final class NestedParameterParser {
 	 * {@code getString()} が使えないので、1つなら取り出す。
 	 * </p>
 	 *
+	 * <h2>空で送られたものは空文字にする</h2>
+	 * <p>
+	 * <b>{@code name=} のように値なしで送られると、空の List で届く。</b>
+	 * そのまま通すと {@code required()} が素通りする——
+	 * {@code EmptyValidator} が見るのは「null か、空の文字列か」なので、
+	 * <b>空の List はどちらでもない</b>。
+	 * つまり<b>必須の欄を空のまま送れば検証を抜けられた</b>（D-133）。
+	 * </p>
+	 * <p>
+	 * <b>「送られていない」とは区別される。</b>そもそも送られなければ
+	 * キー自体が届かないので、{@code containsKey} で見分けられる
+	 * （PATCH で「送った項目だけ変える」がこれに乗っている）。
+	 * </p>
+	 *
 	 * @param value	値
 	 * @return	値
 	 */
 	private static Object single (Object value) {
 
-		if (value instanceof List<?> list && list.size() == 1) {
-			return list.getFirst();
+		if (value instanceof List<?> list) {
+
+			if (list.isEmpty()) {
+				return "";
+			}
+
+			if (list.size() == 1) {
+				return list.getFirst();
+			}
+
 		}
 
 		return value;

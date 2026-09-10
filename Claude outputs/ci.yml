@@ -255,6 +255,12 @@ jobs:
       - name: pgTest（@Tag("db") のテストを PostgreSQL で）
         run: ./gradlew pgTest --stacktrace
 
+      # 生成コードとスキーマが食い違っていないか（要件 F-G-14）。
+      # examples/blog は MySQL 側（db ジョブ）で見ているので、
+      # PostgreSQL 単独のサンプル（N-3）はここで見る
+      - name: codegenCheck（PostgreSQL のサンプル）
+        run: ./gradlew :examples:approval-auth:codegenCheck :examples:approval-forms:codegenCheck --stacktrace
+
       - name: テスト結果を残す
         if: always()
         uses: actions/upload-artifact@v7

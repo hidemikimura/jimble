@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -262,5 +263,70 @@ class NestedParameterTest {
 			.toList();
 
 	}
+
+	// region 空で送られたもの（D-133）
+
+	@Test
+	@DisplayName("値なしで送られた欄は空文字になる（required が素通りしない）")
+	void emptyValueBecomesEmptyString () {
+
+		/*
+		 * <b>ここが空の List のままだと、必須の検証が抜ける。</b>
+		 * EmptyValidator が見るのは「null か、空の文字列か」なので、
+		 * <b>空の List はどちらでもない</b>——
+		 * 必須の欄を空のまま送れば通ってしまっていた
+		 */
+		try (WebContext context = context(new Fakes.FakeRequestSource("POST", "/x")
+			.form("name"))) {
+
+			Data all = context.request().bodyAll();
+
+			assertTrue(all.containsKey("name"), "送ったキーが消えています: " + all);
+			assertEquals("", all.getString("name"), "空文字になっていません: " + all.get("name"));
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("入れ子の中でも、値なしは空文字になる")
+	void emptyValueInNested () {
+
+		try (WebContext context = context(new Fakes.FakeRequestSource("POST", "/x")
+			.form("items[0][name]")
+			.form("items[0][amount]", "100"))) {
+
+			List<Data> items = context.request().bodyAll().getDataList("items");
+
+			assertEquals(1, items.size());
+			assertEquals("", items.getFirst().getString("name"));
+			assertEquals(100L, items.getFirst().getLong("amount"));
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("そもそも送られていないものは、キーごと無い（PATCH の見分けが壊れない）")
+	void absentIsNotEmpty () {
+
+		/*
+		 * <b>「空で送った」と「送っていない」は別である。</b>
+		 * examples/blog の PATCH は containsKey でこれを見分けているので、
+		 * 空文字を勝手に補うと<b>送っていない項目まで書き換わる</b>
+		 */
+		try (WebContext context = context(new Fakes.FakeRequestSource("POST", "/x")
+			.form("name", "きむら"))) {
+
+			Data all = context.request().bodyAll();
+
+			assertTrue(all.containsKey("name"));
+			assertFalse(all.containsKey("note"), "送っていないキーが増えています: " + all);
+
+		}
+
+	}
+
+	// endregion
 
 }

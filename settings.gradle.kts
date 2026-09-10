@@ -76,6 +76,7 @@ include("examples:blog")
  * <b>PostgreSQL 単独</b>である（方言の両対応は examples/blog が担保する）。
  */
 include("examples:approval-auth")
+include("examples:approval-forms")
 
 // 以降のマイルストーンで追加する
 // include("jimble-migration")       M3（jimble-db に同居させた）

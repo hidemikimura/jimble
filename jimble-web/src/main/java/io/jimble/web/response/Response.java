@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * レスポンス情報
@@ -148,7 +149,15 @@ public class Response extends Data {
 
 	// region フォームデータ
 
-	/* フォームデータ */
+	/*
+	 * フォームデータ（要件 F-W-09）。
+	 *
+	 * <b>ここに入れたものは、応答そのものにも入る。</b>
+	 * 前はこのフィールドに溜めるだけで、<b>誰も読んでいなかった</b>——
+	 * {@code ValidationExecutor} が検証に落ちたときに入力値をここへ入れているのに、
+	 * <b>本文にもテンプレートにも出てこない</b>ので、画面を組み直せなかった。
+	 * ドキュメント（errors.md）は最初から「入力値も一緒に返る」と書いてある（D-133）。
+	 */
 	private Data formData = new Data();
 
 	/**
@@ -172,6 +181,10 @@ public class Response extends Data {
 	public Response putForm (String key, Object value) {
 
 		this.formData.put(key, value);
+
+		// 応答にも載せる。ここを忘れると getForm() でしか読めない値になる
+		putData(key, value);
+
 		return this;
 
 	}
@@ -184,7 +197,16 @@ public class Response extends Data {
 	 */
 	public Response putForm (Data data) {
 
+		if (data == null) {
+			return this;
+		}
+
 		this.formData.putAll(data);
+
+		for (Map.Entry<String, Object> entry : data.entrySet()) {
+			putData(entry.getKey(), entry.getValue());
+		}
+
 		return this;
 
 	}
@@ -197,7 +219,12 @@ public class Response extends Data {
 	 */
 	public Response setForm (Data formData) {
 
-		this.formData = formData;
+		this.formData = formData == null ? new Data() : formData;
+
+		for (Map.Entry<String, Object> entry : this.formData.entrySet()) {
+			putData(entry.getKey(), entry.getValue());
+		}
+
 		return this;
 
 	}
