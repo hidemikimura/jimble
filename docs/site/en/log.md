@@ -97,7 +97,7 @@ server {
 }
 ```
 
-**This is the largest single piece of a request** (about 30% of what it allocates).
+**This is the largest single piece of a request** (about 40% of what it allocates — around 3,400 bytes).
 Turning it off stops both the work of building the line and the bot judgement
 (matching the User-Agent). Requests per second move by around 10%
 (52,537 → 57,030 on a 10-core Mac at 8 connections).

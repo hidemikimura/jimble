@@ -116,6 +116,27 @@ public final class Bench {
 	}
 
 	/**
+	 * 測らずに1行だけ記録する（引き算で出した値）
+	 *
+	 * <p>
+	 * <b>段ごとに積んで測った差を、そのまま名前付きで出すためにある。</b>
+	 * 積み上げの差なので<b>足すと全体になる</b>——
+	 * 「名前の付いていない残り」が出ないのがこの出し方の要点である
+	 * （個別に測って並べると、<b>合計と一致しない分が黙って残る</b>）。
+	 * </p>
+	 *
+	 * <p>時間は出さない。引き算した時間には意味が無い。</p>
+	 *
+	 * @param name	名前
+	 * @param bytes	byte 数
+	 */
+	public static void derived (String name, long bytes) {
+
+		LINES.add("%-52s %8d byte %12s".formatted(name, bytes, "（差分）"));
+
+	}
+
+	/**
 	 * 記録を出す
 	 *
 	 * <p>

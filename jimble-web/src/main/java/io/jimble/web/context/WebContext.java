@@ -630,7 +630,7 @@ public final class WebContext extends Context<WebContext> {
 
 		/*
 		 * <b>切れるようにしてある</b>（要件 NF-O-02 / D-130）。
-		 * ここは1リクエストの中でいちばん大きい（割り当ての約3割）。
+		 * ここは1リクエストの中でいちばん大きい（割り当ての約4割。約 3,400 byte）。
 		 * 切ると、行を組み立てる仕事も、ボット判定（ユーザーエージェントの解析）も止まる。
 		 */
 		if (ServerConf.accessLog()) {

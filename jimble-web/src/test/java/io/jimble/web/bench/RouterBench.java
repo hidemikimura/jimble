@@ -9,7 +9,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,6 +41,25 @@ class RouterBench {
 
 	/** 測る回数 */
 	private static final int MEASURE = 300_000;
+
+	/**
+	 * ルート数を変えても同じとみなす幅（byte）
+	 *
+	 * <p>
+	 * <b>ぴったり同じは求めない。</b>前は {@code assertEquals} で突き合わせていて、
+	 * <b>552 が一度だけ 556 になっただけで赤くなった</b>（続けて3回流すと 552 に戻る）。
+	 * 直していないのに赤くなる日を作らない、というのが D-125 で決めたことなので、
+	 * <b>時間を byte に替えたのに、そこだけ元に戻っていた</b>ことになる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>この幅で見逃すものは無い。</b>ここが守っているのは
+	 * 「ルートを1本ずつ試す実装に戻る」ことで、
+	 * そうなれば 1000 本では<b>桁が変わる</b>（1本 8 byte でも 8KB）。
+	 * 数十 byte の揺れとは比べものにならない。
+	 * </p>
+	 */
+	private static final long SLACK_BYTES = 64;
 
 	/**
 	 * 先に温めておく
@@ -92,8 +110,11 @@ class RouterBench {
 		 * この数字で決めた：<b>1000 本でも 10 本と同じ費用</b>なので、
 		 * キャッシュ（＝利用者の入力を鍵にする表）を持つ理由が無い
 		 */
-		assertEquals(ten, hundred, "ルート数で費用が変わっている");
-		assertEquals(ten, thousand, "ルート数で費用が変わっている");
+		assertTrue(Math.abs(hundred - ten) <= SLACK_BYTES
+			, "ルート数で費用が変わっている: 10本=%d / 100本=%d".formatted(ten, hundred));
+
+		assertTrue(Math.abs(thousand - ten) <= SLACK_BYTES
+			, "ルート数で費用が変わっている: 10本=%d / 1000本=%d".formatted(ten, thousand));
 
 	}
 
