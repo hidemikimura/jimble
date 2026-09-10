@@ -258,12 +258,21 @@ SQL.select(Dsl.dateFormat(Post.created_at, "%Y-%m-%d")).from(Post.instance());
 ## Running a batch
 
 ```java
-db.insertBatch(builderList);
-db.executeBatch(builderList);
+List<Integer> counts = db.executeBatch(builderList);   // row counts
+List<Long>    ids    = db.insertBatch(builderList);    // generated keys
 ```
 
-The return value is a list of row counts. `DB.isBatchSuccess(list)` tells you
-whether all of them went through.
+**The two return different things.** `executeBatch` gives you row counts
+(`List<Integer>`); `insertBatch` gives you the generated keys (`List<Long>`).
+For the counts, `DB.isBatchSuccess(list)` tells you whether all of them went through.
+
+> [!TRAP]
+> **Every builder you stack has to produce the same SQL.** The point of a batch is
+> one statement with the parameters swapped in, so if the order you call `value()`
+> changes partway through, the SQL changes too — **keep the order the same inside
+> the loop**. When it does not match, `DB_998` is set and `null` comes back
+> (until this was fixed, **the values were silently shifted sideways** with no
+> exception and no warning).
 
 ## Large results
 

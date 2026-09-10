@@ -155,9 +155,15 @@ db {
 ```
 
 `DBUtil.getDB("log_db")` gets you a different data source.
-The one with `main = true` is the default for `DBUtil.getDB()`.
+The one with `main = true` is `DBUtil.getMainDB()` (there is no no-argument `getDB()`).
 
-If all you want is **another schema on the same server**, use `subs`.
+Everything listed at the top level is **treated as its own thing**:
+
+- migrations under `conf/migration/<data source name>/` are applied to it
+- codegen generates `db/<data source name>/` for it
+- `migration` / `db_lock` / `db_value` / `db_cache` are created there too
+
+If all you want is **one more handle without copying the settings**, use `subs`.
 
 ```conf
 db {
@@ -171,8 +177,26 @@ db {
 }
 ```
 
-This one shares the connection. Get it with `db.newSubDB("archive_db")`.
-The transaction is shared too.
+Get it with `db.newSubDB("archive_db")`.
+
+> [!TRAP]
+> **Neither the connection nor the transaction is shared.** `subs` is a separate pool
+> from its parent. Even when it points at the same database it is a different
+> connection, so writing through `newSubDB` inside the parent's transaction
+> **does not roll back with it** — one side stays. Assume it inherits the settings
+> from the parent and nothing more.
+
+> [!TRAP]
+> **Migrations and codegen do not apply to `subs`.** Per-data-source work only runs
+> for the top-level `db { }` entries. So all you can put in a `subs` is a scratch
+> table the application creates itself. Anything that needs a schema and generated
+> types (an audit log in another database, say) belongs in **a second top-level entry**.
+> Also, if a `subs` points at a different database, **that database has to exist
+> first**: `subs` connects while the parent data source is still being built, so a
+> `create_database_sql` written on a later top-level entry does not arrive in time
+> (startup stops with `failed create subs datasource`).
+
+`examples/approval-data` has both a second top-level entry and a `subs`.
 
 ## Generate table definitions
 

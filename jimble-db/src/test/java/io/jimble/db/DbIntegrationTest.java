@@ -235,6 +235,36 @@ class DbIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("F-D-08 SQL が揃っていない insertBatch は止まる（値が横にずれない）")
+	void insertBatchRejectsMismatchedSql () {
+
+		DB db = DBUtil.getMainDB();
+
+		/*
+		 * <b>value() の並びが違うと SQL が変わる。</b>
+		 *
+		 * 直していなかったころは、<b>先頭の SQL に全員のパラメータを流し込んで</b>いた。
+		 * 個数が合っているので DB も気づかず、
+		 * 2件目は group_id に "B" を、name に 1 を入れようとする——
+		 * 型が合えば<b>例外も警告も無しに値が入れ替わって入る</b>。
+		 */
+		List<Long> ids = db.insertBatch(List.of(
+			SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "A")
+			, SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.name, "B").value(TestSchema.Site.group_id, 1L)
+		));
+
+		assertNull(ids, "SQL が違うのに通っている");
+		assertTrue(db.isError(), "エラーが立っていない");
+		assertEquals("DB_998", db.getError().getCode(), String.valueOf(db.getError()));
+
+		// 1件も入っていない（まとめて止めるので、途中まで入ることもない）
+		assertEquals(0, db.selectList(SQL.select().from(TestSchema.Site.instance())).size());
+
+	}
+
+	@Test
 	@DisplayName("in() と JOIN と集約が実 DB で動く")
 	void inJoinAggregate () {
 

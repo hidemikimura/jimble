@@ -76,6 +76,7 @@ include("examples:blog")
  * <b>PostgreSQL 単独</b>である（方言の両対応は examples/blog が担保する）。
  */
 include("examples:approval-auth")
+include("examples:approval-data")
 include("examples:approval-forms")
 include("examples:approval-jobs")
 include("examples:approval-list")

@@ -1555,16 +1555,35 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 登録バッチ実行（自動採番値取得）
 	 *
+	 * <p>
+	 * <b>SQL が全部同じでなければならない</b>（要件 F-D-08）。
+	 * 1本の {@code PreparedStatement} にパラメータだけを積み替えるためである。
+	 * 違うものが混ざっていたら {@code DB_998} を立てて null を返す。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>以前は確かめていなかった。</b>先頭の SQL に全員のパラメータを流し込むので、
+	 * {@code value()} の並びが違うビルダーを混ぜると
+	 * <b>例外も警告も無しに値が横にずれて入っていた</b>
+	 * （個数が合っていると DB も気づかない）。
+	 * {@code executeBatch} は元から確かめていたので、そちらに揃えた。
+	 * </p>
+	 *
 	 * @param builderList   InsertBuilder
-	 * @return  結果
+	 * @return  結果（SQL が揃っていなければ null）
 	 */
 	public List<Long> insertBatch (List<InsertBuilder> builderList) {
 
 		String sql = null;
 		List<List<Object>> paramsList = new ArrayList<>();
 		for (InsertBuilder builder : builderList) {
+			String builderSql = builder.sql(dialect());
 			if (sql == null) {
-				sql = builder.sql(dialect());
+				sql = builderSql;
+			} else if (!sql.equals(builderSql)) {
+				this.error = new CodeException("DB_998", "insertBatch: SQLが一致しません");
+				Log.error("insertBatch mismatch:\n" + sql + "\n" + builderSql);
+				return null;
 			}
 			paramsList.add(builder.params());
 		}

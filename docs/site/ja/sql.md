@@ -250,11 +250,21 @@ SQL.select(Dsl.dateFormat(Post.created_at, "%Y-%m-%d")).from(Post.instance());
 ## まとめて流す
 
 ```java
-db.insertBatch(builderList);
-db.executeBatch(builderList);
+List<Integer> counts = db.executeBatch(builderList);   // 件数のリスト
+List<Long>    ids    = db.insertBatch(builderList);    // 採番値のリスト
 ```
 
-戻り値は件数のリストです。`DB.isBatchSuccess(list)` で全部通ったか見られます。
+**2つで戻り値が違います。**`executeBatch` は件数（`List<Integer>`）、
+`insertBatch` は採番値（`List<Long>`）です。
+件数のほうは `DB.isBatchSuccess(list)` で全部通ったか見られます。
+
+> [!TRAP]
+> **積んだビルダーの SQL は、全部同じでなければなりません。**
+> 1本の文にパラメータだけを積み替えて流すためです。
+> `value()` を積む順が途中で変わると SQL も変わるので、
+> **ループの中で順を揃えてください**。
+> 揃っていなければ `DB_998` を立てて `null` が返ります
+> （直すまでは、例外も警告も無しに**値が横にずれて入っていました**）。
 
 ## 大きい結果
 
