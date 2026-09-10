@@ -217,7 +217,18 @@ public final class RequestListController {
 					 */
 					, Dsl.sum(new SelectQuery().dsl(Dsl.caseWhen()
 						.when(Request.status.eq(STATUS_APPROVED)).then(Request.amount)
-						.elseCase(0L))).as("approved_total"))
+						.elseCase(0L))).as("approved_total")
+
+					/*
+					 * <b>集計した値そのものを条件にできる</b>（D-135）。
+					 * 前はこれが書けず、区分けを Java 側で付けていた——
+					 * {@code Dsl.sum(...)} に比較が生えていなかったためである
+					 * （無理に組むと {@code HAVING ( >= ?)} という壊れた SQL になった）。
+					 */
+					, new SelectQuery().dsl(Dsl.caseWhen()
+						.when(Dsl.sum(Request.amount).ge(SIZE_LARGE)).then("大")
+						.when(Dsl.sum(Request.amount).ge(SIZE_MEDIUM)).then("中")
+						.elseCase("小")).as("size"))
 
 				.from(Request.instance())
 				.inner(Staff.instance()).on(Request.staff_id.eq(Staff.id))
@@ -225,34 +236,7 @@ public final class RequestListController {
 				.groupBy(Department.id, Department.name)
 				.orderByDesc(Dsl.sum(Request.amount)));
 
-		/*
-		 * <b>「大／中／小」の区分けは Java で付ける。</b>
-		 * SQL の CASE の中で<b>集計した値そのものを比べることはできない</b>——
-		 * {@code Dsl.sum(...)} が返すのは「選択できるもの」で、
-		 * {@code ge(...)} のような比較を持っていない。
-		 * HAVING なら比べられるが、あれは<b>絞り込み</b>であって区分けではない。
-		 */
-		for (Data row : rows) {
-			row.put("size", size(row.getLong("total")));
-		}
-
 		context.response().json("departments", rows);
-
-	}
-
-	/**
-	 * 合計から区分けを付ける
-	 *
-	 * @param total	合計
-	 * @return	大／中／小
-	 */
-	private static String size (long total) {
-
-		if (total >= SIZE_LARGE) {
-			return "大";
-		}
-
-		return total >= SIZE_MEDIUM ? "中" : "小";
 
 	}
 

@@ -130,6 +130,36 @@ Units (`DateUnit`) and types (`CastType`) are enums. **You cannot pass strings.*
 They go straight into the SQL, so the API is built so that a string from outside
 cannot reach them.
 
+## Filtering on an aggregate (`having`)
+
+**An aggregate can be a condition directly** — the same way a column can.
+
+```java
+SQL.select(
+        Department.id
+        , Dsl.sum(Request.amount).as("total"))
+    .from(Request.instance())
+    .groupBy(Department.id)
+    // only departments over 500,000
+    .having(Dsl.sum(Request.amount).ge(500_000L));
+```
+
+It works inside `CASE` too.
+
+```java
+new SelectQuery().dsl(Dsl.caseWhen()
+        .when(Dsl.sum(Request.amount).ge(500_000L)).then("large")
+        .elseCase("small")).as("size")
+```
+
+Only the **comparisons** are there
+(`eq` / `not` / `gt` / `lt` / `ge` / `le` / `between` / `is_null` / `is_not_null`).
+`like` and `contains` are not, because they mean nothing against an aggregate.
+
+> [!TRAP]
+> **It cannot go in `where`.** SQL evaluates `WHERE` before aggregation.
+> Filtering on an aggregated value is what `having` is for.
+
 ## Window functions
 
 **They attach an aggregate to each row without collapsing rows.** Unlike

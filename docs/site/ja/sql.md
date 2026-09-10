@@ -127,6 +127,36 @@ Dsl.groupConcat(Tag.name, "/").as("tags")
 単位（`DateUnit`）と型（`CastType`）は enum です。**文字列では渡せません。**
 SQL にそのまま入るところなので、外から来た文字列を通せないようにしてあります。
 
+## まとめた値で絞る（`having`）
+
+**集計した値は、そのまま条件にできます。**列と同じ書き方です。
+
+```java
+SQL.select(
+        Department.id
+        , Dsl.sum(Request.amount).as("total"))
+    .from(Request.instance())
+    .groupBy(Department.id)
+    // 合計が 50 万を超える部署だけ
+    .having(Dsl.sum(Request.amount).ge(500_000L));
+```
+
+`CASE` の条件にも置けます。
+
+```java
+new SelectQuery().dsl(Dsl.caseWhen()
+        .when(Dsl.sum(Request.amount).ge(500_000L)).then("大")
+        .elseCase("小")).as("size")
+```
+
+書けるのは**比べるもの**だけです
+（`eq` / `not` / `gt` / `lt` / `ge` / `le` / `between` / `is_null` / `is_not_null`）。
+`like` や `contains` は足していません。集計に対しては、書けても意味がないためです。
+
+> [!TRAP]
+> **`where` には書けません。**SQL の決まりで、`WHERE` は集計より前に評価されます。
+> まとめたあとの値で絞るのは `having` の仕事です。
+
 ## ウィンドウ関数
 
 **行をまとめずに、まとめた結果を各行に付けます。**`GROUP BY` と違って行が減りません。

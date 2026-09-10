@@ -35,8 +35,45 @@ public class WhereQuery implements IWhere {
 	 */
 	public WhereQuery (IDsl dsl) {
 
-		whereList.add(new WhereQueryInner().right(dsl));
+		/*
+		 * <b>左辺に置く。</b>前は right に入れていたので、
+		 * そのあとの比較（{@code ge} など）が right を上書きして<b>式が消えていた</b>
+		 * （{@code HAVING ( >= ?)} が出ていた。D-135）。
+		 */
+		whereList.add(new WhereQueryInner().leftExpression(dsl));
 
+	}
+
+	/**
+	 * 式を左辺に置いた条件を作る
+	 *
+	 * <p>
+	 * <b>集計（{@code SUM(...)}）や関数を {@code HAVING} や {@code CASE WHEN} の
+	 * 左辺にするためにある。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>コンストラクタにしていないのは、{@link io.jimble.db.sql.definition.column.Column} が
+	 * {@link IWhere} と {@link ISelect} の両方である</b>ためである。
+	 * 引数で選ぶ形にすると {@code new WhereQuery(column)} がどちらとも付かなくなる。
+	 * </p>
+	 *
+	 * @param select	式
+	 * @return	条件
+	 */
+	public static WhereQuery ofExpression (ISelect select) {
+
+		WhereQuery query = new WhereQuery();
+		query.whereList.add(new WhereQueryInner().leftExpression(select));
+
+		return query;
+
+	}
+
+	/**
+	 * コンストラクタ（{@link #ofExpression} 用）
+	 */
+	private WhereQuery () {
 	}
 
 	/* 結合演算子 */
@@ -356,6 +393,16 @@ public class WhereQuery implements IWhere {
 		/* left */
 		private IWhere left = null;
 
+		/*
+		 * 左辺の式（集計・関数・CASE など）。
+		 *
+		 * <b>列ではないものを左辺に置くために要る。</b>
+		 * 前はこれが無く、式は right に入れていたので、
+		 * <b>そのあとの比較（{@code ge} など）が right を上書きして式が消えた</b>——
+		 * {@code HAVING ( >= ?)} という<b>壊れた SQL が例外も無く組み上がっていた</b>（D-135）。
+		 */
+		private Object leftExpression = null;
+
 		/* right */
 		private Object right = null;
 
@@ -381,6 +428,19 @@ public class WhereQuery implements IWhere {
 		public IWhere right (IDsl right) {
 
 			this.right = right;
+			return this;
+
+		}
+
+		/**
+		 * 左辺に式を置く
+		 *
+		 * @param expression	式（{@link IDsl} か {@link ISelect}）
+		 * @return  IWhere
+		 */
+		public IWhere leftExpression (Object expression) {
+
+			this.leftExpression = expression;
 			return this;
 
 		}
@@ -615,6 +675,19 @@ public class WhereQuery implements IWhere {
 				sb.append(this.logicalOperator);
 			}
 
+			if (this.leftExpression != null) {
+
+				/*
+				 * <b>空白を足さない。</b>足すと {@code Dsl.regexp(...)} のように
+				 * 「式そのものが条件」になっているものの字面が変わる
+				 * （{@code (`name` REGEXP ?)} が {@code ( `name` REGEXP ?)} になる）。
+				 * SQL としては同じだが、<b>結果キャッシュの鍵は字面で作る</b>ので、
+				 * 変えると<b>版を上げた瞬間に全部が入れ替わる</b>。
+				 */
+				writeExpression(sb, this.leftExpression);
+
+			}
+
 			if (this.left != null) {
 				sb.append(" ");
 				if (this.left instanceof WhereQuery whereQuery
@@ -647,6 +720,10 @@ public class WhereQuery implements IWhere {
 		@Override
 		public boolean hasParameter() {
 
+			if (hasExpressionParameter(this.leftExpression)) {
+				return true;
+			}
+
 			if (this.left != null && this.left.hasParameter()) {
 				return true;
 			}
@@ -674,6 +751,14 @@ public class WhereQuery implements IWhere {
 		public Object getParameter() {
 
 			List<Object> params = new ArrayList<>();
+
+			/*
+			 * <b>左辺が先。</b>パラメータの並びは SQL に出てくる順でなければならない——
+			 * 逆に入れると<b>比較する値と式の値が入れ替わって渡る</b>
+			 */
+			if (hasExpressionParameter(this.leftExpression)) {
+				params.add(expressionParameter(this.leftExpression));
+			}
 
 			if (this.left != null && this.left.hasParameter()) {
 				params.add(this.left.getParameter());
@@ -703,6 +788,57 @@ public class WhereQuery implements IWhere {
 
 		}
 
+
+		/**
+		 * 左辺の式を書き出す
+		 *
+		 * @param sb			書き出し先
+		 * @param expression	式
+		 */
+		private static void writeExpression (SqlWriter sb, Object expression) {
+
+			if (expression instanceof IDsl dsl) {
+				dsl.dslSql(sb);
+				return;
+			}
+
+			if (expression instanceof ISelect select) {
+				select.selectSql(sb);
+			}
+
+		}
+
+		/**
+		 * 左辺の式がパラメータを持つか
+		 *
+		 * @param expression	式
+		 * @return	持つ場合 = true
+		 */
+		private static boolean hasExpressionParameter (Object expression) {
+
+			if (expression instanceof IDsl dsl) {
+				return dsl.hasParameter();
+			}
+
+			return expression instanceof ISelect select && select.hasParameter();
+
+		}
+
+		/**
+		 * 左辺の式のパラメータ
+		 *
+		 * @param expression	式
+		 * @return	パラメータ
+		 */
+		private static Object expressionParameter (Object expression) {
+
+			if (expression instanceof IDsl dsl) {
+				return dsl.getParameter();
+			}
+
+			return ((ISelect) expression).getParameter();
+
+		}
 
 		/**
 		 * {@inheritDoc}

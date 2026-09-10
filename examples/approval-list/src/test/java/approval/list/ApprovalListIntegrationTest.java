@@ -237,6 +237,23 @@ class ApprovalListIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("D-135 集計した値を CASE の条件にできる（大／中／小が SQL で付く）")
+	void sizeIsDecidedInSql () throws Exception {
+
+		String body = get("/requests/summary").body();
+
+		assertTrue(body.contains("\"size\""), body);
+
+		/*
+		 * <b>前はここが書けなかった。</b>{@code Dsl.sum(...)} に比較が無く、
+		 * 区分けを Java 側で付けていた（D-135）。
+		 * 3部署とも同じ区分けなら、条件が効いていない疑いがある
+		 */
+		assertTrue(body.contains("大") || body.contains("中") || body.contains("小"), body);
+
+	}
+
 	// endregion
 
 	// region キャッシュ（要件 F-D-28）
