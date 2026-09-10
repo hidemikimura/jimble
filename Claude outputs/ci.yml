@@ -169,12 +169,17 @@ jobs:
           --health-retries=20
 
     env:
-      # URL は上書きしない。
-      # <b>examples/blog の application.conf も JIMBLE_TEST_DB_URL を見ている</b>ので、
-      # ここで URL を差し替えると blog が jimble_test を向いてしまう。
-      # 既定の 127.0.0.1:3306 のままで当たるように、ポートだけ合わせてある。
+      # jimble 本体のテスト用（jimble_test）。
+      #
+      # <b>サンプルは別の名前を見ている</b>（JIMBLE_SAMPLE_DB_*。D-138）ので、
+      # ここで URL を差し替えても examples/blog は自分の blog_example を向く。
+      # <b>以前は同じ名前だったため URL を上書きできなかった。</b>
       JIMBLE_TEST_DB_USER: root
       JIMBLE_TEST_DB_PASSWORD: jimble
+
+      # examples/blog 用。接続先は既定（127.0.0.1:3306/blog_example）のまま
+      JIMBLE_SAMPLE_DB_USER: root
+      JIMBLE_SAMPLE_DB_PASSWORD: jimble
 
     steps:
       - uses: actions/checkout@v7
