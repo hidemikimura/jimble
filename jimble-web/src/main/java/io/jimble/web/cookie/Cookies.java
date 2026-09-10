@@ -74,10 +74,17 @@ public final class Cookies {
 
 		for (Map.Entry<String, String> entry : source.cookies().entrySet()) {
 
-			raw.put(entry.getKey(), entry.getValue());
+			/*
+			 * <b>いちばん先に元へ戻す</b>（{@link CookieValue}）。
+			 * 署名は<b>符号化する前の値</b>に対して付いているので、
+			 * ここで戻しておかないと、日本語を含む Cookie が<b>全部「改ざん」に見える</b>。
+			 */
+			String value = CookieValue.decode(entry.getValue());
+
+			raw.put(entry.getKey(), value);
 
 			if (!signed) {
-				verified.put(entry.getKey(), entry.getValue());
+				verified.put(entry.getKey(), value);
 				continue;
 			}
 
@@ -89,7 +96,7 @@ public final class Cookies {
 			 * 鍵を順に試す（要件 NF-S-09）。
 			 * <b>先頭が「いま書くのに使う鍵」</b>で、残りは入れ替え前の古い鍵。
 			 */
-			KeyMatch match = Signer.unsignAny(entry.getValue(), secrets);
+			KeyMatch match = Signer.unsignAny(value, secrets);
 
 			if (match == null) {
 				// 検証に落ちた値は入れない。改ざんされた値をアプリに渡さないため

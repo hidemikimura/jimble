@@ -395,6 +395,14 @@ class BlogAppIntegrationTest {
 		assertTrue(after.body().contains("フォームから登録"), after.body());
 		assertTrue(after.body().contains("id=\"last-post\""), "Cookie が載っていない");
 
+		/*
+		 * <b>中身まで見る。</b>ここを {@code id="flash"} があるかどうかだけで見ていたので、
+		 * <b>Flash の日本語が {@code ????} に化けたまま緑だった</b>
+		 * （Cookie の値を符号化していなかった。D-132）。
+		 * 化けていれば「登録しました」の並びが消えるので、ここで捕まる
+		 */
+		assertTrue(after.body().contains("を登録しました"), "Flash の日本語が化けています: " + after.body());
+
 		HttpResponse<String> again = get("/form");
 		assertFalse(again.body().contains("id=\"flash\""), "Flash が2回出ている");
 

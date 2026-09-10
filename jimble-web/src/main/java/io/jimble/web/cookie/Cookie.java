@@ -212,7 +212,11 @@ public final class Cookie {
 
 		sb.append(name).append('=');
 		if (value != null) {
-			sb.append(value);
+			/*
+			 * <b>ヘッダは ASCII なので、ここで符号化する</b>（{@link CookieValue}）。
+			 * そのまま書くと、日本語が<b>例外も警告も無しに {@code ?} になって届く</b>。
+			 */
+			sb.append(CookieValue.encode(value));
 		}
 
 		if (path != null && !path.isEmpty()) {

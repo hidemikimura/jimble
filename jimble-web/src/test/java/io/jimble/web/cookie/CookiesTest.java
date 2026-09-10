@@ -228,7 +228,15 @@ class CookiesTest {
 
 		// 同じ名前の Set-Cookie が2つ出ると、どちらが効くかブラウザ任せになる
 		assertEquals(1, sink.setCookies().size(), sink.setCookies().toString());
-		assertTrue(sink.setCookies().getFirst().startsWith(Flash.PREFIX + "message=新しい"), sink.setCookies().toString());
+
+		/*
+		 * <b>ヘッダの上では符号化されている</b>（D-132）。
+		 * 前はここで生の「新しい」を見ていたが、ヘッダは ASCII なので
+		 * <b>実際にブラウザへ届いていたのは {@code ???} だった</b>。
+		 */
+		assertTrue(sink.setCookies().getFirst()
+			.startsWith(Flash.PREFIX + "message=%E6%96%B0%E3%81%97%E3%81%84")
+			, sink.setCookies().toString());
 
 	}
 
