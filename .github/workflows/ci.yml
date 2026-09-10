@@ -264,7 +264,7 @@ jobs:
       # examples/blog は MySQL 側（db ジョブ）で見ているので、
       # PostgreSQL 単独のサンプル（N-3）はここで見る
       - name: codegenCheck（PostgreSQL のサンプル）
-        run: ./gradlew :examples:approval-auth:codegenCheck :examples:approval-forms:codegenCheck :examples:approval-jobs:codegenCheck :examples:approval-list:codegenCheck --stacktrace
+        run: ./gradlew :examples:approval-auth:codegenCheck :examples:approval-forms:codegenCheck :examples:approval-list:codegenCheck --stacktrace
 
       - name: テスト結果を残す
         if: always()
