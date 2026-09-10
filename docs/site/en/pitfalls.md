@@ -159,7 +159,13 @@ public final class Bootstrap {
 	public static void load () {
 
 		Migration.install();                                  // before DBUtil.load
-		DBUtil.load(Conf.conf().config(), Bootstrap.class);
+
+		// false when it could not connect. Ignore it and you fall over later
+		// with an exception that says nothing about the DB
+		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
+			throw new IllegalStateException("could not load the DB");
+		}
+
 		BatchTables.install(DBUtil.getMainDB());
 		new MqQueue(NoticeExecutor.QUEUE_NAME).install();
 

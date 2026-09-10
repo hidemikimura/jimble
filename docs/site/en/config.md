@@ -125,6 +125,7 @@ server {
 	max_header_size      = 16384
 	idle_timeout_seconds = 60
 	compression          = true
+	access_log           = true     # turning it off is faster, but nothing is left behind
 	bot_access_log       = true
 	strict_routes        = false    # throw on routes nothing can reach (turn this on in CI)
 

@@ -96,6 +96,16 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public DB(DBSource dbSource) {
 
+		/*
+		 * <b>null を黙って受けない。</b>受けると、最初に使ったところで
+		 * {@code NullPointerException} になり、<b>DB のことを何も言わない例外で落ちる</b>
+		 * （要件 F-X-05 / D-130）。
+		 */
+		if (dbSource == null) {
+			throw new IllegalStateException(
+				"DB のデータソースがありません（DBUtil.load が失敗している可能性があります）");
+		}
+
 		this.dbSource = dbSource;
 		this.enableLongConnectionLog = dbSource.conf.longConnectionLog;
 

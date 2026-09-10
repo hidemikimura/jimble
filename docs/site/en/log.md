@@ -87,6 +87,32 @@ The judgement is a match against a User-Agent list (`crawler-user-agents`).
 > Crawlers can be a sizeable share of the total. Split them out and
 > **you can count human traffic on its own.** Set it to `false` to keep them together.
 
+### Turning it off
+
+`server.access_log = false` stops it writing anything at all.
+
+```conf
+server {
+	access_log = false
+}
+```
+
+**This is the largest single piece of a request** (about 30% of what it allocates).
+Turning it off stops both the work of building the line and the bot judgement
+(matching the User-Agent). Requests per second move by around 10%
+(52,537 → 57,030 on a 10-core Mac at 8 connections).
+**That figure varies by machine, so measure it on yours before turning it off**
+(`jimble-load/load.sh` measures the two side by side).
+
+**Metrics and tracing stay.** The access log is the only thing that goes.
+
+> [!TRAP]
+> **Leave the default at `true`.** With it off,
+> **you have no way to find out afterwards what happened.**
+> Neither the 500s nor who hit which path are kept.
+> Turn it off only when something in front of you (a load balancer, nginx)
+> already keeps the same thing, **and** you have measured and found it isn't enough.
+
 ## The execution ID
 
 It is `base-36 time-random-sequence`, and one is issued per request (and per WebSocket message, and per batch).
@@ -368,6 +394,7 @@ assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
 
 | Key | Default | What it does |
 | --- | --- | --- |
+| `server.access_log` | `true` | Writes the access log. `false` writes nothing at all |
 | `server.bot_access_log` | `true` | Splits the bot access log out into `access.bot` |
 | `log.db` | `false` | Enables `DBLog.save(...)` |
 

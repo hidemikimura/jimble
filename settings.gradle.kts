@@ -57,6 +57,14 @@ include("jimble-docs")
  */
 include("jimble-otel")
 
+/*
+ * 負荷試験（要件 NF-P-08）。
+ *
+ * <b>公開しない。</b>秒あたり何本さばけるかを手元で測るためだけのもので、
+ * 使う人のクラスパスには関係しない（publish-conventions を付けていない）。
+ */
+include("jimble-load")
+
 include("examples:hello")
 include("examples:blog")
 

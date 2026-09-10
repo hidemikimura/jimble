@@ -163,7 +163,34 @@ public class DBUtil {
 	 */
 	public static DB getMainDB () {
 
-		return new DB(getMainDataSource());
+		return new DB(require(getMainDataSource(), "main"));
+
+	}
+
+	/**
+	 * データソースがあることを確かめる（要件 F-X-05 / D-130）
+	 *
+	 * <p>
+	 * <b>null をそのまま {@link DB} に渡さない。</b>
+	 * {@link #load} は繋がらなかったときに<b>原因をログに出して false を返す</b>が、
+	 * 戻り値を見ずに先へ進むと、ここで {@code NullPointerException} になる——
+	 * <b>プロセスを殺した例外は DB のことを何も言わず、本当の原因は何十行も上にある</b>。
+	 * </p>
+	 *
+	 * @param dbSource	データソース
+	 * @param name		名前（ログ用）
+	 * @return	データソース
+	 */
+	private static DBSource require (DBSource dbSource, String name) {
+
+		if (dbSource != null) {
+			return dbSource;
+		}
+
+		throw new IllegalStateException(
+			("DB「%s」が読み込めていません。DBUtil.load が失敗しています"
+				+ "（このすぐ上のログに原因が出ています。設定は db.%s）")
+				.formatted(name, name));
 
 	}
 
@@ -175,7 +202,7 @@ public class DBUtil {
 	 */
 	public static DB getDB (String dbName) {
 
-		return new DB(getDataSource(dbName));
+		return new DB(require(getDataSource(dbName), dbName));
 
 	}
 
@@ -199,7 +226,16 @@ public class DBUtil {
 	/**
 	 * DB設定を読み込む
 	 *
-	 * @param conf	Conf
+	 * <p>
+	 * <b>繋がらなくても例外を投げない。</b>原因をログに出して {@code false} を返す。
+	 * <b>戻り値を見ずに先へ進むと、サーバーは起動してしまい</b>、
+	 * 最初にリクエストが来たところで落ちる（要件 F-X-05 / D-130）。
+	 * 呼ぶ側で見て、その場で止めること。
+	 * </p>
+	 *
+	 * @param conf		Conf
+	 * @param appCls	クラスパスの起点（マイグレーション SQL をここから探す）
+	 * @return	全部読み込めた場合 = true。設定に {@code db} が無いときも true
 	 */
 	public static boolean load (Config conf, Class<?> appCls) {
 

@@ -16,6 +16,7 @@ server {
 	idle_timeout_seconds = 60
 	trust_proxy          = false      # Whether to believe X-Forwarded-*
 	compression          = true       # Whether to gzip responses
+	access_log           = true       # Whether to write the access log ([Logging](./log))
 	bot_access_log       = true       # Whether to split out the bot access log
 	strict_routes        = false      # Throw on routes nothing can reach (turn this on in CI)
 

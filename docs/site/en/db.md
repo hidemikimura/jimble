@@ -116,7 +116,11 @@ When you really do want the product's own syntax, `Dsl.freeSql(...)` is the way 
 public static void main (String[] args) {
 
 	Migration.install();                                // startup migrations (if you want them; before DBUtil.load)
-	DBUtil.load(Conf.conf().config(), App.class);       // read the config and connect
+
+	// false when it could not connect. Stop here
+	if (!DBUtil.load(Conf.conf().config(), App.class)) {
+		throw new IllegalStateException("could not load the DB (the reason is in the log just above)");
+	}
 
 	JimbleServer.start(new App());
 
@@ -125,6 +129,13 @@ public static void main (String[] args) {
 
 The second argument to `DBUtil.load` is the **classpath anchor** — migration SQL is
 looked up from there. Pass a class of your own application.
+
+> [!TRAP]
+> **Do not throw the return value away.** `DBUtil.load` does not throw when it cannot
+> connect — it logs the reason and returns `false`. Throw that away and **the server
+> starts anyway**, then falls over on the first request that arrives.
+> `DBUtil.getMainDB()` fails saying the DB was never loaded, so you will not be lost,
+> but **noticing at startup is faster**.
 
 > [!TRAP]
 > **If your app has more than one entry point, put this sequence in one place.**

@@ -1,9 +1,13 @@
 package io.jimble.web.server;
 
+import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
+import io.jimble.util.metrics.Metrics;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.support.Fakes;
+
+import com.typesafe.config.ConfigFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +56,9 @@ class AccessLogTest {
 	void restoreLog () {
 
 		Log.resetSink();
+
+		// 設定を触るテストがあるので、必ず戻す（残すと後ろのテストが理由なく落ちる）
+		Conf.reload();
 
 	}
 	// docs:end
@@ -214,5 +221,95 @@ class AccessLogTest {
 			, "人のアクセスがボット扱いになっている: " + logs);
 
 	}
+
+	// region 切る（要件 NF-O-02 / D-130）
+
+	@Test
+	@DisplayName("D-130 server.access_log = false で1行も出ない")
+	void accessLogCanBeTurnedOff () {
+
+		Conf.replace(ConfigFactory.parseString("server { access_log = false }"));
+
+		JimbleApp app = new JimbleApp() {
+			{
+				get("/x", context -> context.response().send("ok"));
+			}
+		};
+
+		Dispatcher dispatcher = new Dispatcher(app);
+		try (WebContext context = Fakes.context("GET", "/x")) {
+			dispatcher.dispatch(context);
+		}
+
+		assertTrue(
+			logs.stream().noneMatch(entry -> Log.LOGGER_ACCESS.equals(entry.loggerName())
+				|| Log.LOGGER_ACCESS_BOT.equals(entry.loggerName()))
+			, "切ったのにアクセスログが出ています: " + logs);
+
+	}
+
+	@Test
+	@DisplayName("D-130 ボットのアクセスログも一緒に止まる")
+	void botAccessLogIsTurnedOffToo () {
+
+		/*
+		 * <b>別のロガーへ出ているので、片方だけ残るのがいちばんありそうな壊れ方である。</b>
+		 * 「切ったのにログが増え続ける」は、切った人が気づくまで時間がかかる
+		 */
+		Conf.replace(ConfigFactory.parseString("server { access_log = false }"));
+
+		try (WebContext context = new WebContext(
+			new Fakes.FakeRequestSource("GET", "/x").header("User-Agent", "Googlebot/2.1")
+			, new Fakes.FakeResponseSink())) {
+
+			context.response().send("ok");
+
+		}
+
+		assertTrue(
+			logs.stream().noneMatch(entry -> Log.LOGGER_ACCESS_BOT.equals(entry.loggerName()))
+			, "切ったのにボットのアクセスログが出ています: " + logs);
+
+	}
+
+	@Test
+	@DisplayName("D-130 切ってもメトリクスは残る")
+	void metricsSurviveWithoutAccessLog () {
+
+		/*
+		 * <b>ここを間違えると、速くするつもりで監視を消すことになる。</b>
+		 * アクセスログとメトリクスは doClose() の中で並んでいるので、
+		 * まとめて {@code if} の中に入れてしまうのはいかにも起きる
+		 */
+		Conf.replace(ConfigFactory.parseString("server { access_log = false }"));
+
+		Metrics.reset();
+
+		try (WebContext context = Fakes.context("GET", "/x")) {
+			context.run(() -> { });
+		}
+
+		Data counter = Metrics.snapshot().getData("counter");
+
+		assertEquals(1L, counter.getLong("http.request"), "メトリクスまで消えています");
+		assertEquals(1L, counter.getLong("http.status.2xx"));
+
+	}
+
+	@Test
+	@DisplayName("D-130 既定は出す（設定を書かなければ今までどおり）")
+	void accessLogIsOnByDefault () {
+
+		Conf.replace(ConfigFactory.empty());
+
+		try (WebContext context = Fakes.context("GET", "/x")) {
+			context.response().send("ok");
+		}
+
+		assertNotNull(accessLog());
+
+	}
+
+	// endregion
 
 }

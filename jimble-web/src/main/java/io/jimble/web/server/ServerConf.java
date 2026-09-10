@@ -54,6 +54,9 @@ public final class ServerConf {
 	/** 設定キー：ボットのアクセスログを分けるか */
 	public static final String KEY_BOT_ACCESS_LOG = "server.bot_access_log";
 
+	/** 設定の鍵：アクセスログを出すか */
+	public static final String KEY_ACCESS_LOG = "server.access_log";
+
 	/** 設定の鍵：到達不能ルートを例外にするか */
 	public static final String KEY_STRICT_ROUTES = "server.strict_routes";
 
@@ -223,6 +226,34 @@ public final class ServerConf {
 	public static boolean botAccessLog () {
 
 		return Conf.conf().getBoolean(KEY_BOT_ACCESS_LOG, true);
+
+	}
+
+	/**
+	 * アクセスログを出すか（要件 NF-O-02 / D-130）
+	 *
+	 * <p>
+	 * <b>既定は true。</b>1リクエスト1行は、あとから何が起きたかを追うための最後の綱である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>切れるようにしてあるのは、これが1リクエストの中でいちばん大きいから</b>である
+	 * （割り当ての約 3 割。{@code RequestBench} が内訳を出している）。
+	 * 前段でアクセスログを取っていて二重になっている場合や、
+	 * 毎秒数万本を捌く口では、切る判断がありうる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>切ると、アクセスログだけでなく、それを組み立てるための仕事も止まる</b>
+	 * （ボットかどうかの判定＝ユーザーエージェントの解析を含む）。
+	 * メトリクス（要件 NF-O-04）とトレース（NF-O-05）は<b>切っても出る</b>。
+	 * </p>
+	 *
+	 * @return	出す場合 = true
+	 */
+	public static boolean accessLog () {
+
+		return Conf.conf().getBoolean(KEY_ACCESS_LOG, true);
 
 	}
 

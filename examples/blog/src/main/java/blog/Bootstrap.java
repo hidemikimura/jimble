@@ -54,7 +54,14 @@ public final class Bootstrap {
 		 */
 		Migration.install();
 
-		DBUtil.load(Conf.conf().config(), Bootstrap.class);
+		/*
+		 * <b>戻り値を見る。</b>繋がらなかったときの原因はここのログに出るが、
+		 * 見ずに先へ進むと、あとで「DB のことを何も言わない例外」で落ちる。
+		 */
+		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
+			throw new IllegalStateException(
+				"DB を読み込めませんでした（このすぐ上のログに原因が出ています）");
+		}
 
 		/*
 		 * バッチのテーブル（要件 F-B-09）。

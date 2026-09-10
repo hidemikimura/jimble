@@ -567,6 +567,36 @@ public final class WebContext extends Context<WebContext> {
 	}
 
 	/**
+	 * アクセスログを1行出す（要件 NF-O-02）
+	 *
+	 * <p>
+	 * <b>メトリクスとトレースはここに入れない。</b>アクセスログは切れる（{@code server.access_log}）ので、
+	 * ここに混ぜると<b>切った瞬間にメトリクスまで消える</b>。
+	 * </p>
+	 */
+	private void writeAccessLog () {
+
+		Data fields = new Data();
+		fields.put("method", request.method());
+		fields.put("path", request.path());
+		fields.put("query", request.query());
+		fields.put("status", response.code());
+		fields.put("elapsed", elapsed().toNanos() / 1000000d);
+		fields.put("matched", route != null && route.matched());
+
+		/*
+		 * ボットのアクセスは別のロガーへ（要件 F-H-05）。
+		 * まとめて出すと、ボットの分で人のアクセスが埋もれる。
+		 */
+		boolean isBot = ServerConf.botAccessLog() && request.isBotAccess();
+
+		fields.put("bot", isBot);
+
+		Log.access("%s %s %d".formatted(request.method(), request.path(), response.code()), fields, isBot);
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>アクセスログを出力する（要件 F-U-05 / NF-O-02）。</p>
@@ -598,23 +628,14 @@ public final class WebContext extends Context<WebContext> {
 
 		}
 
-		Data fields = new Data();
-		fields.put("method", request.method());
-		fields.put("path", request.path());
-		fields.put("query", request.query());
-		fields.put("status", response.code());
-		fields.put("elapsed", elapsed().toNanos() / 1000000d);
-		fields.put("matched", route != null && route.matched());
-
 		/*
-		 * ボットのアクセスは別のロガーへ（要件 F-H-05）。
-		 * まとめて出すと、ボットの分で人のアクセスが埋もれる。
+		 * <b>切れるようにしてある</b>（要件 NF-O-02 / D-130）。
+		 * ここは1リクエストの中でいちばん大きい（割り当ての約3割）。
+		 * 切ると、行を組み立てる仕事も、ボット判定（ユーザーエージェントの解析）も止まる。
 		 */
-		boolean isBot = ServerConf.botAccessLog() && request.isBotAccess();
-
-		fields.put("bot", isBot);
-
-		Log.access("%s %s %d".formatted(request.method(), request.path(), response.code()), fields, isBot);
+		if (ServerConf.accessLog()) {
+			writeAccessLog();
+		}
 
 		recordMetrics();
 

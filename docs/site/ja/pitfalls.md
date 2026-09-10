@@ -153,7 +153,12 @@ public final class Bootstrap {
 	public static void load () {
 
 		Migration.install();                                  // DBUtil.load より前
-		DBUtil.load(Conf.conf().config(), Bootstrap.class);
+
+		// 繋がらなければ false。見ずに進むと、あとで DB の話をしない例外で落ちる
+		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
+			throw new IllegalStateException("DB を読み込めませんでした");
+		}
+
 		BatchTables.install(DBUtil.getMainDB());
 		new MqQueue(NoticeExecutor.QUEUE_NAME).install();
 

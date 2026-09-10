@@ -118,6 +118,7 @@ server {
 	max_header_size      = 16384
 	idle_timeout_seconds = 60
 	compression          = true
+	access_log           = true     # 切ると速くなるが、何が起きたか残らない
 	bot_access_log       = true
 	strict_routes        = false    # 一生呼ばれないルートを例外にする（CI では true に）
 

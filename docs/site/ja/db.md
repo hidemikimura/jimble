@@ -110,7 +110,11 @@ SQL.select().from(Post.instance()).where(Post.id.eq(1L));
 public static void main (String[] args) {
 
 	Migration.install();                                // 起動時マイグレーション（要るなら。DBUtil.load より前）
-	DBUtil.load(Conf.conf().config(), App.class);       // 設定を読んで接続する
+
+	// 繋がらなければ false。ここで止めます
+	if (!DBUtil.load(Conf.conf().config(), App.class)) {
+		throw new IllegalStateException("DB を読み込めませんでした（このすぐ上のログに原因が出ています）");
+	}
 
 	JimbleServer.start(new App());
 
@@ -119,6 +123,13 @@ public static void main (String[] args) {
 
 `DBUtil.load` の2つ目は**クラスパスの起点**です（マイグレーション SQL をここから探します）。
 自分のアプリのクラスを渡してください。
+
+> [!TRAP]
+> **戻り値を捨てないでください。**`DBUtil.load` は繋がらなくても例外を投げません
+> （原因をログに出して `false` を返します）。捨てると**サーバーは起動してしまい**、
+> 最初にリクエストが来たところで落ちます。
+> `DBUtil.getMainDB()` が「DB が読み込めていません」と言って落ちるので迷子にはなりませんが、
+> **起動した時点で気づけるほうが早い**です。
 
 > [!TRAP]
 > **入口が複数あるなら、この並びを1か所にまとめてください。**
