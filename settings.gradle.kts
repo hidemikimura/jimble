@@ -77,7 +77,6 @@ include("examples:blog")
  */
 include("examples:approval-auth")
 include("examples:approval-forms")
-include("examples:approval-jobs")
 include("examples:approval-list")
 include("examples:approval-ops")
 

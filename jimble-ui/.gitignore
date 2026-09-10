@@ -1,6 +1,0 @@
-# tsc の出力（npm run build:all で作り直せる）
-/dist/
-/examples/**/*.js
-/examples/**/*.js.map
-/node_modules/
-*.tsbuildinfo
