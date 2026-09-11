@@ -53,3 +53,7 @@ application.local.conf
 # 入っていないと 0 ページのサイトができあがる（site タスクは成功してしまう）
 !/docs/site/
 /docs/site/build/
+
+
+# claude
+/Claude outputs/
