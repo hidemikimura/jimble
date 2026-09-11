@@ -169,6 +169,24 @@ auth {
 		absolute_days = 90      # past this it expires even if still in use
 		grace_seconds = 60      # how long the old one still works after a rotation
 	}
+
+	oidc {
+		google {
+			issuer        = "https://accounts.google.com"
+			client_id     = ${?GOOGLE_CLIENT_ID}      # from the environment
+			client_secret = ${?GOOGLE_CLIENT_SECRET}  # never in the file
+			redirect_uri  = "https://example.com/auth/google/callback"
+
+			# optional - discovered from the issuer
+			# authorization_endpoint = "..."
+			# token_endpoint         = "..."
+			# jwks_uri               = "..."
+
+			scopes        = "openid email profile"
+			clock_skew    = 60      # seconds of clock drift to tolerate
+			discovery_ttl = 3600    # seconds to keep discovery and JWKS
+		}
+	}
 }
 
 rate_limit {

@@ -193,6 +193,23 @@ post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要�
 `Auth.principal(context)` は **`null` を返さない**（未ログインなら `Principal.ANONYMOUS`）。
 アクセサは record 形式（`me.id()` / `me.name()` / `me.hasRole("x")`）。
 
+### 「Google でログイン」（OIDC）
+
+```java
+get("/auth/google", Oidc.start("google")).attribute(Auth.PUBLIC, true);
+get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
+	.attribute(Auth.PUBLIC, true);
+```
+
+`findOrCreate` は `OidcUser` を受け取って `Principal` を返す（入れないなら `null`）。
+**引くのは `user.key()`（`provider:sub`）だけ**——メールが同じでも自動では結び付けない。
+
+- **`Auth.NO_SESSION` を付けない。**state も nonce も PKCE の検証子もセッションに置く
+- 設定は `auth.oidc.<名前>.*`。`client_secret` は環境変数から
+- 認可コード + PKCE のみ。**暗黙フローは無い**
+- ID トークンの検証は枠組みがやる（`alg` はヘッダを信じない・`iss` は完全一致・`aud`/`azp`・`exp`/`iat`・`nonce`）
+- **断る理由は返さない**（401 だけ。どこまで通ったかを測らせない）
+
 ## 落とし穴（実際に踏んだもの）
 
 - **`context.request().getString("x")` はコンパイルが通って `null` を返す。**
@@ -210,6 +227,8 @@ post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要�
   ルート定義は初期化ブロックの中で完結させる
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず
   セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）
+- **OIDC のコールバックで `session().save()` を自分で呼ばない。**保存は1リクエストに1回で、
+  先に呼ぶと**そのあとの `Auth.login` の保存が黙って捨てられる**（「入れたのに次で 401」）
 
 ## 詳しいことは引く
 

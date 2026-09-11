@@ -162,6 +162,24 @@ auth {
 		absolute_days = 90      # 発行してからこれを超えたら、使っていても切れる
 		grace_seconds = 60      # 回した直後、古いほうも通す時間
 	}
+
+	oidc {
+		google {
+			issuer        = "https://accounts.google.com"
+			client_id     = ${?GOOGLE_CLIENT_ID}      # 環境変数から
+			client_secret = ${?GOOGLE_CLIENT_SECRET}  # 設定ファイルに書かない
+			redirect_uri  = "https://example.com/auth/google/callback"
+
+			# 省略できる。issuer から discovery で引く
+			# authorization_endpoint = "..."
+			# token_endpoint         = "..."
+			# jwks_uri               = "..."
+
+			scopes        = "openid email profile"
+			clock_skew    = 60      # 秒。時計のずれをどこまで許すか
+			discovery_ttl = 3600    # 秒。discovery と JWKS を持つ時間
+		}
+	}
 }
 
 rate_limit {

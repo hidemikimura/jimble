@@ -254,6 +254,93 @@ leave **the real user locked out and the thief still in.**
 > cookie still works** — which is the whole point of changing the password. It is also
 > what "log out everywhere" is.
 
+## "Sign in with Google" (OpenID Connect)
+
+```java
+{
+	before(Auth::guard);
+
+	// both are "no login needed, but a session is"
+	get("/auth/google", Oidc.start("google"))
+		.attribute(Auth.PUBLIC, true);
+
+	get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
+		.attribute(Auth.PUBLIC, true);
+}
+
+// Map whoever turned up to one of your users. Return null to refuse them
+private static Principal findOrCreate (OidcUser user) {
+
+	Data staff = findByOidcKey(user.key());        // "google:1234567890"
+
+	return staff.isEmpty() ? null
+		: Principal.of(staff.getLong("id"), staff.getString("name"), staff.getString("role"));
+
+}
+```
+
+Settings live under `auth.oidc.<name>.*` ([Configuration](./config)). **Put `client_secret`
+in the environment**, never in the file. Leave the endpoints out and they are **discovered**
+(`issuer` + `/.well-known/openid-configuration`). **Not at startup** — that would stop the
+app from booting while the provider is down.
+
+> [!TRAP]
+> **Do not add `Auth.NO_SESSION`.** The `state`, the `nonce` and the PKCE verifier all live
+> in the session, so with it **nothing is there when they come back**.
+>
+> `Auth.PUBLIC` you do need — this is the path people take before they are logged in.
+
+### Authorization code + PKCE only
+
+There is no implicit flow. `start` puts a **state, a nonce and a PKCE verifier** in the
+session; `callback` checks them.
+
+| | What it stops |
+| --- | --- |
+| `state` | **Login CSRF** — making you follow the attacker's code so **you end up logged into their account** |
+| `nonce` | **Replay of an ID token** that was captured once |
+| **PKCE** (S256) | **A stolen authorization code** — without the verifier it cannot be exchanged |
+
+The `state` is **discarded as it is read**: being single-use is the whole point.
+
+### Verifying the ID token
+
+**No external library.** The `n`/`e` (RSA) and `x`/`y` (EC) a JWKS returns go back to a
+public key through the JDK's `KeyFactory`, and `java.security.Signature` does the
+verification.
+
+Here is what is checked. **Every one of them passes silently if you simply do not look.**
+
+| | |
+| --- | --- |
+| `alg` | **The header is not trusted.** Only the RS/ES entries in the table are accepted. `none` means "an empty signature counts as verified"; `HS256` means **handing the public key over as a shared secret, so anyone can sign** |
+| `kid` | Picks the key. If the JWKS entry declares an `alg`, it has to match |
+| `iss` | **Exact match.** A prefix match lets `https://accounts.google.com.evil.jp` through |
+| `aud` | Must contain us. **If there is more than one, `azp` too** — otherwise a token minted for another client can be walked in |
+| `exp` / `iat` / `nbf` | With a clock-skew allowance. **Tokens issued in the future are refused** |
+| `nonce` | Must match the one we sent |
+
+**The reason is never returned.** Answering "nonce mismatch" **lets someone measure how far
+they got**. It goes in the log; the response is 401.
+
+> [!TRAP]
+> **A matching email does not link to an existing user.** The only lookup key is
+> `provider + sub` (`user.key()`).
+>
+> Linking on email automatically means **one provider that does not verify email addresses
+> is enough to take over an account**. To attach a provider to an existing account, make the
+> user do it **explicitly while already logged in**.
+>
+> `user.emailVerified()` is there to read, but **whether to believe it is your call**.
+
+### What this does not do
+
+| | |
+| --- | --- |
+| Store access tokens | No. This ends at "who logged in". To call an external API, keep the token yourself (storage, encryption, revocation and incremental consent all come with it) |
+| Make jimble an authorization server | Not offered |
+| Register the routes for you | No. You write `get("/auth/google", ...)` yourself ([Principles](./principles)) |
+
 ## Basic auth
 
 Operational endpoints can use Basic auth
@@ -274,7 +361,7 @@ path("/ops", () -> {
 | Annotations (`@PreAuthorize` and friends) | Not used, per the [principles](./principles). Routes declare it as an attribute |
 | Showing the user how many days are left | Not offered. Read the row yourself |
 | JWT | **Deliberately not offered.** You cannot revoke one, and it adds key management. If you need API auth, use an opaque token held in the DB |
-| OAuth / OIDC / SAML | Not yet |
+| SAML | Not yet |
 | A permission table | Roles are plain strings |
 
 A working one is in `examples/approval-auth`.

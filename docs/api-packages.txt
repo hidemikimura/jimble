@@ -19,7 +19,7 @@ io.jimble.core
 io.jimble.util
 io.jimble.web
 
-[public] 公開 API（101）
+[public] 公開 API（102）
 io.jimble.batch
 io.jimble.batch.manager
 io.jimble.batch.scheduler
@@ -95,6 +95,7 @@ io.jimble.util.useragent
 io.jimble.util.xml
 io.jimble.web.assets
 io.jimble.web.auth
+io.jimble.web.auth.oidc
 io.jimble.web.bot
 io.jimble.web.call
 io.jimble.web.context
