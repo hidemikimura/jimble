@@ -54,6 +54,11 @@ application.local.conf
 !/docs/site/
 /docs/site/build/
 
+# 公開 API と内部実装の線引き（要件 NF-C-03 / NF-C-04）。
+# ApiSurfaceTest がこれを読むので、入っていないと CI で落ちる。
+# versioning.md が GitHub 上のこのファイルを指してもいる
+!/docs/api-packages.txt
+
 
 # claude
 /Claude outputs/
