@@ -81,16 +81,38 @@ DBTransaction.transaction(db, transaction -> {
 It starts one, runs the work you passed in, and sees it through `commitEndTransaction()`.
 If an exception is thrown, `close()` rolls back.
 
-## Mixing in MQ
+## What leaves the process, and what goes into the DB
 
-You push onto the queue **after the commit**.
+**The two go on opposite sides of the commit.** This one is easy to get backwards.
+
+| | Where to call it | Why |
+| --- | --- | --- |
+| **Push onto the DB-backed queue** ([MQ](./mq)'s `put()`) | **Inside the transaction** | It is the same DB, so a rollback removes what you pushed |
+| **Anything that leaves the process** (SSE, mail, an external API) | **After the commit** | It cannot be taken back, so publishing first is unrecoverable |
 
 ```java
-transaction.commitEndTransaction();
+try (DBTransaction transaction = new DBTransaction(db)) {
 
-PostFeedHandler.notifyNewPost(title);
+	transaction.beginTransaction();
+
+	long id = db.insert(...);
+
+	new NoticeExecutor().put(db, data);      // inside — it is a DB queue
+
+	transaction.commitEndTransaction();
+
+}
+
+PostFeedHandler.notifyNewPost(title);        // outside — only after the commit
 ```
 
-Publish first and a rollback leaves you delivering "a notice about an article that is not there".
-The other way round: pushing onto a DB-backed queue ([MQ](./mq)) belongs **inside the transaction**.
-It is the same DB, so a rollback removes what you pushed along with everything else.
+Publish the outgoing one first and a rollback leaves you delivering **"a notice about an
+article that is not there".**
+
+Push the DB queue after the commit instead and **whatever was in flight when the process
+died is silently gone** — the article is there, and nobody is told about it.
+
+> [!TIP]
+> **The most reliable place for outgoing work is inside the queue.** `put()` in the
+> transaction and do the actual sending in [MQ](./mq)'s `execute()`. Then **you never have
+> to think about which side of the commit you are on.**

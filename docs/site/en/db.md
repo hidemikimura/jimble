@@ -258,7 +258,12 @@ If you do not commit them, you cannot build in an environment with no DB.
 Join `post` and `comment` and the `id` on each side does not collide.
 
 Query with `Column` and no string keys show up in your code.
-`row.extractTableData(Post.instance())` pulls out one table's worth.
+`row.getData(Post.instance())` pulls out one table's worth, **flattened**.
+
+> [!TRAP]
+> **`extractTableData` does not flatten.** It returns `{post: {...}}` **still nested**, so
+> serialising that to JSON **leaves one level of nesting in**. To flatten, use
+> `getData(table)` or `flattenTable(table)`.
 
 ## Reading errors
 

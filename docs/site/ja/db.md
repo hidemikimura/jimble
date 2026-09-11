@@ -250,7 +250,12 @@ plugins {
 `post` と `comment` を join したとき、両方に `id` があっても衝突しません。
 
 `Column` で引けば、文字列のキーがコードに出てきません。
-`row.extractTableData(Post.instance())` で、1テーブルぶんだけ取り出せます。
+`row.getData(Post.instance())` で、1テーブルぶんを**平らにして**取り出せます。
+
+> [!TRAP]
+> **`extractTableData` は平らにしません。**`{post: {...}}` を<b>ネストしたまま</b>返すので、
+> そのまま JSON にすると**入れ子が1段残ります**。
+> 平らにしたいときは `getData(テーブル)` か `flattenTable(テーブル)` です。
 
 ## エラーの見方
 

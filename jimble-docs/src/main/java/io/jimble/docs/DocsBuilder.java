@@ -150,9 +150,11 @@ public final class DocsBuilder {
 
 			for (Page page : pages) {
 				write(engine, target.resolve(page.slug() + ".html"), page, nav, language, languages);
+				writeMarkdown(target.resolve(page.slug() + ".md"), page, language);
 			}
 
 			writeSearchIndex(target, pages);
+			writeLlms(target, pages, language);
 
 			total += pages.size();
 
@@ -161,6 +163,8 @@ public final class DocsBuilder {
 		}
 
 		copyStatic(root.resolve("docs/site/static"), out.resolve("static"));
+
+		writeLlmsIndex(out, byLanguage);
 
 		// / に来た人を既定の言語へ送る
 		Files.writeString(out.resolve("index.html"), """
@@ -280,6 +284,7 @@ public final class DocsBuilder {
 			, markdown.toHtml(body)
 			, markdown.headings(body)
 			, Markdown.plainText(body)
+			, markdown.toMarkdown(body)
 		);
 
 	}
@@ -314,6 +319,132 @@ public final class DocsBuilder {
 		engine.render("docs/page.jte", model, output);
 
 		Files.writeString(target, output.toString(), StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * ページ1枚を Markdown で書く（要件 NF-D-09）
+	 *
+	 * <p>
+	 * <b>HTML と同じ場所に、同じ名前で置く。</b>
+	 * {@code /ja/db} を読んだ人が {@code /ja/db.md} を推測できる形にしておくと、
+	 * <b>目次を引き直さずに素の文字へ辿り着ける</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * front matter は出さない。代わりに<b>元のページの URL</b>を先頭に置く——
+	 * <b>切り出して貼られたときに、どこから来たか分からなくなる</b>のを防ぐため。
+	 * </p>
+	 *
+	 * @param target	出力先
+	 * @param page		ページ
+	 * @param language	言語
+	 * @throws IOException	書けなかった場合
+	 */
+	private static void writeMarkdown (Path target, Page page, String language) throws IOException {
+
+		String header = "<!-- %s/%s/%s -->\n".formatted(SITE_URL, language, page.slug());
+
+		Files.writeString(target, header + page.markdown(), StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * 言語ごとの {@code llms.txt} と {@code llms-full.txt} を書く（要件 NF-D-09）
+	 *
+	 * <p>
+	 * <b>{@code llms.txt} は目次だけ、{@code llms-full.txt} は全文。</b>
+	 * 目次を読んで要るページだけ取りに来る道と、1回で全部持っていく道の
+	 * <b>両方を残す</b>——相手の道具がどちらを選ぶかは、こちらでは決められない。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>並びは目次と同じ</b>（{@link SiteNav}）。
+	 * ここで別の順序を持つと、<b>ページを足したときに2か所直すことになる</b>。
+	 * </p>
+	 *
+	 * @param target	出力先
+	 * @param pages		ページ
+	 * @param language	言語
+	 * @throws IOException	書けなかった場合
+	 */
+	private static void writeLlms (Path target, List<Page> pages, String language) throws IOException {
+
+		SiteNav nav = new SiteNav(pages, Texts.sections(language));
+
+		String summary = pages.stream()
+			.filter(page -> "index".equals(page.slug()))
+			.map(Page::summary)
+			.filter(text -> !text.isEmpty())
+			.findFirst()
+			.orElse("A web framework for Java");
+
+		StringBuilder index = new StringBuilder("# jimble\n\n> " + summary + "\n");
+		StringBuilder full = new StringBuilder("# jimble\n\n> " + summary + "\n");
+
+		for (Map.Entry<String, List<Page>> section : nav.sections().entrySet()) {
+
+			index.append("\n## ").append(section.getKey()).append("\n\n");
+
+			for (Page page : section.getValue()) {
+
+				index.append("- [%s](%s/%s/%s.md)%s\n".formatted(
+					page.title(), SITE_URL, language, page.slug()
+					, page.summary().isEmpty() ? "" : ": " + page.summary()));
+
+				full.append("\n\n---\n\n<!-- %s/%s/%s -->\n\n"
+					.formatted(SITE_URL, language, page.slug()));
+				full.append(page.markdown());
+
+			}
+
+		}
+
+		Files.writeString(target.resolve("llms.txt"), index.toString(), StandardCharsets.UTF_8);
+		Files.writeString(target.resolve("llms-full.txt"), full.toString(), StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * 根の {@code llms.txt} を書く（要件 NF-D-09）
+	 *
+	 * <p>
+	 * <b>言語を選ばせるだけ。</b>ここに全ページを並べると、
+	 * <b>日本語と英語が混ざった目次</b>になり、どちらを読めばよいか分からなくなる。
+	 * </p>
+	 *
+	 * @param out			出力先
+	 * @param byLanguage	言語ごとのページ
+	 * @throws IOException	書けなかった場合
+	 */
+	private static void writeLlmsIndex (Path out, Map<String, List<Page>> byLanguage) throws IOException {
+
+		StringBuilder index = new StringBuilder("""
+			# jimble
+
+			> Java の Web アプリケーションフレームワーク。注釈も DI も使わない。
+			> A web framework for Java. No annotations, no dependency injection.
+
+			## Docs
+
+			""");
+
+		for (Map.Entry<String, List<Page>> entry : byLanguage.entrySet()) {
+			index.append("- [%s](%s/%s/llms.txt): %d pages. Full text: %s/%s/llms-full.txt\n"
+				.formatted(entry.getKey(), SITE_URL, entry.getKey(), entry.getValue().size()
+					, SITE_URL, entry.getKey()));
+		}
+
+		index.append("""
+
+			## Notes
+
+			- Every page is also served as Markdown at the same path with a `.md` suffix
+			  (for example %s/ja/routing.md).
+			- Source: https://github.com/hidemikimura/jimble
+			""".formatted(SITE_URL));
+
+		Files.writeString(out.resolve("llms.txt"), index.toString(), StandardCharsets.UTF_8);
 
 	}
 
@@ -395,6 +526,15 @@ public final class DocsBuilder {
 
 			/static/*
 			  Cache-Control: public, max-age=600
+
+			# AI に読ませる素の文字（要件 NF-D-09）。
+			# * は / をまたぐので、これだけで /ja/db.md も入る。
+			# ブラウザで開いたときに「ダウンロード」にならないよう text/plain にする。
+			/*.md
+			  Content-Type: text/plain; charset=utf-8
+
+			/*.txt
+			  Content-Type: text/plain; charset=utf-8
 
 			https://:project.workers.dev/*
 			  X-Robots-Tag: noindex

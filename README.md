@@ -718,6 +718,46 @@ Cloudflare Workers がそれを配る。手順はあちらの README にある�
 
 ---
 
+## AI に渡すもの（要件 NF-D-09）
+
+**2つある。役割が違う。**
+
+### 1. ドキュメントを引ける形で出す
+
+全ページが**同じパスの `.md`** でも出る（`/ja/db` → `/ja/db.md`）。
+`snippet=` は**実コードを埋めてから**出すので、サイトで見えているものと同じである。
+
+```
+https://jimble.io/llms.txt              言語を選ぶ
+https://jimble.io/ja/llms.txt           目次
+https://jimble.io/ja/llms-full.txt      全文1枚（約 280KB）
+https://jimble.io/ja/<名前>.md          個別
+```
+
+`DocsBuilder` が `sitemap.xml` と同じところで出すので、**維持費はゼロ**である。
+
+### 2. skill を同梱する
+
+```
+.claude/skills/jimble/SKILL.md          入口。原則・注釈もDIも無いこと・Spring の癖の対応表
+.claude/skills/jimble-db/SKILL.md       SQL ビルダー・Data のネスト・トランザクション・codegen
+.claude/skills/jimble-web/SKILL.md      ルーティング・入力と出力・セッション/CSRF・認証
+.claude/skills/jimble-batch/SKILL.md    バッチと MQ
+```
+
+**ドキュメントだけでは足りない。**AI に jimble を書かせたときの失敗は
+「API が分からない」ではなく<b>Spring のつもりで書く</b>ことで、
+`@RestController` も `@Autowired` も `@Transactional` も jimble には無いのに、
+モデルは自信を持って書く。**自信があるとき、モデルはドキュメントを引かない。**
+
+- **正は `.claude/skills/` の1か所だけ。**jimble 自身のリポジトリでもそのまま効く
+- **`jimble new` が同じものを配る。**ビルドが `.claude/skills/` を CLI のリソースへ写すので、
+  写しは無い（`copySkills` → `Skeleton.ENTRIES`）
+- **腐らせない**：`AiDocsTest` が「指すページが実在するか」「コード例に jimble に無い注釈が出ていないか」を見る。
+  `JimbleNewSkillsTest` が「足した skill が雛形に入っているか」「jar に入っているか」を見る
+
+---
+
 ## Maven Central へ公開する
 
 ```bash

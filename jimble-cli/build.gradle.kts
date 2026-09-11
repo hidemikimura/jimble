@@ -17,6 +17,25 @@ dependencies {
 }
 
 /*
+ * skill を雛形へ写す（要件 NF-D-09）。
+ *
+ * <b>正は .claude/skills/ の1か所だけ。</b>ここへ手で写した写しを置くと、
+ * 直したときに<b>片方だけ古くなる</b>——しかも古いほうが利用者の手元へ配られる。
+ * ビルドで写して、写し忘れは JimbleNewSkillsTest が落とす。
+ */
+val skeletonSkills = layout.buildDirectory.dir("generated/skeleton")
+
+val copySkills by tasks.registering(Copy::class) {
+	from(rootProject.layout.projectDirectory.dir(".claude/skills"))
+	// リソースの根から見た置き場所に合わせる（Skeleton.BASE + "skills/"）
+	into(skeletonSkills.map { it.dir("io/jimble/cli/skeleton/skills") })
+}
+
+sourceSets.main {
+	resources.srcDir(copySkills.map { skeletonSkills })
+}
+
+/*
  * 版は雛形が参照する依存の版になる（Version クラスが読む）。
  * 手で書かず、ビルドの版をそのまま入れる。
  */

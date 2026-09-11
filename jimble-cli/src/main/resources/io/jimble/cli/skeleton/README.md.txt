@@ -53,6 +53,24 @@ conf/application.conf                     設定（jar にも入る。外のほ�
 ローカルでは `build` が `migrate` → `codegen` → `compileJava` を繋ぐ。
 **生成したコードはコミットする。**ローカル以外は DB に繋がずコンパイルできること。
 
+## AI に書かせるとき
+
+`.claude/skills/` に jimble の skill が4本入っています（`jimble` / `jimble-db` /
+`jimble-web` / `jimble-batch`）。**Claude Code や Cowork はこれを自動で読みます。**
+
+置いてあるのは、**放っておくと AI が Spring のつもりで書く**ためです——
+`@RestController` も `@Autowired` も `@Transactional` も jimble には存在しませんが、
+モデルは自信を持って書きます。skill はそれを止めるためのものです。
+
+**コミットしてください。**チームの全員（と、その AI）に同じものが要ります。
+
+ドキュメントは Markdown でそのまま取れます。
+
+```
+https://jimble.io/ja/llms.txt        目次
+https://jimble.io/ja/<名前>.md        個別（routing / sql / auth …）
+```
+
 ## 覚えておくこと
 
 - **SELECT の結果はテーブル名でネストする。**`row.getData("user").getString("name")`、

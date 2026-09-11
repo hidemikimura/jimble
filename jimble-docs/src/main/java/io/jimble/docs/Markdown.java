@@ -103,6 +103,107 @@ final class Markdown {
 	}
 
 	/**
+	 * AI に読ませる Markdown を作る（要件 NF-D-09）
+	 *
+	 * <p>
+	 * <b>{@code snippet=名前} を実コードで埋めたもの。</b>
+	 * 素のソースをそのまま出すと、<b>コードブロックが空のまま出ていく</b>——
+	 * 実コードを埋めているのは HTML を作るときなので（要件 NF-D-03）、
+	 * ここでも同じことをする。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>HTML から戻して作らない。</b>戻すと表や注記の形が崩れるうえ、
+	 * <b>元の Markdown と少しずつ違うものが2つできる</b>。
+	 * </p>
+	 *
+	 * @param markdown	Markdown（front matter は除いてあること）
+	 * @return	Markdown
+	 */
+	String toMarkdown (String markdown) {
+
+		StringBuilder out = new StringBuilder();
+
+		String fence = null;
+		boolean skipping = false;
+
+		for (String line : markdown.split("\n", -1)) {
+
+			String stripped = line.strip();
+
+			if (fence == null) {
+
+				if (!stripped.startsWith("```")) {
+					out.append(line).append('\n');
+					continue;
+				}
+
+				String info = stripped.substring(3).strip();
+				String name = attributeOf(info, "snippet");
+
+				fence = "```";
+
+				if (name == null) {
+					out.append(line).append('\n');
+					continue;
+				}
+
+				/*
+				 * <b>属性は落とす。</b>{@code snippet=} は jimble のサイトを作るための印で、
+				 * 受け取った側には意味が無い（言語だけ残す）。
+				 */
+				String language = info.isEmpty() ? "" : info.split("\\s+")[0];
+
+				out.append("```").append(language.startsWith("snippet=") ? "" : language).append('\n');
+				out.append(snippets.get(name).stripTrailing()).append('\n');
+
+				skipping = true;
+
+				continue;
+
+			}
+
+			if (stripped.startsWith(fence)) {
+				fence = null;
+				skipping = false;
+				out.append("```").append('\n');
+				continue;
+			}
+
+			if (!skipping) {
+				out.append(line).append('\n');
+			}
+
+		}
+
+		return out.toString();
+
+	}
+
+	/**
+	 * ``` の行から属性を読む
+	 *
+	 * @param info	行
+	 * @param name	名前
+	 * @return	値。無ければ null
+	 */
+	private static String attributeOf (String info, String name) {
+
+		for (String part : info.split("\\s+")) {
+
+			String prefix = name + "=";
+
+			if (part.startsWith(prefix)) {
+				return part.substring(prefix.length());
+			}
+
+		}
+
+		return null;
+
+	}
+
+	/**
 	 * 見出しを集める
 	 *
 	 * @param markdown	Markdown

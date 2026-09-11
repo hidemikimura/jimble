@@ -80,16 +80,39 @@ DBTransaction.transaction(db, transaction -> {
 始めて、渡した処理を走らせて、`commitEndTransaction()` まで済ませます。
 例外が出れば `close()` がロールバックします。
 
-## MQ と混ぜるとき
+## 外へ出すものと、DB に積むもの
 
-キューに積むのは**コミットしてからです**。
+**どちらの中で呼ぶかが逆になります。**ここは間違えやすいところです。
+
+| | どこで呼ぶか | なぜ |
+| --- | --- | --- |
+| **DB のキューへ積む**（[MQ](./mq) の `put()`） | **トランザクションの中** | 同じ DB なので、ロールバックすれば積んだものも消えます |
+| **外へ出す**（SSE・メール送信・外部 API） | **コミットしたあと** | 戻せないので、先に流すと取り返しがつきません |
 
 ```java
-transaction.commitEndTransaction();
+try (DBTransaction transaction = new DBTransaction(db)) {
 
-PostFeedHandler.notifyNewPost(title);
+	transaction.beginTransaction();
+
+	long id = db.insert(...);
+
+	new NoticeExecutor().put(db, data);      // ← 中で積む（DB のキュー）
+
+	transaction.commitEndTransaction();
+
+}
+
+PostFeedHandler.notifyNewPost(title);        // ← 外へ出すのはコミットしてから
 ```
 
-先に流すと、ロールバックしたときに「入っていない記事のお知らせ」だけが届きます。
-逆に、DB のキュー（[MQ](./mq)）へ積むのは**トランザクションの中**です。
-同じ DB なので、ロールバックすれば積んだものも消えます。
+外へ出すものを先に流すと、ロールバックしたときに
+**「入っていない記事のお知らせ」だけが届きます。**
+
+逆に、DB のキューをコミット後に積むと、**積む直前に落ちたぶんが黙って消えます**——
+記事は入っているのに、お知らせは誰も知らない状態になります。
+
+> [!TIP]
+> **外へ出す処理は、キューの中でやるのがいちばん確実です。**
+> トランザクションの中で `put()` して、実際の送信は
+> [MQ](./mq) の `execute()` に書きます。こうすると、
+> <b>「どちらの中で呼ぶか」を考えなくてよくなります。</b>

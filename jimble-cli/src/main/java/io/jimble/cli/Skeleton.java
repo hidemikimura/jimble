@@ -48,6 +48,18 @@ final class Skeleton {
 		 * 置いただけで流れると、DB を使わない人が驚く。
 		 */
 		, new Entry("migration.sql.txt", "conf/migration/__DB__/001_create_note.sql.example")
+		/*
+		 * AI 向けの skill（要件 NF-D-09）。
+		 *
+		 * <b>置いておかないと、AI は Spring のつもりで書く</b>——
+		 * 注釈も DI も無いことを、書き始める前に知っている必要がある。
+		 * 中身は jimble 自身の .claude/skills/ から<b>ビルドで写している</b>ので、
+		 * ここに写しは無い（写し忘れは JimbleNewSkillsTest が落とす）。
+		 */
+		, new Entry("skills/jimble/SKILL.md", ".claude/skills/jimble/SKILL.md")
+		, new Entry("skills/jimble-db/SKILL.md", ".claude/skills/jimble-db/SKILL.md")
+		, new Entry("skills/jimble-web/SKILL.md", ".claude/skills/jimble-web/SKILL.md")
+		, new Entry("skills/jimble-batch/SKILL.md", ".claude/skills/jimble-batch/SKILL.md")
 	);
 
 	private Skeleton () {}

@@ -13,6 +13,7 @@ import java.util.List;
  * @param html		本文
  * @param headings	見出しの一覧（そのページの目次）
  * @param text		検索用の素の文字
+ * @param markdown	AI に読ませる Markdown（要件 NF-D-09）
  */
 public record Page(
 	String slug
@@ -23,6 +24,7 @@ public record Page(
 	, String html
 	, List<Heading> headings
 	, String text
+	, String markdown
 ) {
 
 	/**

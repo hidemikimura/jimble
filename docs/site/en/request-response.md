@@ -83,8 +83,11 @@ context.response().download(file, "report.xlsx");  // download
 context.response().code(201).send();               // no body
 ```
 
-`json()` only builds; `send()` is what sends.
-Call `json()` several times and it keeps adding to the same JSON document.
+`json()` only builds. Call it several times and it keeps adding to the same JSON document.
+
+**You do not need a `send()` after `json()`.** Once it is built, the dispatcher sends it at
+the end of the execution. Write `send()` explicitly only when you want to finish **with no
+body** (`code(204).send()`), or when you are returning text directly.
 
 ```java snippet=json-route
 ```
