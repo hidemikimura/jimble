@@ -8,7 +8,7 @@
 #
 # <b>本体・gradle-plugin・バンドルの3か所が同じ値を見る。</b>
 # ここに1つ置いてあるのはそのためで、既定値をビルドスクリプトに書き写さないこと。
-jimble = "0.4.1-SNAPSHOT"
+jimble = "0.5.0-SNAPSHOT"
 
 opentelemetry = "1.65.0"
 junit = "6.1.3"

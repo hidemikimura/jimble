@@ -14,13 +14,13 @@ Java 製の Web アプリケーションフレームワーク。
 plugins {
 	application
 	// src/main/jte を compileJava の前に Java へ変換する
-	id("io.jimble.jte") version "0.4.0"
+	id("io.jimble.jte") version "0.5.0"
 	// 開発用のホットリロード（./gradlew jimbleRun）
-	id("io.jimble.run") version "0.4.0"
+	id("io.jimble.run") version "0.5.0"
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:0.4.0")
+	implementation("io.jimble:jimble-web:0.5.0")
 }
 ```
 
@@ -736,7 +736,7 @@ export JIMBLE_CENTRAL_PASSWORD='...'
 - 公開先は **Central Portal**。Sonatype に公式の Gradle プラグインが無いので、
   **REST API を直に叩いている**（外部プラグインを足さない。要件 D-60）
 - **鍵もトークンも環境変数だけ。**無い環境では署名を飛ばしてビルドが通る
-- `-Pjimble.version` を渡さないと `0.4.1-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
+- `-Pjimble.version` を渡さないと `0.5.0-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
   （Central は `-SNAPSHOT` を受け付けず、公開したものは消せない）
 - Gradle プラグインは **Maven Central のマーカー**で配る。Plugin Portal には出さない（D-22）
 
