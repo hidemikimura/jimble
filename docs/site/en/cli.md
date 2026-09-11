@@ -47,7 +47,7 @@ export PATH="$PWD/jimble-cli/build/install/jimble/bin:$PATH"
 
 ```bash
 $ jimble version
-jimble 0.5.0-SNAPSHOT
+jimble 0.5.1-SNAPSHOT
 ```
 
 If you would rather not type that every time, add the `export` above to your
@@ -71,7 +71,7 @@ ln -sf "$PWD/jimble-cli/build/install/jimble/bin/jimble" /usr/local/bin/jimble
 ### Using a jimble you built yourself
 
 The `build.gradle.kts` that `jimble new` writes points at **the version the CLI
-was built from**. If that version is not published (`0.5.0-SNAPSHOT`, say),
+was built from**. If that version is not published (`0.5.1-SNAPSHOT`, say),
 **publish it locally first**.
 
 ```bash

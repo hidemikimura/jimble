@@ -38,7 +38,7 @@ export PATH="$PWD/jimble-cli/build/install/jimble/bin:$PATH"
 
 ```bash
 $ jimble version
-jimble 0.5.0-SNAPSHOT
+jimble 0.5.1-SNAPSHOT
 ```
 
 毎回書きたくなければ、`~/.zshrc` に上の `export` を足すか、リンクを張ってください。
@@ -61,7 +61,7 @@ ln -sf "$PWD/jimble-cli/build/install/jimble/bin/jimble" /usr/local/bin/jimble
 ### 手元でビルドした jimble を使うとき
 
 `jimble new` が作る `build.gradle.kts` は、**CLI をビルドした版**を参照します。
-公開していない版（`0.5.0-SNAPSHOT` など）なら、**先にローカルへ publish**してください。
+公開していない版（`0.5.1-SNAPSHOT` など）なら、**先にローカルへ publish**してください。
 
 ```bash
 ./gradlew publishToMavenLocal
