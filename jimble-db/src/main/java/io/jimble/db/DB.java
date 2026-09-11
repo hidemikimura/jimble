@@ -257,6 +257,17 @@ public class DB implements Closeable, AutoCloseable {
 
 	/**
 	 * クエリ後の自動コネクションクローズ処理
+	 *
+	 * <p>
+	 * <b>1文ごとにプールへ返す。</b>だから {@code DB} を閉じ忘れても、
+	 * ふつうはコネクションが残らない（{@code DBUtil.getMainDB()} を
+	 * 使い捨てにする書き方は、これがあるから成り立っている）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>返さないのはトランザクション中だけ</b>で、そのときは実行の終わりに
+	 * 拾ってもらうよう登録する（要件 F-D-16）。
+	 * </p>
 	 */
 	private void closeAfterQuery () {
 
@@ -266,6 +277,14 @@ public class DB implements Closeable, AutoCloseable {
 
 		try {
 			if (isTransaction()) {
+				/*
+				 * 握ったまま文を抜ける。
+				 *
+				 * <b>ここでは登録しない。</b>トランザクションを始められるのは
+				 * {@code beginTransaction()} だけで、そこで登録済みである。
+				 * 両方に置くと<b>ミューテーションが生き残る</b>——
+				 * 片方を消しても誰も落ちないコードは、要らないコードである。
+				 */
 				return;
 			}
 		} catch (Exception ignore) {}
@@ -277,6 +296,9 @@ public class DB implements Closeable, AutoCloseable {
 		} finally {
 			connection = null;
 		}
+
+		// 返したので、拾ってもらう必要はもう無い
+		unregisterCloseTask();
 
 		logLongConnection();
 
@@ -960,6 +982,20 @@ public class DB implements Closeable, AutoCloseable {
 			} catch (Exception ignore) {}
 
 			IOUtil.close(rs, st);
+
+		} finally {
+
+			/*
+			 * <b>ここは closeAfterQuery() を呼ばない。</b>
+			 * カーソルは呼ぶ側が1行ずつ読むので、読み終わるまで
+			 * ResultSet を開いておく必要がある——つまり
+			 * <b>コネクションを握ったまま抜ける。</b>
+			 *
+			 * 返すのは呼ぶ側の {@code db.close()} である。
+			 * 呼ばれなければプールから1本消えるので、
+			 * 実行の終わりに拾ってもらう（要件 F-D-16）。
+			 */
+			registerCloseTask();
 
 		}
 
@@ -1878,6 +1914,18 @@ public class DB implements Closeable, AutoCloseable {
 
 	/**
 	 * トランザクションを開始する
+	 *
+	 * <p>
+	 * <b>ここからコネクションを握り続ける。</b>{@code closeAfterQuery()} は
+	 * トランザクション中は返さないので、コミットもロールバックもされなければ
+	 * <b>プールへ戻らない。</b>実行の終わりに拾ってもらうよう登録する（要件 F-D-16）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>1文も流さずに終わる道があるので、ここで登録する。</b>
+	 * {@code closeAfterQuery()} の側だけに置くと、
+	 * 開始してすぐ抜けたときに登録されない。
+	 * </p>
 	 */
 	public void beginTransaction() throws Exception {
 
@@ -1886,6 +1934,8 @@ public class DB implements Closeable, AutoCloseable {
 		}
 
 		connection.setAutoCommit(false);
+
+		registerCloseTask();
 
 	}
 
@@ -2017,7 +2067,103 @@ public class DB implements Closeable, AutoCloseable {
 			connection = null;
 		}
 
+		unregisterCloseTask();
+
 		logLongConnection();
+
+	}
+
+	// endregion
+
+	// region 閉じ忘れを拾う（要件 F-D-16）
+
+	/* 実行の終わりに拾ってもらうための登録 */
+	private Context.CloseTask closeTask = null;
+
+	/**
+	 * 実行の終わりに拾ってもらう
+	 *
+	 * <p>
+	 * <b>コネクションを握ったまま文を抜けるときにだけ登録する。</b>
+	 * 作った {@code DB} を片端から登録すると、
+	 * <b>1文ごとに返している大多数まで後始末の列に積まれる</b>——
+	 * {@code DbSessionStore#load()} は1メソッドで3本作るし、
+	 * 長いバッチのループなら際限なく増える。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>コンテキストの外（起動時のマイグレーションなど）では何もしない。</b>
+	 * 拾う相手がいないので、そこは呼ぶ側が閉じる。
+	 * </p>
+	 */
+	private void registerCloseTask () {
+
+		if (closeTask != null || connection == null || !Context.isBound()) {
+			return;
+		}
+
+		closeTask = () -> {
+
+			if (connection == null) {
+				return;
+			}
+
+			/*
+			 * ここへ来たということは、コネクションを握ったまま実行が終わったということである。
+			 *
+			 * <b>黙って閉じない。</b>直してしまうと、
+			 * 「直っているので誰も直さない」まま漏れ続ける（要件 F-D-16）。
+			 */
+			Log.error(leakMessage());
+
+			close();
+
+		};
+
+		Context.current().onClose(closeTask);
+
+	}
+
+	/**
+	 * 拾ってもらうのをやめる
+	 *
+	 * <p>正しく返したものは、実行の終わりに呼ばれる必要がない。</p>
+	 */
+	private void unregisterCloseTask () {
+
+		if (closeTask == null) {
+			return;
+		}
+
+		if (Context.isBound()) {
+			Context.current().removeCloseTask(closeTask);
+		}
+
+		closeTask = null;
+
+	}
+
+	/**
+	 * 閉じ忘れのログ
+	 *
+	 * <p>
+	 * <b>どちらの握り方かで文面を変える。</b>
+	 * 「閉じてください」とだけ言われても、どこを直せばよいのか分からない。
+	 * </p>
+	 *
+	 * @return	メッセージ
+	 */
+	private String leakMessage () {
+
+		String name = dbSource == null ? "?" : dbSource.name;
+
+		if (isTransaction()) {
+			return "コミットもロールバックもされていないトランザクションが残っていました。"
+				+ "ロールバックして閉じます: " + name;
+		}
+
+		return "閉じられていない DB が残っていました。閉じます: " + name
+			+ "（selectListWithFetcher はカーソルなので、close() までコネクションを返しません）";
 
 	}
 

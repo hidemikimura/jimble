@@ -268,10 +268,27 @@ List<Long>    ids    = db.insertBatch(builderList);    // 採番値のリスト
 
 ## 大きい結果
 
-全部をリストに載せたくないときは、1行ずつ受け取ります。
+全部をリストに載せたくないときは、カーソルで1行ずつ受け取ります。
 
 ```java
-db.selectListWithFetcher(row -> {
-	// 1行ずつ来る
-}, SQL.select().from(Post.instance()));
+try (DB db = BlogExample.db();
+	 ResultSetFetcher fetcher = new ResultSetFetcher()) {
+
+	db.selectListWithFetcher(fetcher, SQL.select().from(Post.instance()));
+
+	for (Data row : fetcher) {
+		// 1行ずつ来る
+	}
+
+}
 ```
+
+> [!TRAP]
+> **`DB` も一緒に畳んでください。**
+> ふつうの SQL は<b>1文ごとにコネクションをプールへ返す</b>ので、`DB` を閉じ忘れても
+> 何も残りません（`DBUtil.getMainDB()` を使い捨てにする書き方は、これで成り立っています）。
+> **カーソルだけは違います。**読み終わるまで `ResultSet` を開けておく必要があるので、
+> <b>`close()` までコネクションを握ったまま</b>です。
+> `fetcher` だけ畳んで `DB` を畳まないと、<b>呼ばれるたびにプールから1本ずつ消えます</b>——
+> SQL は成功し、例外も警告も出ないので、**プールが枯れるまで誰も気づきません**。
+> 畳み忘れは実行の終わりに拾いますが（要件 F-D-16）、そのときは<b>エラーログが出ます</b>。

@@ -8,6 +8,7 @@ import db.approval_list_example.table.staff.Staff;
 import io.jimble.db.data.ResultSetFetcher;
 import io.jimble.db.data.SelectListResponse;
 import io.jimble.db.sql.query.dsl.Dsl;
+import io.jimble.db.DB;
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.SelectBuilder;
 import io.jimble.db.sql.query.select.SelectQuery;
@@ -262,12 +263,22 @@ public final class RequestListController {
 		context.response().setResponseHeader("Content-Type", "text/csv; charset=UTF-8");
 		context.response().setResponseHeader("Content-Disposition", "attachment; filename=\"requests.csv\"");
 
-		try (ResultSetFetcher fetcher = new ResultSetFetcher();
+		/*
+		 * <b>DB も畳むこと。</b>カーソルは読み終わるまで ResultSet を開けておくので、
+		 * <b>コネクションを握ったまま</b>である（ふつうの SQL は1文ごとに返る）。
+		 * ここを try に入れ忘れると、<b>CSV を出すたびにプールから1本ずつ消える</b>——
+		 * SQL は成功し、例外も出ないので、プールが枯れるまで誰も気づかない。
+		 *
+		 * 実行の終わりに拾う仕掛けはある（要件 F-D-16）が、
+		 * <b>拾われるとエラーログが出る</b>。拾わせないのが本筋である。
+		 */
+		try (DB db = ApprovalListExample.db();
+			ResultSetFetcher fetcher = new ResultSetFetcher();
 			OutputStream out = context.response().outputStream();
 			OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8);
 			CsvWriter csv = new CsvWriter(writer)) {
 
-			ApprovalListExample.db().selectListWithFetcher(fetcher
+			db.selectListWithFetcher(fetcher
 				, joined().orderBy(Request.id).limit(CSV_LIMIT));
 
 			csv.writeLine("id", "部署", "社員", "種別", "金額", "状態");

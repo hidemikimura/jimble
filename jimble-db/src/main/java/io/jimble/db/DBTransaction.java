@@ -2,7 +2,6 @@ package io.jimble.db;
 
 import io.jimble.core.context.Context;
 import io.jimble.util.exception.CodeException;
-import io.jimble.util.log.Log;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -22,7 +21,10 @@ import java.io.IOException;
  *   <li><b>畳み忘れを拾う先が無かった。</b>
  *       try-with-resources を使わずに {@code beginTransaction()} して
  *       途中で return すると、<b>ロールバックもされず接続もプールへ戻らない。</b>
- *       実行（{@link Context}）の終わりに拾うようにした（要件 F-D-16）</li>
+ *       実行（{@link Context}）の終わりに拾うようにした（要件 F-D-16）。
+ *       <b>拾うのは {@code DB} の側である。</b>ここに置くと
+ *       <b>{@code db.beginTransaction()} を直に呼んだときに拾えない</b>ので、
+ *       コネクションを握る当人（{@code DB}）へ下ろした</li>
  * </ol>
  */
 public class DBTransaction implements Closeable, AutoCloseable {
@@ -32,9 +34,6 @@ public class DBTransaction implements Closeable, AutoCloseable {
 
 	/* トランザクション中判定 */
 	private final boolean isTransactional;
-
-	/* 実行の終わりに拾ってもらうための登録（要件 F-D-16） */
-	private Context.CloseTask closeTask;
 
 	/**
 	 * コンストラクタ
@@ -61,12 +60,11 @@ public class DBTransaction implements Closeable, AutoCloseable {
 		}
 
 		try {
+			// 実行の終わりに拾ってもらう登録は DB の側で行う（要件 F-D-16）
 			db.beginTransaction();
 		} catch (Exception ex) {
 			throw new CodeException("DB_001", "トランザクションの開始に失敗しました。");
 		}
-
-		register();
 
 	}
 
@@ -106,8 +104,6 @@ public class DBTransaction implements Closeable, AutoCloseable {
 			db.rollbackEndTransaction();
 		} catch (Exception ex) {
 			throw new CodeException("DB_002", "トランザクションのロールバックに失敗しました。");
-		} finally {
-			unregister();
 		}
 
 	}
@@ -149,8 +145,6 @@ public class DBTransaction implements Closeable, AutoCloseable {
 			db.commitEndTransaction();
 		} catch (Exception ex) {
 			throw new CodeException("DB_003", "トランザクションのコミットに失敗しました。");
-		} finally {
-			unregister();
 		}
 
 	}
@@ -169,63 +163,10 @@ public class DBTransaction implements Closeable, AutoCloseable {
 			return;
 		}
 
-		try {
-			db.close();
-		} finally {
-			unregister();
-		}
+		db.close();
 
 	}
 
-	// region 畳み忘れを拾う（要件 F-D-16）
-
-	/**
-	 * 実行の終わりに拾ってもらう
-	 */
-	private void register () {
-
-		if (closeTask != null || !Context.isBound()) {
-			return;
-		}
-
-		closeTask = () -> {
-
-			if (!db.isTransaction()) {
-				return;
-			}
-
-			/*
-			 * ここへ来たということは、コミットもロールバックもされずに
-			 * 実行が終わったということである。
-			 * 黙って戻すと「入ったつもりが入っていない」が残るので、
-			 * エラーログを出す（要件 F-D-16）。
-			 */
-			Log.error("コミットもロールバックもされていないトランザクションが残っていました。ロールバックします");
-
-			db.rollbackEndTransaction();
-
-		};
-
-		Context.current().onClose(closeTask);
-
-	}
-
-	/**
-	 * 拾ってもらうのをやめる
-	 */
-	private void unregister () {
-
-		if (closeTask == null || !Context.isBound()) {
-			closeTask = null;
-			return;
-		}
-
-		Context.current().removeCloseTask(closeTask);
-		closeTask = null;
-
-	}
-
-	// endregion
 
 	/**
 	 * トランザクション

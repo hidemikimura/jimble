@@ -2,6 +2,7 @@ package blog;
 
 import db.blog_example.BlogExample;
 import db.blog_example.table.post.Post;
+import io.jimble.db.DB;
 import io.jimble.db.sql.SQL;
 import io.jimble.db.data.ResultSetFetcher;
 import io.jimble.db.sql.UpdateBuilder;
@@ -243,9 +244,15 @@ public class PostController extends Controller {
 		context.response().setResponseHeader("Content-Type", "text/csv; charset=UTF-8");
 		context.response().setResponseHeader("Content-Disposition", "attachment; filename=\"posts.csv\"");
 
-		try (ResultSetFetcher fetcher = new ResultSetFetcher()) {
+		/*
+		 * <b>DB も畳むこと。</b>カーソルは読み終わるまで ResultSet を開けておくので、
+		 * <b>コネクションを握ったまま</b>である（ふつうの SQL は1文ごとに返る）。
+		 * ここを try に入れ忘れると、CSV を出すたびにプールから1本ずつ消える。
+		 */
+		try (DB db = BlogExample.db();
+			 ResultSetFetcher fetcher = new ResultSetFetcher()) {
 
-			BlogExample.db().selectListWithFetcher(fetcher
+			db.selectListWithFetcher(fetcher
 				, SQL.select()
 					.from(Post.instance())
 					.orderBy(Post.id)

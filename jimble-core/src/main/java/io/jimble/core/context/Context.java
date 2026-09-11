@@ -630,6 +630,25 @@ public abstract class Context<SELF extends Context<SELF>> implements AutoCloseab
 	}
 
 	/**
+	 * 積まれている後始末の数
+	 *
+	 * <p>
+	 * <b>正しく畳まれていれば 0 である。</b>
+	 * 後始末は「畳み忘れたときだけ呼ばれるもの」なので、
+	 * ここが実行の途中で増え続けるなら、登録した側が外し忘れている。
+	 * </p>
+	 *
+	 * @return	数
+	 */
+	public final int pendingCloseTaskCount () {
+
+		synchronized (closeTasks) {
+			return closeTasks.size();
+		}
+
+	}
+
+	/**
 	 * 後始末を実行する
 	 */
 	private void runCloseTasks () {

@@ -276,10 +276,28 @@ For the counts, `DB.isBatchSuccess(list)` tells you whether all of them went thr
 
 ## Large results
 
-When you do not want the whole thing in a list, take it one row at a time.
+When you do not want the whole thing in a list, take it one row at a time with a cursor.
 
 ```java
-db.selectListWithFetcher(row -> {
-	// arrives one row at a time
-}, SQL.select().from(Post.instance()));
+try (DB db = BlogExample.db();
+	 ResultSetFetcher fetcher = new ResultSetFetcher()) {
+
+	db.selectListWithFetcher(fetcher, SQL.select().from(Post.instance()));
+
+	for (Data row : fetcher) {
+		// arrives one row at a time
+	}
+
+}
 ```
+
+> [!TRAP]
+> **Close the `DB` too.** An ordinary statement **returns its connection to the pool
+> as soon as it finishes**, so forgetting to close a `DB` leaves nothing behind — that
+> is what makes the throwaway `DBUtil.getMainDB()` style work.
+> **A cursor is the exception.** The `ResultSet` has to stay open until you have read
+> it, so the connection **stays held until `close()`**. Close the `fetcher` but not the
+> `DB` and **every call takes one more connection out of the pool** — the SQL succeeds
+> and nothing is logged, so **nobody notices until the pool runs dry**.
+> An unclosed one is picked up at the end of the execution (F-D-16), but that
+> **writes an error to the log**.
