@@ -58,7 +58,7 @@ The result nests under the table name, so you get it with `row.getData("comment"
 long id = db.insert(
 	SQL.insert(Post.instance())
 		.value(Post.title, title)
-		.value(Post.created_at, new Date())
+		.value(Post.created_at, new Date())      // the application's clock
 );
 
 int updated = db.update(
@@ -71,6 +71,18 @@ int deleted = db.delete(
 	SQL.delete(Post.instance()).where(Post.id.eq(id))
 );
 ```
+
+> [!NOTE]
+> **Decide which clock stamps the row.** `new Date()` is **the application's** clock;
+> `Dsl.now()` is **the database's**.
+>
+> ```java
+> .value(Post.created_at, Dsl.now())       // the database's clock
+> ```
+>
+> **Running more than one application node? Prefer the database's clock** — when the
+> nodes' clocks drift, **a row inserted later can carry an earlier timestamp**, and a
+> list ordered by creation time silently swaps rows around.
 
 `insert` returns the generated key. When you do not need the ID,
 `insertNoReturnKey` is faster.

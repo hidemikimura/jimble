@@ -51,10 +51,34 @@ db {
 		driver   = "org.postgresql.Driver"
 		url      = "jdbc:postgresql://127.0.0.1:5432/blog_example"
 		username = "blog"
+		password = "blog"
 		password = ${?DB_PASSWORD}
 	}
 }
 ```
+
+> [!TRAP]
+> **`${?ENV}` の行だけを書かないでください。**環境変数が無いときに<b>キーごと消えます</b>
+> （上の書き方は「まず既定値、あれば環境変数で上書き」の2行組です）。
+> パスワードが消えたまま PostgreSQL に繋ぐと、返ってくるのは
+> `The server requested SCRAM-based authentication, but no password was provided.` で、
+> <b>設定の話に見えません。</b>
+
+## データベースがまだ無いとき
+
+`create_database_sql` を書いておくと、**繋がらなかったときに1度だけ流します。**
+
+```conf
+db {
+	blog_example {
+		...
+		create_database_sql = "CREATE DATABASE blog_example"
+	}
+}
+```
+
+書かなければ何もしないので、**手で作ってあるなら要りません。**
+本番では<b>権限を持たない利用者で繋ぐほうが普通</b>なので、開発と CI のためのものです。
 
 | 書ける値 | 製品 |
 |---|---|

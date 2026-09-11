@@ -52,10 +52,35 @@ db {
 		driver   = "org.postgresql.Driver"
 		url      = "jdbc:postgresql://127.0.0.1:5432/blog_example"
 		username = "blog"
+		password = "blog"
 		password = ${?DB_PASSWORD}
 	}
 }
 ```
+
+> [!TRAP]
+> **Never write the `${?ENV}` line on its own.** When the variable is not set, **the key
+> disappears entirely** (the form above is a pair: a default, then an override). Connect
+> to PostgreSQL with the password gone and what comes back is
+> `The server requested SCRAM-based authentication, but no password was provided.` —
+> **which does not look like a configuration problem at all.**
+
+## When the database does not exist yet
+
+Write `create_database_sql` and it is run **once, after a failed connection**.
+
+```conf
+db {
+	blog_example {
+		...
+		create_database_sql = "CREATE DATABASE blog_example"
+	}
+}
+```
+
+Leave it out and nothing happens, so **you do not need it if you created the database by
+hand.** In production you normally connect as a user without that privilege, so this is
+for development and CI.
 
 | Value you can write | Product |
 |---|---|

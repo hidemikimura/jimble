@@ -42,6 +42,13 @@ DROP TABLE `note`;
 ./gradlew migrate
 ```
 
+> [!NOTE]
+> **That is MySQL DDL.** Migration SQL is **handed to the database as it is**, so write
+> PostgreSQL syntax if that is what you are on (`BIGINT UNSIGNED AUTO_INCREMENT` becomes
+> `bigserial`, `DATETIME` becomes `timestamp`, no backticks). Unlike the SQL builder,
+> **nothing here absorbs the dialect for you.** To ship both, you can
+> [split them per product](#splitting-sql-per-product).
+
 - File names are up to you. They are applied in **the natural order of the names**
   (a `001_` prefix makes it obvious)
 - `<schema name>` is `scheme` from the configuration (or the data source name if

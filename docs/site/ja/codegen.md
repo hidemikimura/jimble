@@ -40,6 +40,13 @@ DROP TABLE `note`;
 ./gradlew migrate
 ```
 
+> [!NOTE]
+> **上は MySQL の DDL です。**マイグレーションの SQL は<b>そのまま DB に流します</b>ので、
+> PostgreSQL なら PostgreSQL の書き方で書いてください
+> （`BIGINT UNSIGNED AUTO_INCREMENT` → `bigserial`、`DATETIME` → `timestamp`、
+> バッククォートは不要）。SQL ビルダーと違って、**ここは方言を吸収しません。**
+> 両方に配りたいときは[製品ごとに分けられます](#製品ごとに-sql-を分ける)。
+
 - ファイル名は自由。**名前の自然順**に当たります（`001_` を付けるのが分かりやすい）
 - `<スキーマ名>` は設定の `scheme`（無ければデータソース名）
 - **クラスパスから探します**。`conf/` をリソースに足しておいてください（[設定](./config)）

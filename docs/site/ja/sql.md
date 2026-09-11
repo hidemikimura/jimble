@@ -57,7 +57,7 @@ SQL.select()
 long id = db.insert(
 	SQL.insert(Post.instance())
 		.value(Post.title, title)
-		.value(Post.created_at, new Date())
+		.value(Post.created_at, new Date())      // アプリ側の時計
 );
 
 int updated = db.update(
@@ -70,6 +70,18 @@ int deleted = db.delete(
 	SQL.delete(Post.instance()).where(Post.id.eq(id))
 );
 ```
+
+> [!NOTE]
+> **時刻はどちらの時計で入れるかを決めてください。**`new Date()` は<b>アプリ側</b>の時計、
+> `Dsl.now()` は<b>DB 側</b>の時計です。
+>
+> ```java
+> .value(Post.created_at, Dsl.now())       // DB 側の時計
+> ```
+>
+> **アプリを複数台で動かすなら DB 側にそろえるほうが安全です**——
+> 台ごとに時計がずれていると、<b>あとから入れた行のほうが古い</b>ことが起こり、
+> 作成日時で並べた一覧が入れ替わります。
 
 `insert` は採番された ID を返します。ID が要らないときは
 `insertNoReturnKey` のほうが速いです。
