@@ -153,6 +153,24 @@ upload {
 	temp_dir       = ""         # empty means java.io.tmpdir
 }
 
+auth {
+	lockout {
+		enabled       = true    # does nothing without a DB
+		free_attempts = 3       # no wait up to here (typos)
+		base_seconds  = 1       # from the 4th: 1 -> 2 -> 4 ...
+		max_seconds   = 300     # the longest wait
+		forget_hours  = 24      # start counting again after this gap
+	}
+
+	remember {
+		enabled       = true    # does nothing without a DB
+		cookie_name   = "remember"
+		sliding_days  = 30      # from when it was last used
+		absolute_days = 90      # past this it expires even if still in use
+		grace_seconds = 60      # how long the old one still works after a rotation
+	}
+}
+
 rate_limit {
 	store   = "memory"       # memory | redis | db
 	enabled = true

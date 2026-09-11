@@ -1,7 +1,13 @@
 package approval.auth;
 
+import db.approval_auth_example.ApprovalAuthExample;
+import db.approval_auth_example.table.staff.Staff;
 import io.jimble.db.DBUtil;
+import io.jimble.db.sql.SQL;
+import io.jimble.util.data.Data;
 import io.jimble.util.conf.Conf;
+import io.jimble.web.auth.Lockout;
+import io.jimble.web.auth.Remember;
 import io.jimble.web.server.JimbleServer;
 
 import org.junit.jupiter.api.AfterAll;
@@ -11,6 +17,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.net.CookieManager;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -46,6 +54,9 @@ class ApprovalAuthIntegrationTest {
 	/** サンプルの利用者のパスワード（マイグレーション 002_seed_staff.sql） */
 	private static final String PASSWORD = "approval-sample";
 
+	/** 総当たりを試すログインID（実在しない） */
+	private static final String BRUTE_FORCE_ID = "総当たり";
+
 	/* サーバー */
 	private static JimbleServer server;
 
@@ -59,16 +70,59 @@ class ApprovalAuthIntegrationTest {
 
 		server = JimbleServer.start(new AuthApp(), 0);
 
+		clearLockout();
+		forget();
+
 	}
 
 	@AfterAll
 	static void stopServer () {
+
+		clearLockout();
+		forget();
 
 		if (server != null) {
 			server.stop();
 		}
 
 		DBUtil.stop();
+
+	}
+
+	/**
+	 * 覚えているものを全部消す（要件 F-W-30）
+	 *
+	 * <p>
+	 * <b>テストごとに消す。</b>記憶は 90 日残るので、
+	 * 消さないと<b>流すたびに行が増え続ける</b>。
+	 * </p>
+	 */
+	private static void forget () {
+
+		for (String loginId : new String[] { "member1", "approver1" }) {
+			Data staff = ApprovalAuthExample.db().select(
+				SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId)));
+			if (staff != null) {
+				Remember.forgetAll(staff.getData(Staff.instance()).getLong("id"));
+			}
+		}
+
+	}
+
+	/**
+	 * ログイン失敗の記録を消す（要件 F-W-29）
+	 *
+	 * <p>
+	 * <b>これが無いと、同じ日に何度も流したときだけ落ちる。</b>
+	 * 失敗の記録は 24 時間残るので、
+	 * 「居ないIDで失敗する」テストを1日に4回流すと<b>4回目から 429 になる</b>。
+	 * </p>
+	 */
+	private static void clearLockout () {
+
+		for (String key : new String[] { "member1", "approver1", "居ない人", BRUTE_FORCE_ID }) {
+			Lockout.clear(key);
+		}
 
 	}
 
@@ -128,6 +182,50 @@ class ApprovalAuthIntegrationTest {
 		// 2回目には出ない（要件 F-S-07）
 		assertFalse(get(client, "/login").body().contains("ログインIDかパスワードが違います")
 			, "Flash が消えていません");
+
+	}
+
+	@Test
+	@DisplayName("F-W-29 何度も間違えると、しばらく待たされる")
+	void repeatedFailuresStartWaiting () throws Exception {
+
+		HttpClient client = newClient();
+
+		Lockout.clear(BRUTE_FORCE_ID);
+
+		try {
+
+			/*
+			 * <b>「4回目でちょうど 429」とは書かない。</b>待ち時間は
+			 * 「要る秒数 - 経過秒数」なので、<b>1回の往復に1秒かかる環境では
+			 * 最初の1秒は追い越されてしまう</b>。
+			 * 待ち時間は失敗のたびに倍になるので、続ければ必ず追いつく——
+			 * <b>見たいのは「何度間違えても待たされないことがない」ほうである</b>。
+			 */
+			HttpResponse<String> response = null;
+
+			for (int i = 0; i < 8; i++) {
+
+				response = login(client, BRUTE_FORCE_ID, "ちがうパスワード");
+
+				if (response.statusCode() != 302) {
+					break;
+				}
+
+			}
+
+			assertEquals(429, response.statusCode()
+				, "何度間違えても待たされない（総当たりが素通りする）");
+
+			assertFalse(response.headers().firstValue("retry-after").orElse("").isEmpty()
+				, "Retry-After が無い（いつやり直せるか分からない）");
+
+			assertFalse(response.body().contains("パスワード")
+				, "断り方でパスワードの当たり外れを教えている: " + response.body());
+
+		} finally {
+			Lockout.clear(BRUTE_FORCE_ID);
+		}
 
 	}
 
@@ -319,6 +417,119 @@ class ApprovalAuthIntegrationTest {
 
 	// endregion
 
+	// region ログインしたままにする（要件 F-W-30）
+
+	@Test
+	@DisplayName("F-W-30 印を付けておくと、ブラウザを閉じても入れる")
+	void remembersAcrossBrowserRestart () throws Exception {
+
+		HttpClient client = newClient();
+
+		try {
+
+			assertEquals("/me", login(client, "member1", PASSWORD, true)
+				.headers().firstValue("location").orElse(""));
+
+			assertNotNull(cookieOf(client, "remember"), "remember の Cookie が出ていない");
+
+			// セッションだけ捨てる＝ブラウザを閉じたのと同じ
+			closeBrowser(client);
+
+			HttpResponse<String> me = get(client, "/me");
+
+			assertEquals(200, me.statusCode(), "思い出せていない");
+			assertTrue(me.body().contains("申請 太郎"), me.body());
+
+		} finally {
+			forget();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-30 印を付けなければ、閉じたら入れない")
+	void doesNotRememberWithoutTheCheckbox () throws Exception {
+
+		HttpClient client = newClient();
+
+		login(client, "member1", PASSWORD);
+
+		assertNull(cookieOf(client, "remember"), "頼んでいないのに覚えている（共用の端末で次の人が入る）");
+
+		closeBrowser(client);
+
+		assertEquals(401, get(client, "/me").statusCode());
+
+	}
+
+	@Test
+	@DisplayName("F-W-30 思い出しただけの人は、パスワードを変えられない")
+	void restoredUserCannotChangeThePassword () throws Exception {
+
+		try {
+
+			// パスワードを入れて入った人は通る
+			HttpClient justLoggedIn = newClient();
+			login(justLoggedIn, "member1", PASSWORD, true);
+
+			HttpResponse<String> allowed = post(justLoggedIn, "/password");
+			assertEquals(200, allowed.statusCode(), allowed.body());
+
+			/*
+			 * <b>パスワードを変えたら、覚えているものは全部消える</b>（要件 F-W-30）。
+			 * 消さないと、盗まれた Cookie はそのまま使える——変えた意味が無い。
+			 */
+			assertEquals("{\"forgotten\":1}", allowed.body());
+
+			// 思い出して入り直した人は、同じことができない
+			HttpClient restored = newClient();
+			login(restored, "member1", PASSWORD, true);
+			closeBrowser(restored);
+
+			assertEquals(200, get(restored, "/me").statusCode(), "思い出せていない");
+
+			/*
+			 * <b>ここが remember-me を出せる理由である。</b>
+			 * Cookie を盗まれても、パスワードの変更まではできない。
+			 */
+			assertEquals(401, post(restored, "/password").statusCode()
+				, "思い出しただけの人がパスワードを変えられてしまう");
+
+		} finally {
+			forget();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-30 ログアウトすると、覚えていたものも消える")
+	void logoutForgets () throws Exception {
+
+		HttpClient client = newClient();
+
+		try {
+
+			login(client, "member1", PASSWORD, true);
+
+			assertEquals(302, post(client, "/logout").statusCode());
+
+			closeBrowser(client);
+
+			/*
+			 * <b>ここを消し忘れると、ログアウトの次のリクエストでまた入る。</b>
+			 * 画面上はログアウトできたように見えるので、共用の端末で踏むまで気づけない。
+			 */
+			assertEquals(401, get(client, "/me").statusCode()
+				, "ログアウトしたのに、まだ覚えている");
+
+		} finally {
+			forget();
+		}
+
+	}
+
+	// endregion
+
 	// region ここで固定していないこと
 
 	/*
@@ -360,15 +571,82 @@ class ApprovalAuthIntegrationTest {
 	private static HttpResponse<String> login (HttpClient client, String loginId, String password)
 		throws Exception {
 
+		return login(client, loginId, password, false);
+
+	}
+
+	/**
+	 * ログインする
+	 *
+	 * @param client	クライアント
+	 * @param loginId	ログインID
+	 * @param password	パスワード
+	 * @param remember	「ログインしたままにする」に印を付けるか
+	 * @return	応答
+	 * @throws Exception	失敗した場合
+	 */
+	private static HttpResponse<String> login (HttpClient client, String loginId, String password
+		, boolean remember) throws Exception {
+
 		String token = csrfToken(client);
 
 		String body = "csrf_token=" + enc(token)
 			+ "&login_id=" + enc(loginId)
-			+ "&password=" + enc(password);
+			+ "&password=" + enc(password)
+			+ (remember ? "&remember=1" : "");
 
 		return send(client, "POST", "/login"
 			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
 			, "Content-Type", "application/x-www-form-urlencoded");
+
+	}
+
+	/**
+	 * Cookie を1つ読む
+	 *
+	 * @param client	クライアント
+	 * @param name		名前
+	 * @return	値。無ければ null
+	 */
+	private static String cookieOf (HttpClient client, String name) {
+
+		CookieManager manager = (CookieManager) client.cookieHandler().orElseThrow();
+
+		for (HttpCookie cookie : manager.getCookieStore().getCookies()) {
+			if (cookie.getName().equals(name)) {
+				return cookie.getValue();
+			}
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * セッションの Cookie だけ捨てる（ブラウザを閉じたのと同じ）
+	 *
+	 * @param client	クライアント
+	 */
+	private static void closeBrowser (HttpClient client) {
+
+		CookieManager manager = (CookieManager) client.cookieHandler().orElseThrow();
+
+		java.util.List<HttpCookie> cookies = new java.util.ArrayList<>(manager.getCookieStore().getCookies());
+		java.util.List<java.net.URI> uris = new java.util.ArrayList<>(manager.getCookieStore().getURIs());
+
+		for (HttpCookie cookie : cookies) {
+
+			if (!"sid".equals(cookie.getName())) {
+				continue;
+			}
+
+			manager.getCookieStore().remove(null, cookie);
+
+			for (java.net.URI uri : uris) {
+				manager.getCookieStore().remove(uri, cookie);
+			}
+
+		}
 
 	}
 
@@ -429,6 +707,24 @@ class ApprovalAuthIntegrationTest {
 	private static String enc (String value) {
 
 		return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * GET する
+	 *
+	 * @param client	クライアント
+	 * @param path		パス
+	 * @return	応答
+	 * @throws Exception	失敗した場合
+	 */
+	private static HttpResponse<String> post (HttpClient client, String path) throws Exception {
+
+		String body = "csrf_token=" + enc(csrfToken(client));
+
+		return send(client, "POST", path
+			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
+			, "Content-Type", "application/x-www-form-urlencoded");
 
 	}
 

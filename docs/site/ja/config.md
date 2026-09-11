@@ -146,6 +146,24 @@ upload {
 	temp_dir       = ""         # 空なら java.io.tmpdir
 }
 
+auth {
+	lockout {
+		enabled       = true    # DB が無ければ何もしない
+		free_attempts = 3       # ここまでは待たされない（打ち間違い）
+		base_seconds  = 1       # 4回目から 1 → 2 → 4 …
+		max_seconds   = 300     # 待ち時間の上限
+		forget_hours  = 24      # これだけ間が空いたら数え直す
+	}
+
+	remember {
+		enabled       = true    # DB が無ければ何もしない
+		cookie_name   = "remember"
+		sliding_days  = 30      # 最後に使ってからこれだけ
+		absolute_days = 90      # 発行してからこれを超えたら、使っていても切れる
+		grace_seconds = 60      # 回した直後、古いほうも通す時間
+	}
+}
+
 rate_limit {
 	store   = "memory"       # memory | redis | db
 	enabled = true

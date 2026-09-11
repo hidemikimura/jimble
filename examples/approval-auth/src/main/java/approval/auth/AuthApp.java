@@ -3,6 +3,7 @@ package approval.auth;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.BasicAuth;
 import io.jimble.web.auth.Principal;
+import io.jimble.web.auth.Remember;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.router.AttributeKey;
@@ -76,6 +77,15 @@ public class AuthApp extends JimbleApp {
 		 * <b>いちばん最初に登録すること</b>——保存先を決める前に
 		 * 誰かが session() を触ると間に合わない。
 		 */
+		/*
+		 * <b>見張るより先に「思い出す」</b>（要件 F-W-30）。
+		 * あとに置くと、<b>guard が「ログインしていない」と決めたあとで思い出す</b>ことになる。
+		 *
+		 * id から利用者を引き直すのはアプリの仕事である——
+		 * <b>役割を Cookie 側に持たせない</b>ので、権限を剥奪すればすぐ効く。
+		 */
+		before(Remember.restore(LoginController::findPrincipal));
+
 		before(Auth::guard);
 
 		/*
@@ -133,6 +143,13 @@ public class AuthApp extends JimbleApp {
 		post("/login", LoginController::submit).attribute(Auth.PUBLIC, true);
 
 		post("/logout", LoginController::logout);
+
+		/*
+		 * <b>パスワードの変更は、パスワードを入れて入った人だけ</b>（要件 F-W-30）。
+		 * remember-me で戻ってきただけの人は 401 になり、入り直すことになる——
+		 * <b>Cookie を盗まれたときの被害がここで止まる</b>ので、remember-me を出せる。
+		 */
+		post("/password", LoginController::changePassword).attribute(Auth.FULL_AUTH, true);
 
 		get("/me", AuthApp::me);
 

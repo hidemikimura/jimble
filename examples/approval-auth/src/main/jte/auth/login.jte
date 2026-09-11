@@ -21,6 +21,9 @@
 	<label>ログインID <input type="text" name="login_id"></label>
 	<label>パスワード <input type="password" name="password"></label>
 
+	<%-- 印が付いたときだけ覚える（要件 F-W-30）。共用の端末で常に覚えると、次の人が入れる --%>
+	<label><input type="checkbox" name="remember" value="1"> ログインしたままにする</label>
+
 	<button type="submit">入る</button>
 </form>
 

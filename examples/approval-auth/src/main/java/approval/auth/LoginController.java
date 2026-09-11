@@ -6,6 +6,7 @@ import io.jimble.db.sql.SQL;
 import io.jimble.util.data.Data;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
+import io.jimble.web.auth.Remember;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.csrf.Csrf;
 
@@ -79,9 +80,18 @@ public final class LoginController {
 		 * <b>時間も分けない。</b>{@code PasswordUtil.check} は
 		 * ハッシュが null だと<b>即座に false を返す</b>ので、
 		 * 「利用者がいない」ほうが目に見えて速くなる（BCrypt は遅いのが仕事である）。
-		 * {@code Auth.checkPassword} は、いなくても<b>1回まわしてから</b> false を返す。
+		 * {@code Auth.attemptLogin} は、いなくても<b>1回まわしてから</b> false を返す。
+		 *
+		 * <b>数える単位は「入力されたログインID」である</b>（要件 F-W-29）。
+		 * {@code staff.getLong("id")} を渡すと、<b>いない相手のときだけ数えられない</b>——
+		 * 総当たりはいない ID から始まるうえ、
+		 * <b>待たされるかどうかでどの ID が在るかが分かってしまう</b>。
+		 *
+		 * まだ待ち時間が残っていれば 429 を投げる。画面へ飛ばすのは {@code AuthApp} の
+		 * {@code error()} の仕事である。
 		 */
-		if (!Auth.checkPassword(password, staff.isEmpty() ? null : staff.getString("password_hash"))) {
+		if (!Auth.attemptLogin(context, loginId, password
+			, staff.isEmpty() ? null : staff.getString("password_hash"))) {
 
 			context.flash().put("message", "ログインIDかパスワードが違います");
 			context.response().redirect("/login");
@@ -95,12 +105,76 @@ public final class LoginController {
 		 * 振り直さないと、<b>ログイン前に仕込まれた ID がそのまま権限を持つ</b>。
 		 * {@code Auth.login} が振り直しと保存までやる。
 		 */
-		Auth.login(context, Principal.of(
+		Principal principal = Principal.of(
 			staff.getLong("id")
 			, staff.getString("name")
-			, staff.getString("role")));
+			, staff.getString("role"));
+
+		Auth.login(context, principal);
+
+		/*
+		 * <b>印が付いたときだけ覚える</b>（要件 F-W-30）。
+		 * いつも覚えると、<b>共用の端末で次の人が入れる</b>。
+		 */
+		if ("1".equals(request.getString("remember"))) {
+			Remember.issue(context, principal);
+		}
 
 		context.response().redirect(AFTER_LOGIN);
+
+	}
+
+	/**
+	 * id から利用者を引き直す（remember-me で思い出すときに使う）
+	 *
+	 * <p>
+	 * <b>役割をここで引くのが要点である。</b>
+	 * Cookie や記憶の側に役割を持たせると、
+	 * <b>権限を剥奪しても、その端末では次に切れるまで効かない</b>。
+	 * </p>
+	 *
+	 * @param id	利用者 ID
+	 * @return	見つからなければ null
+	 */
+	static Principal findPrincipal (long id) {
+
+		Data row = ApprovalAuthExample.db().select(
+			SQL.select()
+				.from(Staff.instance())
+				.where(Staff.id.eq(id)));
+
+		if (row == null) {
+			return null;
+		}
+
+		Data staff = row.getData(Staff.instance());
+
+		return Principal.of(staff.getLong("id"), staff.getString("name"), staff.getString("role"));
+
+	}
+
+	/**
+	 * パスワードを変える
+	 *
+	 * <p>
+	 * <b>{@code Auth.FULL_AUTH} を付けたルートから呼ぶ</b>（{@code AuthApp}）。
+	 * remember-me で戻ってきただけの人には触らせない——
+	 * <b>Cookie を盗まれたときの被害がここで止まる</b>。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 */
+	static void changePassword (WebContext context) {
+
+		Csrf.verify(context);
+
+		/*
+		 * <b>パスワードを変えたら、覚えているものを全部消す</b>（要件 F-W-30）。
+		 * 消さないと、<b>盗まれた Cookie はそのまま使える</b>——変えた意味が無い。
+		 */
+		int forgotten = Remember.forgetAll(Auth.principal(context).id());
+
+		context.response().json("forgotten", forgotten);
 
 	}
 

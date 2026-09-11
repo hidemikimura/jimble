@@ -79,6 +79,12 @@ public final class FrameworkTables {
 	/** バッチ実行情報 */
 	public static final String BATCH_EXECUTE_INFO = "batch_execute_info";
 
+	/** ログインの失敗回数（要件 F-W-29） */
+	public static final String AUTH_ATTEMPT = "auth_attempt";
+
+	/** ログインの記憶（remember-me。要件 F-W-30） */
+	public static final String AUTH_REMEMBER = "auth_remember";
+
 	/**
 	 * 全部
 	 *
@@ -104,6 +110,8 @@ public final class FrameworkTables {
 		, BATCH_MASTER
 		, BATCH_HISTORY
 		, BATCH_EXECUTE_INFO
+		, AUTH_ATTEMPT
+		, AUTH_REMEMBER
 	);
 
 	private FrameworkTables () {}

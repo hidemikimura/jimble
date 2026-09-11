@@ -103,6 +103,22 @@ public final class Auth {
 	 */
 	public static final AttributeKey<Boolean> NO_SESSION = new AttributeKey<>("auth_no_session", false);
 
+	/**
+	 * パスワードを入れ直した人だけが通れるルートか（要件 F-W-30）
+	 *
+	 * <p>
+	 * <b>既定は {@code false}。</b>これを立てると、
+	 * <b>remember-me で戻ってきただけの人</b>は 401 になり、入り直すことになる。
+	 * </p>
+	 *
+	 * <p>
+	 * パスワードの変更・退会・決済・連絡先の変更など、
+	 * <b>Cookie を盗まれたときにいちばん困る操作</b>に付ける。
+	 * ここで止めるから、remember-me を出しても被害が広がらない。
+	 * </p>
+	 */
+	public static final AttributeKey<Boolean> FULL_AUTH = new AttributeKey<>("auth_full", false);
+
 	// endregion
 
 	// region 見張り
@@ -115,6 +131,9 @@ public final class Auth {
 
 	/** セッションに入れる鍵：役割 */
 	private static final String KEY_ROLE = "__auth_role";
+
+	/** セッションに入れる鍵：パスワードを入れて入ったか */
+	private static final String KEY_FULL = "__auth_full";
 
 	/**
 	 * ログインと役割を見る
@@ -160,17 +179,27 @@ public final class Auth {
 
 		String needsRole = context.route().route().attribute(ROLE);
 
-		if (needsRole.isEmpty()) {
-			return;
-		}
-
-		if (!principal.hasRole(needsRole)) {
+		if (!needsRole.isEmpty() && !principal.hasRole(needsRole)) {
 			/*
 			 * <b>403 であって 401 ではない。</b>
 			 * ログインし直しても結果が変わらないことを、状態コードで言う。
 			 * 401 を返すと、利用者は<b>入り直せば見られると思って何度も試す</b>
 			 */
 			throw new HttpException(403, "この画面は %s だけが見られます".formatted(needsRole));
+		}
+
+		/*
+		 * <b>役割を見たあとで見る。</b>
+		 * 先に見ると、<b>そもそも見られない画面のためにパスワードを入れ直させて、
+		 * そのうえで 403 を返す</b>ことになる。
+		 */
+		if (context.route().route().attribute(FULL_AUTH) && !fullyAuthenticated(context)) {
+			/*
+			 * <b>403 ではなく 401 である。</b>
+			 * 「入り直せば見られる」のだから、状態コードもそう言う——
+			 * 403 だと、パスワードを入れ直せばよいことが伝わらない。
+			 */
+			throw new HttpException(401, "この操作にはパスワードの入力が要ります");
 		}
 
 	}
@@ -198,6 +227,37 @@ public final class Auth {
 	 */
 	public static void login (WebContext context, Principal principal) {
 
+		store(context, principal, true);
+
+	}
+
+	/**
+	 * パスワードを見ずにログインさせる（remember-me で思い出したとき）
+	 *
+	 * <p>
+	 * <b>{@link Remember} だけが呼ぶ。</b>
+	 * こうして入った人は {@link #fullyAuthenticated} が {@code false} なので、
+	 * {@link #FULL_AUTH} を付けたルートには入れない。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	ログインする人
+	 */
+	static void loginWithoutPassword (WebContext context, Principal principal) {
+
+		store(context, principal, false);
+
+	}
+
+	/**
+	 * セッションに入れる
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	ログインする人
+	 * @param fullAuth	パスワードを入れて入ったか
+	 */
+	private static void store (WebContext context, Principal principal, boolean fullAuth) {
+
 		if (principal == null || !principal.isAuthenticated()) {
 			throw new IllegalArgumentException("ログインさせる相手がいません（id が 0 です）");
 		}
@@ -207,8 +267,26 @@ public final class Auth {
 		context.session().put(KEY_ID, principal.id());
 		context.session().put(KEY_NAME, principal.name());
 		context.session().put(KEY_ROLE, principal.role());
+		context.session().put(KEY_FULL, fullAuth);
 
 		context.session().save();
+
+	}
+
+	/**
+	 * パスワードを入れて入った人か（要件 F-W-30）
+	 *
+	 * <p>
+	 * remember-me で思い出しただけなら {@code false}。
+	 * ルートを閉じるなら {@link #FULL_AUTH} を使うほうがよい（書き忘れが起きない）。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @return	パスワードを入れて入った場合 = true
+	 */
+	public static boolean fullyAuthenticated (WebContext context) {
+
+		return context.session().getBoolean(KEY_FULL);
 
 	}
 
@@ -223,6 +301,13 @@ public final class Auth {
 	 * @param context	コンテキスト
 	 */
 	public static void logout (WebContext context) {
+
+		/*
+		 * <b>セッションより先に remember を消す。</b>
+		 * 消し忘れると、<b>ログアウトした次のリクエストでまた入ってしまう</b>——
+		 * 画面上はログアウトできたように見えるので、共用の端末でこれをやると気づけない。
+		 */
+		Remember.forget(context);
 
 		context.session().destroy();
 
@@ -251,6 +336,84 @@ public final class Auth {
 	// endregion
 
 	// region パスワード
+
+	/** 待たされたときに返す状態コード */
+	public static final int LOCKED_STATUS_CODE = 429;
+
+	/**
+	 * ログインを1回試す（待たせる → 照合する → 成功なら数えたものを消す）
+	 *
+	 * <p>
+	 * <b>ログインの入口ではこれを呼ぶ。</b>
+	 * {@link #checkPassword} を直に呼んでも動くが、それだと
+	 * <b>失敗を数える／成功したら消す</b>を書き忘れる（要件 F-W-29）。
+	 * </p>
+	 *
+	 * <pre>
+	 * Data staff = findStaff(loginId);
+	 *
+	 * if (!Auth.attemptLogin(context, loginId, password,
+	 *         staff.isEmpty() ? null : staff.getString("password_hash"))) {
+	 *     context.flash().put("message", "ログインIDかパスワードが違います");
+	 *     context.response().redirect("/login");
+	 *     return;
+	 * }
+	 *
+	 * Auth.login(context, Principal.of(staff.getLong("id"), ...));
+	 * </pre>
+	 *
+	 * <h4>まだ待つ時間が残っているとき</h4>
+	 * <p>
+	 * {@code 429} の {@link HttpException} を投げ、{@code Retry-After} を付ける。
+	 * <b>ここでも画面へは飛ばさない</b>——{@link #guard} と同じで、アプリの
+	 * {@code error()} が決める。
+	 * </p>
+	 *
+	 * <h4>数える単位は「入力されたログイン ID」</h4>
+	 * <p>
+	 * <b>利用者の DB 上の ID を渡してはいけない。</b>
+	 * 存在しない ID には DB 上の ID が無いので、<b>存在しない ID だけ数えられなくなる</b>——
+	 * 総当たりは存在しない ID から始まるうえ、
+	 * <b>「待たされるかどうか」でどの ID が在るかが分かってしまう</b>。
+	 * </p>
+	 *
+	 * @param context		コンテキスト
+	 * @param key			数える単位（<b>入力されたログイン ID</b>）
+	 * @param inputPassword	入力されたパスワード
+	 * @param passwordHash	保存してあるハッシュ。利用者がいなければ null
+	 * @return	ログインしてよい場合 = true
+	 */
+	public static boolean attemptLogin (WebContext context, String key, String inputPassword, String passwordHash) {
+
+		long waitSeconds = Lockout.waitSeconds(key);
+
+		if (waitSeconds > 0) {
+
+			if (context != null) {
+				context.response().setResponseHeader("Retry-After", String.valueOf(waitSeconds));
+			}
+
+			/*
+			 * <b>「あと何秒」をメッセージに書かない。</b>
+			 * 数えているのは在る ID も無い ID も同じなので待たされること自体は漏れないが、
+			 * 秒数まで返すと<b>攻撃者に「何回失敗した状態か」を教える</b>ことになる
+			 * （Retry-After は待つために要るので、そちらには入れる）。
+			 */
+			throw new HttpException(LOCKED_STATUS_CODE, "しばらく待ってからやり直してください");
+
+		}
+
+		if (checkPassword(inputPassword, passwordHash)) {
+			Lockout.clear(key);
+			return true;
+		}
+
+		Lockout.fail(key);
+
+		return false;
+
+	}
+
 
 	/** 相手がいないときに時間を合わせるためのハッシュ */
 	private static volatile String dummyHash;

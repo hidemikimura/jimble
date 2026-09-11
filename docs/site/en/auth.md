@@ -49,6 +49,7 @@ it falls.**
 | `Auth.PUBLIC` | `false` | Whether a login is not required |
 | `Auth.ROLE` | `""` | The role required. Empty means any |
 | `Auth.NO_SESSION` | `false` | Whether to skip sessions entirely |
+| `Auth.FULL_AUTH` | `false` | Whether **only someone who just typed their password** may pass (below) |
 
 Write it on a block and it applies to every route in it ([Routing](./routing)).
 Override it on the one route that differs.
@@ -80,8 +81,9 @@ Auth.login(context, Principal.of(
 context.response().redirect("/me");
 ```
 
-`Auth.login` **regenerates the session id** before storing anything, and **saves**
-([Sessions and safe defaults](./session-security)).
+`Auth.attemptLogin` does the whole thing: **make them wait, check, and clear the count on
+success.** `Auth.login` **regenerates the session id** before storing anything, and
+**saves** ([Sessions and safe defaults](./session-security)).
 
 > [!TRAP]
 > **Do not call `PasswordUtil.check` directly here.** With a `null` hash it returns
@@ -89,8 +91,46 @@ context.response().redirect("/me");
 > (being slow is BCrypt's whole job). That timing **lets someone enumerate which ids
 > exist.**
 >
-> `Auth.checkPassword` runs one round anyway before returning `false`.
+> `Auth.attemptLogin` runs one round anyway before returning `false`.
 > **Do not split the message either** — that undoes the point of matching the timing.
+
+## When someone keeps getting it wrong
+
+`Auth.attemptLogin` **counts the failures and makes the next attempt wait.** There is
+nothing to write — the code above already does it.
+
+```
+failures 1-3 ... no wait (typos)
+4th ... 1 second
+5th ... 2 seconds
+6th ... 4 seconds     ... up to the maximum (300 seconds by default)
+```
+
+While the wait is still running it answers **429 with `Retry-After`** (like 401, whether
+that becomes a redirect is your `error()` handler's decision). After a 24 hour gap the
+count starts again.
+
+**It is not "N failures, locked for M minutes".** Anything that stops an account **is a
+harassment tool as it stands** — getting it wrong on purpose locks that person out.
+Doubling the wait instead makes the attacker's rate effectively zero while **a real user
+waits a few seconds.**
+
+> [!TRAP]
+> **Count by the login id that was typed in.** Pass the found user's database id and
+> **an id that does not exist is never counted** — brute force starts with ids that do
+> not exist, and **whether you are made to wait then tells someone which ids are real.**
+
+| | |
+| --- | --- |
+| Where | The `auth_attempt` table. **Does nothing without a DB** (it says so in the log, once) |
+| Keyed by | The login id (**case and surrounding spaces are normalised**, then SHA-256. It is not stored in the clear) |
+| Settings | `auth.lockout.*` ([Configuration](./config)) |
+| Cleanup | Automatic (once an hour, while counting a failure). `Lockout.cleanup()` if you want it by hand |
+| Releasing one | `Lockout.clear(loginId)` |
+
+**This does not replace [rate limiting](./ratelimit).** Rate limiting counts **per IP**, so
+one attempt each from a thousand IPs against one account never fires. This counts **per
+account**, whoever it comes from. **Use both.**
 
 ## Who is logged in
 
@@ -145,6 +185,75 @@ error((context, cause, statusCode) -> {
 again will not change the answer. Return 401 and people **keep trying, believing another
 attempt will get them in.**
 
+## Staying logged in (remember-me)
+
+```java
+{
+	before(Remember.restore(App::findPrincipal));   // remember first
+	before(Auth::guard);                            // then guard
+
+	post("/password", Password::change).attribute(Auth.FULL_AUTH, true);
+}
+
+// Look the user up again by id. The role comes from here, so revoking one takes effect at once
+private static Principal findPrincipal (long id) {
+	Data staff = findStaff(id);
+	return staff.isEmpty() ? null
+		: Principal.of(staff.getLong("id"), staff.getString("name"), staff.getString("role"));
+}
+```
+
+At login, remember them **only when the box was ticked**.
+
+```java
+Auth.login(context, principal);
+
+if ("1".equals(request.getString("remember"))) {
+	Remember.issue(context, principal);
+}
+```
+
+> [!TRAP]
+> **Register `before(Remember.restore(...))` before `before(Auth::guard)`.** The other way
+> round, **guard decides nobody is logged in and only then do you remember them.**
+>
+> **Do not call `issue` unconditionally** — on a shared machine **the next person gets in.**
+
+### A stolen cookie still cannot change the password
+
+**This is what makes remember-me safe enough to offer.** Someone who came back through
+the cookie is not "someone who just typed their password", so a route with
+`attribute(Auth.FULL_AUTH, true)` answers **401**.
+
+Put it on password changes, account deletion, payments, and contact details. In code it
+is `Auth.fullyAuthenticated(context)`, but **the route attribute is the one you cannot
+forget to write.**
+
+### Theft shows up
+
+The cookie holds **`selector:validator`**, and **the validator is replaced on every use.**
+A stolen cookie and the real one cannot both stay current, so **a value from before the
+last rotation is the signal that one of them was copied.**
+
+On that signal **every remembered login for that user is deleted** (and it goes in the
+log). Which of the two used it first **cannot be told apart**, so deleting only one can
+leave **the real user locked out and the thief still in.**
+
+| | |
+| --- | --- |
+| Where | The `auth_remember` table. **Does nothing without a DB** |
+| Cookie | `selector:validator`. **The validator is stored as SHA-256** (the selector is just the lookup key, so it is stored as is) |
+| Expiry | 30 days since last use, **and** 90 days since it was issued (it always expires eventually, however much you use it) |
+| Grace | For 60 seconds after a rotation the old one still works, so **parallel requests do not log people out** |
+| Logout | `Auth.logout` deletes it |
+| Password change | **Call `Remember.forgetAll(userId)`** (below) |
+| Settings | `auth.remember.*` ([Configuration](./config)) |
+
+> [!TRAP]
+> **Call `Remember.forgetAll(userId)` when the password changes.** Without it **a stolen
+> cookie still works** — which is the whole point of changing the password. It is also
+> what "log out everywhere" is.
+
 ## Basic auth
 
 Operational endpoints can use Basic auth
@@ -163,7 +272,7 @@ path("/ops", () -> {
 | | |
 | --- | --- |
 | Annotations (`@PreAuthorize` and friends) | Not used, per the [principles](./principles). Routes declare it as an attribute |
-| Lockout, remember-me | Not yet |
+| Showing the user how many days are left | Not offered. Read the row yourself |
 | JWT | **Deliberately not offered.** You cannot revoke one, and it adds key management. If you need API auth, use an opaque token held in the DB |
 | OAuth / OIDC / SAML | Not yet |
 | A permission table | Roles are plain strings |
