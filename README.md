@@ -752,6 +752,14 @@ gRPC は入れない（依存が約5倍になるため。`docs/design-protocols.
 
 ---
 
+## セキュリティ
+
+**脆弱性を見つけたら、公開の Issue ではなく
+[非公開の報告](https://github.com/hidemikimura/jimble/security/advisories/new)からお願いします。**
+窓口と対応方針は [`SECURITY.md`](SECURITY.md) にあります。
+
+---
+
 ## ライセンス
 
 Apache License 2.0（`LICENSE`）。
