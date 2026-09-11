@@ -22,6 +22,8 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -268,6 +270,42 @@ class ApprovalAuthIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("F-S-13 ログインするとセッション ID が変わる（セッション固定化）")
+	void loginRegeneratesSessionId () throws Exception {
+
+		HttpClient client = newClient();
+
+		/*
+		 * ログイン画面を開いた時点で sid が1つ出る。
+		 * <b>攻撃者がこの値を仕込んだ、という想定である。</b>
+		 */
+		HttpResponse<String> form = get(client, "/login");
+
+		String before = sessionIdOf(form);
+
+		assertNotNull(before, "ログイン画面でセッションが出ていない");
+
+		HttpResponse<String> loggedIn = login(client, "approver1", PASSWORD);
+
+		assertEquals(302, loggedIn.statusCode(), loggedIn.body());
+
+		String after = sessionIdOf(loggedIn);
+
+		assertNotNull(after, "ログインの応答で新しいセッションが出ていない");
+
+		/*
+		 * <b>ここが変わっていないと、仕込まれた ID がそのまま権限を持つ。</b>
+		 * ログインは通り、画面も見えるので、<b>外から見て何も壊れていない</b>——
+		 * だからテストが無いと気づけない。
+		 */
+		assertNotEquals(before, after, "ログインの前後でセッション ID が変わっていない");
+
+		// 振り直しても、ログインしたことは残っている
+		assertEquals(200, get(client, "/me").statusCode());
+
+	}
+
+	@Test
 	@DisplayName("無い URL は 404（401 ではない）")
 	void unknownPathIsNotFound () throws Exception {
 
@@ -331,6 +369,31 @@ class ApprovalAuthIntegrationTest {
 		return send(client, "POST", "/login"
 			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
 			, "Content-Type", "application/x-www-form-urlencoded");
+
+	}
+
+	/**
+	 * 応答の Set-Cookie からセッション ID を取る
+	 *
+	 * @param response	応答
+	 * @return	セッション ID。出ていなければ null
+	 */
+	private static String sessionIdOf (HttpResponse<String> response) {
+
+		for (String value : response.headers().allValues("set-cookie")) {
+
+			if (!value.startsWith("sid=")) {
+				continue;
+			}
+
+			String id = value.substring("sid=".length());
+			int semicolon = id.indexOf(';');
+
+			return semicolon < 0 ? id : id.substring(0, semicolon);
+
+		}
+
+		return null;
 
 	}
 

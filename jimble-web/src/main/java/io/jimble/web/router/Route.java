@@ -208,17 +208,24 @@ public final class Route {
 		errorHooks = scope.resolveErrors();
 
 		/*
-		 * 流量制限（要件 F-R-22）。
+		 * ブロックに書かれた属性を引き継ぐ（要件 F-R-26）。
 		 *
-		 * ルートが自分で持っていればそのまま。
-		 * 書いていなければ、書かれたブロックのものを引き継ぐ。
+		 * <b>ルートが自分で持っていればそのまま</b>——上書きしない。
+		 * 書いていなければ、書かれたブロックのものを引き継ぐ（内側が勝つ）。
+		 *
+		 * <b>起動時に1回だけ配る</b>ので、リクエストのたびに親を辿らない（要件 F-R-10）。
+		 * 流量制限（F-R-22）も、いまはこの仕組みの上に乗っているだけである。
 		 */
-		if (!attributes.containsKey(io.jimble.web.ratelimit.RateLimit.KEY)) {
+		for (AttributeKey<?> key : scope.resolveAttributeKeys()) {
 
-			io.jimble.web.ratelimit.RateLimit resolved = scope.resolveRateLimit();
+			if (attributes.containsKey(key)) {
+				continue;
+			}
+
+			Object resolved = scope.resolveAttribute(key);
 
 			if (resolved != null) {
-				attributes.put(io.jimble.web.ratelimit.RateLimit.KEY, resolved);
+				attributes.put(key, resolved);
 			}
 
 		}

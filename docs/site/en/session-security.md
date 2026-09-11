@@ -31,6 +31,38 @@ session {
 | `redis` | Several servers. You need the speed |
 | `cookie` | You want to keep nothing on the server. The contents are signed |
 
+### Regenerate the session id on login
+
+**Call `regenerateId()` as soon as the login succeeds.**
+
+```java
+context.session().regenerateId();          // new id, same contents
+context.session().put("staff_id", staffId);
+context.session().save();                  // the new id is issued here
+```
+
+If the id does not change across the login, **an id an attacker planted beforehand keeps
+working and now carries the privileges** (session fixation). There is no shortage of ways
+to plant one — a link on a public page, another subdomain, a browser extension.
+
+**The contents are carried over.** Whatever you put in just before the login — the URL to
+return to, a half-filled form, the CSRF token — **would otherwise vanish exactly when the
+user logs in**, and they lose their place.
+
+> [!TRAP]
+> **Call `save()` after regenerating.** `regenerateId()` does not save (nothing here
+> saves by itself). Regenerate without saving and **the old side is gone and the new side
+> was never written** — the user is simply not logged in. It **fails closed**, so it is
+> not dangerous, but "I logged in and got a 401" starts here.
+
+What it does depends on the store:
+
+| store | What happens |
+| --- | --- |
+| `db` / `redis` | The old row is deleted and rewritten under the new id |
+| `cookie` | **Nothing is keyed by the id**, so the contents cookie is simply rewritten (the old value is void — it is signed and encrypted) |
+| `none` | Nothing |
+
 ## CSRF
 
 ```java snippet=csrf-form

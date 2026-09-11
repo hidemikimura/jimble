@@ -4,7 +4,8 @@ import db.approval_auth_example.ApprovalAuthExample;
 import db.approval_auth_example.table.staff.Staff;
 import io.jimble.db.sql.SQL;
 import io.jimble.util.data.Data;
-import io.jimble.util.hash.PasswordUtil;
+import io.jimble.web.auth.Auth;
+import io.jimble.web.auth.Principal;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.csrf.Csrf;
 
@@ -74,8 +75,13 @@ public final class LoginController {
 		 * <b>「そのIDは無い」と「パスワードが違う」を分けない。</b>
 		 * 分けると、<b>どのIDが存在するかを外から数えられる</b>。
 		 * ログには分けて残す（運用では区別が要る）。
+		 *
+		 * <b>時間も分けない。</b>{@code PasswordUtil.check} は
+		 * ハッシュが null だと<b>即座に false を返す</b>ので、
+		 * 「利用者がいない」ほうが目に見えて速くなる（BCrypt は遅いのが仕事である）。
+		 * {@code Auth.checkPassword} は、いなくても<b>1回まわしてから</b> false を返す。
 		 */
-		if (staff.isEmpty() || !PasswordUtil.check(password, staff.getString("password_hash"))) {
+		if (!Auth.checkPassword(password, staff.isEmpty() ? null : staff.getString("password_hash"))) {
 
 			context.flash().put("message", "ログインIDかパスワードが違います");
 			context.response().redirect("/login");
@@ -84,15 +90,15 @@ public final class LoginController {
 
 		}
 
-		context.session().put(AuthApp.SESSION_STAFF_ID, staff.getLong("id"));
-		context.session().put(AuthApp.SESSION_STAFF_NAME, staff.getString("name"));
-		context.session().put(AuthApp.SESSION_ROLE, staff.getString("role"));
-
 		/*
-		 * <b>save() を呼ばないと保存されない</b>（要件 F-S-02）。
-		 * 呼び忘れると、閉じるときに警告が出る（要件 F-S-03）
+		 * <b>セッション ID を振り直してから入れる</b>（要件 F-S-13）。
+		 * 振り直さないと、<b>ログイン前に仕込まれた ID がそのまま権限を持つ</b>。
+		 * {@code Auth.login} が振り直しと保存までやる。
 		 */
-		context.session().save();
+		Auth.login(context, Principal.of(
+			staff.getLong("id")
+			, staff.getString("name")
+			, staff.getString("role")));
 
 		context.response().redirect(AFTER_LOGIN);
 
@@ -107,7 +113,7 @@ public final class LoginController {
 
 		Csrf.verify(context);
 
-		context.session().destroy();
+		Auth.logout(context);
 
 		context.response().redirect("/login");
 

@@ -145,6 +145,41 @@ public abstract class Controller {
 
 	}
 
+	/**
+	 * ブロックの中のルート全部に属性を付ける（要件 F-R-26）
+	 *
+	 * <p>
+	 * <b>ルート1本ずつに書かなくてよくする</b>ための口である。
+	 * 認証が要る／要らないのように、<b>ほとんどのルートで同じ値になるもの</b>を
+	 * 1行で宣言し、違うものだけルート側で上書きする。
+	 * </p>
+	 *
+	 * <pre>
+	 * path("/public", () -&gt; {
+	 *     attribute(Auth.PUBLIC, true);       // このブロックは全部公開
+	 *     get("/guide", Guide::show);
+	 *     get("/me",    Me::show).attribute(Auth.PUBLIC, false);   // ここだけ要ログイン
+	 * });
+	 * </pre>
+	 *
+	 * <p>強い順に <b>ルート &gt; 内側のブロック &gt; 外側のブロック &gt; キーの既定値</b>。</p>
+	 *
+	 * <p>
+	 * before と同じで、パスのノードではなく<b>書いた場所</b>に付く（要件 D-69）。
+	 * 書く位置は問わない——配るのは起動時の確定のときなので、
+	 * <b>ブロックの最後に書いても、その前に登録したルートに付く</b>。
+	 * </p>
+	 *
+	 * @param key	キー
+	 * @param value	値
+	 * @param <T>	値の型
+	 */
+	protected final <T> void attribute (AttributeKey<T> key, T value) {
+
+		scope().attribute(key, value);
+
+	}
+
 	// endregion
 
 

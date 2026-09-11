@@ -139,7 +139,44 @@ public final class Router {
 	 */
 	public void rateLimit (io.jimble.web.ratelimit.RateLimit rateLimit) {
 
-		scope.rateLimit(Objects.requireNonNull(rateLimit, "rateLimit"));
+		attribute(io.jimble.web.ratelimit.RateLimit.KEY
+			, Objects.requireNonNull(rateLimit, "rateLimit"));
+
+	}
+
+	/**
+	 * ブロックの中のルート全部に属性を付ける（要件 F-R-26）
+	 *
+	 * <p>
+	 * <b>ルート1本ずつに書かなくてよくする</b>ための口である。
+	 * 認証が要る／要らないのように、<b>ほとんどのルートで同じ値になるもの</b>を
+	 * 1行で宣言し、違うものだけルート側で上書きする。
+	 * </p>
+	 *
+	 * <pre>
+	 * attribute(Auth.PUBLIC, true);          // このブロックは全部公開
+	 *
+	 * get("/guide", Guide::show);            // 公開
+	 * get("/me",    Me::show).attribute(Auth.PUBLIC, false);   // ここだけ要ログイン
+	 * </pre>
+	 *
+	 * <p>強い順に <b>ルート &gt; 内側のブロック &gt; 外側のブロック &gt; キーの既定値</b>。</p>
+	 *
+	 * <p>
+	 * <b>パスのノードには付かない</b>（要件 D-69）。効くのは
+	 * <b>このブロックで登録したルート</b>と、そこから {@code path} / {@code merge} で
+	 * ネストしたものだけである。同じパスでも別のブロックで登録したルートには付かない——
+	 * <b>付いているかどうかがコードを読んで分かる</b>ようにするためで、
+	 * {@code before} / {@code after} と同じ決まりである。
+	 * </p>
+	 *
+	 * @param key	キー
+	 * @param value	値
+	 * @param <T>	値の型
+	 */
+	public <T> void attribute (AttributeKey<T> key, T value) {
+
+		scope.attribute(Objects.requireNonNull(key, "key"), value);
 
 	}
 

@@ -167,6 +167,50 @@ if (context.route().route().attribute(NO_AUTH)) {
 An `AttributeKey` carries a default. Routes without the attribute get that default,
 so you never write a `null` check.
 
+### Setting it for a whole block
+
+**You do not have to write it on every route.** Call `attribute()` in a block and it
+applies to every route registered in that block.
+
+```java
+path("/docs", () -> {
+
+	attribute(PUBLIC, true);          // the whole block is public
+
+	get("/guide", Guide::show);       // public
+	get("/faq",   Faq::show);         // public
+	get("/me",    Me::show).attribute(PUBLIC, false);   // this one needs a login
+
+});
+```
+
+Strongest first: **the route > the inner block > the outer block > the key's default**.
+
+**Where you write it in the block does not matter.** Put it at the end and it still
+applies to routes registered above it — like `before`, it is handed out when the tree is
+sealed at startup.
+
+> [!TRAP]
+> **Like filters, it does not attach to the path.** It applies to **routes registered in
+> the same block**, and to anything nested from it via `path()` / `install()`. Routes
+> registered in a different block do not get it, even at the same path.
+>
+> ```java
+> path("/docs", () -> {
+> 	attribute(PUBLIC, true);
+> 	get("/guide", ...);        // gets it
+> });
+>
+> path("/docs", () -> {
+> 	get("/internal", ...);     // does not (a different block)
+> });
+> ```
+>
+> This is so that **reading the code tells you whether it is there**
+> (the same rule as [where filters apply](#how-far-a-filter-reaches)).
+
+`rateLimit()` rides on this same mechanism ([Rate limiting](./ratelimit)).
+
 ## Splitting into controllers
 
 When one file gets long, pull it out into a `Controller`.

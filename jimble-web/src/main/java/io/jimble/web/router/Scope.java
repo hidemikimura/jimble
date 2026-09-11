@@ -1,7 +1,9 @@
 package io.jimble.web.router;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * フックのスコープ（要件 F-R-10 / D-69）
@@ -59,8 +61,8 @@ final class Scope {
 	/* error（登録順） */
 	private final List<ErrorHandler> errors = new ArrayList<>();
 
-	/* 流量制限（このブロックに書かれたもの。要件 F-R-22） */
-	private io.jimble.web.ratelimit.RateLimit rateLimit;
+	/* このブロックに書かれた属性（要件 F-R-26） */
+	private final Map<AttributeKey<?>, Object> attributes = new LinkedHashMap<>();
 
 	/* 確定したか */
 	private boolean sealed;
@@ -137,39 +139,78 @@ final class Scope {
 	}
 
 	/**
-	 * 流量制限を設定する（要件 F-R-15 / F-R-22）
+	 * 属性を設定する（要件 F-R-26）
 	 *
 	 * <p>
-	 * <b>このブロックの中のルート全部</b>にかかる。
+	 * <b>このブロックの中のルート全部</b>に付く。
 	 * ルートが自分で持っていればそちらが勝ち、
 	 * 入れ子になっていれば<b>内側が勝つ</b>。
 	 * </p>
 	 *
-	 * @param value	宣言
+	 * <p>
+	 * <b>パスのノードには付かない</b>（要件 D-69）。
+	 * 同じパスでも、別のブロックで登録したルートには付かない——
+	 * <b>付く範囲がコードを読んで分かる</b>ようにするためである。
+	 * </p>
+	 *
+	 * @param key	キー
+	 * @param value	値
+	 * @param <T>	値の型
 	 */
-	void rateLimit (io.jimble.web.ratelimit.RateLimit value) {
+	<T> void attribute (AttributeKey<T> key, T value) {
 
-		checkOpen("rateLimit");
-		rateLimit = value;
+		checkOpen("attribute");
+		attributes.put(key, value);
 
 	}
 
 	/**
-	 * 効く流量制限を探す（内側 → 外側）
+	 * 効く属性を探す（内側 → 外側）
 	 *
-	 * @return	宣言。無ければ null
+	 * @param key	キー
+	 * @return	値。どのブロックにも無ければ null
 	 */
-	io.jimble.web.ratelimit.RateLimit resolveRateLimit () {
+	Object resolveAttribute (AttributeKey<?> key) {
 
 		for (Scope scope = this; scope != null; scope = scope.parent) {
 
-			if (scope.rateLimit != null) {
-				return scope.rateLimit;
+			if (scope.attributes.containsKey(key)) {
+				return scope.attributes.get(key);
 			}
 
 		}
 
 		return null;
+
+	}
+
+	/**
+	 * このブロックから見えるすべての属性のキー（内側 → 外側）
+	 *
+	 * <p>
+	 * <b>ルートを確定するときに、どのキーを引き継ぐかを知るために要る。</b>
+	 * 「値を引く」だけの口では、<b>そもそも何が書かれているかが分からない。</b>
+	 * </p>
+	 *
+	 * @return	キー
+	 */
+	List<AttributeKey<?>> resolveAttributeKeys () {
+
+		List<AttributeKey<?>> keys = new ArrayList<>();
+
+		for (Scope scope = this; scope != null; scope = scope.parent) {
+
+			for (AttributeKey<?> key : scope.attributes.keySet()) {
+
+				if (!keys.contains(key)) {
+					keys.add(key);
+				}
+
+			}
+
+		}
+
+		return keys;
 
 	}
 

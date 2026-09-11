@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -119,6 +120,162 @@ class DbSessionIntegrationTest {
 
 		try (WebContext context = new WebContext(again, new Fakes.FakeResponseSink())) {
 			assertEquals(2, context.session().getInt("user_id"), "2回目の保存が捨てられている");
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-S-13 regenerateId() で ID が変わり、中身は残り、古い行は消える")
+	void regenerateId () {
+
+		// 1. ログイン前のセッション（攻撃者が仕込んだ ID のつもり）
+		Fakes.FakeResponseSink first = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/login"), first)) {
+			context.session().put("back_to", "/requests");
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String before = sessionIdFrom(first);
+		assertNotNull(before);
+		assertEquals(1, count());
+
+		// 2. ログインが通ったとして、振り直す
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/login");
+		source.cookie(SessionConf.cookieName(), before);
+
+		Fakes.FakeResponseSink second = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(source, second)) {
+
+			context.session().regenerateId();
+			context.session().put("staff_id", 7);
+			context.session().save();
+
+			context.response().send("ok");
+
+		}
+
+		String after = sessionIdFrom(second);
+
+		assertNotNull(after, "新しいセッション ID の Cookie が出ていない");
+		assertNotEquals(before, after, "ID が変わっていない（セッション固定化を防げていない）");
+
+		/*
+		 * <b>行は1つ。</b>古いほうが残っていると、
+		 * 攻撃者は仕込んだ ID でそのまま入れてしまう。
+		 */
+		assertEquals(1, count(), "古い行が残っている");
+
+		// 3. 古い ID ではもう入れない
+		Fakes.FakeRequestSource old = new Fakes.FakeRequestSource("GET", "/me");
+		old.cookie(SessionConf.cookieName(), before);
+
+		try (WebContext context = new WebContext(old, new Fakes.FakeResponseSink())) {
+			assertEquals(0, context.session().getInt("staff_id"), "古い ID でログイン後のセッションが引ける");
+		}
+
+		// 4. 新しい ID では、振り直す前に入れたものも残っている
+		Fakes.FakeRequestSource fresh = new Fakes.FakeRequestSource("GET", "/me");
+		fresh.cookie(SessionConf.cookieName(), after);
+
+		try (WebContext context = new WebContext(fresh, new Fakes.FakeResponseSink())) {
+			assertEquals(7, context.session().getInt("staff_id"));
+			assertEquals("/requests", context.session().get("back_to"), "振り直しで中身が消えている");
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-S-13 先に save() していても、振り直したあとの save() が効く")
+	void regenerateAfterSaveStillSaves () {
+
+		Fakes.FakeResponseSink first = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/login"), first)) {
+			context.session().put("back_to", "/requests");
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String before = sessionIdFrom(first);
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/login");
+		source.cookie(SessionConf.cookieName(), before);
+
+		Fakes.FakeResponseSink second = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(source, second)) {
+
+			/*
+			 * <b>同じリクエストの中で、先に1回保存してから振り直す。</b>
+			 *
+			 * save() は「1リクエストに1回」なので、振り直しで印を戻さないと
+			 * <b>あとの save() が黙って帰る</b>——古い側は消えているので、
+			 * <b>ログインしたのにログインしていない</b>状態になる。
+			 * 例外は出ず、次のリクエストで 401 になるだけなので、原因が遠い。
+			 */
+			context.session().put("step", "1");
+			context.session().save();
+
+			context.session().regenerateId();
+			context.session().put("staff_id", 7);
+			context.session().save();
+
+			context.response().send("ok");
+
+		}
+
+		String after = sessionIdFrom(second);
+
+		assertNotNull(after, "新しいセッション ID の Cookie が出ていない");
+		assertNotEquals(before, after);
+
+		Fakes.FakeRequestSource fresh = new Fakes.FakeRequestSource("GET", "/me");
+		fresh.cookie(SessionConf.cookieName(), after);
+
+		try (WebContext context = new WebContext(fresh, new Fakes.FakeResponseSink())) {
+			assertEquals(7, context.session().getInt("staff_id")
+				, "振り直したあとの save() が効いていない（先に save() していると捨てられる）");
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-S-13 振り直したあと保存しなければ、どちらの ID でも入れない")
+	void regenerateWithoutSaveLeavesNoSession () {
+
+		Fakes.FakeResponseSink first = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/login"), first)) {
+			context.session().put("staff_id", 7);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String before = sessionIdFrom(first);
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/login");
+		source.cookie(SessionConf.cookieName(), before);
+
+		try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+			// 振り直しただけで save() しない
+			context.session().regenerateId();
+		}
+
+		/*
+		 * <b>閉じるほうに倒れること。</b>
+		 * 古い側は消えていて、新しい側は書かれていない——つまりログインしていない。
+		 * 逆（古い側が生き残る）だと、<b>振り直したつもりで固定化が残る。</b>
+		 */
+		assertEquals(0, count(), "保存していないのに行が残っている");
+
+		Fakes.FakeRequestSource old = new Fakes.FakeRequestSource("GET", "/me");
+		old.cookie(SessionConf.cookieName(), before);
+
+		try (WebContext context = new WebContext(old, new Fakes.FakeResponseSink())) {
+			assertEquals(0, context.session().getInt("staff_id"), "古い ID でまだ入れる");
 		}
 
 	}

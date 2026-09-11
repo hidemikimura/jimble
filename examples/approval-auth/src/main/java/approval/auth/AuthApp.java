@@ -1,6 +1,8 @@
 package approval.auth;
 
+import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.BasicAuth;
+import io.jimble.web.auth.Principal;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.router.AttributeKey;
@@ -44,57 +46,22 @@ import io.jimble.web.session.SessionStores;
  *
  * <h2>ここで見せたいこと</h2>
  * <p>
- * <b>認可の判断が1か所にしかない。</b>{@code before} が
- * {@link #NEEDS_LOGIN} と {@link #NEEDS_ROLE} を見るだけで、
- * ハンドラの側には認可の話が1行も出てこない。
- * <b>ルートを足した人が判断を書き忘れる</b>形にしないため、
- * {@link #NEEDS_LOGIN} の既定値は {@code true}（＝黙って足したら閉じている）にしてある。
+ * <b>認可の判断がアプリ側に1行も無い。</b>{@code before(Auth::guard)} だけで、
+ * ルートは<b>属性で「開いている」と宣言する</b>（既定は閉じている）。
+ * ハンドラの側には認可の話が出てこない。
+ * </p>
+ *
+ * <p>
+ * <b>このサンプルは、以前は同じことを 80 行書いていた。</b>
+ * 保存先を選ぶ before、認可の before、公開判定——
+ * それらは<b>アプリごとに書き直してよい種類のものではなかった</b>ので、
+ * {@link Auth} へ移した（D-148）。
  * </p>
  */
 public class AuthApp extends JimbleApp {
 
-	/**
-	 * ログインが要るか
-	 *
-	 * <p>
-	 * <b>既定は {@code true}（要る）である。</b>ここを {@code false} にすると、
-	 * <b>ルートを足した人が何も書かなければ誰でも入れる</b>ことになる。
-	 * 「開いているほうを明示させる」のが安全側である。
-	 * </p>
-	 */
-	static final AttributeKey<Boolean> NEEDS_LOGIN = new AttributeKey<>("needs_login", true);
-
-	/** 要る役割。空なら役割は問わない */
-	static final AttributeKey<String> NEEDS_ROLE = new AttributeKey<>("needs_role", "");
-
-	/**
-	 * セッションをまったく使わないか（要件 F-S-11 / F-S-12）
-	 *
-	 * <p>
-	 * <b>{@link #NEEDS_LOGIN} とは別の判断である。</b>ここを一緒にして
-	 * 「ログインが要らない＝セッションも要らない」と書いたら、
-	 * <b>ログインの画面と POST 自身がセッションを持てなくなり、誰もログインできなくなった</b>
-	 * （302 は返るのに、次のリクエストで 401 になる。実際に踏んだ）。
-	 * </p>
-	 *
-	 * <p>
-	 * ログインの入口は<b>ログインが要らないが、セッションは要る</b>。
-	 * どちらも要らないのは公開のページだけである。
-	 * </p>
-	 */
-	static final AttributeKey<Boolean> NO_SESSION = new AttributeKey<>("no_session", false);
-
 	/** 役割：承認する人 */
 	static final String ROLE_APPROVER = "approver";
-
-	/** セッションに入れる鍵：社員ID */
-	static final String SESSION_STAFF_ID = "staff_id";
-
-	/** セッションに入れる鍵：氏名 */
-	static final String SESSION_STAFF_NAME = "staff_name";
-
-	/** セッションに入れる鍵：役割 */
-	static final String SESSION_ROLE = "role";
 
 	/**
 	 * ルート定義
@@ -102,14 +69,14 @@ public class AuthApp extends JimbleApp {
 	public AuthApp () {
 
 		/*
-		 * <b>いちばん最初に、セッションを使うかどうかを決める。</b>
-		 * 決めたあとで session() を触ると遅い——
-		 * 先に触られると、そのリクエストはもう保存先が決まっている。
+		 * <b>認証と認可はこの1行だけ。</b>（要件 F-W-28）
+		 *
+		 * セッションを使うかどうかの判断も、ログインと役割の判断も、
+		 * <b>「どのルートにも当たらなかったら素通りする」も</b>この中にある。
+		 * <b>いちばん最初に登録すること</b>——保存先を決める前に
+		 * 誰かが session() を触ると間に合わない。
 		 */
-		before(AuthApp::chooseSessionStore);
-
-		// 認可（要件 F-R-16 / F-R-17）。判断はここ1か所だけ
-		before(AuthApp::authorize);
+		before(Auth::guard);
 
 		/*
 		 * 最後に見たページを覚えておく（ログイン後に戻すため）。
@@ -143,14 +110,27 @@ public class AuthApp extends JimbleApp {
 		 * <b>ログインが要らないだけでなく、Cookie も CSRF も発行しない。</b>
 		 */
 		path("/public", () -> {
+
+			/*
+			 * <b>ブロックに1回書けば、この中のルート全部に付く</b>（要件 F-R-26）。
+			 * ルートを足すたびに2行書かなくてよい——
+			 * <b>書き忘れて公開ページにセッションが増える</b>のを防ぐのはこちらである。
+			 */
+			attribute(Auth.PUBLIC, true);
+			attribute(Auth.NO_SESSION, true);
+
 			get("/guide", context -> context.response()
-				.text("経費と購買の申請のしかた（ログインは要りません）"))
-				.attribute(NEEDS_LOGIN, false)
-				.attribute(NO_SESSION, true);
+				.text("経費と購買の申請のしかた（ログインは要りません）"));
+
 		});
 
-		get("/login", LoginController::show).attribute(NEEDS_LOGIN, false);
-		post("/login", LoginController::submit).attribute(NEEDS_LOGIN, false);
+		/*
+		 * <b>ログインの入口は「公開だが、セッションは要る」。</b>
+		 * NO_SESSION を付けると CSRF トークンもセッションも持てず、
+		 * <b>誰もログインできなくなる</b>（実際に踏んだ）。
+		 */
+		get("/login", LoginController::show).attribute(Auth.PUBLIC, true);
+		post("/login", LoginController::submit).attribute(Auth.PUBLIC, true);
 
 		post("/logout", LoginController::logout);
 
@@ -158,13 +138,13 @@ public class AuthApp extends JimbleApp {
 
 		get("/requests", context -> context.response()
 			.json("items", java.util.List.of())
-			.json("staff", context.session().get(SESSION_STAFF_NAME)));
+			.json("staff", Auth.principal(context).name()));
 
 		// 承認者だけ（ルート属性で宣言する。ハンドラの中では判断しない）
 		get("/approvals", context -> context.response()
 			.json("items", java.util.List.of())
-			.json("staff", context.session().get(SESSION_STAFF_NAME)))
-			.attribute(NEEDS_ROLE, ROLE_APPROVER);
+			.json("staff", Auth.principal(context).name()))
+			.attribute(Auth.ROLE, ROLE_APPROVER);
 
 		/*
 		 * 運用向けの口は Basic 認証にする（要件 F-W-13）。
@@ -173,90 +153,8 @@ public class AuthApp extends JimbleApp {
 		path("/ops", () -> {
 			before(BasicAuth.of("ops", "ops-sample-password"));
 			get("/whoami", context -> context.response().text("ops"))
-				.attribute(NEEDS_LOGIN, false);
+				.attribute(Auth.PUBLIC, true);
 		});
-
-	}
-
-	/**
-	 * このリクエストでセッションを使うかを決める（要件 F-S-11 / F-S-12）
-	 *
-	 * <p>
-	 * <b>公開側はセッションを持たない。</b>設定（{@code session.store}）は
-	 * アプリ全体で1つなので、これが無いと<b>ログインしない利用者にも
-	 * セッションの行が1件ずつ増える</b>。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>{@link #NEEDS_LOGIN} では判断しない。</b>
-	 * ログインの入口はログインが要らないが、セッションは要る（{@link #NO_SESSION} の説明）。
-	 * </p>
-	 *
-	 * @param context	コンテキスト
-	 */
-	private static void chooseSessionStore (WebContext context) {
-
-		if (!context.route().matched()) {
-			return;
-		}
-
-		if (context.route().route().attribute(NO_SESSION)) {
-			context.sessionStore(SessionStores.none());
-		}
-
-	}
-
-	/**
-	 * ログインと役割を見る（要件 F-R-16 / F-R-17）
-	 *
-	 * @param context	コンテキスト
-	 */
-	private static void authorize (WebContext context) {
-
-		if (isPublic(context)) {
-			return;
-		}
-
-		long staffId = context.session().getLong(SESSION_STAFF_ID);
-
-		if (staffId <= 0) {
-			throw new HttpException(401, "ログインしてください");
-		}
-
-		String needsRole = context.route().route().attribute(NEEDS_ROLE);
-
-		if (needsRole.isEmpty()) {
-			return;
-		}
-
-		if (!needsRole.equals(context.session().get(SESSION_ROLE))) {
-			/*
-			 * <b>403 であって 401 ではない。</b>
-			 * ログインし直しても結果が変わらないことを、状態コードで言う
-			 */
-			throw new HttpException(403, "この画面は %s だけが見られます".formatted(needsRole));
-		}
-
-	}
-
-	/**
-	 * ログインが要らないルートか
-	 *
-	 * @param context	コンテキスト
-	 * @return	要らない場合 = true
-	 */
-	private static boolean isPublic (WebContext context) {
-
-		/*
-		 * <b>どのルートにも当たらなかったときも「公開」として扱う。</b>
-		 * ここで 401 を返すと、<b>存在しない URL を叩いた人に
-		 * 「ログインすれば何かある」と伝えてしまう</b>（本当は 404 である）。
-		 */
-		if (!context.route().matched()) {
-			return true;
-		}
-
-		return !context.route().route().attribute(NEEDS_LOGIN);
 
 	}
 
@@ -296,10 +194,12 @@ public class AuthApp extends JimbleApp {
 	 */
 	private static void me (WebContext context) {
 
+		Principal me = Auth.principal(context);
+
 		context.response()
-			.json("id", context.session().getLong(SESSION_STAFF_ID))
-			.json("name", context.session().get(SESSION_STAFF_NAME))
-			.json("role", context.session().get(SESSION_ROLE));
+			.json("id", me.id())
+			.json("name", me.name())
+			.json("role", me.role());
 
 	}
 
