@@ -67,17 +67,73 @@ public class DB implements Closeable, AutoCloseable {
 
 	// region 実行エラー
 
-	/* エラー内容 */
+	/* エラー内容（直前の1文だけ） */
 	private CodeException error = null;
+
+	/* トランザクションを開けてから、1度でもエラーが出たか */
+	private boolean errorSinceTransaction = false;
 
 	/**
 	 * エラー判定
+	 *
+	 * <p>
+	 * <b>直前の1文についてだけ答える。</b>次の文を実行すると戻る。
+	 * トランザクション全体を見たいときは {@code DBTransaction} が見ている（要件 D-155）。
+	 * </p>
 	 *
 	 * @return	エラーの場合 = true
 	 */
 	public boolean isError () {
 
 		return error != null;
+
+	}
+
+	/**
+	 * エラーを記録する
+	 *
+	 * <p>
+	 * <b>{@code error} を立てるのはここだけにする。</b>
+	 * 直に代入すると、<b>トランザクションの持ち越しに入らない</b>——
+	 * その1文だけ静かに失敗して、トランザクションはそのままコミットされる（D-155）。
+	 * </p>
+	 *
+	 * @param value	エラー
+	 */
+	private void setError (CodeException value) {
+
+		this.error = value;
+
+		if (value != null) {
+			this.errorSinceTransaction = true;
+		}
+
+	}
+
+	/**
+	 * トランザクションを開けてから、1度でもエラーが出たか
+	 *
+	 * <p>
+	 * <b>{@link #isError()} と違って、次の文では戻らない。</b>
+	 * {@code DBTransaction} がコミットしてよいかを決めるのに使う。
+	 * </p>
+	 *
+	 * @return	出ていれば true
+	 */
+	boolean isErrorSinceTransaction () {
+
+		return errorSinceTransaction;
+
+	}
+
+	/**
+	 * 持ち越しているエラーの印を消す
+	 *
+	 * <p>トランザクションの開始と、{@link #rollback()} と、終了から呼ぶ。</p>
+	 */
+	void clearErrorSinceTransaction () {
+
+		this.errorSinceTransaction = false;
 
 	}
 
@@ -637,7 +693,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			return null;
 
@@ -695,7 +751,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			return null;
 
@@ -972,14 +1028,10 @@ public class DB implements Closeable, AutoCloseable {
 			Log.error(ex);
 
 			fetcher.isError = true;
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			IOUtil.close(rs, st);
 
@@ -1096,14 +1148,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return -1;
 
@@ -1183,14 +1231,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return -1;
 
@@ -1274,14 +1318,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return -1;
 
@@ -1365,14 +1405,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return -1;
 
@@ -1426,14 +1462,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return false;
 
@@ -1466,7 +1498,7 @@ public class DB implements Closeable, AutoCloseable {
 			if (sql == null) {
 				sql = builderSql;
 			} else if (!sql.equals(builderSql)) {
-				this.error = new CodeException("DB_998", "executeBatch: SQLが一致しません");
+				setError(new CodeException("DB_998", "executeBatch: SQLが一致しません"));
 				Log.error("executeBatch mismatch:\n" + sql + "\n" + builderSql);
 				return null;
 			}
@@ -1564,14 +1596,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return null;
 
@@ -1617,7 +1645,7 @@ public class DB implements Closeable, AutoCloseable {
 			if (sql == null) {
 				sql = builderSql;
 			} else if (!sql.equals(builderSql)) {
-				this.error = new CodeException("DB_998", "insertBatch: SQLが一致しません");
+				setError(new CodeException("DB_998", "insertBatch: SQLが一致しません"));
 				Log.error("insertBatch mismatch:\n" + sql + "\n" + builderSql);
 				return null;
 			}
@@ -1720,14 +1748,10 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
-
-			try {
-				rollback();
-			} catch (Exception ignore) {}
 
 			return null;
 
@@ -1935,6 +1959,9 @@ public class DB implements Closeable, AutoCloseable {
 
 		connection.setAutoCommit(false);
 
+		// ここから先のエラーを持ち越す（要件 D-155）
+		clearErrorSinceTransaction();
+
 		registerCloseTask();
 
 	}
@@ -1947,6 +1974,8 @@ public class DB implements Closeable, AutoCloseable {
 		if (connection == null) {
 			return;
 		}
+
+		requireNoErrorSinceTransaction();
 
 		if (isTransaction()) {
 			connection.commit();
@@ -1979,6 +2008,49 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * トランザクションをロールバックする
 	 */
+	/**
+	 * エラーが出ていたらコミットさせない
+	 *
+	 * <p>
+	 * <b>ここが無いと、部分的にコミットされる。</b>
+	 * jimble の DB はエラーを戻り値で返す（原則4）ので、
+	 * {@code db.update(...)} が -1 を返しても<b>処理は正常に終わったように見える</b>——
+	 * そのまま commit まで進んでいた（D-155）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>自分で巻き戻してから投げる。</b>{@code endTransaction()} に任せると、
+	 * あちらは {@code setAutoCommit(true)} を呼ぶだけなので、
+	 * <b>JDBC の決まりで、開いていたトランザクションがコミットされてしまう</b>——
+	 * 拒んだはずのものが入る。
+	 * </p>
+	 *
+	 * @throws CodeException	トランザクションを開けてから1度でもエラーが出ていた場合
+	 */
+	private void requireNoErrorSinceTransaction () throws Exception {
+
+		if (!errorSinceTransaction) {
+			return;
+		}
+
+		CodeException cause = this.error;
+
+		if (isTransaction()) {
+			connection.rollback();
+		}
+
+		discardCache();
+
+		throw new CodeException("DB_004"
+			, """
+			トランザクションの中でエラーが出ているので、コミットしませんでした。
+			  最後のエラー: %s
+			  エラーを見て続けたいなら、いったん rollback() してから書き直してください
+			  （SQL → commit → SQL（失敗）→ rollback → SQL → commit と書けます）。
+			""".formatted(cause == null ? "（直前の文は成功。それより前で出ています）" : cause.getMessage()));
+
+	}
+
 	public void rollback() throws Exception {
 
 		if (connection == null) {
@@ -1991,6 +2063,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		// 無かったことになるので、消す予定も捨てる（要件 F-D-28）
 		discardCache();
+
+		/*
+		 * <b>エラーの持ち越しもここで畳む</b>（要件 D-156）。
+		 *
+		 * 巻き戻したということは、<b>呼んだ側がエラーを見て決着を付けた</b>ということである。
+		 * 畳まないと、そのあと書き直して {@code commit()} しても
+		 * <b>「エラーが出ている」と言って断られる</b>——
+		 * <b>SQL → commit → SQL（失敗）→ rollback → SQL → commit</b> と
+		 * 分岐して続ける書き方ができなくなる。
+		 */
+		clearErrorSinceTransaction();
 
 	}
 
@@ -2021,13 +2104,14 @@ public class DB implements Closeable, AutoCloseable {
 				connection.setAutoCommit(true);
 			}
 		} catch (Exception ex) {
-			this.error = new CodeException("DB_999", ex.getMessage());
+			setError(new CodeException("DB_999", ex.getMessage()));
 		} finally {
 			/*
 			 * コミットせずに終わった。消す予定は捨てる（要件 F-D-28）。
 			 * コミット済みなら flushCache() が先に走って空になっている。
 			 */
 			discardCache();
+			clearErrorSinceTransaction();
 			close();
 			if (this.error != null) {
 				throw this.error;

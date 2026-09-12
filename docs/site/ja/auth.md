@@ -267,7 +267,8 @@ Cookie には **`selector:validator`** の2つが入っていて、
 	get("/auth/google", Oidc.start("google"))
 		.attribute(Auth.PUBLIC, true);
 
-	get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
+	// 第3引数はコードを入れる画面。二要素認証を使うなら渡す
+	get("/auth/google/callback", Oidc.callback("google", App::findOrCreate, "/login/code"))
 		.attribute(Auth.PUBLIC, true);
 }
 
@@ -334,6 +335,19 @@ JDK の `KeyFactory` で公開鍵に戻せて、署名の検証も `java.securit
 > **ログイン済みの状態で明示的に「連携する」**操作をさせてください。
 >
 > `user.emailVerified()` は見られますが、**それを信じるかどうかはアプリの判断**です。
+
+### 二要素認証と一緒に使うとき
+
+**コードを入れる画面のパスを、第3引数で渡してください。**
+
+渡しておくと、二要素認証を有効にしている人が「Google でログイン」から来たときに、
+パスワードで入るときと同じように `Mfa.pending` へ倒してその画面へ飛ばします。
+
+> [!TRAP]
+> **渡さないと、その人は入れません**（401 になります）。
+> 0.6.0 では**黙ってログインさせていた**ので、
+> **「Google でログイン」を選ぶだけで二要素が飛んでいました**。
+> 素通りさせるくらいなら入れないほうがよい、という判断です（0.6.1）。
 
 ### やらないこと
 

@@ -80,6 +80,64 @@ DBTransaction.transaction(db, transaction -> {
 始めて、渡した処理を走らせて、`commitEndTransaction()` まで済ませます。
 例外が出れば `close()` がロールバックします。
 
+## エラーが出ていたらコミットしません
+
+**jimble の DB はエラーを例外ではなく戻り値で返します**（[原則](./principles)）。
+つまり中の `db.update(...)` が `-1` を返しても、**処理は正常に終わったように見えます。**
+
+```java
+DBTransaction.transaction(db, transaction -> {
+	db.insert(...);          // 通った
+	db.update(...);          // -1。例外は出ない
+	db.insert(...);          // 通った
+});
+```
+
+**この形はコミットしません。**トランザクションの中で1度でもエラーが出ていたら、
+`commitEndTransaction()` はロールバックして `CodeException`（`DB_004`）を投げます。
+
+> [!TRAP]
+> **0.6.0 まではコミットしていました。**しかも失敗した文の中で枠組みが `rollback()` を呼ぶので、
+> **そこまでの文は巻き戻り、そこから先の文だけがコミットされる**という壊れ方でした。
+> 例外もログも出ないので、**データが半分だけ入ったことに誰も気づけません**。
+
+`db.isError()` は**直前の1文についてだけ**答えます。
+コミットしてよいかの判断はトランザクション全体を見ているので、
+**失敗のあとに成功する文が1つあっても素通りしません。**
+
+### エラーを見て、分岐して続けたいとき
+
+**いったん `rollback()` してから書き直します。**
+
+```java
+db.beginTransaction();
+
+insert(...);
+db.commit();                 // ここまでは確定。トランザクションは続く
+
+update(...);                 // 失敗した
+
+if (db.isError()) {
+	db.rollback();           // 決着を付ける
+	insertFallback(...);     // 別の道で書き直す
+}
+
+db.commitEndTransaction();
+```
+
+**`rollback()` はエラーの持ち越しも畳みます。**畳まないと、
+書き直したあとの `commit()` が「まだエラーが出ている」と言って断ります。
+
+> [!TRAP]
+> **`rollback()` するまで、その先は1文も通りません。**
+> PostgreSQL はトランザクションの中で1文でも失敗すると、
+> ROLLBACK するまで以降の文を全部断ります
+> （`current transaction is aborted, commands ignored until end of transaction block`）。
+>
+> **0.6.x はこれを隠していました。**各文の `catch` がその場で `rollback()` を呼んでいたので、
+> **続けて書けているように見えて、実は前の文が全部消えていました**——
+> それが部分コミットの正体です。隠すのをやめたので、**止まるべきところで止まります**。
+
 ## 外へ出すものと、DB に積むもの
 
 **どちらの中で呼ぶかが逆になります。**ここは間違えやすいところです。

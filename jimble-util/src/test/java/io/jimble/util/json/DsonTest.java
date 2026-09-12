@@ -1,9 +1,13 @@
 package io.jimble.util.json;
 
+import io.jimble.util.convertor.Configration;
 import io.jimble.util.data.Data;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -194,6 +198,51 @@ class DsonTest {
 		String json = Dson.encodes(data);
 
 		assertTrue(json.startsWith("{\"at\":\""), json);
+
+	}
+
+	// endregion
+
+	// region 読み込み
+
+	@Test
+	@DisplayName("ストリームから読める（設定つき）")
+	void decodeStreamWithConfigration () {
+
+		/*
+		 * <b>ここは「値が合っているか」より前の話を見ている。</b>
+		 *
+		 * この形は<b>自分自身を呼んでいた</b>ので、呼べば {@code StackOverflowError} だった
+		 * （{@code decodes} が {@code new Dson().decodes(...)} と書かれていた）。
+		 * 隣の3引数版は {@code decode} を呼んでいて正しかったので、
+		 * <b>4引数版だけが、誰も呼ばないまま壊れていた</b>。
+		 *
+		 * 落ちる場所が「JSON を読むところ」なので、
+		 * <b>渡した JSON が悪いのだと思って探すことになる</b>——
+		 * それが分かるまでの時間を、このテストが肩代わりする。
+		 */
+		InputStream stream = new ByteArrayInputStream(
+			"{\"id\":7,\"name\":\"きむら\"}".getBytes(StandardCharsets.UTF_8));
+
+		Data data = new Dson().decodes(new Configration(), stream, "UTF-8", Data.class);
+
+		assertNotNull(data, "読めていません");
+		assertEquals(7, data.getInt("id"));
+		assertEquals("きむら", data.getString("name"));
+
+	}
+
+	@Test
+	@DisplayName("ストリームから読める（設定なし）")
+	void decodeStream () {
+
+		InputStream stream = new ByteArrayInputStream(
+			"{\"id\":8}".getBytes(StandardCharsets.UTF_8));
+
+		Data data = new Dson().decodes(stream, "UTF-8", Data.class);
+
+		assertNotNull(data);
+		assertEquals(8, data.getInt("id"));
 
 	}
 

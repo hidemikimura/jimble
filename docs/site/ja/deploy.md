@@ -48,6 +48,27 @@ java \
 **`-Djimble.env` は JVM の引数です。**プログラム引数（`java -jar app.jar env=prod`）
 では効きません。
 
+### 環境の名前
+
+**判定は略記でも通ります。**書いたとおりの名前は**ファイル名にだけ**使われます。
+
+| 書いてよい名前 | 判定 | 読むファイル |
+| --- | --- | --- |
+| `local` / `dev` / `development` | `isLocal()` | `application.<書いたとおり>.conf` |
+| `staging` / `stg` / `stage` | `isStaging()` | 同上 |
+| `production` / `prod` / `prd` | `isProduction()` | 同上 |
+
+大文字小文字は区別しません。
+
+> [!TRAP]
+> **表に無い名前は、どの判定にも当たりません。**
+> `producton` のように打ち間違えると、`isLocal()` も `isProduction()` も false になります。
+> **起動時に1度だけ警告が出ます**——黙って `local` に倒すと、
+> **本番機が「ローカルです」と名乗ったまま動いてしまう**からです。
+>
+> なお、**`-Djimble.env=prod` と書いて `isProduction()` が false だった時期があります**（0.6.1 で直しました）。
+> 判定が `production` としか一致していませんでした。
+
 ## 設定はどこから読まれるか
 
 **jar の中だけです。**（`conf/` をリソースに足してあるので、jar に入っています。

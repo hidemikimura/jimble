@@ -136,6 +136,24 @@ DBTransaction.transaction(db, transaction -> {
 });
 ```
 
+**中で1度でもエラーが出ていたら、コミットしない。**
+ロールバックして `CodeException`（`DB_004`）を投げる——
+エラーが戻り値で返る作りなので、<b>そのままだと部分的にコミットされていた</b>。
+
+**失敗したら、`rollback()` するまでその先は1文も通らない**（PostgreSQL がそう決めている）。
+エラーを見て分岐して続けたいときは、いったん `rollback()` してから書き直す。
+
+```java
+db.beginTransaction();
+insert(...);  db.commit();          // ここまで確定。トランザクションは続く
+update(...);                        // 失敗
+if (db.isError()) {
+	db.rollback();                  // 決着を付ける（持ち越しも畳まれる）
+	insertFallback(...);
+}
+db.commitEndTransaction();
+```
+
 | | |
 | --- | --- |
 | `commit()` | 確定する。**トランザクションは続く** |

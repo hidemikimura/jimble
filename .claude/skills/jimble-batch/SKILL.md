@@ -251,6 +251,8 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 - **`db.insert()` などは失敗しても例外を投げない。**`db.isError()` に入るのは
   **その直前の1文**の結果だけ。`write()` で複数文を流すなら1文ごとに見るか、自分で投げる
 - **`isCancelOrder()` を見ていないバッチは止められない**（チャンクは自動）
+- `AbstractBatch` の外（Domain 層など）からは
+  `Context.current(BatchContext.class).isCancelOrdered()` で同じ指示が見られる
 - **`reader()` と `write()` の `DB` を混ぜない**
 - **時間で終わるワーカーで `doCancel()` を呼ばない。**呼ぶと履歴が `canceled` になり、
   時間どおりに終わっただけなのに**異常終了に見える**

@@ -5,6 +5,7 @@ import io.jimble.util.http.httpclient.method.HttpPostExecutor;
 import io.jimble.util.log.Log;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
+import io.jimble.web.auth.mfa.Mfa;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.router.Handler;
@@ -57,6 +58,20 @@ import java.util.function.Function;
  * <b>アクセストークンを保管しない。</b>ここは「誰がログインしたか」までで、
  * 外部 API を叩くための入れ物は持たない（保管・暗号化・失効・スコープの追加同意まで
  * 面倒を見ることになるため）。要るなら、返ってきたトークンをアプリが自分で持つ。
+ * </p>
+ *
+ * <h2>二要素認証</h2>
+ * <p>
+ * <b>コードを入れる画面のパスを渡すこと</b>（{@link #callback(String, Function, String)}）。
+ * 渡しておくと、二要素認証を有効にしている人が来たときに
+ * {@link Mfa#pending} に倒してそこへ飛ばす——パスワードで入るときと同じ形である。
+ * </p>
+ *
+ * <p>
+ * <b>2引数の {@link #callback(String, Function)} は、そういう人が来たら断る。</b>
+ * 以前はここで黙って {@link Auth#login} まで進んでいたので、
+ * <b>「Google でログイン」を選ぶだけで二要素が飛んでいた</b>（D-155）。
+ * <b>素通りさせるくらいなら入れないほうがよい</b>ので、いまは 401 にしている。
  * </p>
  *
  * <p>
@@ -141,6 +156,30 @@ public final class Oidc {
 	 */
 	public static Handler callback (String provider, Function<OidcUser, Principal> lookup) {
 
+		return callback(provider, lookup, null);
+
+	}
+
+	/**
+	 * 戻ってきたところ（二要素認証つき）
+	 *
+	 * <p>
+	 * 二要素認証を有効にしている人が来たら、{@link Mfa#pending} に倒して
+	 * {@code mfaPath} へ飛ばす。<b>パスワードで入るときとまったく同じ形</b>である。
+	 * </p>
+	 *
+	 * <pre>
+	 * get("/auth/google/callback", Oidc.callback("google", App::findOrCreate, "/login/code"))
+	 *     .attribute(Auth.PUBLIC, true);
+	 * </pre>
+	 *
+	 * @param provider	設定に書いた名前
+	 * @param lookup	名乗ってきた相手を、アプリの利用者に結び付ける。<b>入れないなら null を返す</b>
+	 * @param mfaPath	コードを入れる画面のパス。{@code null} なら二要素の人を断る
+	 * @return	{@code get(...)} に渡すもの
+	 */
+	public static Handler callback (String provider, Function<OidcUser, Principal> lookup, String mfaPath) {
+
 		if (lookup == null) {
 			throw new IllegalArgumentException("利用者に結び付ける方法がありません");
 		}
@@ -176,8 +215,7 @@ public final class Oidc {
 					throw new HttpException(401, "ログインできませんでした");
 				}
 
-				// 振り直して保存する。捨てた途中の値も、ここで消えたまま保存される
-				Auth.login(context, principal);
+				finishLogin(context, principal, user.key(), mfaPath);
 
 			} catch (OidcException cause) {
 
@@ -206,6 +244,53 @@ public final class Oidc {
 	// endregion
 
 	// region 中身
+
+	/**
+	 * ログインまで進める（二要素認証を有効にしている人は、コードを待たせる）
+	 *
+	 * <p>
+	 * <b>ここを素通りさせると、「Google でログイン」を選ぶだけで二要素が飛ぶ</b>（D-155）。
+	 * パスワードで入る道には {@code Mfa.pending} があるのに、こちらだけ無い、という形になっていた。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>行き先を渡していなければ断る。</b>黙って入れるより、入れないほうがよい。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	アプリが結び付けた利用者
+	 * @param userKey	ログに出す相手（{@code provider:sub}）
+	 * @param mfaPath	コードを入れる画面のパス。{@code null} なら断る
+	 */
+	static void finishLogin (WebContext context, Principal principal, String userKey, String mfaPath) {
+
+		if (Mfa.isActive(principal.id())) {
+
+			if (mfaPath == null || mfaPath.isEmpty()) {
+
+				Log.warn("""
+					二要素認証を有効にしている人が OIDC で来ましたが、コードを入れる画面がありません: %s
+					  Oidc.callback(プロバイダ, 関数, "/login/code") の形で渡してください。
+					"""
+					.formatted(userKey));
+
+				throw new HttpException(401, "ログインできませんでした");
+
+			}
+
+			// pending がセッション ID を振り直して保存まで済ませる
+			Mfa.pending(context, principal);
+
+			context.response().redirect(mfaPath);
+
+			return;
+
+		}
+
+		// 振り直して保存する。捨てた途中の値も、ここで消えたまま保存される
+		Auth.login(context, principal);
+
+	}
 
 	/**
 	 * 戻ってきたものを受け取る

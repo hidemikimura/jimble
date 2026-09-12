@@ -226,7 +226,14 @@ public final class Dson {
 	 */
 	public <T> T decodes (Configration conf, InputStream stream, String charset, Class<?>... destClasses) {
 
-		return new Dson().decodes(conf, stream, charset, destClasses);
+		/*
+		 * <b>{@code decodes} ではなく {@code decode} を呼ぶ。</b>
+		 * 自分自身を呼ぶと、<b>1回目の呼び出しで {@code StackOverflowError} になる</b>——
+		 * 例外の中身が「再帰しました」としか言わないので、
+		 * <b>渡した JSON が悪いのだと思って延々と探すことになる</b>。
+		 * 隣の3引数版は最初から {@code decode} を呼んでいた（こちらだけ取り違えていた）。
+		 */
+		return new Dson().decode(conf, stream, charset, destClasses);
 	}
 
 	/**

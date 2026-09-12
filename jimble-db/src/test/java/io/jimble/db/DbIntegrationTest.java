@@ -6,6 +6,7 @@ import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.TestSchema;
 import io.jimble.db.sql.query.dsl.Dsl;
 import io.jimble.util.data.Data;
+import io.jimble.util.exception.CodeException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -207,6 +209,189 @@ class DbIntegrationTest {
 		assertNotNull(db.select(SQL.select().from(TestSchema.Site.instance())));
 
 	}
+
+	// region トランザクションと、戻り値で返るエラー（D-155 / D-156）
+
+	@Test
+	@DisplayName("D-155 中でエラーが出たら、コミットしない")
+	void transactionRefusesToCommitAfterAnError () throws Exception {
+
+		/*
+		 * <b>ここが素通りしていた。</b>
+		 *
+		 * jimble の DB は<b>エラーを戻り値で返す</b>（原則4）ので、
+		 * 中の書き込みが -1 を返しても<b>処理は正常に終わったように見える</b>——
+		 * `DBTransaction.transaction(...)` はそのまま commit していた。
+		 */
+		DB db = DBUtil.getMainDB();
+
+		assertThrows(CodeException.class, () -> DBTransaction.transaction(db, transaction -> {
+
+			insertSite(db, "先に入れるほう", 1L);
+
+			// 無い列を触って失敗させる（例外にはならず -1 が返る）
+			db.update("UPDATE site SET そんな列は無い = 1");
+
+		}), "エラーが出ているのにコミットしています");
+
+		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
+			, "拒んだのに入っています");
+
+	}
+
+	@Test
+	@DisplayName("D-156 失敗したら、rollback するまでその先も通らない")
+	void afterAFailureNothingElseWorksUntilRollback () throws Exception {
+
+		/*
+		 * <b>これは jimble の決まりではなく、DB の決まりである。</b>
+		 *
+		 * PostgreSQL はトランザクションの中で1文でも失敗すると、
+		 * <b>ROLLBACK するまで以降の文を全部断る</b>
+		 * （{@code current transaction is aborted, commands ignored until end of transaction block}）。
+		 *
+		 * <b>0.6.x はこれを隠していた。</b>各文の catch がその場で {@code rollback()} を呼んでいたので、
+		 * <b>続けて書けているように見えて、実は前の文が全部消えていた</b>——
+		 * それが部分コミットの正体だった（D-155 / D-156）。
+		 *
+		 * 隠すのをやめたので、<b>止まるべきところで止まる</b>。
+		 */
+		DB db = DBUtil.getMainDB();
+
+		db.beginTransaction();
+
+		try {
+
+			insertSite(db, "失敗より前", 1L);
+
+			db.update("UPDATE site SET そんな列は無い = 1");
+			assertTrue(db.isError());
+
+			// ここも通らない（DB が断っている）
+			db.insert(SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "失敗より後"));
+
+			assertTrue(db.isError(), "失敗のあとなのに通っています（DB の中断状態を隠しています）");
+
+		} finally {
+
+			db.rollback();
+
+			/*
+			 * <b>{@code endTransaction()} は最後の文のエラーを投げ直す</b>——
+			 * 巻き戻して決着を付けたあとでも投げる（0.6.x からの動き。ここでは直していない）。
+			 * 巻き戻すだけなら {@code rollback()} で、こちらは投げない。
+			 */
+			try {
+				db.endTransaction();
+			} catch (Exception ignore) {
+				// 上記のとおり
+			}
+
+		}
+
+		assertNull(db.select(SQL.select().from(TestSchema.Site.instance())));
+
+	}
+
+	@Test
+	@DisplayName("D-156 rollback すれば、そこから書き直して続けられる")
+	void rollbackLetsYouCarryOn () throws Exception {
+
+		/*
+		 * <b>呼んだ側が分岐して続けられること。</b>
+		 *
+		 * SQL → commit → SQL（失敗）→ rollback → SQL → commit と書ける。
+		 * <b>rollback がエラーの持ち越しも畳む</b>ので、
+		 * 最後の commit は「まだエラーが出ている」と言って断られない。
+		 */
+		DB db = DBUtil.getMainDB();
+
+		db.beginTransaction();
+
+		try {
+
+			insertSite(db, "1つめ", 1L);
+			db.commit();                       // ここで確定。トランザクションは続く
+
+			db.update("UPDATE site SET そんな列は無い = 1");
+			assertTrue(db.isError(), "失敗していない（テストの前提が崩れています）");
+
+			db.rollback();                     // 呼んだ側が決着を付ける
+
+			insertSite(db, "2つめ", 1L);
+			db.commitEndTransaction();         // 断られないこと
+
+		} catch (Exception ex) {
+			db.rollbackEndTransaction();
+			throw ex;
+		}
+
+		List<Data> rows = db.selectList(SQL.select().from(TestSchema.Site.instance()));
+
+		assertEquals(2, rows.size(), "書き直したぶんが残っていません: " + rows);
+
+	}
+
+	@Test
+	@DisplayName("D-156 DBTransaction を通さなくても、コミットは拒む")
+	void rawTransactionAlsoRefuses () throws Exception {
+
+		/*
+		 * <b>枠組み自身が4か所、DBTransaction を通さずに直に書いている</b>
+		 * （`DbRateLimitStore` / `DbSqlCacheStore` / `Migration` / `CodeMigration`）。
+		 * 守りが `DBTransaction` にしか無いと、この道だけ部分コミットに戻る。
+		 */
+		DB db = DBUtil.getMainDB();
+
+		db.beginTransaction();
+
+		insertSite(db, "直に書いた道", 1L);
+
+		db.update("UPDATE site SET そんな列は無い = 1");
+
+		assertThrows(CodeException.class, db::commitEndTransaction
+			, "DBTransaction を通さない道だけ素通りしています");
+
+		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
+			, "拒んだのに入っています");
+
+	}
+
+	@Test
+	@DisplayName("D-155 エラーが無ければ、これまでどおりコミットする")
+	void transactionStillCommits () throws Exception {
+
+		DB db = DBUtil.getMainDB();
+
+		DBTransaction.transaction(db, transaction -> insertSite(db, "ふつうに入る", 1L));
+
+		assertNotNull(db.select(SQL.select().from(TestSchema.Site.instance())));
+
+	}
+
+	// region ここで固定していないこと（トランザクション）
+
+	/*
+	 * <b>次の2つは、外してもここでは落ちない。</b>PostgreSQL だからである。
+	 *
+	 * - <b>{@code commit()} の守り</b>（{@code requireNoErrorSinceTransaction}）
+	 * - <b>守りが投げる前に巻き戻すこと</b>
+	 *
+	 * PostgreSQL は<b>中断したトランザクションへの COMMIT を ROLLBACK として扱う</b>ので、
+	 * 守りが無くても<b>結果としては入らない</b>。加えて {@code endTransaction()} が
+	 * 最後の文のエラーを投げ直すので、例外も出てしまう。
+	 *
+	 * <b>MySQL では効くはずである。</b>MySQL は1文の失敗でトランザクションを中断しないので、
+	 * 守りが無ければ<b>失敗のあとの文が本当にコミットされる</b>（＝部分コミットが戻る）。
+	 * <b>ただしこれは確かめていない</b>——この環境に MariaDB が無く、{@code dbTest} が走らない。
+	 *
+	 * <b>それでも両方残す。</b>「PostgreSQL がたまたま助けてくれる」に頼る形にはしない。
+	 */
+
+	// endregion
+
+	// endregion
 
 	@Test
 	@DisplayName("insertBatch でまとめて登録できる")

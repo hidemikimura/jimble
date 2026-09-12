@@ -264,7 +264,8 @@ leave **the real user locked out and the thief still in.**
 	get("/auth/google", Oidc.start("google"))
 		.attribute(Auth.PUBLIC, true);
 
-	get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
+	// third argument: the code screen. Pass it if you use two-factor auth
+	get("/auth/google/callback", Oidc.callback("google", App::findOrCreate, "/login/code"))
 		.attribute(Auth.PUBLIC, true);
 }
 
@@ -332,6 +333,18 @@ they got**. It goes in the log; the response is 401.
 > user do it **explicitly while already logged in**.
 >
 > `user.emailVerified()` is there to read, but **whether to believe it is your call**.
+
+### Using it with two-factor auth
+
+**Pass the path of the code screen as the third argument.**
+
+With it, someone who has two-factor auth enabled and arrives through "Sign in with Google"
+is parked with `Mfa.pending` and sent to that screen — exactly as on the password path.
+
+> [!TRAP]
+> **Without it, that person cannot get in** (they get a 401).
+> In 0.6.0 they were **silently logged in**, so **choosing "Sign in with Google" skipped
+> the second factor entirely.** Refusing beats waving them through (fixed in 0.6.1).
 
 ### What this does not do
 

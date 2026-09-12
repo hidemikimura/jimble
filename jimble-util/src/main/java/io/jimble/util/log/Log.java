@@ -315,7 +315,7 @@ public class Log {
 
 		Data data = createLogObject(objs);
 		data.put("throwable", throwable);
-		logApplication(loggerName, level, throwable.getMessage(), data);
+		logApplication(loggerName, level, throwable.getMessage(), data, throwable);
 
 	}
 
@@ -372,7 +372,7 @@ public class Log {
 
 		Data data = createLogObject(objs, true);
 		data.put("throwable", throwable);
-		logError("error", throwable.getMessage(), data);
+		logApplication("error", Level.ERROR, throwable.getMessage(), data, throwable);
 
 	}
 
@@ -648,7 +648,30 @@ public class Log {
 	 */
 	public void logApplication (String kind, Level level, String message, Data data) {
 
-		sink.write(kind, level, message, data, null);
+		logApplication(kind, level, message, data, null);
+
+	}
+
+	/**
+	 * Applicationログ出力（例外つき）
+	 *
+	 * <p>
+	 * <b>{@link Sink} の {@code throwable} を埋める唯一の道である。</b>
+	 * 以前はここが無く、{@code sink.write(..., null)} しか呼ばれていなかったので、
+	 * {@code Log.error(cause, ...)} と書いても<b>既定の SLF4J がスタックトレースを出さなかった</b>——
+	 * 例外は {@code data} の中の1項目として文字列になるだけで、
+	 * <b>どこで落ちたのかがログから消えていた</b>（D-155）。
+	 * </p>
+	 *
+	 * @param kind      ログ種別
+	 * @param level     ログレベル
+	 * @param message   メッセージ
+	 * @param data      データ
+	 * @param throwable 例外。無ければ null
+	 */
+	public void logApplication (String kind, Level level, String message, Data data, Throwable throwable) {
+
+		sink.write(kind, level, message, data, throwable);
 
 	}
 

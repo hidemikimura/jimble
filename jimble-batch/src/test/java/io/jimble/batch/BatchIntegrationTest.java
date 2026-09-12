@@ -4,6 +4,8 @@ import io.jimble.batch.status.BatchHistoryStatus;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
+import io.jimble.core.context.BatchContext;
+import io.jimble.core.context.Context;
 import io.jimble.db.DBUtil;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
@@ -121,6 +123,49 @@ class BatchIntegrationTest {
 	}
 
 	/**
+	 * <b>{@code BatchContext} のほうで中断を見るバッチ</b>（要件 F-B-06 / D-155）
+	 *
+	 * <p>
+	 * {@link io.jimble.core.context.BatchContext#isCancelOrdered()} の Javadoc が
+	 * 「ループの中でこれを定期的に確認する」と書いている、そのとおりの書き方である。
+	 * <b>{@code LoopBatch} は {@code isCancelOrder()}（バッチ自身のほう）を見ている</b>ので、
+	 * こちらを分けないと<b>繋がっていないことに気づけない</b>。
+	 * </p>
+	 */
+	public static class ContextLoopBatch extends AbstractBatch {
+
+		@Override public String batchName () { return "テスト（コンテキストで中断）"; }
+
+		@Override
+		public void execute (BatchArgs args) {
+
+			RUN_COUNT.incrementAndGet();
+
+			BatchContext context = Context.current(BatchContext.class);
+
+			for (int i = 0; i < 200; i++) {
+
+				if (context.isCancelOrdered()) {
+					executeInfo().putData("stopped_at", i);
+					return;
+				}
+
+				try {
+					Thread.sleep(50);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return;
+				}
+
+			}
+
+			executeInfo().putData("stopped_at", -1);
+
+		}
+
+	}
+
+	/**
 	 * 外から止めるまで居座るバッチ（同時実行のテスト用）
 	 */
 	public static class HoldBatch extends AbstractBatch {
@@ -213,6 +258,7 @@ class BatchIntegrationTest {
 		BatchRegistry.add(OkBatch::new);
 		BatchRegistry.add(NgBatch::new);
 		BatchRegistry.add(LoopBatch::new);
+		BatchRegistry.add(ContextLoopBatch::new);
 		BatchRegistry.add(HoldBatch::new);
 		BatchRegistry.sync(DBUtil.getMainDB());
 
@@ -255,7 +301,8 @@ class BatchIntegrationTest {
 
 		List<Data> rows = DBUtil.getMainDB().selectList("SELECT * FROM batch_master ORDER BY class_name");
 
-		assertEquals(4, rows.size());
+		// register() が登録するバッチの数（足したらここも直す）
+		assertEquals(5, rows.size());
 		assertEquals(BatchMasterStatus.enable.name(), rows.getFirst().getString("status"));
 		assertTrue(rows.stream().anyMatch(row ->
 			OkBatch.class.getName().equals(row.getString("class_name"))));
@@ -623,6 +670,58 @@ class BatchIntegrationTest {
 		assertEquals(BatchResult.canceled, result.get());
 
 		assertEquals(BatchHistoryStatus.canceled.name(), history(LoopBatch.class).getString("status"));
+
+	}
+
+	@Test
+	@DisplayName("D-155 BatchContext.isCancelOrdered() でも止まる")
+	void cancelThroughTheContext () throws Exception {
+
+		/*
+		 * <b>ここが繋がっていなかった。</b>
+		 *
+		 * {@code BatchContext.isCancelOrdered()} は Javadoc で
+		 * 「長時間バッチはループの中でこれを定期的に確認し、安全に止める」と書いてあるのに、
+		 * <b>フラグを立てる側が1か所も無かった</b>——常に false を返すだけだった。
+		 *
+		 * <b>落ちも警告も出ない。</b>書いたとおりに動いているように見えて、
+		 * 気づくのは<b>本番で中断ボタンを押したとき</b>である。
+		 * 既存の {@code LoopBatch} は {@code isCancelOrder()}（バッチ自身のほう）を見ていたので、
+		 * テストは全部緑のままだった。
+		 */
+		register();
+
+		ContextLoopBatch batch = new ContextLoopBatch();
+		java.util.concurrent.atomic.AtomicReference<BatchResult> result = new java.util.concurrent.atomic.AtomicReference<>();
+
+		Thread thread = Thread.ofVirtual().start(
+			() -> result.set(batch.run(args(ContextLoopBatch.class), null)));
+
+		for (int i = 0; i < 500 && batch.batchId() <= 0 && result.get() == null; i++) {
+			Thread.sleep(20);
+		}
+
+		assertTrue(batch.batchId() > 0, "履歴ができていない: " + result.get());
+
+		// 管理画面から止める操作に当たる
+		DBUtil.getMainDB().update(
+			"UPDATE batch_history SET cancel_status = 1 WHERE id = ?", batch.batchId());
+
+		thread.join();
+
+		assertEquals(BatchResult.canceled, result.get()
+			, "BatchContext を見ているバッチが止まっていません");
+
+		Data row = history(ContextLoopBatch.class);
+
+		assertEquals(BatchHistoryStatus.canceled.name(), row.getString("status"));
+
+		/*
+		 * <b>200 回まで回らずに抜けたこと</b>も見る。
+		 * -1 なら「最後まで回りきった」＝止まっていない。
+		 */
+		assertTrue(row.getDataOptional("execute_info").getInt("stopped_at") >= 0
+			, "最後まで回りきっています: " + row.getStringOptional("execute_info"));
 
 	}
 

@@ -641,6 +641,15 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 		try (BatchContext context = new BatchContext(batchName())) {
 
+			/*
+			 * <b>中断の指示元を繋ぐ</b>（要件 F-B-06 / D-155）。
+			 *
+			 * 繋がないと {@code context.isCancelOrdered()} は永久に false を返す——
+			 * <b>BatchContext の Javadoc のとおりに書いたバッチが、中断ボタンで止まらない</b>。
+			 * 落ちも警告も出ないので、実際に止めようとするまで分からない。
+			 */
+			context.cancelNotify(this);
+
 			context.run(() -> {
 
 				Thread hook = null;

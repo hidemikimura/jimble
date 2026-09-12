@@ -1,5 +1,7 @@
 package io.jimble.util.conf;
 
+import io.jimble.util.log.Log;
+
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigObject;
@@ -12,8 +14,10 @@ import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 設定
@@ -237,6 +241,9 @@ public final class Conf {
 	public static void reload () {
 
 		env = resolveEnv();
+
+		// 環境が変わったら、知らない環境の警告はもう一度出してよい
+		unknownEnvWarned.set(false);
 		instance = null;
 
 	}
@@ -676,37 +683,116 @@ public final class Conf {
 
 	}
 
+	// region 環境の判定
+
+	/** 環境の正式名：ローカル */
+	public static final String ENV_LOCAL = DEFAULT_ENV;
+
+	/** 環境の正式名：ステージング */
+	public static final String ENV_STAGING = "staging";
+
+	/** 環境の正式名：本番 */
+	public static final String ENV_PRODUCTION = "production";
+
+	/**
+	 * 環境の別名（略記 → 正式名）
+	 *
+	 * <p>
+	 * <b>ドキュメントが `prod` と書いていて、コードが `production` としか一致していなかった</b>（D-155）。
+	 * `-Djimble.env=prod` で動かしているアプリでは <b>{@code isProduction()} が false のまま</b>で、
+	 * 本番の分岐が丸ごと素通りしていた。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>ここで受けるのは判定だけである。</b>環境別ファイルの名前（{@code application.prod.conf}）は
+	 * {@link #env()} の生の値をそのまま使う——<b>読むファイルが書いたとおりでなくなるほうが分かりにくい</b>。
+	 * </p>
+	 */
+	private static final Map<String, String> ENV_ALIASES = Map.of(
+		"dev", ENV_LOCAL
+		, "development", ENV_LOCAL
+		, "stg", ENV_STAGING
+		, "stage", ENV_STAGING
+		, "prd", ENV_PRODUCTION
+		, "prod", ENV_PRODUCTION);
+
+	/** 知っている環境（正式名） */
+	private static final Set<String> KNOWN_ENVS = Set.of(ENV_LOCAL, ENV_STAGING, ENV_PRODUCTION);
+
+	/* 知らない環境を1度だけ言う */
+	private static final AtomicBoolean unknownEnvWarned = new AtomicBoolean(false);
+
+	/**
+	 * 判定に使う環境名
+	 *
+	 * <p>
+	 * 大小と前後の空白をそろえ、別名を正式名に直したもの。
+	 * <b>表に無ければ、そのまま返して1度だけ警告する</b>——
+	 * {@code producton} のような打ち間違いは、黙って local に倒すと本番で気づけない。
+	 * </p>
+	 *
+	 * @return	正式名
+	 */
+	public static String normalizedEnv () {
+
+		String value = env == null ? "" : env.strip().toLowerCase(Locale.ROOT);
+
+		String resolved = ENV_ALIASES.getOrDefault(value, value);
+
+		if (!KNOWN_ENVS.contains(resolved) && unknownEnvWarned.compareAndSet(false, true)) {
+			Log.warn("""
+				知らない環境です: %s
+				  isLocal() / isStaging() / isProduction() は、どれも false になります。
+				  使えるのは local / staging / production です
+				  （略記 dev・development / stg・stage / prod・prd も同じものとして扱います）。
+				  環境別ファイルは application.%s.conf を探しています。
+				"""
+				.formatted(env, env));
+		}
+
+		return resolved;
+
+	}
+
 	/**
 	 * ローカル環境か
+	 *
+	 * <p>{@code dev} / {@code development} も同じものとして扱う。</p>
 	 *
 	 * @return	ローカルなら true
 	 */
 	public boolean isLocal () {
 
-		return DEFAULT_ENV.equals(env);
+		return ENV_LOCAL.equals(normalizedEnv());
 
 	}
 
 	/**
 	 * ステージング環境か
 	 *
+	 * <p>{@code stg} / {@code stage} も同じものとして扱う。</p>
+	 *
 	 * @return	ステージングなら true
 	 */
 	public boolean isStaging () {
 
-		return "staging".equals(env);
+		return ENV_STAGING.equals(normalizedEnv());
 
 	}
 
 	/**
 	 * 本番環境か
 	 *
+	 * <p>{@code prod} / {@code prd} も同じものとして扱う。</p>
+	 *
 	 * @return	本番なら true
 	 */
 	public boolean isProduction () {
 
-		return "production".equals(env);
+		return ENV_PRODUCTION.equals(normalizedEnv());
 
 	}
+
+	// endregion
 
 }

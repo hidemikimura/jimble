@@ -197,8 +197,8 @@ post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要�
 
 ```java
 get("/auth/google", Oidc.start("google")).attribute(Auth.PUBLIC, true);
-get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
-	.attribute(Auth.PUBLIC, true);
+get("/auth/google/callback", Oidc.callback("google", App::findOrCreate, "/login/code"))
+	.attribute(Auth.PUBLIC, true);   // 第3引数はコードを入れる画面
 ```
 
 `findOrCreate` は `OidcUser` を受け取って `Principal` を返す（入れないなら `null`）。
@@ -209,6 +209,8 @@ get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
 - 認可コード + PKCE のみ。**暗黙フローは無い**
 - ID トークンの検証は枠組みがやる（`alg` はヘッダを信じない・`iss` は完全一致・`aud`/`azp`・`exp`/`iat`・`nonce`）
 - **断る理由は返さない**（401 だけ。どこまで通ったかを測らせない）
+- **二要素認証を使うなら第3引数を渡す。**渡さないと、二要素を有効にしている人は 401 で入れない
+  （0.6.0 は黙って入れていた＝OIDC だと二要素が飛んでいた）
 
 ### 二要素認証（TOTP）
 

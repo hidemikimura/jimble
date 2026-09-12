@@ -48,6 +48,27 @@ java \
 **`-Djimble.env` is a JVM argument.** As a program argument (`java -jar app.jar env=prod`)
 it does nothing.
 
+### Environment names
+
+**The short forms work for the checks too.** What you wrote is used **only for the file name**.
+
+| What you may write | Check | File read |
+| --- | --- | --- |
+| `local` / `dev` / `development` | `isLocal()` | `application.<what you wrote>.conf` |
+| `staging` / `stg` / `stage` | `isStaging()` | same |
+| `production` / `prod` / `prd` | `isProduction()` | same |
+
+Case does not matter.
+
+> [!TRAP]
+> **A name that is not in the table matches none of the checks.**
+> Misspell it as `producton` and both `isLocal()` and `isProduction()` are false.
+> **A warning is logged once at startup** — silently falling back to `local` would let
+> **a production machine call itself local** and keep running.
+>
+> For the record, **`-Djimble.env=prod` used to leave `isProduction()` false** (fixed in 0.6.1):
+> the check only matched the literal `production`.
+
 ## Where the configuration is read from
 
 **From inside the jar, and nowhere else.** (`conf/` is added to the resources, so it is in the jar.

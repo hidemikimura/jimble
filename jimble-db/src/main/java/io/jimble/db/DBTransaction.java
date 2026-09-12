@@ -123,6 +123,8 @@ public class DBTransaction implements Closeable, AutoCloseable {
 		try {
 			// 終わらせない。終わらせるのは commitEndTransaction()
 			db.commit();
+		} catch (CodeException ex) {
+			throw ex;
 		} catch (Exception ex) {
 			throw new CodeException("DB_003", "トランザクションのコミットに失敗しました。");
 		}
@@ -143,11 +145,19 @@ public class DBTransaction implements Closeable, AutoCloseable {
 
 		try {
 			db.commitEndTransaction();
+		} catch (CodeException ex) {
+			/*
+			 * <b>包み直さない。</b>「エラーが出ているのでコミットしなかった」（DB_004）は
+			 * <b>理由と直し方まで書いてある</b>ので、DB_003 で潰すと何も分からなくなる。
+			 */
+			throw ex;
 		} catch (Exception ex) {
 			throw new CodeException("DB_003", "トランザクションのコミットに失敗しました。");
 		}
 
 	}
+
+
 
 	/**
 	 * {@inheritDoc}
