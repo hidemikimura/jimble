@@ -5,7 +5,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.version.DBVersion;
 import io.jimble.util.data.Data;
-import io.jimble.util.hash.CipherUtil;
+import io.jimble.util.crypto.Aead;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.log.Log;
 import io.jimble.web.auth.Auth;
@@ -61,9 +61,17 @@ import java.util.List;
  *
  * <h2>秘密鍵は暗号化して持つ</h2>
  * <p>
- * <b>{@code cipher.key} が無ければ有効化を断る。</b>
+ * <b>{@code auth.mfa.secret_key} が無ければ有効化を断る。</b>
  * TOTP の秘密鍵はパスワードのハッシュと違って<b>漏れたらその場で使える</b>——
  * 解読の手間が無い。「2FA を入れたのに DB が漏れたら全員突破される」を作らせない。
+ * </p>
+ *
+ * <p>
+ * <b>{@code cipher.key} は流用しない</b>（D-154）。流用すると、
+ * その鍵を持っていなかったアプリが二要素認証を入れた瞬間に
+ * <b>保存済みのパスワードハッシュが読めなくなり、全員がログインできなくなる</b>——
+ * 理由は {@link MfaConf} に書いてある。暗号化は
+ * {@link Aead}（AES-256-GCM）で、<b>改ざんも検知する</b>。
  * </p>
  */
 public final class Mfa {
@@ -126,9 +134,18 @@ public final class Mfa {
 		 * 秘密鍵を平文で持つと、DB が漏れた時点で<b>全員の2要素が無効になる</b>——
 		 * しかもパスワードと違って<b>破る手間がゼロ</b>である。
 		 */
-		if (!CipherUtil.isConfigured()) {
-			throw new IllegalStateException(
-				"二要素認証には %s が要ります（秘密鍵を平文で持たないため）".formatted(CipherUtil.KEY_CIPHER_KEY));
+		String key = MfaConf.secretKey();
+
+		if (key.isEmpty()) {
+			throw new IllegalStateException("""
+				二要素認証には %s が要ります（秘密鍵を平文で持たないため）。
+				  application.conf に次を足すか、環境変数で渡してください。
+				    auth { mfa { secret_key = ${?MFA_SECRET_KEY} } }
+
+				  cipher.key を流用しないでください。hash.password.encrypt の既定が
+				  「cipher.key があれば true」なので、いま平文の BCrypt を保存しているなら
+				  全員がログインできなくなります。
+				""".formatted(MfaConf.KEY_SECRET_KEY));
 		}
 
 		byte[] secret = Totp.secret();
@@ -144,7 +161,7 @@ public final class Mfa {
 			db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId);
 
 			db.insert("INSERT INTO %s (user_id, secret, activated_at, last_counter) VALUES (?, ?, 0, 0)"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), userId, CipherUtil.encryptAes(base32));
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), userId, Aead.encrypt(base32, key));
 
 			for (String code : codes) {
 				db.insert("INSERT INTO %s (user_id, code_hash, created_at) VALUES (?, ?, ?)"
@@ -638,7 +655,21 @@ public final class Mfa {
 	 */
 	private static byte[] secretOf (Data row) {
 
-		return Totp.fromBase32(CipherUtil.decryptAes(row.getString("secret")));
+		String secret = Aead.decrypt(row.getString("secret"), MfaConf.secretKey());
+
+		/*
+		 * <b>{@code Aead.decrypt} は失敗すると null を返す</b>（例外ではない）。
+		 * ここで気づかずに進むと <b>NPE の 500</b> になり、
+		 * <b>鍵を変えたことが原因だと分からない</b>——
+		 * 利用者には「コードが違います」に見える。
+		 */
+		if (secret == null) {
+			throw new IllegalStateException(
+				"二要素認証の秘密鍵を復号できません。%s が変わっていませんか"
+					.formatted(MfaConf.KEY_SECRET_KEY));
+		}
+
+		return Totp.fromBase32(secret);
 
 	}
 

@@ -182,18 +182,23 @@ auth {
 	}
 
 	mfa {
-		enabled         = true      # DB と cipher.key が要る（下を参照）
+		enabled         = true      # DB と secret_key が要る（下を参照）
 		issuer          = "jimble"  # 認証アプリの一覧に出る名前
 		digits          = 6         # 6 から変えない（多くのアプリが6桁しか出せない）
 		period          = 30        # 秒
 		window          = 1         # 前後いくつの窓まで許すか。広げるほど当たりも増える
 		recovery_codes  = 10        # 登録のときに出す数
 		pending_seconds = 300       # パスワードが通ってからコードを入れるまでの猶予
+
+		# 秘密鍵を暗号化する鍵。無ければ Mfa.enroll が断る。
+		# cipher.key を流用しないこと（下を参照）
+		secret_key      = ${?MFA_SECRET_KEY}
 	}
 }
 
 cipher {
-	# 二要素認証の秘密鍵を暗号化するのに要る（無ければ Mfa.enroll が断る）
+	# 移送してきたアプリの、暗号化済みパスワードハッシュを読むための鍵。
+	# 二要素認証には使わない（下を参照）
 	key = ${?CIPHER_KEY}   # 16 / 24 / 32 バイト
 	iv  = ${?CIPHER_IV}    # 16 バイト
 }
@@ -236,6 +241,26 @@ codegen {
 	package = "db"
 }
 ```
+
+## cipher.key と auth.mfa.secret_key は別のもの
+
+**二要素認証に `cipher.key` を流用しないでください。**
+
+`hash.password.encrypt` の既定は **「`cipher.key` が設定されていれば true」**です。
+移送してきたアプリの保存済みハッシュが暗号化されているので、
+**鍵があるのに平文の BCrypt として照合すると全員入れなくなる**——それを避けるための既定です。
+
+このため、**いま平文の BCrypt を保存しているアプリが、二要素認証のために `cipher.key` を
+足すと、今度は逆向きに全員入れなくなります。**
+出るのは「IDかパスワードが違います」だけなので、設定を足したことと結び付きません。
+
+| | |
+| --- | --- |
+| `cipher.key` / `cipher.iv` | **移送してきたアプリの暗号化済みパスワードハッシュを読む**ためのもの。新しく暗号化するものには使いません（固定 IV で、改ざん検知もありません） |
+| `auth.mfa.secret_key` | **TOTP の秘密鍵を暗号化する**ためのもの。AES-256-GCM です |
+
+明示したいときは `hash.password.encrypt` を書いてください
+（**書けば既定は効きません**）。
 
 ## trust_proxy は既定で false
 

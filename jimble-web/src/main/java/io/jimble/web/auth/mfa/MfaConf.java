@@ -15,15 +15,27 @@ import io.jimble.util.conf.Conf;
  *         window          = 1       # 前後いくつの窓まで許すか
  *         recovery_codes  = 10      # 有効にするときに出す回復コードの数
  *         pending_seconds = 300     # パスワードのあと、コードを入れるまでの猶予
+ *
+ *         # 秘密鍵の暗号化に要る（無いと有効化を断る）
+ *         secret_key      = ${?MFA_SECRET_KEY}
  *     }
  * }
- *
- * # 秘密鍵の暗号化に要る（無いと有効化を断る）
- * cipher {
- *     key = ${?CIPHER_KEY}
- *     iv  = ${?CIPHER_IV}
- * }
  * </pre>
+ *
+ * <h2>{@code cipher.key} は使わない</h2>
+ * <p>
+ * <b>{@code cipher.key} を流用してはならない。</b>
+ * {@code hash.password.encrypt} の既定は
+ * <b>「{@code cipher.key} が設定されていれば true」</b>である
+ * （移送してきたアプリの保存済みハッシュが暗号化されているため）。
+ * </p>
+ * <p>
+ * そのため、<b>{@code cipher.key} を使っていなかったアプリが
+ * 二要素認証のためにこれを設定すると、保存済みのパスワードハッシュが
+ * 「暗号化済み」として読まれ、全員がログインできなくなる</b>。
+ * 返るのは「IDかパスワードが違います」だけなので、原因に辿り着けない。
+ * <b>鍵を分けてあるのはこのためである</b>（D-154）。
+ * </p>
  */
 public final class MfaConf {
 
@@ -47,6 +59,9 @@ public final class MfaConf {
 
 	/** コードを入れるまでの猶予（秒） */
 	public static final String KEY_PENDING_SECONDS = "auth.mfa.pending_seconds";
+
+	/** 秘密鍵を暗号化する鍵 */
+	public static final String KEY_SECRET_KEY = "auth.mfa.secret_key";
 
 	private MfaConf () {
 	}
@@ -138,6 +153,23 @@ public final class MfaConf {
 	public static long pendingSeconds () {
 
 		return Math.clamp(Conf.conf().getLong(KEY_PENDING_SECONDS, 300), 30, 1800);
+
+	}
+
+	/**
+	 * 秘密鍵を暗号化する鍵
+	 *
+	 * <p>
+	 * <b>{@code cipher.key} とは別の鍵である。</b>理由はクラスの説明に書いてある。
+	 * 長さの決まりは無い（{@code Aead} が 32 バイトに畳む）が、
+	 * <b>推測できない長さにすること</b>。
+	 * </p>
+	 *
+	 * @return	鍵。設定されていなければ空
+	 */
+	public static String secretKey () {
+
+		return Conf.conf().getString(KEY_SECRET_KEY, "");
 
 	}
 

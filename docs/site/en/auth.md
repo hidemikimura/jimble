@@ -398,11 +398,20 @@ if (!Mfa.activate(staffId, request.getString("code"))) {
 
 ### The secret is stored encrypted
 
-**`enroll` throws if `cipher.key` is not configured.**
+**`enroll` throws if `auth.mfa.secret_key` is not configured.**
 
 A TOTP secret is not like a password hash. A hash costs work to break; **a leaked secret
 produces valid codes immediately.** Stored in the clear it turns into "we have 2FA, and one
 database leak walks through all of it".
+
+> [!TRAP]
+> **Do not reuse `cipher.key` for this.** The default of `hash.password.encrypt` is
+> **"true if `cipher.key` is set"** — because a migrated app's stored hashes are encrypted.
+>
+> So an app storing plain BCrypt today that sets `cipher.key` to get 2FA will find **every
+> stored password read as ciphertext, and nobody can log in.** All the user sees is "wrong
+> id or password", so there is nothing to trace it back from. **That is why the key is
+> separate.**
 
 ### Recovery codes
 
@@ -450,6 +459,9 @@ post("/mfa/disable", Mfa2::disable).attribute(Auth.FULL_AUTH, true);
 | SMS / email | No. SIM swaps take SMS codes |
 | WebAuthn / passkeys | Not yet |
 | "Trusted devices" | No. remember-me is the nearby thing, and **it is a different thing** — that one replaces the password |
+
+
+A working one is in `examples/approval-auth` — login, code, enrollment and turning it off.
 
 ## Basic auth
 

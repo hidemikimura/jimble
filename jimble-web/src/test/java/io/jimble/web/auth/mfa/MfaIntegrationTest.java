@@ -58,14 +58,14 @@ class MfaIntegrationTest {
 		 * セッションは none。ここで見たいのは<b>秘密鍵と回復コードの扱い</b>で、
 		 * セッションが DB に載るかどうかではない。
 		 *
-		 * cipher の鍵を入れる——<b>これが無いと enroll は断る</b>（それも下で確かめる）。
+		 * 秘密鍵を暗号化する鍵を入れる——<b>これが無いと enroll は断る</b>（それも下で確かめる）。
+		 *
+		 * <b>cipher.key ではない</b>（D-154）。あちらを流用すると
+		 * hash.password.encrypt の既定が裏返り、<b>保存済みのパスワードが読めなくなる</b>。
 		 */
 		Conf.replace(ConfigFactory.parseString("""
 			session.store = "none"
-			cipher {
-				key = "0123456789abcdef0123456789abcdef"
-				iv  = "abcdef9876543210"
-			}
+			auth.mfa.secret_key = "0123456789abcdef0123456789abcdef"
 			""").withFallback(originalConf));
 
 		assertTrue(DBUtil.load(Conf.conf().config(), MfaIntegrationTest.class)
@@ -147,13 +147,13 @@ class MfaIntegrationTest {
 
 	@Test
 	@DisplayName("F-W-32 暗号鍵が無ければ有効にさせない")
-	void refusesWithoutCipherKey () {
+	void refusesWithoutTheSecretKey () {
 
-		Config withCipher = Conf.conf().config();
+		Config withKey = Conf.conf().config();
 
 		try {
 
-			Conf.replace(ConfigFactory.parseString("cipher { key = \"\"\n iv = \"\" }")
+			Conf.replace(ConfigFactory.parseString("auth.mfa.secret_key = \"\"")
 				.withFallback(originalConf));
 
 			assertThrows(IllegalStateException.class
@@ -161,7 +161,47 @@ class MfaIntegrationTest {
 				, "暗号鍵が無いのに秘密鍵を持とうとしている");
 
 		} finally {
-			Conf.replace(withCipher);
+			Conf.replace(withKey);
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 cipher.key では有効にならない（パスワードの鍵を流用させない）")
+	void cipherKeyIsNotTheMfaKey () {
+
+		Config withKey = Conf.conf().config();
+
+		try {
+
+			/*
+			 * <b>これは「設定の名前が違う」だけの話ではない。</b>
+			 *
+			 * {@code hash.password.encrypt} の既定は
+			 * <b>「{@code cipher.key} が設定されていれば true」</b>である。
+			 * 二要素認証がこの鍵を要求すると、<b>いままで平文の BCrypt を保存していたアプリが
+			 * 二要素認証を入れた瞬間に、全員ログインできなくなる</b>——
+			 * 返るのは「IDかパスワードが違います」だけなので、原因に辿り着けない。
+			 *
+			 * <b>サンプル（examples/approval-auth）で実際に起きた</b>：
+			 * conf に cipher を足したら、二要素と関係のない結合テストが16本落ちた（D-154）。
+			 *
+			 * ここが通ってしまうと、<b>「流用してよい」に静かに戻る</b>。
+			 */
+			Conf.replace(ConfigFactory.parseString("""
+				auth.mfa.secret_key = ""
+				cipher {
+					key = "0123456789abcdef0123456789abcdef"
+					iv  = "abcdef9876543210"
+				}
+				""").withFallback(originalConf));
+
+			assertThrows(IllegalStateException.class
+				, () -> Mfa.enroll(USER_ID, "member1@example.com")
+				, "cipher.key で二要素が有効になっている（パスワードの鍵と縛り合っている）");
+
+		} finally {
+			Conf.replace(withKey);
 		}
 
 	}
@@ -172,17 +212,17 @@ class MfaIntegrationTest {
 
 		Mfa.Enrollment enrollment = enrollAndActivate();
 
-		Config withCipher = Conf.conf().config();
+		Config withKey = Conf.conf().config();
 
 		try {
 
-			Conf.replace(ConfigFactory.parseString("cipher { key = \"\"\n iv = \"\" }")
+			Conf.replace(ConfigFactory.parseString("auth.mfa.secret_key = \"\"")
 				.withFallback(originalConf));
 
 			assertThrows(IllegalStateException.class, () -> Mfa.enroll(USER_ID, "member1@example.com"));
 
 		} finally {
-			Conf.replace(withCipher);
+			Conf.replace(withKey);
 		}
 
 		/*

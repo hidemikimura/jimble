@@ -7,6 +7,7 @@ import io.jimble.util.data.Data;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
 import io.jimble.web.auth.Remember;
+import io.jimble.web.auth.mfa.Mfa;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.csrf.Csrf;
 
@@ -110,13 +111,32 @@ public final class LoginController {
 			, staff.getString("name")
 			, staff.getString("role"));
 
+		boolean remember = "1".equals(request.getString("remember"));
+
+		/*
+		 * <b>二要素認証を有効にしている人は、ここではまだログインさせない</b>（要件 F-W-32）。
+		 *
+		 * {@code Auth.login} を呼んでからコードを聞くと、
+		 * <b>コードを入れる前にログインできている</b>ことになる——
+		 * 画面を1枚挟んでいるだけで、URL を直に叩けば素通りする。
+		 *
+		 * 覚える印も<b>コードが通ってから</b>付ける（{@link MfaController}）。
+		 */
+		if (Mfa.isActive(principal.id())) {
+
+			MfaController.startChallenge(context, principal, remember);
+
+			return;
+
+		}
+
 		Auth.login(context, principal);
 
 		/*
 		 * <b>印が付いたときだけ覚える</b>（要件 F-W-30）。
 		 * いつも覚えると、<b>共用の端末で次の人が入れる</b>。
 		 */
-		if ("1".equals(request.getString("remember"))) {
+		if (remember) {
 			Remember.issue(context, principal);
 		}
 

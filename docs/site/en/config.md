@@ -189,18 +189,23 @@ auth {
 	}
 
 	mfa {
-		enabled         = true      # needs a DB and cipher.key (below)
+		enabled         = true      # needs a DB and secret_key (below)
 		issuer          = "jimble"  # the name shown in the authenticator app
 		digits          = 6         # leave it at 6; most apps show nothing else
 		period          = 30        # seconds
 		window          = 1         # steps either way. Widening it widens the target
 		recovery_codes  = 10        # how many are handed out at enrollment
 		pending_seconds = 300       # grace between the password and the code
+
+		# encrypts the TOTP secrets. Without it Mfa.enroll refuses.
+		# Do NOT reuse cipher.key here (see below)
+		secret_key      = ${?MFA_SECRET_KEY}
 	}
 }
 
 cipher {
-	# required to encrypt TOTP secrets (without it Mfa.enroll refuses)
+	# reads the already-encrypted password hashes of a migrated app.
+	# Not used by two-factor auth (see below)
 	key = ${?CIPHER_KEY}   # 16 / 24 / 32 bytes
 	iv  = ${?CIPHER_IV}    # 16 bytes
 }
@@ -243,6 +248,26 @@ codegen {
 	package = "db"
 }
 ```
+
+## `cipher.key` and `auth.mfa.secret_key` are different keys
+
+**Do not reuse `cipher.key` for two-factor auth.**
+
+The default of `hash.password.encrypt` is **"true if `cipher.key` is set"**. A migrated
+app's stored hashes are encrypted, so **having the key but checking against plain BCrypt
+would lock everyone out** — that default exists to prevent it.
+
+Which means an app storing plain BCrypt today that adds `cipher.key` **to get 2FA locks
+everyone out the other way.** All it says is "wrong id or password", so nothing points back
+at the setting that was added.
+
+| | |
+| --- | --- |
+| `cipher.key` / `cipher.iv` | Reads the **already-encrypted password hashes of a migrated app**. Not for anything new — fixed IV, no tamper detection |
+| `auth.mfa.secret_key` | Encrypts **TOTP secrets**. AES-256-GCM |
+
+Set `hash.password.encrypt` explicitly to say which you mean (**an explicit value wins over
+the default**).
 
 ## trust_proxy is false by default
 

@@ -8,7 +8,7 @@ plugins {
 	id("io.jimble.run")
 }
 
-description = "サンプル：誰が入れるか（セッション・認可・CSRF・パスワード）"
+description = "サンプル：誰が入れるか（セッション・認可・CSRF・パスワード・二要素認証）"
 
 dependencies {
 	implementation(project(":jimble-web"))

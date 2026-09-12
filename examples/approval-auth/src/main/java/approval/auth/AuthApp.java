@@ -42,6 +42,14 @@ import io.jimble.web.session.SessionStores;
  *   <tr><td>{@code GET /me}</td><td>セッションの型付き getter（F-S-04）</td></tr>
  *   <tr><td>{@code GET /requests}</td><td><b>ログインが要る</b>（ルート属性。F-R-16 / F-R-17）</td></tr>
  *   <tr><td>{@code GET /approvals}</td><td><b>承認者だけ</b>（ルート属性）</td></tr>
+ *   <tr><td>{@code GET /login/code}</td>
+ *       <td><b>二要素認証のコードを入れる</b>（F-W-32）。<b>まだログインしていない</b></td></tr>
+ *   <tr><td>{@code POST /login/code}</td>
+ *       <td>コードを確かめて、<b>ここで初めてログインする</b></td></tr>
+ *   <tr><td>{@code POST /mfa/enroll}</td>
+ *       <td><b>二要素認証を登録する</b>（F-W-32）。パスワードを入れた人だけ</td></tr>
+ *   <tr><td>{@code POST /mfa/activate}</td><td>コードが合ったら有効にする</td></tr>
+ *   <tr><td>{@code POST /mfa/disable}</td><td>やめる。<b>ここが緩いと二要素の意味が無い</b></td></tr>
  *   <tr><td>{@code GET /ops/whoami}</td><td><b>Basic 認証</b>（F-W-13）</td></tr>
  * </table>
  *
@@ -142,7 +150,36 @@ public class AuthApp extends JimbleApp {
 		get("/login", LoginController::show).attribute(Auth.PUBLIC, true);
 		post("/login", LoginController::submit).attribute(Auth.PUBLIC, true);
 
+		/*
+		 * <b>コードを入れる画面も「公開だが、セッションは要る」</b>（要件 F-W-32）。
+		 *
+		 * まだログインしていない人が通る道なので {@code Auth.PUBLIC} が要り、
+		 * <b>預けた本人はセッションに居る</b>ので {@code NO_SESSION} は付けない。
+		 * ログインの入口とまったく同じ判断である。
+		 */
+		get("/login/code", MfaController::show).attribute(Auth.PUBLIC, true);
+		post("/login/code", MfaController::submit).attribute(Auth.PUBLIC, true);
+
 		post("/logout", LoginController::logout);
+
+		/*
+		 * <b>二要素認証の出し入れは、いまパスワードを入れた人だけ</b>（要件 F-W-32 / F-R-26）。
+		 *
+		 * ブロックに1回書けば中のルート全部に付くので、
+		 * <b>口を1つ足すたびに書き忘れる余地が無い</b>。
+		 * ここが緩いと、<b>Cookie を盗んだ側が二要素を外せる</b>——入れた意味が無くなる。
+		 */
+		path("/mfa", () -> {
+
+			attribute(Auth.FULL_AUTH, true);
+
+			post("/enroll", MfaController::enroll);
+			post("/activate", MfaController::activate);
+			post("/disable", MfaController::disable);
+
+			get("/status", MfaController::status);
+
+		});
 
 		/*
 		 * <b>パスワードの変更は、パスワードを入れて入った人だけ</b>（要件 F-W-30）。

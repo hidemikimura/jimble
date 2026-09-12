@@ -234,7 +234,9 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
 **`enroll` だけでは有効にならない**（読み取りに失敗した人を締め出さないため）。
 
 - **コードを入れるまでは「ログインしていない」。**`Auth.principal` は `ANONYMOUS`
-- **`cipher.key` が無ければ `enroll` は例外。**秘密鍵は暗号化して持つ
+- **`auth.mfa.secret_key` が無ければ `enroll` は例外。**秘密鍵は暗号化して持つ
+- **`cipher.key` を流用しない。**`hash.password.encrypt` の既定が
+  「`cipher.key` があれば true」なので、**保存済みのパスワードが読めなくなり全員入れなくなる**
 - 回復コードは **`enroll` の戻り値でしか見られない**（DB にはハッシュだけ）。使うと消える
 - `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
 - 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**

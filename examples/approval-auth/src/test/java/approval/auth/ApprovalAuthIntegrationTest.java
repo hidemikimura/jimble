@@ -8,6 +8,9 @@ import io.jimble.util.data.Data;
 import io.jimble.util.conf.Conf;
 import io.jimble.web.auth.Lockout;
 import io.jimble.web.auth.Remember;
+import io.jimble.web.auth.mfa.Mfa;
+import io.jimble.web.auth.mfa.MfaConf;
+import io.jimble.web.auth.mfa.Totp;
 import io.jimble.web.server.JimbleServer;
 
 import org.junit.jupiter.api.AfterAll;
@@ -24,6 +27,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +61,16 @@ class ApprovalAuthIntegrationTest {
 	/** 総当たりを試すログインID（実在しない） */
 	private static final String BRUTE_FORCE_ID = "総当たり";
 
+	/**
+	 * 二要素認証を試す人
+	 *
+	 * <p>
+	 * <b>他のテストと分けてある。</b>member1 に二要素を入れると、
+	 * <b>ログインの行き先が変わって残りのテストが全部落ちる</b>。
+	 * </p>
+	 */
+	private static final String MFA_ID = "member2";
+
 	/* サーバー */
 	private static JimbleServer server;
 
@@ -72,6 +86,7 @@ class ApprovalAuthIntegrationTest {
 
 		clearLockout();
 		forget();
+		cleanUpMfa();
 
 	}
 
@@ -80,6 +95,7 @@ class ApprovalAuthIntegrationTest {
 
 		clearLockout();
 		forget();
+		cleanUpMfa();
 
 		if (server != null) {
 			server.stop();
@@ -99,7 +115,7 @@ class ApprovalAuthIntegrationTest {
 	 */
 	private static void forget () {
 
-		for (String loginId : new String[] { "member1", "approver1" }) {
+		for (String loginId : new String[] { "member1", "member2", "approver1" }) {
 			Data staff = ApprovalAuthExample.db().select(
 				SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId)));
 			if (staff != null) {
@@ -120,7 +136,7 @@ class ApprovalAuthIntegrationTest {
 	 */
 	private static void clearLockout () {
 
-		for (String key : new String[] { "member1", "approver1", "居ない人", BRUTE_FORCE_ID }) {
+		for (String key : new String[] { "member1", "member2", "approver1", "居ない人", BRUTE_FORCE_ID }) {
 			Lockout.clear(key);
 		}
 
@@ -530,6 +546,341 @@ class ApprovalAuthIntegrationTest {
 
 	// endregion
 
+	// region 二要素認証（要件 F-W-32）
+
+	@Test
+	@DisplayName("F-W-32 二要素を入れると、パスワードだけでは入れない")
+	void mfaLoginNeedsTheCode () throws Exception {
+
+		try {
+
+			byte[] secret = enroll(MFA_ID);
+
+			HttpClient client = newClient();
+
+			HttpResponse<String> login = login(client, MFA_ID, PASSWORD);
+
+			assertEquals(302, login.statusCode());
+			assertEquals("/login/code", login.headers().firstValue("location").orElse("")
+				, "コードを聞かずに通してしまっています");
+
+			/*
+			 * <b>ここが要点である。</b>パスワードは合っているのに、
+			 * <b>ログインしていない扱い</b>になっている（要件 F-W-32）。
+			 *
+			 * ここを 200 にしてしまう作りは、画面の遷移としては正しく見える——
+			 * <b>/login/code を出していれば、利用者はコードを入れる</b>。
+			 * 気づくのは、URL を直に叩かれたときである。
+			 */
+			assertEquals(401, get(client, "/me").statusCode()
+				, "コードを入れる前に入れてしまっています");
+			assertEquals(401, get(client, "/requests").statusCode());
+
+			// 画面は出る（ここだけは通す）
+			assertEquals(200, get(client, "/login/code").statusCode());
+
+			HttpResponse<String> done = submitCode(client, codeAt(secret, 0));
+
+			assertEquals(302, done.statusCode(), done.body());
+			assertEquals("/me", done.headers().firstValue("location").orElse("")
+				, "正しいコードなのに入れていません");
+
+			HttpResponse<String> me = get(client, "/me");
+
+			assertEquals(200, me.statusCode());
+			assertTrue(me.body().contains("申請 花子"), me.body());
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 コードが違えば入れない（画面は出るが、中には入れない）")
+	void wrongCodeDoesNotLetYouIn () throws Exception {
+
+		try {
+
+			enroll(MFA_ID);
+
+			HttpClient client = newClient();
+
+			login(client, MFA_ID, PASSWORD);
+
+			HttpResponse<String> response = submitCode(client, "000000");
+
+			assertEquals(302, response.statusCode());
+			assertEquals("/login/code", response.headers().firstValue("location").orElse(""));
+
+			assertEquals(401, get(client, "/me").statusCode(), "コードが違うのに入れています");
+
+			// 断り方でコードの当たり外れ以上のことを言わない
+			assertTrue(get(client, "/login/code").body().contains("コードが違います"));
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 一度通ったコードは、もう一度は通らない")
+	void codeCannotBeReused () throws Exception {
+
+		try {
+
+			byte[] secret = enroll(MFA_ID);
+
+			String code = codeAt(secret, 0);
+
+			HttpClient first = newClient();
+			login(first, MFA_ID, PASSWORD);
+
+			assertEquals("/me", submitCode(first, code).headers().firstValue("location").orElse("")
+				, "1回目が通っていません");
+
+			/*
+			 * <b>覗き見たコードを入れ直す手を止める。</b>
+			 * 30 秒の窓のあいだ同じ数字が出ているので、
+			 * <b>止めないと、肩越しに見た人がその場で入れる</b>。
+			 */
+			HttpClient second = newClient();
+			login(second, MFA_ID, PASSWORD);
+
+			assertEquals("/login/code"
+				, submitCode(second, code).headers().firstValue("location").orElse("")
+				, "同じコードで2回入れてしまっています");
+
+			assertEquals(401, get(second, "/me").statusCode());
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 回復コードでも入れる。ただし1つは1回だけ")
+	void recoveryCodeWorksOnce () throws Exception {
+
+		try {
+
+			List<String> codes = recoveryCodes(MFA_ID);
+
+			assertEquals(10, codes.size(), "回復コードが出ていません");
+
+			String code = codes.get(0);
+
+			HttpClient first = newClient();
+			login(first, MFA_ID, PASSWORD);
+
+			assertEquals("/me", submitCode(first, code).headers().firstValue("location").orElse("")
+				, "回復コードで入れません（認証アプリを失くした人の逃げ道が無い）");
+
+			assertEquals(200, get(first, "/me").statusCode());
+
+			// 使ったら消える
+			HttpClient second = newClient();
+			login(second, MFA_ID, PASSWORD);
+
+			assertEquals("/login/code"
+				, submitCode(second, code).headers().firstValue("location").orElse("")
+				, "使った回復コードがまだ使えます");
+
+			// 残りが1つ減っている
+			assertTrue(get(first, "/mfa/status").body().contains("\"recovery_codes\":9")
+				, get(first, "/mfa/status").body());
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 思い出しただけの人は、二要素を外せない")
+	void restoredUserCannotDisableMfa () throws Exception {
+
+		try {
+
+			byte[] secret = enroll(MFA_ID);
+
+			HttpClient client = newClient();
+
+			// 印を付けてログインし、コードまで通す
+			login(client, MFA_ID, PASSWORD, true);
+			assertEquals("/me", submitCode(client, codeAt(secret, 0))
+				.headers().firstValue("location").orElse(""));
+
+			/*
+			 * <b>覚えるのはコードが通ってからである。</b>
+			 * パスワードの時点で Cookie を出すと、
+			 * <b>コードを知らない人の手元に「次から素通りできる Cookie」が残る</b>。
+			 */
+			assertNotNull(cookieOf(client, "remember"), "コードまで通したのに覚えていません");
+
+			closeBrowser(client);
+
+			assertEquals(200, get(client, "/me").statusCode(), "思い出せていない");
+
+			/*
+			 * <b>ここが緩いと、Cookie を盗んだ側が二要素を外せる。</b>
+			 * 外せてしまえば、そのあとはパスワードだけで入れる——入れた意味が無い。
+			 */
+			assertEquals(401, post(client, "/mfa/disable").statusCode()
+				, "思い出しただけの人が二要素を外せてしまいます");
+
+			assertEquals(401, post(client, "/mfa/enroll").statusCode()
+				, "思い出しただけの人が登録し直せてしまいます（同じことである）");
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 コードを入れる前は、印を付けていても覚えていない")
+	void nothingIsRememberedBeforeTheCode () throws Exception {
+
+		try {
+
+			enroll(MFA_ID);
+
+			HttpClient client = newClient();
+
+			login(client, MFA_ID, PASSWORD, true);
+
+			/*
+			 * <b>ここで Cookie が出ていたら、二要素は素通りできる。</b>
+			 * ブラウザを閉じて開き直すだけで、コードを聞かれずに入れてしまう。
+			 */
+			assertNull(cookieOf(client, "remember")
+				, "コードを入れる前に覚えています（次からコードを聞かれません）");
+
+			closeBrowser(client);
+
+			assertEquals(401, get(client, "/me").statusCode());
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 預かっていない人は、コードの画面に入れない")
+	void codeScreenNeedsAPendingUser () throws Exception {
+
+		HttpClient client = newClient();
+
+		HttpResponse<String> response = get(client, "/login/code");
+
+		/*
+		 * <b>開けたままにすると、パスワードを通していない人が
+		 * コードだけ総当たりできる入口になる。</b>
+		 */
+		assertEquals(302, response.statusCode());
+		assertEquals("/login", response.headers().firstValue("location").orElse(""));
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 外したら、パスワードだけで入れるように戻る")
+	void disableBringsBackThePasswordOnlyLogin () throws Exception {
+
+		try {
+
+			byte[] secret = enroll(MFA_ID);
+
+			HttpClient client = newClient();
+			login(client, MFA_ID, PASSWORD);
+			submitCode(client, codeAt(secret, 0));
+
+			assertEquals(200, post(client, "/mfa/disable").statusCode());
+
+			HttpClient after = newClient();
+
+			assertEquals("/me", login(after, MFA_ID, PASSWORD)
+				.headers().firstValue("location").orElse("")
+				, "外したのにまだコードを聞かれます");
+
+			assertEquals(200, get(after, "/me").statusCode());
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 一度印を付けた人が、次に付けずに入っても覚えない")
+	void theRememberFlagDoesNotSurviveTheNextLogin () throws Exception {
+
+		try {
+
+			byte[] secret = enroll(MFA_ID);
+
+			HttpClient client = newClient();
+
+			/*
+			 * 1回目：印を付けて、<b>コードを間違えて</b>やめる。
+			 *
+			 * 間違えたリクエストは<b>保存まで進まない</b>ので、
+			 * セッションに預けた印は<b>そのまま残っている</b>。
+			 */
+			login(client, MFA_ID, PASSWORD, true);
+			submitCode(client, "000000");
+
+			/*
+			 * 2回目：<b>印を付けずに</b>入り直す。
+			 *
+			 * ここで残っていた印が効くと、<b>頼んでいないのに覚えられる</b>——
+			 * 共用の端末で次の人が入る形である。
+			 * セッション ID の振り直しは<b>中身を持ち越す</b>ので、消さないと残る。
+			 */
+			login(client, MFA_ID, PASSWORD, false);
+
+			assertEquals("/me", submitCode(client, codeAt(secret, 0))
+				.headers().firstValue("location").orElse(""), "入れていません");
+
+			assertNull(cookieOf(client, "remember")
+				, "前のログインの印が残っていて、頼んでいないのに覚えています");
+
+		} finally {
+			cleanUpMfa();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-32 預かっていない人がコードを送っても、はじめからやり直しになる")
+	void submittingACodeWithoutPendingSendsYouBack () throws Exception {
+
+		HttpClient client = newClient();
+
+		HttpResponse<String> response = submitCode(client, "123456");
+
+		/*
+		 * <b>猶予（auth.mfa.pending_seconds）を過ぎるとこの道を通る。</b>
+		 *
+		 * {@code Mfa.complete} は預かっていなければ 401 を投げるので、
+		 * <b>見なくても中には入れない</b>——守りとしては二重である。
+		 * それでも見ているのは<b>返し方が違う</b>からで、
+		 * 401 の素の画面を出すと、利用者は<b>正しいコードを入れ続ける</b>ことになる。
+		 */
+		assertEquals(302, response.statusCode()
+			, "預かっていない人に 401 を返しています（やり直せると分かりません）");
+		assertEquals("/login", response.headers().firstValue("location").orElse(""));
+
+		assertTrue(get(client, "/login").body().contains("もう一度ログインしてください")
+			, "何をすればよいか言っていません");
+
+	}
+
+	// endregion
+
 	// region ここで固定していないこと
 
 	/*
@@ -538,6 +889,10 @@ class ApprovalAuthIntegrationTest {
 	 * - <b>セッションの期限切れ</b>（session.timeout_minutes）は待たないと確かめられないので見ていない
 	 * - <b>CSRF そのもの</b>は blog の formWithoutCsrf が見ている。
 	 *   ここでは「ログインの POST が CSRF を通る」ことだけを間接的に確かめている
+	 * - <b>二要素認証の猶予切れ</b>（auth.mfa.pending_seconds）は待たないと確かめられないので
+	 *   ここでは見ていない。動きは jimble-web の MfaIntegrationTest が見ている
+	 * - <b>コードの総当たり</b>も、ここでは待たされることまで見ていない
+	 *   （鍵が mfa:&lt;社員ID&gt; になっているだけで、仕掛けはログインと同じ Lockout である）
 	 */
 
 	// endregion
@@ -766,6 +1121,180 @@ class ApprovalAuthIntegrationTest {
 		}
 
 		return client.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+	}
+
+	/**
+	 * 二要素認証を登録して、有効にする
+	 *
+	 * @param loginId	ログインID
+	 * @return	秘密鍵
+	 * @throws Exception	失敗した場合
+	 */
+	private static byte[] enroll (String loginId) throws Exception {
+
+		HttpClient client = newClient();
+
+		login(client, loginId, PASSWORD);
+
+		HttpResponse<String> response = post(client, "/mfa/enroll");
+
+		assertEquals(200, response.statusCode(), response.body());
+
+		byte[] secret = Totp.fromBase32(field(response.body(), "secret"));
+
+		/*
+		 * <b>有効にするコードは1つ前の窓のものを使う。</b>
+		 *
+		 * activate は<b>通ったコードを使ったことにして窓を進める</b>ので、
+		 * いまの窓で有効にすると、<b>そのあと同じ窓でログインできない</b>——
+		 * 使い回しとして正しく弾かれる（{@code codeCannotBeReused} で見ている）。
+		 * テストの都合ではなく、<b>実際の利用者も「次の30秒を待つ」</b>ことになる。
+		 */
+		String body = "csrf_token=" + enc(csrfToken(client))
+			+ "&code=" + enc(codeAt(secret, -MfaConf.period()));
+
+		HttpResponse<String> activated = send(client, "POST", "/mfa/activate"
+			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
+			, "Content-Type", "application/x-www-form-urlencoded");
+
+		assertEquals("{\"activated\":true}", activated.body(), "有効にできていません");
+
+		return secret;
+
+	}
+
+	/**
+	 * 二要素認証を登録して、回復コードを受け取る
+	 *
+	 * @param loginId	ログインID
+	 * @return	回復コード
+	 * @throws Exception	失敗した場合
+	 */
+	private static List<String> recoveryCodes (String loginId) throws Exception {
+
+		HttpClient client = newClient();
+
+		login(client, loginId, PASSWORD);
+
+		HttpResponse<String> response = post(client, "/mfa/enroll");
+
+		assertEquals(200, response.statusCode(), response.body());
+
+		byte[] secret = Totp.fromBase32(field(response.body(), "secret"));
+
+		List<String> codes = new java.util.ArrayList<>();
+
+		Matcher matcher = Pattern.compile("\"([A-Z2-9]{10})\"").matcher(response.body());
+
+		while (matcher.find()) {
+			codes.add(matcher.group(1));
+		}
+
+		String body = "csrf_token=" + enc(csrfToken(client))
+			+ "&code=" + enc(codeAt(secret, -MfaConf.period()));
+
+		send(client, "POST", "/mfa/activate"
+			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
+			, "Content-Type", "application/x-www-form-urlencoded");
+
+		return codes;
+
+	}
+
+	/**
+	 * コードを送る
+	 *
+	 * @param client	クライアント
+	 * @param code		コード
+	 * @return	応答
+	 * @throws Exception	失敗した場合
+	 */
+	private static HttpResponse<String> submitCode (HttpClient client, String code)
+		throws Exception {
+
+		String body = "csrf_token=" + enc(csrfToken(client)) + "&code=" + enc(code);
+
+		return send(client, "POST", "/login/code"
+			, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
+			, "Content-Type", "application/x-www-form-urlencoded");
+
+	}
+
+	/**
+	 * いまから何秒ずらしたところのコード
+	 *
+	 * @param secret	秘密鍵
+	 * @param offset	ずらす秒数
+	 * @return	コード
+	 */
+	private static String codeAt (byte[] secret, int offset) {
+
+		return Totp.at(secret, java.time.Instant.now().getEpochSecond() + offset
+			, MfaConf.period(), MfaConf.digits());
+
+	}
+
+	/**
+	 * JSON から1つ取り出す（サンプルのテストなので、正規表現で足りる）
+	 *
+	 * @param json	JSON
+	 * @param name	名前
+	 * @return	値
+	 */
+	private static String field (String json, String name) {
+
+		Matcher matcher = Pattern
+			.compile("\"" + name + "\"\\s*:\\s*\"([^\"]+)\"")
+			.matcher(json);
+
+		if (!matcher.find()) {
+			throw new AssertionError(name + " が返っていません: " + json);
+		}
+
+		return matcher.group(1);
+
+	}
+
+	/**
+	 * 二要素認証の跡を消す
+	 *
+	 * <p>
+	 * <b>テストごとに消す。</b>消さないと、
+	 * 次のテストが「パスワードだけで入れる」ところから始められない。
+	 * </p>
+	 */
+	private static void cleanUpMfa () {
+
+		long id = staffId(MFA_ID);
+
+		if (id <= 0) {
+			return;
+		}
+
+		Mfa.disable(id);
+
+		/*
+		 * <b>ロックアウトの記録も消す。</b>
+		 * わざとコードを間違えるテストがあるので、
+		 * 消さないと<b>同じ日に何度も流したときだけ 429 で落ちる</b>（D-149 で踏んだ形）。
+		 */
+		Lockout.clear("mfa:" + id);
+
+	}
+
+	/**
+	 * ログインIDから社員IDを引く
+	 *
+	 * @param loginId	ログインID
+	 * @return	社員ID。居なければ 0
+	 */
+	private static long staffId (String loginId) {
+
+		Data row = ApprovalAuthExample.db().select(
+			SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId)));
+
+		return row == null ? 0 : row.getData(Staff.instance()).getLong("id");
 
 	}
 
