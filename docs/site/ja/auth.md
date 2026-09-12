@@ -343,6 +343,116 @@ JDK の `KeyFactory` で公開鍵に戻せて、署名の検証も `java.securit
 | jimble が認可サーバーになる | ありません |
 | ルートを自動で生やす | しません。`get("/auth/google", ...)` と自分で書きます（[原則](./principles)） |
 
+## 二要素認証（TOTP）
+
+パスワードが合ったあと、**まだログインさせずに**コードを待ちます。
+
+```java
+// パスワードが合ったあと
+if (Mfa.isActive(staff.getLong("id"))) {
+	Mfa.pending(context, principal);        // ログインさせない。セッションに預けるだけ
+	context.response().redirect("/login/code");
+	return;
+}
+
+Auth.login(context, principal);
+```
+
+```java
+// POST /login/code
+if (!Mfa.complete(context, request.getString("code"))) {
+	context.flash().put("message", "コードが違います");
+}
+
+context.response().redirect(Mfa.isPending(context) ? "/login/code" : "/");
+```
+
+`complete` が true を返したときは、**中で `Auth.login` まで済んでいます。**
+
+> [!TRAP]
+> **コードを入れるまでは「ログインしていない」扱いです。**
+> `Auth.principal(context)` は `Principal.ANONYMOUS` を返し、
+> `/login/code` 以外のルートは通れません。
+>
+> つまり **`/login/code` には `Auth.PUBLIC` が要ります**（まだログインしていない人が通る道なので）。
+> `Auth.NO_SESSION` は付けないでください——途中の人はセッションに預けてあります。
+
+### 登録
+
+```java
+Mfa.Enrollment enrollment = Mfa.enroll(staffId, "member1@example.com");
+
+// enrollment.uri() を QR にして見せる（otpauth://totp/...）
+// enrollment.recoveryCodes() は「この一度だけ」見せる
+```
+
+**`enroll` だけでは有効になりません。**
+認証アプリに入れてもらってから、出てきたコードで `Mfa.activate(staffId, code)` を呼びます。
+
+```java
+if (!Mfa.activate(staffId, request.getString("code"))) {
+	context.flash().put("message", "コードが合いません。もう一度お試しください");
+}
+```
+
+> [!TRAP]
+> **2段階にしてあるのは、締め出さないためです。**
+> `enroll` の時点で有効にすると、**QR の読み取りに失敗した人が二度と入れなくなります。**
+
+### 秘密鍵は暗号化して持ちます
+
+**`cipher.key` が設定されていなければ、`enroll` は例外を投げて断ります。**
+
+TOTP の秘密鍵は、パスワードのハッシュとは違います。
+ハッシュは漏れても解くのに手間がかかりますが、**秘密鍵は漏れたらその場でコードが作れます。**
+平文で持つと、「2要素を入れてあるのに、DB が漏れたら全員突破される」ものになります。
+
+### 回復コード
+
+認証アプリを入れた端末は失くします。回復コードはそのための逃げ道です。
+
+| | |
+| --- | --- |
+| 出る場所 | `enroll` の戻り値だけ。**DB には SHA-256 しか残りません** |
+| 数 | 10 個（`auth.mfa.recovery_codes`） |
+| 使い方 | コードの欄にそのまま入れます。`verify` が認証アプリ → 回復コードの順に見ます |
+| 使ったら | **消えます。**1つは1回だけです |
+| 残りの数 | `Mfa.remainingRecoveryCodes(userId)` |
+
+**残りが 0 になっても知らせません。**画面に出すかどうかはアプリの判断です。
+
+### 総当たりへの備え
+
+| | |
+| --- | --- |
+| 待たせる | `Lockout` と同じ仕掛けです（鍵は `mfa:<利用者 ID>`）。**6桁は 100 万通りしかないので、抑えないと1日で当たります** |
+| 待たせ方 | 3回までは待たせず、そのあと 1 → 2 → 4 … 秒。上限 300 秒。超えたら **429** |
+| 窓 | 前後1つ（`auth.mfa.window`）。**広げるほど当たりも増えます**——10 にすると当たりが 21 通りぶんになります |
+| 使い回し | **一度通ったコードは、その窓が終わるまで通りません。**同じコードを覗き見て入れ直す手を止めます |
+| 猶予 | パスワードが通ってからコードまで 300 秒（`auth.mfa.pending_seconds`）。過ぎたら**はじめからやり直し**です |
+
+### やめるとき
+
+```java
+post("/mfa/disable", Mfa2::disable).attribute(Auth.FULL_AUTH, true);
+```
+
+> [!TRAP]
+> **`Mfa.disable` を呼ぶ前に、本人であることを確かめてください。**
+> ここが緩いと、**Cookie を盗んだ側が2要素を外せます**——入れた意味がなくなります。
+> `attribute(Auth.FULL_AUTH, true)` を付けて、**いまパスワードを入れた人だけ**にしてください。
+
+### 仕様と、やらないこと
+
+| | |
+| --- | --- |
+| 方式 | TOTP（RFC 6238 / RFC 4226）。HMAC-SHA1、6桁、30 秒。**認証アプリが揃って読めるのがこれだけ**だからです |
+| 置き場 | `auth_mfa` と `auth_mfa_recovery`。**DB が要ります**（無ければ `enroll` は例外） |
+| QR 画像 | 作りません。`enrollment.uri()` を渡すので、画面側で描いてください（依存を増やさないため） |
+| SMS / メール | ありません。SMS は SIM の乗っ取りで抜かれます |
+| WebAuthn / パスキー | まだありません |
+| 「信頼した端末」 | ありません。remember-me が近いことをしますが、**別のものです**（あちらはパスワードの代わり） |
+
 ## Basic 認証
 
 運用向けの口には Basic 認証が使えます（[リクエストとレスポンス](./request-response)）。

@@ -187,6 +187,22 @@ auth {
 			discovery_ttl = 3600    # seconds to keep discovery and JWKS
 		}
 	}
+
+	mfa {
+		enabled         = true      # needs a DB and cipher.key (below)
+		issuer          = "jimble"  # the name shown in the authenticator app
+		digits          = 6         # leave it at 6; most apps show nothing else
+		period          = 30        # seconds
+		window          = 1         # steps either way. Widening it widens the target
+		recovery_codes  = 10        # how many are handed out at enrollment
+		pending_seconds = 300       # grace between the password and the code
+	}
+}
+
+cipher {
+	# required to encrypt TOTP secrets (without it Mfa.enroll refuses)
+	key = ${?CIPHER_KEY}   # 16 / 24 / 32 bytes
+	iv  = ${?CIPHER_IV}    # 16 bytes
 }
 
 rate_limit {

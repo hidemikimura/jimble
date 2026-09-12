@@ -85,6 +85,12 @@ public final class FrameworkTables {
 	/** ログインの記憶（remember-me。要件 F-W-30） */
 	public static final String AUTH_REMEMBER = "auth_remember";
 
+	/** 二要素認証の秘密（要件 F-W-32） */
+	public static final String AUTH_MFA = "auth_mfa";
+
+	/** 二要素認証の回復コード（要件 F-W-32） */
+	public static final String AUTH_MFA_RECOVERY = "auth_mfa_recovery";
+
 	/**
 	 * 全部
 	 *
@@ -112,6 +118,8 @@ public final class FrameworkTables {
 		, BATCH_EXECUTE_INFO
 		, AUTH_ATTEMPT
 		, AUTH_REMEMBER
+		, AUTH_MFA
+		, AUTH_MFA_RECOVERY
 	);
 
 	private FrameworkTables () {}

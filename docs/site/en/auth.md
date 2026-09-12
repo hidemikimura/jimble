@@ -341,6 +341,116 @@ they got**. It goes in the log; the response is 401.
 | Make jimble an authorization server | Not offered |
 | Register the routes for you | No. You write `get("/auth/google", ...)` yourself ([Principles](./principles)) |
 
+## Two-factor authentication (TOTP)
+
+Once the password is right, **hold the login back** and ask for the code.
+
+```java
+// after the password checks out
+if (Mfa.isActive(staff.getLong("id"))) {
+	Mfa.pending(context, principal);        // not logged in; just parked in the session
+	context.response().redirect("/login/code");
+	return;
+}
+
+Auth.login(context, principal);
+```
+
+```java
+// POST /login/code
+if (!Mfa.complete(context, request.getString("code"))) {
+	context.flash().put("message", "That code is not right");
+}
+
+context.response().redirect(Mfa.isPending(context) ? "/login/code" : "/");
+```
+
+When `complete` returns true it has **already called `Auth.login`** for you.
+
+> [!TRAP]
+> **Until the code is in, they are not logged in.** `Auth.principal(context)` returns
+> `Principal.ANONYMOUS` and every route other than `/login/code` refuses them.
+>
+> Which means **`/login/code` needs `Auth.PUBLIC`** — it is a path people take before they
+> are logged in. Do not add `Auth.NO_SESSION`: the half-way user lives in the session.
+
+### Enrolling
+
+```java
+Mfa.Enrollment enrollment = Mfa.enroll(staffId, "member1@example.com");
+
+// show enrollment.uri() as a QR code (otpauth://totp/...)
+// show enrollment.recoveryCodes() this once and never again
+```
+
+**`enroll` alone does not turn it on.** After the code is in their authenticator, take the
+digits it shows and call `Mfa.activate(staffId, code)`.
+
+```java
+if (!Mfa.activate(staffId, request.getString("code"))) {
+	context.flash().put("message", "That code does not match. Try again");
+}
+```
+
+> [!TRAP]
+> **The two steps exist so that nobody gets locked out.** Turning it on at `enroll` time
+> means **anyone whose QR scan silently failed can never get back in.**
+
+### The secret is stored encrypted
+
+**`enroll` throws if `cipher.key` is not configured.**
+
+A TOTP secret is not like a password hash. A hash costs work to break; **a leaked secret
+produces valid codes immediately.** Stored in the clear it turns into "we have 2FA, and one
+database leak walks through all of it".
+
+### Recovery codes
+
+Phones get lost. This is the way back.
+
+| | |
+| --- | --- |
+| Where they appear | Only in the return value of `enroll`. **The DB keeps SHA-256 only** |
+| How many | 10 (`auth.mfa.recovery_codes`) |
+| Using one | Type it into the same code box. `verify` tries the authenticator first, then these |
+| After use | **It is gone.** Each one works once |
+| How many are left | `Mfa.remainingRecoveryCodes(userId)` |
+
+**Running out is not announced.** Whether to show the count is your call.
+
+### Against brute force
+
+| | |
+| --- | --- |
+| Slowing down | The same `Lockout` machinery (keyed `mfa:<user id>`). **Six digits is a million guesses — unthrottled, a day is enough** |
+| The shape | Three free attempts, then 1 → 2 → 4 … seconds, capped at 300. Over the cap the answer is **429** |
+| Window | One step either way (`auth.mfa.window`). **Widening it widens the target** — at 10 there are 21 winning codes |
+| Reuse | **A code that worked will not work again in its window.** That stops someone reusing one they watched being typed |
+| Grace | 300 seconds between the password and the code (`auth.mfa.pending_seconds`). After that, **start over** |
+
+### Turning it off
+
+```java
+post("/mfa/disable", Mfa2::disable).attribute(Auth.FULL_AUTH, true);
+```
+
+> [!TRAP]
+> **Prove who they are before calling `Mfa.disable`.** A loose path here lets **whoever
+> stole the cookie remove the second factor** — which is the whole of it. Put
+> `attribute(Auth.FULL_AUTH, true)` on the route so only someone who **just typed the
+> password** can get there.
+
+### What it is, and what it is not
+
+| | |
+| --- | --- |
+| Scheme | TOTP (RFC 6238 over RFC 4226). HMAC-SHA1, 6 digits, 30 seconds — **the one shape every authenticator app reads** |
+| Storage | `auth_mfa` and `auth_mfa_recovery`. **A DB is required** (without one, `enroll` throws) |
+| QR images | Not drawn. You get `enrollment.uri()` and render it yourself (no new dependency) |
+| SMS / email | No. SIM swaps take SMS codes |
+| WebAuthn / passkeys | Not yet |
+| "Trusted devices" | No. remember-me is the nearby thing, and **it is a different thing** — that one replaces the password |
+
 ## Basic auth
 
 Operational endpoints can use Basic auth

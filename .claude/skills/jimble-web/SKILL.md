@@ -1,6 +1,6 @@
 ---
 name: jimble-web
-description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証、実際に踏んだ落とし穴を含む。
+description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証）、実際に踏んだ落とし穴を含む。
 ---
 
 # jimble の Web 層
@@ -210,6 +210,36 @@ get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
 - ID トークンの検証は枠組みがやる（`alg` はヘッダを信じない・`iss` は完全一致・`aud`/`azp`・`exp`/`iat`・`nonce`）
 - **断る理由は返さない**（401 だけ。どこまで通ったかを測らせない）
 
+### 二要素認証（TOTP）
+
+```java
+// パスワードが合ったあと
+if (Mfa.isActive(staffId)) {
+	Mfa.pending(context, principal);        // ログインさせない。セッションに預けるだけ
+	context.response().redirect("/login/code");
+	return;
+}
+
+Auth.login(context, principal);
+```
+
+```java
+// POST /login/code（Auth.PUBLIC が要る。NO_SESSION は付けない）
+if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Auth.login まで済む
+	context.flash().put("message", "コードが違います");
+}
+```
+
+登録は `Mfa.enroll(利用者 ID, 表示名)` → **QR を見せる** → `Mfa.activate(利用者 ID, code)`。
+**`enroll` だけでは有効にならない**（読み取りに失敗した人を締め出さないため）。
+
+- **コードを入れるまでは「ログインしていない」。**`Auth.principal` は `ANONYMOUS`
+- **`cipher.key` が無ければ `enroll` は例外。**秘密鍵は暗号化して持つ
+- 回復コードは **`enroll` の戻り値でしか見られない**（DB にはハッシュだけ）。使うと消える
+- `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
+- 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**
+- QR 画像は作らない（`enrollment.uri()` を画面側で描く）。SMS / メールは無い
+
 ## 落とし穴（実際に踏んだもの）
 
 - **`context.request().getString("x")` はコンパイルが通って `null` を返す。**
@@ -240,7 +270,7 @@ get("/auth/google/callback", Oidc.callback("google", App::findOrCreate))
 | 入力と出力 | <https://jimble.io/ja/request-response.md> |
 | エラー処理 | <https://jimble.io/ja/errors.md> |
 | セッション・CSRF・Cookie・鍵の入れ替え | <https://jimble.io/ja/session-security.md> |
-| ログイン・認可・ロックアウト・remember-me | <https://jimble.io/ja/auth.md> |
+| ログイン・認可・ロックアウト・remember-me・OIDC・二要素認証 | <https://jimble.io/ja/auth.md> |
 | 検証とページング | <https://jimble.io/ja/validation.md> |
 | テンプレート（jte） | <https://jimble.io/ja/view.md> |
 | 静的ファイル・SPA | <https://jimble.io/ja/assets.md> |

@@ -180,6 +180,22 @@ auth {
 			discovery_ttl = 3600    # 秒。discovery と JWKS を持つ時間
 		}
 	}
+
+	mfa {
+		enabled         = true      # DB と cipher.key が要る（下を参照）
+		issuer          = "jimble"  # 認証アプリの一覧に出る名前
+		digits          = 6         # 6 から変えない（多くのアプリが6桁しか出せない）
+		period          = 30        # 秒
+		window          = 1         # 前後いくつの窓まで許すか。広げるほど当たりも増える
+		recovery_codes  = 10        # 登録のときに出す数
+		pending_seconds = 300       # パスワードが通ってからコードを入れるまでの猶予
+	}
+}
+
+cipher {
+	# 二要素認証の秘密鍵を暗号化するのに要る（無ければ Mfa.enroll が断る）
+	key = ${?CIPHER_KEY}   # 16 / 24 / 32 バイト
+	iv  = ${?CIPHER_IV}    # 16 バイト
 }
 
 rate_limit {
