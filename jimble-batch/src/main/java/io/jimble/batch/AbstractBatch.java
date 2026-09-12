@@ -414,7 +414,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					AND updated_at >= %s
 			""".formatted(db.dialect().intervalFromNow("SECOND", true))
 			, className()
-			, BatchConf.aliveSeconds());
+			, BatchConf.alive().toSeconds());
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -456,7 +456,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			""".formatted(
 				db.dialect().intervalFromNow("SECOND", true)
 				, db.dialect().call(SqlFunction.RAND))
-			, BatchConf.aliveSeconds());
+			, BatchConf.alive().toSeconds());
 
 		if (rows == null || rows.isEmpty()) {
 			return true;
@@ -551,7 +551,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 				try {
 					// 止められたらここが解ける
-					if (wakeup.await(BatchConf.heartbeatSeconds(), TimeUnit.SECONDS)) {
+					if (wakeup.await(BatchConf.heartbeat().toMillis(), TimeUnit.MILLISECONDS)) {
 						return;
 					}
 				} catch (InterruptedException ex) {
@@ -598,7 +598,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			 * 待ちを解いて、いま出ているクエリが終わるのを待つ。
 			 */
 			try {
-				thread.join(TimeUnit.SECONDS.toMillis(BatchConf.heartbeatSeconds()) + 1000);
+				thread.join(BatchConf.heartbeat().toMillis() + 1000);
 			} catch (InterruptedException ex) {
 				Thread.currentThread().interrupt();
 			}
@@ -856,7 +856,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 *
 	 * <p>
 	 * 長時間バッチはループの中でこれを定期的に確認して、安全に止める。
-	 * DB を見にいくのは {@link BatchConf#cancelCheckSeconds()} に1回だけである。
+	 * DB を見にいくのは {@link BatchConf#cancelCheck()} に1回だけである。
 	 * </p>
 	 */
 	@Override
@@ -884,7 +884,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			return false;
 		}
 
-		long intervalMillis = BatchConf.cancelCheckSeconds() * 1000;
+		long intervalMillis = BatchConf.cancelCheck().toMillis();
 
 		if (System.currentTimeMillis() - lastCancelCheck <= intervalMillis) {
 			return cancelOrder;

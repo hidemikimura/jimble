@@ -90,14 +90,15 @@ class PasswordUtilTest {
 	// region 暗号化する
 
 	@Test
-	@DisplayName("鍵があれば既定で暗号化する。作って照合できる")
+	@DisplayName("D-159 encrypt = true と書けば暗号化する。作って照合できる")
 	void encryptedByDefaultWithKey () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			""".formatted(KEY, IV));
 
-		assertTrue(PasswordUtil.isEncrypt(), "鍵があるのに暗号化していない");
+		assertTrue(PasswordUtil.isEncrypt(), "true と書いてあるのに暗号化していない");
 
 		String hash = PasswordUtil.createHash("password");
 
@@ -112,6 +113,7 @@ class PasswordUtilTest {
 	void withPepper () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			hash { password { pepper = "pepper-value" } }
 			""".formatted(KEY, IV));
@@ -127,6 +129,7 @@ class PasswordUtilTest {
 	void pepperChangeBreaksCheck () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			hash { password { pepper = "before" } }
 			""".formatted(KEY, IV));
@@ -134,6 +137,7 @@ class PasswordUtilTest {
 		String hash = PasswordUtil.createHash("password");
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			hash { password { pepper = "after" } }
 			""".formatted(KEY, IV));
@@ -151,6 +155,7 @@ class PasswordUtilTest {
 	void encryptedHashReadAsPlain () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			""".formatted(KEY, IV));
 
@@ -170,12 +175,14 @@ class PasswordUtilTest {
 	void keyChanged () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			""".formatted(KEY, IV));
 
 		String hash = PasswordUtil.createHash("password");
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "fedcba9876543210fedcba9876543210", iv = "%s" }
 			""".formatted(IV));
 
@@ -234,6 +241,7 @@ class PasswordUtilTest {
 	void badKeyLength () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "short", iv = "%s" }
 			""".formatted(IV));
 
@@ -249,6 +257,7 @@ class PasswordUtilTest {
 	void encryptAndDecrypt () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			""".formatted(KEY, IV));
 
@@ -267,6 +276,7 @@ class PasswordUtilTest {
 	void decryptGarbage () {
 
 		conf("""
+			hash.password.encrypt = true
 			cipher { key = "%s", iv = "%s" }
 			""".formatted(KEY, IV));
 
@@ -275,5 +285,56 @@ class PasswordUtilTest {
 	}
 
 	// endregion
+
+
+	@Test
+	@DisplayName("D-159 cipher.* があるのに encrypt を書いていなければ落ちる")
+	void encryptMustBeWrittenWhenCipherIsSet () {
+
+		/*
+		 * <b>ここが「離れたキーで決まる既定」だった。</b>
+		 * 既定は cipher.key と cipher.iv の<b>両方</b>が揃っていれば true——
+		 * ところが Javadoc も CHANGELOG も要件も<b>「cipher.key があれば true」</b>と書いていた。
+		 *
+		 * つまり <b>cipher.key だけ足したアプリは false のまま</b>で、
+		 * <b>あとから cipher.iv を足した瞬間に反転する</b>。
+		 * 保存済みの BCrypt が「暗号化済み」として読まれ、<b>全員ログインできなくなる</b>——
+		 * 返るのは「IDかパスワードが違います」だけである。
+		 */
+		conf("""
+			cipher { key = "%s", iv = "%s" }
+			""".formatted(KEY, IV));
+
+		IllegalStateException thrown = assertThrows(IllegalStateException.class
+			, PasswordUtil::isEncrypt, "書いていないのに黙って決めています");
+
+		assertTrue(thrown.getMessage().contains(PasswordUtil.KEY_ENCRYPT), thrown.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("D-159 cipher.key だけでも落ちる（あとから iv を足した瞬間の反転を止める）")
+	void halfConfiguredCipherAlsoFails () {
+
+		conf("""
+			cipher { key = "%s" }
+			""".formatted(KEY));
+
+		assertFalse(CipherUtil.isConfigured(), "片方だけでは揃っていない");
+		assertTrue(CipherUtil.isPartlyConfigured());
+
+		assertThrows(IllegalStateException.class, PasswordUtil::isEncrypt);
+
+	}
+
+	@Test
+	@DisplayName("cipher.* をまったく書いていなければ、これまでどおり何も書かなくてよい")
+	void withoutCipherNothingIsRequired () {
+
+		conf("");
+
+		assertFalse(PasswordUtil.isEncrypt());
+
+	}
 
 }

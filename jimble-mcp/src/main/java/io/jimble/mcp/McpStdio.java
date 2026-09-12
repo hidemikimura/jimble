@@ -152,7 +152,7 @@ public final class McpStdio {
 		McpDispatch dispatch = new McpDispatch(registry);
 
 		Log.info("MCP を標準入出力で待ち受けます（仕様 %s / ルート表=%s）".formatted(
-			McpProtocol.VERSION, dispatcher == null ? "なし" : "あり"));
+			McpProtocol.version(), dispatcher == null ? "なし" : "あり"));
 
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
 

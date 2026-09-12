@@ -149,7 +149,7 @@ public final class SchedulerControl {
 	 */
 	public static boolean isRunning () {
 
-		long limit = SchedulerConf.reloadIntervalMs() + 5000;
+		long limit = SchedulerConf.reloadInterval().toMillis() + 5000;
 
 		try (DB db = DBUtil.getMainDB()) {
 

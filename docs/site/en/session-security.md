@@ -73,6 +73,11 @@ Put `Csrf::verify` in a `before` and the routes below it are protected.
 
 Take the token with `context.request().csrfToken()` and put it in a hidden form field.
 
+**The token lives for `csrf.max_age` (one day by default).** Up to 0.6.x it rode on
+`cookie.max_age` (one year by default), so shortening `cookie.max_age` for your own reasons
+**shortened the CSRF token with it** — and all you got back was a 403 saying the token was
+missing.
+
 ## Flash
 
 Something you hand to the redirect target exactly once.
@@ -142,6 +147,30 @@ cookie {
 
 **With no key set, signing is off entirely.** Nothing throws, cookies read and write as usual,
 and there is no sign that it is not working — so we warn about it at startup.
+
+### Turning signing on later
+
+> [!TRAP]
+> **The moment `cookie.secret` is set for the first time, every cookie already out there is
+> thrown away at once** — `sid`, `csrf_token`, `remember`, flash. **Everyone is logged out
+> and every form returns 403.** Nothing throws and nothing is logged, because discarding a
+> cookie whose signature does not check out is the correct behaviour.
+
+**Give yourself a migration window.**
+
+```conf
+cookie {
+	secret          = ${?COOKIE_SECRET}
+	accept_unsigned = true    # only until the changeover is done
+}
+```
+
+While `accept_unsigned` is true, **unsigned cookies are read too**. Writing signs from the
+start, so **leaving it alone replaces them**.
+
+**Turn it back off once they are replaced.** Leave it on and **a cookie with its signature
+stripped keeps working**, which is the whole thing you turned signing on to stop. The count
+of unsigned cookies let through is `cookie.unsigned` — **wait until it reaches 0**.
 
 ## Rotating a key
 
@@ -230,7 +259,7 @@ if (PasswordUtil.check(input, user.getString("password"))) {
 ```conf
 hash {
 	password {
-		# Default: true when cipher.key is set, false when it is not
+		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = true
 		pepper  = ${?PASSWORD_PEPPER}
 	}

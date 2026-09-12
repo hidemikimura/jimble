@@ -802,7 +802,7 @@ public class Response extends Data {
 	 */
 	public SseStream sse () {
 
-		return sse(Duration.ofSeconds(SseConf.maxDurationSeconds()), SseConf.maxEvents());
+		return sse(SseConf.maxDuration(), SseConf.maxEvents());
 
 	}
 
@@ -829,7 +829,7 @@ public class Response extends Data {
 		 * 繋ぎ直すまでの時間を最初に伝える。
 		 * 上限で切ったあと、クライアントはこの時間のあとに勝手に戻ってくる。
 		 */
-		long retry = SseConf.retryMillis();
+		long retry = SseConf.retry().toMillis();
 		if (retry > 0) {
 			// 件数には数えない。中身が無いので
 			stream.sendWithoutCounting(new SseEvent(null, null, null, retry, null));

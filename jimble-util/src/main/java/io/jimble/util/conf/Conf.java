@@ -6,9 +6,11 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigObject;
 import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
 
 import java.io.IOException;
 import java.net.URL;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
@@ -85,7 +87,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <pre>
  * Conf.conf().getString("cipher.key", "")
- * Conf.conf().getInt("jimble.server.port", 9000)
+ * Conf.conf().getInt("server.port", 9000)
  * </pre>
  */
 public final class Conf {
@@ -530,6 +532,140 @@ public final class Conf {
 		return config.getString(key);
 
 	}
+
+	// region 時間と大きさ（単位は値に書く。要件 D-159）
+
+	/**
+	 * 時間（単位つきの値）
+	 *
+	 * <pre>
+	 * session.timeout = 30m
+	 * mq.poll_min     = 200ms
+	 * batch.all_stop  = 24h
+	 * </pre>
+	 *
+	 * <h4>なぜ素の数値を断るのか</h4>
+	 * <p>
+	 * <b>単位をキーの名前に書いていたときは、取り違えても何も起きなかった。</b>
+	 * {@code assets.max_age = 3600000}——秒のつもりの欄にミリ秒を書いた設定は、
+	 * <b>そのまま通って 41 日のキャッシュになる</b>。
+	 * 逆にミリ秒の欄に秒を書けば、<b>3600 倍せっかちな設定</b>になる。
+	 * どちらも例外もログも出ない。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>単位を値に書かせれば、取り違えようが無い。</b>
+	 * 書き忘れたときは<b>起動時に落として、直し方を言う</b>——
+	 * 「読めなかったので既定値にしました」は、いちばん困る答えである。
+	 * </p>
+	 *
+	 * <p>
+	 * 使える単位は HOCON のもの（{@code ns} / {@code us} / {@code ms} /
+	 * {@code s} / {@code m} / {@code h} / {@code d}、および
+	 * {@code milliseconds} のような綴り）である。
+	 * </p>
+	 *
+	 * @param key			キー
+	 * @param defaultValue	既定値
+	 * @return	値
+	 */
+	public Duration getDuration (String key, Duration defaultValue) {
+
+		if (!has(key)) {
+			return defaultValue;
+		}
+
+		requireUnit(key, "時間", "30m / 90s / 200ms / 24h");
+
+		return config.getDuration(key);
+
+	}
+
+	/**
+	 * 大きさ（単位つきの値）
+	 *
+	 * <pre>
+	 * server.max_request_size = 10MiB
+	 * upload.max_file_size    = 512KiB
+	 * </pre>
+	 *
+	 * <p>
+	 * {@link #getDuration(String, Duration)} と同じ理由で、<b>素の数値は断る</b>。
+	 * {@code max_request_size = 10} が<b>10 バイト</b>なのか
+	 * <b>10 メガバイト</b>なのかは、書いた人にしか分からない。
+	 * </p>
+	 *
+	 * @param key			キー
+	 * @param defaultValue	既定値（バイト）
+	 * @return	値（バイト）
+	 */
+	public long getBytes (String key, long defaultValue) {
+
+		if (!has(key)) {
+			return defaultValue;
+		}
+
+		requireUnit(key, "大きさ", "10MiB / 512KiB / 1GB");
+
+		return config.getBytes(key);
+
+	}
+
+	/**
+	 * 単位が書いてあることを確かめる
+	 *
+	 * @param key		キー
+	 * @param what		何の値か
+	 * @param examples	書き方の例
+	 */
+	private void requireUnit (String key, String what, String examples) {
+
+		if (config.getValue(key).valueType() != ConfigValueType.NUMBER) {
+			return;
+		}
+
+		/*
+		 * <b>直し方まで書く。</b>「単位が要ります」だけだと、
+		 * どう書けばよいのかを探すところから始まる。
+		 */
+		throw new IllegalStateException(
+			"設定 %s は%sなので、単位を値に書いてください（例: %s）。いまの値: %s"
+				.formatted(key, what, examples, config.getValue(key).unwrapped()));
+
+	}
+
+	/**
+	 * 下限だけを効かせる
+	 *
+	 * @param value	値
+	 * @param min	下限
+	 * @return	値（下限より小さければ下限）
+	 */
+	public static Duration atLeast (Duration value, Duration min) {
+
+		return value.compareTo(min) < 0 ? min : value;
+
+	}
+
+	/**
+	 * 上下の限を効かせる
+	 *
+	 * @param value	値
+	 * @param min	下限
+	 * @param max	上限
+	 * @return	値
+	 */
+	public static Duration clamp (Duration value, Duration min, Duration max) {
+
+		if (value.compareTo(min) < 0) {
+			return min;
+		}
+
+		return value.compareTo(max) > 0 ? max : value;
+
+	}
+
+	// endregion
 
 	/**
 	 * 部分設定を取得する

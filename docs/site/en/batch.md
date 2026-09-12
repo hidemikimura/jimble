@@ -66,7 +66,7 @@ for (Data row : rows) {
 ```
 
 **Both read the same order.** The DB is consulted only once per
-`batch.cancel_check_seconds`, so calling it every iteration is fine.
+`batch.cancel_check`, so calling it every iteration is fine.
 
 > [!TRAP]
 > **Up to 0.6.0 `BatchContext.isCancelOrdered()` was always false.** The cancel decision
@@ -140,7 +140,7 @@ How far it got is recorded in `batch_history.execute_info`.
 | `chunk_failed_at` | which chunk it failed on |
 | `chunk_canceled` | whether it stopped on a cancel |
 
-`chunk_written` is rewritten **every `batch.progress_seconds` (5 by default)**,
+`chunk_written` is rewritten **every `batch.progress` (5 by default)**,
 so the admin screen shows how far along a running batch is.
 
 ### The reading DB and the writing DB are different

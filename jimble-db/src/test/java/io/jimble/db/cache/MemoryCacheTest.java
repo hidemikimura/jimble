@@ -143,7 +143,7 @@ class MemoryCacheTest {
 	void expireUsesSeconds () throws Exception {
 
 		// 移送元はミリ秒から「秒」を引いていたので、60 を設定すると 60 ミリ秒で消えた
-		conf(MemoryCache.KEY_EXPIRE + " = 60");
+		conf(MemoryCache.KEY_EXPIRE + " = 60s");
 
 		cache.set("key-7", "値", "text/plain");
 
@@ -160,7 +160,7 @@ class MemoryCacheTest {
 	@DisplayName("同時に書いても例外にならない")
 	void concurrentSet () throws Exception {
 
-		conf(MemoryCache.KEY_EXPIRE + " = 60");
+		conf(MemoryCache.KEY_EXPIRE + " = 60s");
 
 		int threads = 16;
 		CountDownLatch start = new CountDownLatch(1);

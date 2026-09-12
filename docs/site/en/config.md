@@ -114,62 +114,121 @@ this.
 Key '/' may not be followed by token: '*'
 ```
 
-## The main keys
+## Every key
+
+**Everything jimble reads is here.** A key that is not in this list is a key jimble does
+not read — a typo is silently ignored. The values shown are the **defaults**, so leave out
+anything you are not changing.
+
+> [!NOTE]
+> **Durations and sizes carry their unit in the value** (`30m`, `200ms`, `10MiB`).
+> **A bare number fails at startup** — that is what stops `assets.max_age = 3600000` from
+> going through as forty-one days. The units are `ns`, `us`, `ms`, `s`, `m`, `h`, `d`
+> and `B`, `KiB`, `MiB`, `GiB`.
+
+> [!TRAP]
+> **`MB` is a power of 1000 and `MiB` a power of 1024** (HOCON's rule).
+> `10MB` is 10,000,000 bytes; `10MiB` is 10,485,760.
+> **What you write is what you get** — either is fine, but they are not the same number
+> when you compare against a default.
 
 ```conf
 server {
-	host        = ""         # the address to listen on. empty means all of them
-	port        = 9000
-	trust_proxy = false      # false until it sits behind a load balancer
-	max_request_size     = 10485760
-	max_header_size      = 16384
-	idle_timeout_seconds = 60
-	compression          = true
-	access_log           = true     # turning it off is faster, but nothing is left behind
-	bot_access_log       = true
-	strict_routes        = false    # throw on routes nothing can reach (turn this on in CI)
-
-	shutdown_grace_seconds   = 0    # from starting the stop until new requests are refused
-	shutdown_timeout_seconds = 15   # how long to wait for work in flight
+	host                 = ""       # the address to listen on. empty means all of them
+	port                 = 9000
+	max_request_size     = 10MiB    # cap on the request body
+	max_header_size      = 16KiB    # cap on all headers together
+	idle_timeout         = 60s      # how long a connection doing nothing is kept
+	compression          = true     # gzip responses
+	trust_proxy          = false    # false until it sits behind a load balancer (see below)
+	access_log           = true     # turning it off is faster, and leaves no trace
+	bot_access_log       = true     # keep bot access logs separate
+	strict_routes        = false    # make unreachable routes an error (true in CI)
+	shutdown_grace       = 0s       # from "start stopping" to refusing new requests
+	shutdown_timeout     = 15s      # how long in-flight requests are waited for
 }
 
 cookie {
-	secure           = true            # false locally (see below)
-	secret           = ${?COOKIE_SECRET}
-	previous_secrets = [${?COOKIE_SECRET_OLD}]   # only while rotating
+	secure           = true                      # HTTPS only. false locally (see below)
+	http_only        = true                      # not readable from JavaScript
+	same_site        = "lax"                     # none | strict | lax
+	domain           = ""                        # empty means the issuing domain
+	max_age          = 365d                      # 0 or less for a session cookie
+	secret           = ${?COOKIE_SECRET}         # signing key. empty means no signing
+	previous_secrets = [${?COOKIE_SECRET_OLD}]   # only while a key is being rotated
+	accept_unsigned  = false                     # true only while signing is being turned on
+}
+
+csrf {
+	max_age = 1d    # how long a token lives. separate from cookie.max_age
 }
 
 session {
-	store            = "none"     # none | db | redis | cookie
+	store            = "none"                     # none | db | redis | cookie
+	timeout          = 30m
 	cookie_name      = "sid"
-	secret           = ${?SESSION_SECRET}        # required when store = cookie
-	previous_secrets = [${?SESSION_SECRET_OLD}]  # only while rotating
+	table            = "session"                  # when store = db
+	secret           = ${?SESSION_SECRET}         # required when store = cookie
+	previous_secrets = [${?SESSION_SECRET_OLD}]   # only while a key is being rotated
 }
 
 upload {
-	max_file_size  = 10485760   # per file (10MB)
-	max_total_size = 52428800   # per request in total (50MB)
-	max_files      = 20
-	temp_dir       = ""         # empty means java.io.tmpdir
+	max_file_size  = 10MiB   # per file
+	max_total_size = 10MiB   # per request, in total (keep it level with server.max_request_size)
+	max_files      = 20      # files per request
+	temp_dir       = ""      # empty means java.io.tmpdir
+}
+
+assets {
+	max_age           = 0s      # Cache-Control max-age
+	immutable_max_age = 365d    # files treated as immutable (js / css)
+	if_modified_since = true    # honour If-Modified-Since
+	etag              = true    # use ETag / If-None-Match
+}
+
+template {
+	package      = "gg.jte.generated.precompiled"   # output of precompilation
+	content_type = "text/html; charset=utf-8"
+}
+
+paging {
+	name_page = "page"   # request parameter NAME for the page number (not a count)
+	name_per  = "per"    # request parameter NAME for the row count
+	max_per   = 200      # cap per page. applies to per=all too (0 for no cap)
 }
 
 auth {
 	lockout {
-		enabled       = true    # does nothing without a DB
-		free_attempts = 3       # no wait up to here (typos)
-		base_seconds  = 1       # from the 4th: 1 -> 2 -> 4 ...
-		max_seconds   = 300     # the longest wait
-		forget_hours  = 24      # start counting again after this gap
+		enabled       = true    # does nothing without a database
+		free_attempts = 3       # nobody waits up to here (mistyping)
+		base          = 1s      # from the fourth: 1 → 2 → 4 …
+		max           = 5m      # cap on the wait
+		forget        = 24h     # this long without a failure resets the count
 	}
 
 	remember {
-		enabled       = true    # does nothing without a DB
-		cookie_name   = "remember"
-		sliding_days  = 30      # from when it was last used
-		absolute_days = 90      # past this it expires even if still in use
-		grace_seconds = 60      # how long the old one still works after a rotation
+		enabled     = true         # does nothing without a database
+		cookie_name = "remember"
+		sliding     = 30d          # measured from last use
+		absolute    = 90d          # past this it expires even if still in use
+		grace       = 60s          # right after rotation, the old one still passes
 	}
 
+	mfa {
+		enabled        = true      # needs a database and secret_key (see below)
+		issuer         = ""        # the name shown in the authenticator app
+		digits         = 6         # leave it at 6 (most apps only show six)
+		period         = 30        # seconds. an RFC 6238 parameter, so a plain number here
+		window         = 1         # steps either side. wider accepts more guesses too
+		recovery_codes = 10        # how many are shown at enrolment
+		pending        = 5m        # from password accepted to code entered
+
+		# Encrypts the TOTP secret. Mfa.enroll refuses without it.
+		# Do not reuse cipher.key (see below)
+		secret_key     = ${?MFA_SECRET_KEY}
+	}
+
+	# One block per provider. The name (google) is what you pass to Oidc.callback
 	oidc {
 		google {
 			issuer        = "https://accounts.google.com"
@@ -177,75 +236,202 @@ auth {
 			client_secret = ${?GOOGLE_CLIENT_SECRET}  # never in the file
 			redirect_uri  = "https://example.com/auth/google/callback"
 
-			# optional - discovered from the issuer
+			# Optional — discovery reads them from issuer
 			# authorization_endpoint = "..."
 			# token_endpoint         = "..."
 			# jwks_uri               = "..."
 
 			scopes        = "openid email profile"
-			clock_skew    = 60      # seconds of clock drift to tolerate
-			discovery_ttl = 3600    # seconds to keep discovery and JWKS
+			clock_skew    = 60      # seconds of clock drift accepted
+			discovery_ttl = 3600    # seconds discovery and JWKS are held
 		}
-	}
-
-	mfa {
-		enabled         = true      # needs a DB and secret_key (below)
-		issuer          = "jimble"  # the name shown in the authenticator app
-		digits          = 6         # leave it at 6; most apps show nothing else
-		period          = 30        # seconds
-		window          = 1         # steps either way. Widening it widens the target
-		recovery_codes  = 10        # how many are handed out at enrollment
-		pending_seconds = 300       # grace between the password and the code
-
-		# encrypts the TOTP secrets. Without it Mfa.enroll refuses.
-		# Do NOT reuse cipher.key here (see below)
-		secret_key      = ${?MFA_SECRET_KEY}
 	}
 }
 
 cipher {
-	# reads the already-encrypted password hashes of a migrated app.
-	# Not used by two-factor auth (see below)
+	# Reads the already-encrypted password hashes of a migrated app.
+	# Not for two-factor auth (see below)
 	key = ${?CIPHER_KEY}   # 16 / 24 / 32 bytes
 	iv  = ${?CIPHER_IV}    # 16 bytes
 }
 
+hash {
+	password {
+		# If you set cipher.*, you must set this too (startup fails otherwise)
+		encrypt = false
+		pepper  = ${?PASSWORD_PEPPER}   # mixed into the hash. cannot be rotated
+	}
+}
+
 rate_limit {
-	store   = "memory"       # memory | redis | db
 	enabled = true
+	store   = "db"     # db | memory | redis
 }
 
 cache {
-	type          = "db"     # db | memory | redis
-	temp_dir      = ""
-	memory.expire = 0        # memory only. seconds
+	type          = "db"    # db | memory | redis
+	temp_dir      = ""      # where the files go
+	memory.expire = 0s      # memory only. 0 never expires
+}
+
+sql_cache {
+	enabled = false
+	store   = "memory"   # memory | redis | db
+	ttl     = 5m
+	max     = 10000      # cap on entries (memory only)
 }
 
 redis {
-	host = ""                # empty means no Redis
+	host = ""        # empty means no Redis
 	port = 6379
 	ssl  = false
+
+	settings {
+		connection_timeout      = 10s
+		timeout                 = 3s      # how long to wait for a command to answer
+		connection_minimum_idle = 24
+		connection_pool_size    = 64
+		retry_attempts          = 3
+		retry_minimum_interval  = 500ms
+		retry_maximum_interval  = 2s
+		idle_connection_timeout = 10s
+
+		subscription_connection_minimum_idle_size = 1
+		subscription_connection_pool_size         = 50
+	}
+}
+
+db {
+	# Drop all-null tables from the result.
+	# Not a data source name, so it goes at this level
+	remove_all_null_table_data = false
+
+	# One block per data source. The name (blog) becomes the name of the DB class
+	blog {
+		main     = true                    # use as the main data source
+		driver   = "com.mysql.cj.jdbc.Driver"
+		url      = "jdbc:mysql://127.0.0.1:3306/blog"
+		username = ${?DB_USER}
+		password = ${?DB_PASSWORD}
+		product  = "mysql"                 # mysql | mariadb | postgresql | postgres | pgsql
+		schema   = ""                      # empty means the block's name. spelled scheme before
+
+		maximum_pool_size     = 10         # largest the pool gets
+		minimum_idle          = 1          # connections always kept open
+		fetch_size            = 100        # rows fetched at a time
+		idle_timeout          = 10m        # how long an unused connection is kept
+		max_lifetime          = 30m        # how long one connection lives
+		connection_timeout    = 30s        # cap on waiting for a connection
+		keepalive_time        = 30s        # liveness check interval
+		connection_init_sql   = ""         # SQL run right after connecting
+		connection_test_query = ""         # SQL used for the liveness check
+		connection_pool_type  = "hikari"   # hikari | agroal
+		transaction_isolation = ""         # isolation level
+		create_database_sql   = ""         # SQL used to create the database when missing
+		long_connection_log   = false      # log connections held a long time
+		long_connection_time  = 0s         # what counts as "a long time"
+
+		# Read-only connection. Left out, reads go to the same place as writes
+		read { url = "jdbc:mysql://127.0.0.1:3307/blog" }
+
+		# Shards. Same keys as above
+		subs {
+			shard1 { url = "jdbc:mysql://127.0.0.1:3308/blog" }
+		}
+	}
+}
+
+db_sticky {
+	use = false   # after a write, send reads in the same request to the write side
+}
+
+log {
+	db = false    # log SQL
+}
+
+async {
+	prefetch {
+		on_response = false   # prefetch automatically before the response is sent
+		max_depth   = 5       # cap on prefetch passes
+	}
+}
+
+migration {
+	on_startup   = "auto"        # auto | true | false. auto applies outside local
+	down         = false         # run down migrations
+	lock_timeout = 60s           # how long to wait for the lock
+	resource_dir = "migration"   # resource directory holding the SQL files
+}
+
+codegen {
+	package        = "db"   # package the generated code goes in
+	exclude_tables = []     # tables left out of code generation
+}
+
+mq {
+	poll_min          = 10ms   # wait when the queue is not empty
+	poll_max          = 1s     # wait when the queue is empty (grows)
+	retry_backoff     = 10s    # interval between retries (doubles each time)
+	retry_backoff_max = 10m
+	stale             = 10m    # this long as running counts as dead
+
+	# Threads per execution type. Left out, each type's own default is used
+	thread_count {
+		short_time = 2
+		long_time  = 8
+	}
+}
+
+scheduler {
+	reload_interval = 10s             # how often batch_master is re-read
+	tick_interval   = 1s              # how often cron is checked
+	exit_check      = 3s              # how often a stop order is checked for
+	execute_threads = 10              # threads that run batches (0 for unlimited)
+	queue_name      = "mq_scheduler"
+}
+
+batch {
+	scheduler_id = ""     # identifier for this instance. empty means the host name
+	heartbeat    = 3s     # how often it says it is still running
+	alive        = 10s    # this long without an update stops counting as alive
+	cancel_check = 3s     # how often a cancel order is checked for
+	progress     = 5s     # how often a chunk batch writes progress to the history
+	all_stop     = 1h     # how long the stop-everything flag stays in force
+}
+
+batch_manager {
+	enabled  = false                    # an empty user or password means no screen at all
+	path     = "/batch-manager"
+	realm    = "jimble batch manager"
+	username = ${?BATCH_MANAGER_USER}
+	password = ${?BATCH_MANAGER_PASSWORD}
+}
+
+proxy {
+	connect_timeout = 5s     # cap on connecting to the target
+	request_timeout = 30s    # cap on waiting for the answer
 }
 
 sse {
-	max_duration_seconds = 300
-	max_events           = 0
-	retry_millis         = 3000
+	max_duration = 5m    # how long one stream may stay open (0 or less: unlimited)
+	max_events   = 0     # cap on events sent (0 or less: unlimited)
+	retry        = 3s    # how long before a disconnected client reconnects
 }
 
 mcp {
 	path            = "/mcp"
-	allowed_origins = []
+	name            = "jimble"    # server name
+	version         = "0.1.0"     # server version (not the MCP spec revision)
+	instructions    = ""          # instructions for the model (returned by server/discover)
+	page_size       = 100         # rows per page in listings
+	allowed_origins = []          # allowed origins
 }
 
-migration {
-	# auto | true | false. auto applies them everywhere but locally
-	on_startup   = "auto"
-	resource_dir = "migration"
-}
+jimble {
+	io.buffer_size       = 256KiB   # read/write unit when sending files
+	read_only_container  = false    # running in a container you cannot write to
 
-codegen {
-	package = "db"
+	# server.port also takes -Djimble.server.port=8080 (the system property wins)
 }
 ```
 
@@ -253,21 +439,24 @@ codegen {
 
 **Do not reuse `cipher.key` for two-factor auth.**
 
-The default of `hash.password.encrypt` is **"true if `cipher.key` is set"**. A migrated
-app's stored hashes are encrypted, so **having the key but checking against plain BCrypt
-would lock everyone out** — that default exists to prevent it.
+**If you set `cipher.*`, you must also set `hash.password.encrypt`.** Leave it out and
+startup fails.
 
-Which means an app storing plain BCrypt today that adds `cipher.key` **to get 2FA locks
-everyone out the other way.** All it says is "wrong id or password", so nothing points back
-at the setting that was added.
+The default used to be "true if `cipher.key` *and* `cipher.iv` are both set". So an app
+that added only `cipher.key` stayed at false and **flipped the moment `cipher.iv` was
+added** — stored BCrypt hashes were then read as encrypted and **everyone was locked
+out**. All it says is "wrong id or password", so nothing points back at the setting that
+was added.
+
+**No default is decided by a distant key.** If you want encryption, say so.
 
 | | |
 | --- | --- |
 | `cipher.key` / `cipher.iv` | Reads the **already-encrypted password hashes of a migrated app**. Not for anything new — fixed IV, no tamper detection |
 | `auth.mfa.secret_key` | Encrypts **TOTP secrets**. AES-256-GCM |
 
-Set `hash.password.encrypt` explicitly to say which you mean (**an explicit value wins over
-the default**).
+An app with no `cipher.*` at all needs no setting, exactly as before (BCrypt only, no
+encryption).
 
 ## trust_proxy is false by default
 

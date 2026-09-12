@@ -418,13 +418,13 @@ produces valid codes immediately.** Stored in the clear it turns into "we have 2
 database leak walks through all of it".
 
 > [!TRAP]
-> **Do not reuse `cipher.key` for this.** The default of `hash.password.encrypt` is
-> **"true if `cipher.key` is set"** — because a migrated app's stored hashes are encrypted.
+> **Do not reuse `cipher.key` for this.** Setting `cipher.*` means
+> **`hash.password.encrypt` must be set too, or startup fails.**
 >
-> So an app storing plain BCrypt today that sets `cipher.key` to get 2FA will find **every
-> stored password read as ciphertext, and nobody can log in.** All the user sees is "wrong
-> id or password", so there is nothing to trace it back from. **That is why the key is
-> separate.**
+> An app storing plain BCrypt today that sets `cipher.key` for 2FA and writes
+> `encrypt = true` will find **every stored password read as ciphertext, and nobody can
+> log in.** All the user sees is "wrong id or password", so there is nothing to trace it
+> back from. **That is why the key is separate** — use `auth.mfa.secret_key` for 2FA.
 
 ### Recovery codes
 
@@ -448,7 +448,7 @@ Phones get lost. This is the way back.
 | The shape | Three free attempts, then 1 → 2 → 4 … seconds, capped at 300. Over the cap the answer is **429** |
 | Window | One step either way (`auth.mfa.window`). **Widening it widens the target** — at 10 there are 21 winning codes |
 | Reuse | **A code that worked will not work again in its window.** That stops someone reusing one they watched being typed |
-| Grace | 300 seconds between the password and the code (`auth.mfa.pending_seconds`). After that, **start over** |
+| Grace | 300 seconds between the password and the code (`auth.mfa.pending`). After that, **start over** |
 
 ### Turning it off
 

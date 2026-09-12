@@ -641,7 +641,7 @@ class ChunkBatchIntegrationTest {
 
 		// 間隔を 0 にして、チャンクごとに書かせる
 		Conf.replace(Conf.conf().config()
-			.withValue(BatchConf.KEY_PROGRESS_SECONDS, ConfigValueFactory.fromAnyRef(0)));
+			.withValue(BatchConf.KEY_PROGRESS, ConfigValueFactory.fromAnyRef("0s")));
 
 		try {
 
@@ -715,7 +715,7 @@ class ChunkBatchIntegrationTest {
 
 		// 既定より長くして、走っている間は1回も書かせない
 		Conf.replace(Conf.conf().config()
-			.withValue(BatchConf.KEY_PROGRESS_SECONDS, ConfigValueFactory.fromAnyRef(3600)));
+			.withValue(BatchConf.KEY_PROGRESS, ConfigValueFactory.fromAnyRef("1h")));
 
 		try {
 

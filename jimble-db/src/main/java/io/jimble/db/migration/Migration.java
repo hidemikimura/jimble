@@ -161,7 +161,7 @@ public final class Migration {
 			if (!DBLock.lock(lockDB, LOCK_KEY)) {
 				throw new MigrationException(
 					"マイグレーションのロックを取得できませんでした（%d 秒待機）。他のインスタンスが適用中の可能性があります。"
-						.formatted(MigrationConf.lockTimeoutSeconds())
+						.formatted(MigrationConf.lockTimeout().toSeconds())
 				);
 			}
 
@@ -195,7 +195,7 @@ public final class Migration {
 	 */
 	private static void setLockTimeout (DB db) {
 
-		db.execute(db.dialect().setLockTimeoutSql(MigrationConf.lockTimeoutSeconds()));
+		db.execute(db.dialect().setLockTimeoutSql((int) MigrationConf.lockTimeout().toSeconds()));
 
 	}
 

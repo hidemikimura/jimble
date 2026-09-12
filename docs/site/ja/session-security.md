@@ -74,6 +74,11 @@ context.session().save();                  // ← ここで新しい ID が発�
 
 トークンは `context.request().csrfToken()` で取り、フォームの hidden に入れます。
 
+**トークンの寿命は `csrf.max_age`（既定 1 日）です。**
+0.6.x までは `cookie.max_age`（既定 1 年）に相乗りしていたので、
+アプリが自分の都合で `cookie.max_age` を短くすると
+**CSRF トークンも一緒に短くなり**、出るのは「CSRF トークンがありません」の 403 だけでした。
+
 ## Flash
 
 リダイレクトの先へ1回だけ渡すものです。
@@ -138,6 +143,29 @@ cookie {
 
 **鍵を設定しないと、署名の機能が丸ごと効きません。** 例外は出ず、Cookie は普通に読み書きできるので、
 効いていないことに気づく手がかりがありません。起動時に警告を出しています。
+
+### あとから署名を入れるとき
+
+> [!TRAP]
+> **`cookie.secret` を初めて設定した瞬間、いま配ってある Cookie が全部いっぺんに捨てられます。**
+> `sid` も `csrf_token` も `remember` も flash もです——**全員ログアウト、フォームは 403**。
+> **例外もログも出ません**（署名の合わない Cookie を捨てるのは、正しい動きだからです）。
+
+**移行期間を作ってください。**
+
+```conf
+cookie {
+	secret          = ${?COOKIE_SECRET}
+	accept_unsigned = true    # ← 入れ替えが済むまでの間だけ
+}
+```
+
+`accept_unsigned = true` の間は、**署名の無い Cookie も読みます**。
+書くほうは最初から署名するので、**放っておけば署名つきに入れ替わります**。
+
+**入れ替わったら false に戻してください。**戻さないと、
+**署名を外した Cookie が通り続ける**ので、署名を入れた意味がなくなります。
+通した回数は `cookie.unsigned` に出ます——**これが 0 になってから**戻します。
 
 ## 鍵を入れ替える
 
@@ -225,7 +253,7 @@ if (PasswordUtil.check(input, user.getString("password"))) {
 ```conf
 hash {
 	password {
-		# 既定は cipher.key があれば true、無ければ false
+		# cipher.* を書くなら、これも必ず書く（書かないと起動時に落ちる）
 		encrypt = true
 		pepper  = ${?PASSWORD_PEPPER}
 	}

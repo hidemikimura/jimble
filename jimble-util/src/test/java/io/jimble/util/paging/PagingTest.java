@@ -74,14 +74,45 @@ class PagingTest {
 	}
 
 	@Test
-	@DisplayName("per=all は全件取得")
-	void perAll () {
+	@DisplayName("D-159 per=all も上限までしか返さない")
+	void perAllIsCapped () {
+
+		/*
+		 * <b>上限が無いと、誰でも {@code ?per=all} と打つだけで全件を引ける。</b>
+		 * 100 万行のテーブルなら、1回で止まる。
+		 */
+		Paging paging = new Paging();
+		paging.load(request("2", "all"), 0);
+
+		assertFalse(paging.perAll(), "上限があるのに全件取得のままです");
+		assertEquals(Paging.DEFAULT_MAX_PER, paging.per());
+		assertEquals(2, paging.page(), "ページ番号を捨てています");
+
+	}
+
+	@Test
+	@DisplayName("上限を外せば per=all は全件取得")
+	void perAllWithoutCap () {
+
+		Conf.replace(ConfigFactory
+			.parseString(Paging.KEY_MAX_PER + " = 0").withFallback(Conf.conf().config()));
 
 		Paging paging = new Paging();
 		paging.load(request("2", "all"), 0);
 
 		assertTrue(paging.perAll());
 		assertEquals(1, paging.page(), "全件取得は常に1ページ");
+
+	}
+
+	@Test
+	@DisplayName("D-159 上限を超える件数は上限に丸める")
+	void perIsCapped () {
+
+		Paging paging = new Paging();
+		paging.load(request("1", String.valueOf(Paging.DEFAULT_MAX_PER + 500)), 0);
+
+		assertEquals(Paging.DEFAULT_MAX_PER, paging.per(), "上限が効いていません");
 
 	}
 
@@ -166,7 +197,7 @@ class PagingTest {
 	void configurableNames () {
 
 		Conf.replace(ConfigFactory
-			.parseString("paging.page = \"p\"\npaging.per = \"limit\"")
+			.parseString("paging.name_page = \"p\"\npaging.name_per = \"limit\"")
 			.withFallback(Conf.conf().config()));
 
 		assertEquals("p", Paging.namePage());
@@ -189,7 +220,7 @@ class PagingTest {
 	void namesFollowReload () {
 
 		// 移送元は static final でクラス初期化時に1回読むだけだった
-		Conf.replace(ConfigFactory.parseString("paging.page = \"p\"").withFallback(Conf.conf().config()));
+		Conf.replace(ConfigFactory.parseString("paging.name_page = \"p\"").withFallback(Conf.conf().config()));
 		assertEquals("p", Paging.namePage());
 
 		Conf.reload();

@@ -71,7 +71,7 @@ class SqlCacheConfTest {
 		Conf.replace(ConfigFactory.empty());
 
 		assertEquals(SqlCacheConf.STORE_MEMORY, SqlCacheConf.store());
-		assertEquals(SqlCacheConf.DEFAULT_TTL_SECONDS, SqlCacheConf.ttl().toSeconds());
+		assertEquals(SqlCacheConf.DEFAULT_TTL, SqlCacheConf.ttl());
 		assertEquals(SqlCacheConf.DEFAULT_MAX, SqlCacheConf.max());
 
 	}

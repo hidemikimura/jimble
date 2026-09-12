@@ -197,7 +197,7 @@ Two files for the same version that both run on the current product is an error
 
 The row in `db_lock` is taken with `FOR UPDATE` before anything is applied, so
 **only one machine runs.** The one that could not wait long enough fails to start
-(`migration.lock_timeout_seconds`, 60 seconds by default).
+(`migration.lock_timeout`, 60 seconds by default).
 
 > [!NOTE]
 > The lock wait timeout is set **for that session only** (`SET SESSION`).
@@ -334,7 +334,7 @@ codegen {
 migration {
 	on_startup            = "auto"   # auto | true | false. auto applies them everywhere but locally
 	down                  = false    # whether to roll back
-	lock_timeout_seconds  = 60
+	lock_timeout  = 1m
 	resource_dir          = "migration"
 }
 

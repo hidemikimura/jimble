@@ -376,7 +376,7 @@ class RememberIntegrationTest {
 		try {
 
 			// 猶予を無くす（時間を進める代わり）
-			Conf.replace(ConfigFactory.parseString("auth.remember.grace_seconds = 0").withFallback(original));
+			Conf.replace(ConfigFactory.parseString("auth.remember.grace = 0s").withFallback(original));
 
 			Browser thief = new Browser();
 			thief.setCookie(RememberConf.cookieName(), stolen);

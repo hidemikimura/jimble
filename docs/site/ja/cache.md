@@ -48,7 +48,7 @@ cache.remove("top:posts");
 | `has(key, group)` / `remove(key)` / `removeGroup(group)` | |
 
 > [!NOTE]
-> **256KB を超える値はファイルに落ちます**（gzip、`cache.temp_dir`）。
+> **256KiB を超える値はファイルに落ちます**（gzip、`cache.temp_dir`）。
 > `CacheData#hasContentFile()` が true になり、そのまま
 > `context.response().cache(data)` で `Content-Encoding: gzip` として返せます。
 > 古い世代のファイルを消す仕組みは無いので、置き場は定期的に見てください。

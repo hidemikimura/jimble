@@ -1,5 +1,6 @@
 package io.jimble.web.server;
 
+import java.time.Duration;
 import com.typesafe.config.ConfigFactory;
 import io.jimble.util.conf.Conf;
 import io.jimble.web.context.WebContext;
@@ -53,7 +54,7 @@ class ServerConfTest {
 		assertEquals(ServerConf.DEFAULT_PORT, ServerConf.port());
 		assertEquals(ServerConf.DEFAULT_MAX_REQUEST_SIZE, ServerConf.maxRequestSize());
 		assertEquals(ServerConf.DEFAULT_MAX_HEADER_SIZE, ServerConf.maxHeaderSize());
-		assertEquals(ServerConf.DEFAULT_IDLE_TIMEOUT_SECONDS, ServerConf.idleTimeoutSeconds());
+		assertEquals(ServerConf.DEFAULT_IDLE_TIMEOUT, ServerConf.idleTimeout());
 		assertTrue(ServerConf.compression());
 		assertTrue(ServerConf.botAccessLog());
 		assertFalse(ServerConf.trustProxy(), "既定でプロキシを信じてはいけない");
@@ -67,9 +68,9 @@ class ServerConfTest {
 
 		use(Map.of(
 			"server.port", 8080
-			, "server.max_request_size", 1024
-			, "server.max_header_size", 4096
-			, "server.idle_timeout_seconds", 5
+			, "server.max_request_size", "1024B"
+			, "server.max_header_size", "4096B"
+			, "server.idle_timeout", "5s"
 			, "server.compression", false
 			, "server.trust_proxy", true
 			, "server.host", "127.0.0.1"
@@ -78,7 +79,7 @@ class ServerConfTest {
 		assertEquals(8080, ServerConf.port());
 		assertEquals(1024, ServerConf.maxRequestSize());
 		assertEquals(4096, ServerConf.maxHeaderSize());
-		assertEquals(5, ServerConf.idleTimeoutSeconds());
+		assertEquals(Duration.ofSeconds(5), ServerConf.idleTimeout());
 		assertFalse(ServerConf.compression());
 		assertTrue(ServerConf.trustProxy());
 		assertEquals("127.0.0.1", ServerConf.host());
@@ -165,7 +166,7 @@ class ServerConfTest {
 	@DisplayName("本文の上限を超えたリクエストは弾かれる（要件 F-H-01 / NF-S-05）")
 	void maxRequestSizeIsEnforced () throws Exception {
 
-		use(Map.of("server.max_request_size", 100));
+		use(Map.of("server.max_request_size", "100B", "upload.max_total_size", "100B"));
 
 		JimbleServer server = JimbleServer.start(new JimbleApp() {
 			{
@@ -209,7 +210,7 @@ class ServerConfTest {
 		 * 設定キーは前からあったが helidon に渡していなかった。
 		 * 「書いたのに効かない」を回帰で捕まえる。
 		 */
-		use(Map.of("server.max_header_size", 512));
+		use(Map.of("server.max_header_size", "512B"));
 
 		JimbleServer server = JimbleServer.start(new JimbleApp() {
 			{

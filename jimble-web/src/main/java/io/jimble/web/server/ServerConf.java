@@ -1,5 +1,6 @@
 package io.jimble.web.server;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -9,9 +10,9 @@ import io.jimble.util.conf.Conf;
  * server {
  *   host                 = ""         # 待ち受けるアドレス。空なら全部
  *   port                 = 9000
- *   max_request_size     = 10485760   # リクエスト本文の上限（バイト）
- *   max_header_size      = 16384      # ヘッダ全体の上限（バイト）
- *   idle_timeout_seconds = 60
+ *   max_request_size     = 10MiB       # リクエスト本文の上限
+ *   max_header_size      = 16KiB       # ヘッダ全体の上限
+ *   idle_timeout         = 60s
  *   trust_proxy          = false      # X-Forwarded-* を信じるか
  *   compression          = true       # 応答を gzip で返すか
  *   bot_access_log       = true       # ボットのアクセスログを分けるか
@@ -42,8 +43,8 @@ public final class ServerConf {
 	/** 設定キー：ヘッダ全体の上限（バイト） */
 	public static final String KEY_MAX_HEADER_SIZE = "server.max_header_size";
 
-	/** 設定キー：アイドルタイムアウト（秒） */
-	public static final String KEY_IDLE_TIMEOUT_SECONDS = "server.idle_timeout_seconds";
+	/** 設定キー：アイドルタイムアウト */
+	public static final String KEY_IDLE_TIMEOUT = "server.idle_timeout";
 
 	/** 設定キー：プロキシヘッダを信じるか */
 	public static final String KEY_TRUST_PROXY = "server.trust_proxy";
@@ -60,17 +61,17 @@ public final class ServerConf {
 	/** 設定の鍵：到達不能ルートを例外にするか */
 	public static final String KEY_STRICT_ROUTES = "server.strict_routes";
 
-	/** 設定キー：止め始めてから新規を断つまでの猶予（秒） */
-	public static final String KEY_SHUTDOWN_GRACE_SECONDS = "server.shutdown_grace_seconds";
+	/** 設定キー：止め始めてから新規を断つまでの猶予 */
+	public static final String KEY_SHUTDOWN_GRACE = "server.shutdown_grace";
 
-	/** 設定キー：処理中のリクエストを待つ上限（秒） */
-	public static final String KEY_SHUTDOWN_TIMEOUT_SECONDS = "server.shutdown_timeout_seconds";
+	/** 設定キー：処理中のリクエストを待つ上限 */
+	public static final String KEY_SHUTDOWN_TIMEOUT = "server.shutdown_timeout";
 
-	/** 既定の猶予（秒） */
-	public static final long DEFAULT_SHUTDOWN_GRACE_SECONDS = 0;
+	/** 既定の猶予 */
+	public static final Duration DEFAULT_SHUTDOWN_GRACE = Duration.ZERO;
 
-	/** 既定の待つ上限（秒） */
-	public static final long DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 15;
+	/** 既定の待つ上限 */
+	public static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(15);
 
 	/** システムプロパティ：ポート */
 	public static final String PROPERTY_PORT = "jimble.server.port";
@@ -78,14 +79,14 @@ public final class ServerConf {
 	/** 既定のポート */
 	public static final int DEFAULT_PORT = 9000;
 
-	/** 既定のリクエスト本文の上限（10MB。要件 NF-S-05） */
+	/** 既定のリクエスト本文の上限（10MiB。要件 NF-S-05） */
 	public static final long DEFAULT_MAX_REQUEST_SIZE = 10L * 1024 * 1024;
 
-	/** 既定のヘッダ全体の上限（16KB。要件 NF-S-05） */
+	/** 既定のヘッダ全体の上限（16KiB。要件 NF-S-05） */
 	public static final long DEFAULT_MAX_HEADER_SIZE = 16L * 1024;
 
-	/** 既定のアイドルタイムアウト（秒） */
-	public static final long DEFAULT_IDLE_TIMEOUT_SECONDS = 60;
+	/** 既定のアイドルタイムアウト */
+	public static final Duration DEFAULT_IDLE_TIMEOUT = Duration.ofSeconds(60);
 
 	private ServerConf () {}
 
@@ -136,7 +137,7 @@ public final class ServerConf {
 	 */
 	public static long maxRequestSize () {
 
-		return Conf.conf().getLong(KEY_MAX_REQUEST_SIZE, DEFAULT_MAX_REQUEST_SIZE);
+		return Conf.conf().getBytes(KEY_MAX_REQUEST_SIZE, DEFAULT_MAX_REQUEST_SIZE);
 
 	}
 
@@ -147,7 +148,7 @@ public final class ServerConf {
 	 */
 	public static int maxHeaderSize () {
 
-		return (int) Conf.conf().getLong(KEY_MAX_HEADER_SIZE, DEFAULT_MAX_HEADER_SIZE);
+		return (int) Conf.conf().getBytes(KEY_MAX_HEADER_SIZE, DEFAULT_MAX_HEADER_SIZE);
 
 	}
 
@@ -160,33 +161,33 @@ public final class ServerConf {
 	 * 既定は 0（すぐ断つ）。
 	 * </p>
 	 *
-	 * @return	秒
+	 * @return	猶予
 	 */
-	public static long shutdownGraceSeconds () {
+	public static Duration shutdownGrace () {
 
-		return Conf.conf().getLong(KEY_SHUTDOWN_GRACE_SECONDS, DEFAULT_SHUTDOWN_GRACE_SECONDS);
+		return Conf.conf().getDuration(KEY_SHUTDOWN_GRACE, DEFAULT_SHUTDOWN_GRACE);
 
 	}
 
 	/**
-	 * 処理中のリクエストを待つ上限（秒。要件 D-91）
+	 * 処理中のリクエストを待つ上限（要件 D-91）
 	 *
-	 * @return	秒
+	 * @return	上限
 	 */
-	public static long shutdownTimeoutSeconds () {
+	public static Duration shutdownTimeout () {
 
-		return Conf.conf().getLong(KEY_SHUTDOWN_TIMEOUT_SECONDS, DEFAULT_SHUTDOWN_TIMEOUT_SECONDS);
+		return Conf.conf().getDuration(KEY_SHUTDOWN_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT);
 
 	}
 
 	/**
-	 * アイドルタイムアウト（秒）
+	 * アイドルタイムアウト
 	 *
-	 * @return	秒数
+	 * @return	時間
 	 */
-	public static long idleTimeoutSeconds () {
+	public static Duration idleTimeout () {
 
-		return Conf.conf().getLong(KEY_IDLE_TIMEOUT_SECONDS, DEFAULT_IDLE_TIMEOUT_SECONDS);
+		return Conf.conf().getDuration(KEY_IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT);
 
 	}
 

@@ -49,9 +49,9 @@ So jimble's `SseStream` **does not wait for a disconnect. It bounds the stream b
 
 ```conf
 sse {
-	max_duration_seconds = 300   # default 5 minutes
+	max_duration = 5m   # default 5 minutes
 	max_events           = 0     # 0 = unlimited
-	retry_millis         = 3000  # how long the client waits before reconnecting
+	retry         = 3s  # how long the client waits before reconnecting
 }
 ```
 
@@ -77,7 +77,7 @@ for (Data row : rows) {
 
 ## Reconnecting
 
-`EventSource` reconnects on its own when the stream breaks. `retry_millis` is the interval.
+`EventSource` reconnects on its own when the stream breaks. `retry` is the interval.
 
 **Which means the client comes straight back when you cut it at the end of its lifetime.**
 Do not build a stream that runs forever. "Stream for five minutes, cut, get reconnected" is fine.

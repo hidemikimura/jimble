@@ -4,15 +4,48 @@ import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 
 /**
- * paging
+ * ページング（要件 F-V-06）
+ *
+ * <pre>
+ * paging {
+ *   name_page = "page"   # ページ番号のリクエストパラメータ名
+ *   name_per  = "per"    # 取得件数のリクエストパラメータ名
+ *   max_per   = 200      # 1ページに出せる件数の上限（per=all も含む）
+ * }
+ * </pre>
+ *
+ * <h2>キーの名前が値に見えていた（要件 D-159）</h2>
+ * <p>
+ * <b>設定キーは {@code paging.page} / {@code paging.per} だった。</b>
+ * 入るのは<b>リクエストパラメータの「名前」</b>なのに、
+ * 読む人には<b>件数を入れる欄</b>に見える。
+ * {@code paging.per = 50} と書くと<b>パラメータ名が {@code "50"} になり</b>、
+ * {@code ?per=20} は読まれなくなって、件数は黙って既定の 10 に落ちた。
+ * </p>
+ *
+ * <p>
+ * <b>名前を入れる欄だと分かる名前にした</b>——{@code paging.name_page} /
+ * {@code paging.name_per}。件数を変えたい人は {@code paging.max_per} を見る。
+ * </p>
  */
 public class Paging {
 
 	/** 設定キー：ページ番号のリクエストキー名 */
-	public static final String KEY_NAME_PAGE = "paging.page";
+	public static final String KEY_NAME_PAGE = "paging.name_page";
 
 	/** 設定キー：取得件数のリクエストキー名 */
-	public static final String KEY_NAME_PER = "paging.per";
+	public static final String KEY_NAME_PER = "paging.name_per";
+
+	/**
+	 * 設定キー：1ページに出せる件数の上限（要件 D-159）
+	 *
+	 * <p>
+	 * <b>{@code per=all} にも効く。</b>上限が無いと、
+	 * <b>誰でも {@code ?per=all} と打つだけで全件を引ける</b>——
+	 * 100 万行のテーブルで1回やられれば、それだけで止まる。
+	 * </p>
+	 */
+	public static final String KEY_MAX_PER = "paging.max_per";
 
 	/** 既定のページ番号キー名 */
 	public static final String DEFAULT_NAME_PAGE = "page";
@@ -22,6 +55,9 @@ public class Paging {
 
 	/** 既定の取得件数 */
 	public static final long DEFAULT_PER = 10;
+
+	/** 既定の件数上限 */
+	public static final long DEFAULT_MAX_PER = 200;
 
 	/**
 	 * ページ番号のリクエストキー名（要件 F-V-06）
@@ -48,6 +84,17 @@ public class Paging {
 	public static String namePer () {
 
 		return Conf.conf().getString(KEY_NAME_PER, DEFAULT_NAME_PER);
+
+	}
+
+	/**
+	 * 1ページに出せる件数の上限（要件 D-159）
+	 *
+	 * @return	上限（0 以下なら上限なし）
+	 */
+	public static long maxPer () {
+
+		return Conf.conf().getLong(KEY_MAX_PER, DEFAULT_MAX_PER);
 
 	}
 
@@ -265,21 +312,41 @@ public class Paging {
 	public void load (Data requestData, long per) {
 
 		if ("all".equalsIgnoreCase(requestData.getString(namePer()))) {
+
+			long max = maxPer();
+
+			if (max > 0) {
+
+				/*
+				 * <b>{@code per=all} にも上限を掛ける</b>（要件 D-159）。
+				 * 掛けないと、<b>誰でも {@code ?per=all} と打つだけで全件を引ける</b>。
+				 * <b>断らずに上限まで返す</b>——断ると、
+				 * これまで動いていた管理画面が 400 になる。
+				 */
+				load(requestData.getLong(namePage()), max);
+
+				return;
+
+			}
+
 			// 全件取得
 			this.perAll = true;
 			this.page = 1;
 			this.per = -1;
 			this.start = 1;
+
 		} else {
+
 			long _per = requestData.getLong(namePer());
 			if (_per <= 0) {
 				_per = per;
 			}
 			if (_per <= 0) {
-				_per = 10;
+				_per = DEFAULT_PER;
 			}
 
 			load(requestData.getLong(namePage()), _per);
+
 		}
 
 	}
@@ -301,7 +368,11 @@ public class Paging {
 
 		// 取得件数
 		if (per > 0) {
-			this.per = per;
+
+			long max = maxPer();
+
+			this.per = max > 0 && per > max ? max : per;
+
 		}
 
 		// データ開始位置

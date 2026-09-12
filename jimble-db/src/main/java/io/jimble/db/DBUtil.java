@@ -34,6 +34,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.TreeSet;
+import java.util.Set;
 
 public class DBUtil {
 
@@ -242,6 +245,15 @@ public class DBUtil {
 		if (!conf.hasPath("db")) {
 			return true;
 		}
+
+		/*
+		 * <b>繋ぎにいく前に、書かれているキーを全部見る</b>（要件 D-159）。
+		 *
+		 * <b>読みながら見ると、投げた例外が下の catch に落ちる</b>——
+		 * あそこは「そんなデータベースは無い」を拾う場所なので、
+		 * <b>打ち間違いが「接続に失敗しました」に化ける</b>。
+		 */
+		checkAllKeys(conf.getConfig("db"));
 
 		// 「全部止める」に預ける（要件 D-77）。プールは最後に閉じたい
 		Shutdown.add("DB", DBUtil::stop);
@@ -819,69 +831,243 @@ public class DBUtil {
 
 		Conf innerConf = new Conf(config);
 
-		if (config.hasPath("driver")) {
-			dbConf.driver = innerConf.getString("driver");
+		checkKeys(config);
+
+		dbConf.driver = string(innerConf, config, "driver", dbConf.driver);
+		dbConf.url = string(innerConf, config, "url", dbConf.url);
+		dbConf.user = string(innerConf, config, "username", dbConf.user);
+		dbConf.password = string(innerConf, config, "password", dbConf.password);
+
+		if (has(config, "maximum_pool_size")) {
+			dbConf.maximumPoolSize = innerConf.getInt(spelling(config, "maximum_pool_size"));
 		}
-		if (config.hasPath("url")) {
-			dbConf.url = innerConf.getString("url");
+		if (has(config, "minimum_idle")) {
+			dbConf.minimumIdle = innerConf.getInt(spelling(config, "minimum_idle"));
 		}
-		if (config.hasPath("username")) {
-			dbConf.user = innerConf.getString("username");
+		if (has(config, "fetch_size")) {
+			dbConf.fetchSize = innerConf.getInt(spelling(config, "fetch_size"));
 		}
-		if (config.hasPath("password")) {
-			dbConf.password = innerConf.getString("password");
-		}
-		if (config.hasPath("maximumPoolSize")) {
-			dbConf.maximumPoolSize = innerConf.getInt("maximumPoolSize");
-		}
-		if (config.hasPath("minimumIdle")) {
-			dbConf.minimumIdle = innerConf.getInt("minimumIdle");
-		}
-		if (config.hasPath("idleTimeout")) {
-			dbConf.idleTimeout = innerConf.getLong("idleTimeout");
-		}
-		if (config.hasPath("maxLifetime")) {
-			dbConf.maxLifetime = innerConf.getLong("maxLifetime");
-		}
-		if (config.hasPath("connectionTimeout")) {
-			dbConf.connectionTimeout = innerConf.getLong("connectionTimeout");
-		}
-		if (config.hasPath("connectionInitSql")) {
-			dbConf.connectionInitSql = innerConf.getString("connectionInitSql");
-		}
-		if (config.hasPath("connectionTestQuery")) {
-			dbConf.connectionTestQuery = innerConf.getString("connectionTestQuery");
-		}
-		if (config.hasPath("keepaliveTime")) {
-			dbConf.keepaliveTime = innerConf.getLong("keepaliveTime");
-		}
-		if (config.hasPath("fetchSize")) {
-			dbConf.fetchSize = innerConf.getInt("fetchSize");
-		}
-		if (config.hasPath("scheme")) {
-			dbConf.schema = innerConf.getString("scheme");
-		}
+
+		dbConf.idleTimeout = millis(innerConf, config, "idle_timeout", dbConf.idleTimeout);
+		dbConf.maxLifetime = millis(innerConf, config, "max_lifetime", dbConf.maxLifetime);
+		dbConf.connectionTimeout = millis(innerConf, config, "connection_timeout", dbConf.connectionTimeout);
+		dbConf.keepaliveTime = millis(innerConf, config, "keepalive_time", dbConf.keepaliveTime);
+		dbConf.longConnectionTime = millis(innerConf, config, "long_connection_time", dbConf.longConnectionTime);
+
+		dbConf.connectionInitSql = string(innerConf, config, "connection_init_sql", dbConf.connectionInitSql);
+		dbConf.connectionTestQuery = string(innerConf, config, "connection_test_query", dbConf.connectionTestQuery);
+		dbConf.schema = string(innerConf, config, "schema", dbConf.schema);
+
 		// DB 製品（要件 F-D-30）。書かなければ mysql
-		if (config.hasPath(io.jimble.db.dialect.Dialects.KEY_PRODUCT)) {
-			dbConf.product = innerConf.getString(io.jimble.db.dialect.Dialects.KEY_PRODUCT);
-		}
-		if (config.hasPath("create_database_sql")) {
-			dbConf.createDatabaseSql = innerConf.getString("create_database_sql");
-		}
-		if (config.hasPath("connection_pool_type")) {
-			dbConf.connectionPoolType = innerConf.getString("connection_pool_type");
-		}
-		if (config.hasPath("transaction_isolation")) {
-			dbConf.transactionIsolation = innerConf.getString("transaction_isolation");
-		}
-		if (config.hasPath("long_connection_log")) {
-			dbConf.longConnectionLog = innerConf.getBoolean("long_connection_log");
-		}
-		if (config.hasPath("long_connection_time_ms")) {
-			dbConf.longConnectionTime = innerConf.getLong("long_connection_time_ms");
+		dbConf.product = string(innerConf, config, io.jimble.db.dialect.Dialects.KEY_PRODUCT, dbConf.product);
+
+		dbConf.createDatabaseSql = string(innerConf, config, "create_database_sql", dbConf.createDatabaseSql);
+		dbConf.connectionPoolType = string(innerConf, config, "connection_pool_type", dbConf.connectionPoolType);
+		dbConf.transactionIsolation = string(innerConf, config, "transaction_isolation", dbConf.transactionIsolation);
+
+		if (has(config, "long_connection_log")) {
+			dbConf.longConnectionLog = innerConf.getBoolean(spelling(config, "long_connection_log"));
 		}
 
 	}
+
+	// region db.<name> のキー（要件 D-159）
+
+	/**
+	 * 書ける名前 → 昔の綴り
+	 *
+	 * <p>
+	 * <b>同じブロックの中で camelCase と snake_case が混ざっていた。</b>
+	 * HikariCP の設定名をそのまま持ってきたものと、jimble が足したものが並んでいて、
+	 * <b>どちらで書けばよいのかは覚えるしかなかった</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code scheme} は綴り違いである</b>（入る先のフィールドは {@code schema}）。
+	 * 正しく {@code schema} と書いた人の設定は、<b>黙って無視されていた</b>。
+	 * </p>
+	 */
+	private static final Map<String, String> OLD_SPELLINGS = Map.of(
+		"maximum_pool_size", "maximumPoolSize"
+		, "minimum_idle", "minimumIdle"
+		, "idle_timeout", "idleTimeout"
+		, "max_lifetime", "maxLifetime"
+		, "connection_timeout", "connectionTimeout"
+		, "connection_init_sql", "connectionInitSql"
+		, "connection_test_query", "connectionTestQuery"
+		, "keepalive_time", "keepaliveTime"
+		, "fetch_size", "fetchSize"
+		, "schema", "scheme");
+
+	/** 書ける名前（昔の綴りは含まない） */
+	private static final Set<String> KNOWN_KEYS = Set.of(
+		"driver", "url", "username", "password"
+		, "maximum_pool_size", "minimum_idle", "fetch_size"
+		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time"
+		, "connection_init_sql", "connection_test_query"
+		, "schema", "product", "create_database_sql", "connection_pool_type"
+		, "transaction_isolation", "long_connection_log", "long_connection_time"
+		// 入れ子（値ではなく、中にまた db の設定が入るもの）
+		, "main", "read", "subs");
+
+	/* 昔の綴りの警告を出したキー（1回だけ出す） */
+	private static final Set<String> WARNED_SPELLINGS = ConcurrentHashMap.newKeySet();
+
+	/**
+	 * {@code db} の下を全部見る（要件 D-159）
+	 *
+	 * @param db	{@code db} ブロック
+	 */
+	private static void checkAllKeys (Config db) {
+
+		for (String dbName : db.root().keySet()) {
+
+			Config one;
+
+			try {
+				one = db.getConfig(dbName);
+			} catch (Exception ignore) {
+				continue;
+			}
+
+			checkKeys(one);
+
+			if (one.hasPath("read")) {
+				checkKeys(one.getConfig("read"));
+			}
+
+			if (!one.hasPath("subs")) {
+				continue;
+			}
+
+			Config subs = one.getConfig("subs");
+
+			for (String subName : subs.root().keySet()) {
+
+				Config sub = subs.getConfig(subName);
+
+				checkKeys(sub);
+
+				if (sub.hasPath("read")) {
+					checkKeys(sub.getConfig("read"));
+				}
+
+			}
+
+		}
+
+	}
+
+	/**
+	 * 知らないキーが書かれていないか見る
+	 *
+	 * <p>
+	 * <b>ここが無かったので、綴りを間違えたキーは何も言わずに無視されていた。</b>
+	 * {@code maximum_pool_size} と書いたら<b>プールは既定のまま</b>で、
+	 * 動くには動くので<b>誰も気づかない</b>——気づくのは、
+	 * 負荷が上がって接続が足りなくなったときである。
+	 * </p>
+	 *
+	 * @param config	{@code db.<name>} のブロック
+	 */
+	static void checkKeys (Config config) {
+
+		List<String> unknown = new ArrayList<>();
+
+		for (String key : config.root().keySet()) {
+
+			if (KNOWN_KEYS.contains(key) || OLD_SPELLINGS.containsValue(key)) {
+				continue;
+			}
+
+			unknown.add(key);
+
+		}
+
+		if (unknown.isEmpty()) {
+			return;
+		}
+
+		throw new IllegalStateException(
+			"db の設定に知らないキーがあります: %s。書けるのは %s です"
+				.formatted(String.join(", ", unknown)
+					, String.join(", ", new TreeSet<>(KNOWN_KEYS))));
+
+	}
+
+	/**
+	 * その名前で書かれているか（昔の綴りも見る）
+	 *
+	 * @param config	ブロック
+	 * @param key		いまの名前
+	 * @return	書かれていれば true
+	 */
+	private static boolean has (Config config, String key) {
+
+		return config.hasPath(key) || config.hasPath(OLD_SPELLINGS.getOrDefault(key, key));
+
+	}
+
+	/**
+	 * 実際に書かれている綴りを返す
+	 *
+	 * <p>昔の綴りだったら、1度だけ警告する。</p>
+	 *
+	 * @param config	ブロック
+	 * @param key		いまの名前
+	 * @return	読むべき綴り
+	 */
+	private static String spelling (Config config, String key) {
+
+		if (config.hasPath(key)) {
+			return key;
+		}
+
+		String old = OLD_SPELLINGS.getOrDefault(key, key);
+
+		if (WARNED_SPELLINGS.add(old)) {
+			Log.warn("db の設定 %s は古い書き方です。%s に直してください".formatted(old, key));
+		}
+
+		return old;
+
+	}
+
+	/**
+	 * 文字列を読む
+	 *
+	 * @param innerConf		ブロック
+	 * @param config		ブロック
+	 * @param key			いまの名前
+	 * @param defaultValue	書かれていなければこれ
+	 * @return	値
+	 */
+	private static String string (Conf innerConf, Config config, String key, String defaultValue) {
+
+		return has(config, key) ? innerConf.getString(spelling(config, key)) : defaultValue;
+
+	}
+
+	/**
+	 * 時間をミリ秒で読む（HikariCP がミリ秒しか受けないため）
+	 *
+	 * @param innerConf		ブロック
+	 * @param config		ブロック
+	 * @param key			いまの名前
+	 * @param defaultValue	書かれていなければこれ（ミリ秒）
+	 * @return	ミリ秒
+	 */
+	private static long millis (Conf innerConf, Config config, String key, long defaultValue) {
+
+		if (!has(config, key)) {
+			return defaultValue;
+		}
+
+		return innerConf.getDuration(spelling(config, key), Duration.ofMillis(defaultValue)).toMillis();
+
+	}
+
+	// endregion
 
 	// endregion
 

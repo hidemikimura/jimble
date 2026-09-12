@@ -11,17 +11,17 @@ order: 6
 server {
 	host                 = ""         # 待ち受けるアドレス。空なら全部
 	port                 = 9000
-	max_request_size     = 10485760   # リクエスト本文の上限（10MB）
-	max_header_size      = 16384      # ヘッダ全体の上限（16KB）
-	idle_timeout_seconds = 60
+	max_request_size     = 10485760   # リクエスト本文の上限（10MiB）
+	max_header_size      = 16384      # ヘッダ全体の上限（16KiB）
+	idle_timeout = 60s
 	trust_proxy          = false      # X-Forwarded-* を信じるか
 	compression          = true       # 応答を gzip で返すか
 	access_log           = true       # アクセスログを出すか（[ログ](./log)）
 	bot_access_log       = true       # ボットのアクセスログを分けるか
 	strict_routes        = false      # 一生呼ばれないルートを例外にするか（CI では true に）
 
-	shutdown_grace_seconds   = 0      # 止め始めてから新規を断つまで（秒）
-	shutdown_timeout_seconds = 15     # 処理中を待つ上限（秒）
+	shutdown_grace   = 0s      # 止め始めてから新規を断つまで（秒）
+	shutdown_timeout = 15s     # 処理中を待つ上限（秒）
 }
 ```
 
@@ -63,15 +63,16 @@ server { host = "127.0.0.1" }
 
 | | 上限 | 超えたら |
 | --- | --- | --- |
-| リクエスト本文 | `server.max_request_size`（10MB） | **413** |
-| ヘッダ全体 | `server.max_header_size`（16KB） | 接続ごと切られる |
-| 何もしない接続 | `server.idle_timeout_seconds`（60秒） | 閉じる |
+| リクエスト本文 | `server.max_request_size`（10MiB） | **413** |
+| ヘッダ全体 | `server.max_header_size`（16KiB） | 接続ごと切られる |
+| 何もしない接続 | `server.idle_timeout`（60秒） | 閉じる |
 
 アップロードにはこれとは別の上限があります（[ファイルアップロード](./upload)）。
 
 > [!WARN]
-> **アップロードの合計上限（既定 50MB）より本文の上限（既定 10MB）のほうが小さい**ので、
-> 大きいものを受けるなら両方を上げてください。
+> **`upload.max_total_size` が `server.max_request_size` を超えていると起動時に落ちます。**
+> 本文は先にこちらで切られるので、超えた分には届かないためです。
+> 大きいものを受けるなら、**両方を上げてください**（既定はどちらも 10MiB）。
 
 読み取り／書き込みのタイムアウトはありません。
 
@@ -143,9 +144,9 @@ before(BotBlocker.of(context -> context.response().redirect("/")));   // 好き�
 **いきなり止めません。**`stop()` はこの順に進みます。
 
 1. **「止め始めた」ことにする** — `Shutdown.isStopping()` が true になる。**普通のリクエストはまだ受ける**
-2. `server.shutdown_grace_seconds` 待つ（既定 0）
+2. `server.shutdown_grace` 待つ（既定 0）
 3. **新しいリクエストを断つ**（503）
-4. 処理中のものが終わるのを `server.shutdown_timeout_seconds`（既定 15 秒）まで待つ
+4. 処理中のものが終わるのを `server.shutdown_timeout`（既定 15 秒）まで待つ
 5. サーバーを止める
 
 **SIGTERM を受けたら自動で走ります**（コンテナはこれを送って待ちます）。
@@ -163,7 +164,7 @@ get("/health_check", context ->
 > ロードバランサがこの台を外すまでには時間がかかります。
 > その間に来たリクエストを 503 にすると、**外から見たらエラー**です。
 > だから 1 と 3 の間に猶予を置けるようにしてあります。
-> ヘルスチェックの間隔 × 失敗回数ぶん（例：2秒 × 3回 → `shutdown_grace_seconds = 10`）を入れてください。
+> ヘルスチェックの間隔 × 失敗回数ぶん（例：2秒 × 3回 → `shutdown_grace = 10s`）を入れてください。
 
 > [!WARN]
 > **待ちきれなかったら、残ったまま止めます。**
@@ -183,5 +184,5 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 ```
 
 `X-Forwarded-For` は**既存の値に足します**（上書きしません）。
-タイムアウトは `proxy.connect_timeout_ms`（5秒）と `proxy.request_timeout_ms`（30秒）で、
+タイムアウトは `proxy.connect_timeout`（5秒）と `proxy.request_timeout`（30秒）で、
 転送に失敗したら **502** を返します。

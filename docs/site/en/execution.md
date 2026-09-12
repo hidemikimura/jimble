@@ -92,7 +92,7 @@ Virtual threads grow without limit. **What runs out first is DB connections.**
 > has not gone back to the pool.
 > Hold something open in that state for a long time — SSE, say — and **you eat one
 > pool slot per person.**
-> With `maximumPoolSize = 10`, ten people exhaust it, and the eleventh gets neither
+> With `maximum_pool_size = 10`, ten people exhaust it, and the eleventh gets neither
 > "slow" nor "an error" but **a wait for a connection that just sits there.**
 
 This is why you do not write an infinite loop in an SSE handler.

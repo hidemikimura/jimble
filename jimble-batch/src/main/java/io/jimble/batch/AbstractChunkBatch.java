@@ -77,7 +77,7 @@ import java.util.List;
  *
  * <h2>進み具合</h2>
  * <p>
- * {@link BatchConf#progressSeconds()} ごとに
+ * {@link BatchConf#progress()} ごとに
  * {@code batch_history.execute_info} を書き換える。
  * 長いバッチでも「いま何件目か」が外から見える。
  * </p>
@@ -387,7 +387,7 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 	 *
 	 * <p>
 	 * <b>毎チャンク書かない。</b>チャンクが小さいと更新のほうが重くなる。
-	 * {@link BatchConf#progressSeconds()} に1回だけ書く。
+	 * {@link BatchConf#progress()} に1回だけ書く。
 	 * </p>
 	 *
 	 * <p>
@@ -402,7 +402,7 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 			return;
 		}
 
-		long intervalMillis = BatchConf.progressSeconds() * 1000;
+		long intervalMillis = BatchConf.progress().toMillis();
 
 		if (System.currentTimeMillis() - lastProgress <= intervalMillis) {
 			return;

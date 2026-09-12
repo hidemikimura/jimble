@@ -1,5 +1,6 @@
 package io.jimble.web.assets;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -7,8 +8,8 @@ import io.jimble.util.conf.Conf;
  *
  * <pre>
  * assets {
- *   max_age            = 0      # Cache-Control の max-age（秒）
- *   immutable_max_age  = 31536000
+ *   max_age            = 0s     # Cache-Control の max-age
+ *   immutable_max_age  = 365d
  *   if_modified_since  = true   # If-Modified-Since を見るか
  *   etag               = true   # ETag / If-None-Match を使うか
  * }
@@ -29,29 +30,29 @@ public final class AssetConf {
 	public static final String KEY_ETAG = "assets.etag";
 
 	/** 既定の不変 max-age（1年） */
-	public static final long DEFAULT_IMMUTABLE_MAX_AGE = 31536000;
+	public static final Duration DEFAULT_IMMUTABLE_MAX_AGE = Duration.ofDays(365);
 
 	private AssetConf () {}
 
 	/**
-	 * max-age（秒）
+	 * max-age
 	 *
-	 * @return	秒数
+	 * @return	時間
 	 */
-	public static long maxAge () {
+	public static Duration maxAge () {
 
-		return Conf.conf().getLong(KEY_MAX_AGE, 0);
+		return Conf.conf().getDuration(KEY_MAX_AGE, Duration.ZERO);
 
 	}
 
 	/**
-	 * 不変扱いのファイルの max-age（秒）
+	 * 不変扱いのファイルの max-age
 	 *
-	 * @return	秒数
+	 * @return	時間
 	 */
-	public static long immutableMaxAge () {
+	public static Duration immutableMaxAge () {
 
-		return Conf.conf().getLong(KEY_IMMUTABLE_MAX_AGE, DEFAULT_IMMUTABLE_MAX_AGE);
+		return Conf.conf().getDuration(KEY_IMMUTABLE_MAX_AGE, DEFAULT_IMMUTABLE_MAX_AGE);
 
 	}
 

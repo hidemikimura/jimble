@@ -1,5 +1,6 @@
 package io.jimble.web.cookie;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.crypto.Secrets;
 import java.util.List;
@@ -14,7 +15,8 @@ import java.util.List;
  *   http_only  = true      # JavaScript から読めない
  *   same_site  = "lax"     # none | strict | lax
  *   domain     = ""        # 省略で発行元ドメイン
- *   max_age    = 31536000  # 秒。0 以下でセッション Cookie
+ *   max_age    = 365d      # 0 以下でセッション Cookie
+ *   accept_unsigned = false # 署名を入れる移行期間だけ true にする
  * }
  * </pre>
  */
@@ -38,11 +40,31 @@ public final class CookieConf {
 	/** 設定キー：ドメイン */
 	public static final String KEY_DOMAIN = "cookie.domain";
 
-	/** 設定キー：有効秒数 */
+	/**
+	 * 設定キー：署名が無い Cookie も受け付けるか（要件 D-159）
+	 *
+	 * <p>
+	 * <b>{@code cookie.secret} を初めて設定した瞬間、
+	 * すでに配ってある Cookie が全部いっぺんに検証落ちして捨てられる</b>——
+	 * {@code sid} も {@code csrf_token} も {@code remember} も flash もである。
+	 * 見えるのは<b>全員ログアウト、フォームは 403</b>で、
+	 * <b>例外もログも出ない</b>（捨てるのが正しい動きだからである）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>これを true にしている間は、署名が無い Cookie も読む。</b>
+	 * 書くほうは最初から署名するので、<b>放っておけば署名つきに入れ替わる</b>——
+	 * 入れ替わりきったら false に戻す（戻さないと、
+	 * <b>署名を外した Cookie が通り続ける</b>ので意味が無くなる）。
+	 * </p>
+	 */
+	public static final String KEY_ACCEPT_UNSIGNED = "cookie.accept_unsigned";
+
+	/** 設定キー：有効期間 */
 	public static final String KEY_MAX_AGE = "cookie.max_age";
 
-	/** 既定の有効秒数（1年） */
-	public static final long DEFAULT_MAX_AGE = 365L * 24 * 60 * 60;
+	/** 既定の有効期間（1年） */
+	public static final Duration DEFAULT_MAX_AGE = Duration.ofDays(365);
 
 	private CookieConf () {}
 
@@ -91,6 +113,21 @@ public final class CookieConf {
 	public static boolean isSigned () {
 
 		return !secret().isEmpty();
+
+	}
+
+	/**
+	 * 署名が無い Cookie も受け付けるか（要件 D-159）
+	 *
+	 * <p>
+	 * <b>既定は false。</b>入れ替えの途中でだけ true にして、戻す。
+	 * </p>
+	 *
+	 * @return	受け付ける場合 = true
+	 */
+	public static boolean acceptUnsigned () {
+
+		return Conf.conf().getBoolean(KEY_ACCEPT_UNSIGNED, false);
 
 	}
 
@@ -150,11 +187,16 @@ public final class CookieConf {
 	/**
 	 * 有効秒数
 	 *
-	 * @return	秒数
+	 * <p>
+	 * <b>ここだけ秒で返す。</b>Set-Cookie の {@code Max-Age} が秒だからで、
+	 * 呼んだ側がそのままヘッダに書ける形にしてある。
+	 * </p>
+	 *
+	 * @return	秒数（0 以下ならセッション Cookie）
 	 */
 	public static long maxAge () {
 
-		long maxAge = Conf.conf().getLong(KEY_MAX_AGE, DEFAULT_MAX_AGE);
+		long maxAge = Conf.conf().getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE).toSeconds();
 
 		return maxAge > 0 ? maxAge : Cookie.MAX_AGE_SESSION;
 

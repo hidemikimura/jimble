@@ -130,7 +130,7 @@ public final class Lockout {
 
 		String hashed = hash(key);
 		long now = nowMillis();
-		long forgetBefore = now - Duration.ofHours(LockoutConf.forgetHours()).toMillis();
+		long forgetBefore = now - LockoutConf.forget().toMillis();
 
 		try (DB db = DBUtil.getMainDB()) {
 
@@ -213,7 +213,7 @@ public final class Lockout {
 			return 0;
 		}
 
-		long limit = nowMillis() - Duration.ofHours(LockoutConf.forgetHours()).toMillis();
+		long limit = nowMillis() - LockoutConf.forget().toMillis();
 
 		try (DB db = DBUtil.getMainDB()) {
 			return db.delete("DELETE FROM %s WHERE last_failed_at < ?".formatted(table(db)), limit);
@@ -262,7 +262,7 @@ public final class Lockout {
 			return 0;
 		}
 
-		long max = LockoutConf.maxSeconds();
+		long max = LockoutConf.max().toSeconds();
 
 		/*
 		 * <b>先に上限で打ち切る。</b>
@@ -273,7 +273,7 @@ public final class Lockout {
 			return max;
 		}
 
-		long seconds = LockoutConf.baseSeconds() * (1L << (over - 1));
+		long seconds = LockoutConf.base().toSeconds() * (1L << (over - 1));
 
 		return Math.min(seconds, max);
 
@@ -287,7 +287,7 @@ public final class Lockout {
 	 */
 	private static boolean isForgotten (long lastFailedAt) {
 
-		return nowMillis() - lastFailedAt > Duration.ofHours(LockoutConf.forgetHours()).toMillis();
+		return nowMillis() - lastFailedAt > LockoutConf.forget().toMillis();
 
 	}
 

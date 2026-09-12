@@ -239,8 +239,9 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
 
 - **コードを入れるまでは「ログインしていない」。**`Auth.principal` は `ANONYMOUS`
 - **`auth.mfa.secret_key` が無ければ `enroll` は例外。**秘密鍵は暗号化して持つ
-- **`cipher.key` を流用しない。**`hash.password.encrypt` の既定が
-  「`cipher.key` があれば true」なので、**保存済みのパスワードが読めなくなり全員入れなくなる**
+- **`cipher.key` を流用しない。**`cipher.*` を書くと **`hash.password.encrypt` も書かないと起動しない**。
+  `true` にすると**保存済みの BCrypt が「暗号化済み」として読まれ、全員入れなくなる**。
+  二要素には `auth.mfa.secret_key` を使う
 - 回復コードは **`enroll` の戻り値でしか見られない**（DB にはハッシュだけ）。使うと消える
 - `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
 - 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**
@@ -284,3 +285,11 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
 | ファイルアップロード | <https://jimble.io/ja/upload.md> |
 | SSE / WebSocket | <https://jimble.io/ja/sse.md> / <https://jimble.io/ja/websocket.md> |
 | よくある落とし穴 | <https://jimble.io/ja/pitfalls.md> |
+
+## 設定の値には単位を書く（要件 D-159）
+
+時間と大きさは **単位を値に書く**（`session.timeout = 30m` / `upload.max_file_size = 10MiB`）。
+**素の数値は起動時に落ちる。**`MB` は 1000 の3乗、`MiB` は 1024 の3乗。
+
+`db.<名前>` は **snake_case**（`maximum_pool_size` / `idle_timeout` / `schema`）。
+**表に無いキーを書くと起動時に落ちる**（camelCase の古い綴りは警告つきで読む）。

@@ -1,5 +1,6 @@
 package io.jimble.batch;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.log.Log;
 
@@ -11,11 +12,11 @@ import java.net.InetAddress;
  * <pre>
  * batch {
  *   scheduler_id            = ""    # このインスタンスの識別子（既定：ホスト名）
- *   heartbeat_seconds       = 3     # 実行中であることを知らせる間隔
- *   alive_seconds           = 10    # この秒数だけ更新が無ければ「実行中ではない」とみなす
- *   cancel_check_seconds    = 3     # 中断指示を見にいく間隔
- *   progress_seconds        = 5     # チャンクバッチが進み具合を履歴に書く間隔
- *   all_stop_hours          = 1     # 全停止フラグが効く時間
+ *   heartbeat               = 3s    # 実行中であることを知らせる間隔
+ *   alive                   = 10s   # これだけ更新が無ければ「実行中ではない」とみなす
+ *   cancel_check            = 3s    # 中断指示を見にいく間隔
+ *   progress                = 5s    # チャンクバッチが進み具合を履歴に書く間隔
+ *   all_stop                = 1h    # 全停止フラグが効く時間
  * }
  * </pre>
  */
@@ -24,20 +25,20 @@ public final class BatchConf {
 	/** 設定キー：インスタンス識別子 */
 	public static final String KEY_SCHEDULER_ID = "batch.scheduler_id";
 
-	/** 設定キー：ハートビート間隔（秒） */
-	public static final String KEY_HEARTBEAT_SECONDS = "batch.heartbeat_seconds";
+	/** 設定キー：ハートビート間隔 */
+	public static final String KEY_HEARTBEAT = "batch.heartbeat";
 
-	/** 設定キー：生存とみなす秒数 */
-	public static final String KEY_ALIVE_SECONDS = "batch.alive_seconds";
+	/** 設定キー：生存とみなす時間 */
+	public static final String KEY_ALIVE = "batch.alive";
 
-	/** 設定キー：中断指示を見にいく間隔（秒） */
-	public static final String KEY_CANCEL_CHECK_SECONDS = "batch.cancel_check_seconds";
+	/** 設定キー：中断指示を見にいく間隔 */
+	public static final String KEY_CANCEL_CHECK = "batch.cancel_check";
 
-	/** 設定キー：進み具合を履歴に書く間隔（秒） */
-	public static final String KEY_PROGRESS_SECONDS = "batch.progress_seconds";
+	/** 設定キー：進み具合を履歴に書く間隔 */
+	public static final String KEY_PROGRESS = "batch.progress";
 
-	/** 設定キー：全停止フラグが効く時間（時間） */
-	public static final String KEY_ALL_STOP_HOURS = "batch.all_stop_hours";
+	/** 設定キー：全停止フラグが効く時間 */
+	public static final String KEY_ALL_STOP = "batch.all_stop";
 
 	/* ホスト名（1回だけ引く） */
 	private static volatile String hostName = null;
@@ -93,35 +94,35 @@ public final class BatchConf {
 	}
 
 	/**
-	 * ハートビート間隔（秒）
+	 * ハートビート間隔
 	 *
-	 * @return	秒数
+	 * @return	間隔
 	 */
-	public static long heartbeatSeconds () {
+	public static Duration heartbeat () {
 
-		return Conf.conf().getLong(KEY_HEARTBEAT_SECONDS, 3);
+		return Conf.conf().getDuration(KEY_HEARTBEAT, Duration.ofSeconds(3));
 
 	}
 
 	/**
-	 * 生存とみなす秒数
+	 * 生存とみなす時間
 	 *
-	 * @return	秒数
+	 * @return	時間
 	 */
-	public static long aliveSeconds () {
+	public static Duration alive () {
 
-		return Conf.conf().getLong(KEY_ALIVE_SECONDS, 10);
+		return Conf.conf().getDuration(KEY_ALIVE, Duration.ofSeconds(10));
 
 	}
 
 	/**
-	 * 中断指示を見にいく間隔（秒）
+	 * 中断指示を見にいく間隔
 	 *
-	 * @return	秒数
+	 * @return	間隔
 	 */
-	public static long cancelCheckSeconds () {
+	public static Duration cancelCheck () {
 
-		return Conf.conf().getLong(KEY_CANCEL_CHECK_SECONDS, 3);
+		return Conf.conf().getDuration(KEY_CANCEL_CHECK, Duration.ofSeconds(3));
 
 	}
 
@@ -133,22 +134,22 @@ public final class BatchConf {
 	 * 上書きする間隔である。0 以下にすると<b>チャンクごとに毎回書く。</b>
 	 * </p>
 	 *
-	 * @return	秒数
+	 * @return	間隔
 	 */
-	public static long progressSeconds () {
+	public static Duration progress () {
 
-		return Conf.conf().getLong(KEY_PROGRESS_SECONDS, 5);
+		return Conf.conf().getDuration(KEY_PROGRESS, Duration.ofSeconds(5));
 
 	}
 
 	/**
-	 * 全停止フラグが効く時間（時間）
+	 * 全停止フラグが効く時間
 	 *
 	 * @return	時間
 	 */
-	public static long allStopHours () {
+	public static Duration allStop () {
 
-		return Conf.conf().getLong(KEY_ALL_STOP_HOURS, 1);
+		return Conf.conf().getDuration(KEY_ALL_STOP, Duration.ofHours(1));
 
 	}
 

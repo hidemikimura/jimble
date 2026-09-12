@@ -1,5 +1,6 @@
 package io.jimble.mq;
 
+import java.time.Duration;
 import io.jimble.db.DB;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
@@ -143,12 +144,12 @@ class MqRegistryTest {
 	@DisplayName("リトライの間隔は回を追うごとに伸び、上限で止まる")
 	void backoff () {
 
-		long base = MqConf.retryBackoffSeconds();
-		long max = MqConf.retryBackoffMaxSeconds();
+		Duration base = MqConf.retryBackoff();
+		Duration max = MqConf.retryBackoffMax();
 
-		assertEquals(Math.min(base, max), MqConf.backoffSeconds(1));
-		assertTrue(MqConf.backoffSeconds(2) >= MqConf.backoffSeconds(1));
-		assertEquals(max, MqConf.backoffSeconds(100), "上限で止まっていない");
+		assertEquals(base.compareTo(max) < 0 ? base : max, MqConf.backoff(1));
+		assertTrue(MqConf.backoff(2).compareTo(MqConf.backoff(1)) >= 0);
+		assertEquals(max, MqConf.backoff(100), "上限で止まっていない");
 
 	}
 

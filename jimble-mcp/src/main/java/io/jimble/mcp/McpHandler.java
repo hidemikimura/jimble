@@ -86,7 +86,7 @@ public final class McpHandler {
 			return;
 		}
 
-		if (id != null && McpProtocol.VERSION.equals(version)) {
+		if (id != null && McpProtocol.version().equals(version)) {
 
 			String mismatch = McpHeaders.validate(context, body);
 

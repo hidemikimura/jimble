@@ -61,7 +61,7 @@ public final class SqlCacheConf {
 	public static final int DEFAULT_MAX = 10000;
 
 	/** 既定の期限（秒） */
-	public static final long DEFAULT_TTL_SECONDS = 300;
+	public static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
 	/*
 	 * 有効かどうかは<b>更新のたびに見る</b>ので、読み直しを最小にする。
@@ -136,7 +136,7 @@ public final class SqlCacheConf {
 	 */
 	public static Duration ttl () {
 
-		return Duration.ofSeconds(Math.max(0, Conf.conf().getLong(KEY_TTL, DEFAULT_TTL_SECONDS)));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_TTL, DEFAULT_TTL), Duration.ZERO);
 
 	}
 

@@ -1,5 +1,6 @@
 package io.jimble.db.cache;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 import java.util.*;
@@ -44,7 +45,7 @@ public class MemoryCache extends AbstractCache {
 	 */
 	private static long expireSecond () {
 
-		return Conf.conf().getLong(KEY_EXPIRE, 0);
+		return Conf.conf().getDuration(KEY_EXPIRE, Duration.ZERO).toSeconds();
 
 	}
 

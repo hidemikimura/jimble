@@ -220,7 +220,7 @@ class LockoutIntegrationTest {
 		try {
 
 			Conf.replace(ConfigFactory
-				.parseString("auth.lockout.max_seconds = 3000000")
+				.parseString("auth.lockout.max = 3000000s")
 				.withFallback(original));
 
 			// 25 回失敗 = 2^21 = 約 24 日。48 時間経ったくらいでは引き切れない

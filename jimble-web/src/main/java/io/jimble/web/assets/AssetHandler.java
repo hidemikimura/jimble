@@ -175,8 +175,8 @@ public final class AssetHandler implements Handler {
 	private void applyCacheControl (WebContext context, String resource) {
 
 		String value = AssetPath.isImmutable(resource)
-			? "public,max-age=%d,immutable".formatted(AssetConf.immutableMaxAge())
-			: "public,max-age=%d,must-revalidate".formatted(AssetConf.maxAge());
+			? "public,max-age=%d,immutable".formatted(AssetConf.immutableMaxAge().toSeconds())
+			: "public,max-age=%d,must-revalidate".formatted(AssetConf.maxAge().toSeconds());
 
 		context.response().setResponseHeader("Cache-Control", value);
 

@@ -67,7 +67,7 @@ import java.util.function.LongFunction;
  * 照合が通ったら、<b>validator を作り直して Cookie を出し直す</b>。
  * こうすると、<b>盗まれた Cookie と本物の Cookie は同時に生きられない</b>——
  * 先に使ったほうが回してしまうので、あとから来たほうは<b>回転前の古い値</b>を持っている。
- * それが<b>盗まれた合図</b>になる（{@link RememberConf#graceSeconds 猶予}の外なら）。
+ * それが<b>盗まれた合図</b>になる（{@link RememberConf#grace 猶予}の外なら）。
  * </p>
  *
  * <p>
@@ -311,8 +311,8 @@ public final class Remember {
 		}
 
 		long now = nowMillis();
-		long slidingLimit = now - Duration.ofDays(RememberConf.slidingDays()).toMillis();
-		long absoluteLimit = now - Duration.ofDays(RememberConf.absoluteDays()).toMillis();
+		long slidingLimit = now - RememberConf.sliding().toMillis();
+		long absoluteLimit = now - RememberConf.absolute().toMillis();
 
 		try (DB db = DBUtil.getMainDB()) {
 			return db.delete("DELETE FROM %s WHERE last_used_at < ? OR created_at < ?"
@@ -502,7 +502,7 @@ public final class Remember {
 
 		long now = nowMillis();
 
-		if (now - row.getLong("last_used_at") > Duration.ofDays(RememberConf.slidingDays()).toMillis()) {
+		if (now - row.getLong("last_used_at") > RememberConf.sliding().toMillis()) {
 			return true;
 		}
 
@@ -510,7 +510,7 @@ public final class Remember {
 		 * <b>使っていても、いつかは切れる。</b>
 		 * 滑る期限だけだと、毎日来る人の Cookie は永遠に有効なままになる。
 		 */
-		return now - row.getLong("created_at") > Duration.ofDays(RememberConf.absoluteDays()).toMillis();
+		return now - row.getLong("created_at") > RememberConf.absolute().toMillis();
 
 	}
 
@@ -523,7 +523,7 @@ public final class Remember {
 	private static boolean inGrace (Data row) {
 
 		return nowMillis() - row.getLong("rotated_at")
-			<= Duration.ofSeconds(RememberConf.graceSeconds()).toMillis();
+			<= RememberConf.grace().toMillis();
 
 	}
 
@@ -542,7 +542,7 @@ public final class Remember {
 		 * ブラウザに残り続ける（毎回1往復むだになる）。
 		 */
 		context.cookies().put(cookieName(), selector + SEPARATOR + validator
-			, Duration.ofDays(RememberConf.slidingDays()).toSeconds());
+			, RememberConf.sliding().toSeconds());
 
 	}
 

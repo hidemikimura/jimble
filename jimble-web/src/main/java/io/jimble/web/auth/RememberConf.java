@@ -1,5 +1,6 @@
 package io.jimble.web.auth;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -10,9 +11,9 @@ import io.jimble.util.conf.Conf;
  *     remember {
  *         enabled       = true        # 既定。DB が無ければ何もしない
  *         cookie_name   = "remember"
- *         sliding_days  = 30          # 最後に使ってからこれだけ
- *         absolute_days = 90          # 発行してからこれを超えたら、使っていても切れる
- *         grace_seconds = 60          # 回した直後、古いほうも通す時間
+ *         sliding  = 30d              # 最後に使ってからこれだけ
+ *         absolute = 90d              # 発行してからこれを超えたら、使っていても切れる
+ *         grace    = 60s              # 回した直後、古いほうも通す時間
  *     }
  * }
  * </pre>
@@ -37,14 +38,14 @@ public final class RememberConf {
 	/** Cookie の名前 */
 	public static final String KEY_COOKIE_NAME = "auth.remember.cookie_name";
 
-	/** 最後に使ってからの期限（日） */
-	public static final String KEY_SLIDING_DAYS = "auth.remember.sliding_days";
+	/** 最後に使ってからの期限 */
+	public static final String KEY_SLIDING = "auth.remember.sliding";
 
-	/** 発行してからの期限（日） */
-	public static final String KEY_ABSOLUTE_DAYS = "auth.remember.absolute_days";
+	/** 発行してからの期限 */
+	public static final String KEY_ABSOLUTE = "auth.remember.absolute";
 
-	/** 回した直後の猶予（秒） */
-	public static final String KEY_GRACE_SECONDS = "auth.remember.grace_seconds";
+	/** 回した直後の猶予 */
+	public static final String KEY_GRACE = "auth.remember.grace";
 
 	private RememberConf () {
 	}
@@ -74,13 +75,14 @@ public final class RememberConf {
 	}
 
 	/**
-	 * 最後に使ってからの期限（日）
+	 * 最後に使ってからの期限
 	 *
-	 * @return	日
+	 * @return	期限
 	 */
-	public static long slidingDays () {
+	public static Duration sliding () {
 
-		return Math.max(1, Conf.conf().getLong(KEY_SLIDING_DAYS, 30));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_SLIDING, Duration.ofDays(30))
+			, Duration.ofDays(1));
 
 	}
 
@@ -88,14 +90,15 @@ public final class RememberConf {
 	 * 発行してからの期限（日）
 	 *
 	 * <p>
-	 * <b>{@link #slidingDays} より短くしても意味はある</b>（そのときは実質こちらだけが効く）。
+	 * <b>{@link #sliding} より短くしても意味はある</b>（そのときは実質こちらだけが効く）。
 	 * </p>
 	 *
-	 * @return	日
+	 * @return	期限
 	 */
-	public static long absoluteDays () {
+	public static Duration absolute () {
 
-		return Math.max(1, Conf.conf().getLong(KEY_ABSOLUTE_DAYS, 90));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_ABSOLUTE, Duration.ofDays(90))
+			, Duration.ofDays(1));
 
 	}
 
@@ -109,11 +112,12 @@ public final class RememberConf {
 	 * それを盗用とみなすと、ふつうに使っているだけの人が締め出される。
 	 * </p>
 	 *
-	 * @return	秒
+	 * @return	猶予
 	 */
-	public static long graceSeconds () {
+	public static Duration grace () {
 
-		return Math.max(0, Conf.conf().getLong(KEY_GRACE_SECONDS, 60));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_GRACE, Duration.ofSeconds(60))
+			, Duration.ZERO);
 
 	}
 

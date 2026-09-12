@@ -375,7 +375,7 @@ class RouteToolTest {
 			.timeout(Duration.ofSeconds(20))
 			.header("Content-Type", "application/json")
 			.header("Accept", "application/json, text/event-stream")
-			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION)
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version())
 			.header(McpProtocol.HEADER_METHOD, method)
 			.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
 

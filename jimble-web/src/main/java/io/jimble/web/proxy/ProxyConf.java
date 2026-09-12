@@ -9,8 +9,8 @@ import java.time.Duration;
  *
  * <pre>
  * proxy {
- *   connect_timeout_ms = 5000    # 転送先に繋ぐまでの上限（ミリ秒）
- *   request_timeout_ms = 30000   # 応答を待つ上限（ミリ秒）
+ *   connect_timeout = 5s     # 転送先に繋ぐまでの上限
+ *   request_timeout = 30s    # 応答を待つ上限
  * }
  * </pre>
  *
@@ -21,17 +21,17 @@ import java.time.Duration;
  */
 public final class ProxyConf {
 
-	/** 設定キー：接続の上限（ミリ秒） */
-	public static final String KEY_CONNECT_TIMEOUT_MS = "proxy.connect_timeout_ms";
+	/** 設定キー：接続の上限 */
+	public static final String KEY_CONNECT_TIMEOUT = "proxy.connect_timeout";
 
-	/** 設定キー：応答待ちの上限（ミリ秒） */
-	public static final String KEY_REQUEST_TIMEOUT_MS = "proxy.request_timeout_ms";
+	/** 設定キー：応答待ちの上限 */
+	public static final String KEY_REQUEST_TIMEOUT = "proxy.request_timeout";
 
-	/** 既定の接続の上限（ミリ秒） */
-	public static final long DEFAULT_CONNECT_TIMEOUT_MS = 5000;
+	/** 既定の接続の上限 */
+	public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
 
-	/** 既定の応答待ちの上限（ミリ秒） */
-	public static final long DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+	/** 既定の応答待ちの上限 */
+	public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
 	private ProxyConf () {}
 
@@ -42,7 +42,7 @@ public final class ProxyConf {
 	 */
 	public static Duration connectTimeout () {
 
-		return Duration.ofMillis(Conf.conf().getLong(KEY_CONNECT_TIMEOUT_MS, DEFAULT_CONNECT_TIMEOUT_MS));
+		return Conf.conf().getDuration(KEY_CONNECT_TIMEOUT, DEFAULT_CONNECT_TIMEOUT);
 
 	}
 
@@ -53,7 +53,7 @@ public final class ProxyConf {
 	 */
 	public static Duration requestTimeout () {
 
-		return Duration.ofMillis(Conf.conf().getLong(KEY_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS));
+		return Conf.conf().getDuration(KEY_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT);
 
 	}
 

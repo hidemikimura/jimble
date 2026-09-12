@@ -11,6 +11,7 @@ import io.helidon.webserver.websocket.WsRouting;
 import io.jimble.util.log.Log;
 import io.jimble.web.ws.WsBridge;
 import io.jimble.web.cookie.CookieConf;
+import io.jimble.web.upload.UploadConf;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.router.RouteInfo;
 
@@ -162,7 +163,7 @@ public final class JimbleServer {
 			// リクエスト本文の上限（要件 F-H-01 / NF-S-05）
 			.maxPayloadSize(ServerConf.maxRequestSize())
 			// アイドルタイムアウト（要件 F-H-01）
-			.idleConnectionTimeout(Duration.ofSeconds(ServerConf.idleTimeoutSeconds()))
+			.idleConnectionTimeout(ServerConf.idleTimeout())
 			// 応答の圧縮（要件 F-H-03）
 			.contentEncoding(encoding -> encoding.contentEncodingsDiscoverServices(ServerConf.compression()))
 			/*
@@ -229,11 +230,12 @@ public final class JimbleServer {
 			ServerConf.host().isEmpty() ? "全部" : ServerConf.host()
 			, ServerConf.maxRequestSize()
 			, ServerConf.maxHeaderSize()
-			, ServerConf.idleTimeoutSeconds()
+			, ServerConf.idleTimeout().toSeconds()
 			, ServerConf.compression()
 			, ServerConf.trustProxy()));
 
 		warnSecureCookieInLocal();
+		checkUploadLimits();
 
 		/*
 		 * SIGTERM で全部止める（要件 D-91）。
@@ -351,7 +353,7 @@ public final class JimbleServer {
 
 		Shutdown.markStopping();
 
-		sleepSeconds(ServerConf.shutdownGraceSeconds());
+		sleepSeconds(ServerConf.shutdownGrace().toSeconds());
 
 		/*
 		 * 断つのは「このサーバー」だけにする。
@@ -378,11 +380,11 @@ public final class JimbleServer {
 			return;
 		}
 
-		long timeoutMillis = ServerConf.shutdownTimeoutSeconds() * 1000;
+		long timeoutMillis = ServerConf.shutdownTimeout().toMillis();
 		long until = System.currentTimeMillis() + timeoutMillis;
 
 		Log.info("処理中のリクエストを待ちます: %d 件（最大 %d 秒）"
-			.formatted(remaining, ServerConf.shutdownTimeoutSeconds()));
+			.formatted(remaining, ServerConf.shutdownTimeout().toSeconds()));
 
 		while (state.inFlight.get() > 0 && System.currentTimeMillis() < until) {
 
@@ -399,8 +401,8 @@ public final class JimbleServer {
 
 		if (remaining > 0) {
 			// 待ちきれなかったことは黙らない。切られた相手がいる
-			Log.warn("処理中のリクエストが %d 件残ったまま停止します（server.shutdown_timeout_seconds = %d）"
-				.formatted(remaining, ServerConf.shutdownTimeoutSeconds()));
+			Log.warn("処理中のリクエストが %d 件残ったまま停止します（server.shutdown_timeout = %d 秒）"
+				.formatted(remaining, ServerConf.shutdownTimeout().toSeconds()));
 		}
 
 	}
@@ -465,6 +467,46 @@ public final class JimbleServer {
 		STARTED.clear();
 
 		return count;
+
+	}
+
+	/**
+	 * アップロードの上限が本文の上限を超えていたら落とす（要件 D-159 / F-X-05）
+	 *
+	 * <p>
+	 * <b>{@code upload.max_total_size} は {@code server.max_request_size} に頭を押さえられている。</b>
+	 * 本文は helidon が先に切るので、<b>アップロード側の上限には決して届かない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>既定のままでも矛盾していた</b>——合計 50MB に対して本文 10MB である。
+	 * 「50MB まで上げられる」と読んで 50MB のファイルを送ると、
+	 * <b>upload のエラーではない別の失敗</b>が返る。
+	 * </p>
+	 */
+	private static void checkUploadLimits () {
+
+		long total = UploadConf.maxTotalSize();
+		long request = ServerConf.maxRequestSize();
+
+		if (total <= request) {
+			return;
+		}
+
+		/*
+		 * <b>既定のままでも矛盾していた</b>（合計 50MB に対して本文 10MB）。
+		 * 先に helidon が切るので、<b>upload の上限には決して届かない</b>——
+		 * しかも出るのは upload のエラーではなく<b>別の失敗</b>なので、
+		 * 設定を読み直しても原因が見つからない。
+		 *
+		 * <b>黙って引き上げない。</b>引き上げると、
+		 * 今度は<b>書いていない上限で通る</b>ことになる。
+		 */
+		throw new IllegalStateException(
+			("upload.max_total_size（%d バイト）が server.max_request_size（%d バイト）を超えています。"
+				+ "先にサーバー側で切られるので、この上限には届きません。"
+				+ "server.max_request_size を上げるか、upload.max_total_size を下げてください")
+				.formatted(total, request));
 
 	}
 

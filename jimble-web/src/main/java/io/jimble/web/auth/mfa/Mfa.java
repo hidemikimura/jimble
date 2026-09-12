@@ -505,7 +505,7 @@ public final class Mfa {
 		 * <b>猶予を過ぎたら無かったことにする。</b>
 		 * 「パスワードだけ通った状態」を長く残さない。
 		 */
-		if (nowSeconds() - context.session().getLong(KEY_PENDING_AT) > MfaConf.pendingSeconds()) {
+		if (nowSeconds() - context.session().getLong(KEY_PENDING_AT) > MfaConf.pending().toSeconds()) {
 			return Principal.ANONYMOUS;
 		}
 

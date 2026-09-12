@@ -1,6 +1,7 @@
 # 公開 API と内部実装の線引き（要件 NF-C-03 / NF-C-04）
 #
 # public   … アプリが書くときに触る。1.0 以降、壊す前に非推奨期間を1マイナー置く
+# preview  … 外部の仕様に追随する。<b>1.0 の約束の対象外</b>（要件 D-158）
 # internal … 実装の都合。<b>予告なく変わる</b>
 # empty    … クラスを持たない入れ物
 #
@@ -19,7 +20,7 @@ io.jimble.core
 io.jimble.util
 io.jimble.web
 
-[public] 公開 API（103）
+[public] 公開 API（98）
 io.jimble.batch
 io.jimble.batch.manager
 io.jimble.batch.scheduler
@@ -51,11 +52,6 @@ io.jimble.db.sql.query.select
 io.jimble.db.sql.query.where
 io.jimble.db.sqlcache
 io.jimble.db.value
-io.jimble.mcp
-io.jimble.mcp.prompt
-io.jimble.mcp.resource
-io.jimble.mcp.schema
-io.jimble.mcp.tool
 io.jimble.mq
 io.jimble.mq.status
 io.jimble.otel
@@ -123,6 +119,18 @@ io.jimble.web.validation.error
 io.jimble.web.validation.validator
 io.jimble.web.ws
 io.jimble.web.ws.context
+
+[preview] 外部の仕様に追随する。1.0 の約束の対象外（5）
+# MCP は2年で5版が出ており、毎回破壊的な変更が入っている。
+# jimble は1版だけ実装する（McpProtocol）ので、仕様が変わるたびに
+# 「公開 API を壊す」か「仕様に追随しない」かの二択になる——
+# <b>1.0 の「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
+# 詳しくは docs/site/ja/versioning.md
+io.jimble.mcp
+io.jimble.mcp.prompt
+io.jimble.mcp.resource
+io.jimble.mcp.schema
+io.jimble.mcp.tool
 
 [internal] 内部実装（49）
 io.jimble.cli

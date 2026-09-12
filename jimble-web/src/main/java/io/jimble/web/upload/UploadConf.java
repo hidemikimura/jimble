@@ -9,8 +9,8 @@ import java.nio.file.Path;
  *
  * <pre>
  * upload {
- *   max_file_size  = 10485760   # 1ファイルの上限（バイト。既定 10MB）
- *   max_total_size = 52428800   # 1リクエストの合計上限（バイト。既定 50MB）
+ *   max_file_size  = 10MiB       # 1ファイルの上限
+ *   max_total_size = 10MiB       # 1リクエストの合計上限（server.max_request_size と揃える）
  *   max_files      = 20         # 1リクエストのファイル数上限
  *   temp_dir       = ""         # 一時保存先（空なら OS の一時ディレクトリ）
  * }
@@ -34,11 +34,24 @@ public final class UploadConf {
 	/** 設定キー：一時保存先 */
 	public static final String KEY_TEMP_DIR = "upload.temp_dir";
 
-	/** 既定の1ファイル上限（10MB） */
+	/** 既定の1ファイル上限（10MiB） */
 	public static final long DEFAULT_MAX_FILE_SIZE = 10L * 1024 * 1024;
 
-	/** 既定の合計上限（50MB） */
-	public static final long DEFAULT_MAX_TOTAL_SIZE = 50L * 1024 * 1024;
+	/**
+	 * 既定の合計上限（10MiB）
+	 *
+	 * <p>
+	 * <b>{@code server.max_request_size} の既定と同じにしてある</b>（要件 D-159）。
+	 * 以前は 50MiB だったが、<b>本文は先に helidon が 10MiB で切る</b>ので、
+	 * <b>既定のままでは 50MiB に決して届かなかった</b>——
+	 * しかも出るのはアップロードのエラーではなく別の失敗である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>上げるときは両方上げる。</b>片方だけ上げると起動時に落ちる。
+	 * </p>
+	 */
+	public static final long DEFAULT_MAX_TOTAL_SIZE = 10L * 1024 * 1024;
 
 	/** 既定のファイル数上限 */
 	public static final int DEFAULT_MAX_FILES = 20;
@@ -55,7 +68,7 @@ public final class UploadConf {
 	 */
 	public static long maxFileSize () {
 
-		return Conf.conf().getLong(KEY_MAX_FILE_SIZE, DEFAULT_MAX_FILE_SIZE);
+		return Conf.conf().getBytes(KEY_MAX_FILE_SIZE, DEFAULT_MAX_FILE_SIZE);
 
 	}
 
@@ -66,7 +79,7 @@ public final class UploadConf {
 	 */
 	public static long maxTotalSize () {
 
-		return Conf.conf().getLong(KEY_MAX_TOTAL_SIZE, DEFAULT_MAX_TOTAL_SIZE);
+		return Conf.conf().getBytes(KEY_MAX_TOTAL_SIZE, DEFAULT_MAX_TOTAL_SIZE);
 
 	}
 

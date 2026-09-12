@@ -37,7 +37,7 @@ public final class RedisSessionStore implements SessionStore {
 	 */
 	public RedisSessionStore () {
 
-		this(SessionConf.timeoutMinutes());
+		this(SessionConf.timeout().toMinutes());
 
 	}
 

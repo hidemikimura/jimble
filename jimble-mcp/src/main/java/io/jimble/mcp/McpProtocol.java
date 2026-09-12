@@ -13,8 +13,26 @@ package io.jimble.mcp;
  */
 public final class McpProtocol {
 
-	/** 対応する仕様の版 */
-	public static final String VERSION = "2026-07-28";
+	/* 対応する仕様の版 */
+	private static final String VERSION = "2026-07-28";
+
+	/**
+	 * 対応する仕様の版（要件 D-158）
+	 *
+	 * <p>
+	 * <b>定数ではなくメソッドである。</b>
+	 * {@code public static final String} はアプリのバイトコードへ<b>そのまま焼き付く</b>ので、
+	 * jimble だけ上げても<b>アプリは古い版の文字列を持ち続ける</b>——
+	 * しかも<b>警告も出ない</b>。版が変わるものを定数で出すと、これが起きる。
+	 * </p>
+	 *
+	 * @return	仕様の版（{@code 2026-07-28} の形）
+	 */
+	public static String version () {
+
+		return VERSION;
+
+	}
 
 	/** JSON-RPC の版 */
 	public static final String JSONRPC_VERSION = "2.0";

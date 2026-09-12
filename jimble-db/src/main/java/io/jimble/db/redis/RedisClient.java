@@ -29,6 +29,41 @@ public class RedisClient {
 	/** 既定のポート */
 	public static final int DEFAULT_PORT = 6379;
 
+	/** 設定キー：SSL を使うか */
+	public static final String KEY_SSL = "redis.ssl";
+
+	/** 設定キー：繋ぐまでの上限 */
+	public static final String KEY_CONNECTION_TIMEOUT = "redis.settings.connection_timeout";
+
+	/** 設定キー：コマンドの応答を待つ上限 */
+	public static final String KEY_TIMEOUT = "redis.settings.timeout";
+
+	/** 設定キー：常に開けておく接続の数 */
+	public static final String KEY_CONNECTION_MINIMUM_IDLE = "redis.settings.connection_minimum_idle";
+
+	/** 設定キー：接続プールの大きさ */
+	public static final String KEY_CONNECTION_POOL_SIZE = "redis.settings.connection_pool_size";
+
+	/** 設定キー：やり直す回数 */
+	public static final String KEY_RETRY_ATTEMPTS = "redis.settings.retry_attempts";
+
+	/** 設定キー：やり直しまでの待ちの下限 */
+	public static final String KEY_RETRY_MINIMUM_INTERVAL = "redis.settings.retry_minimum_interval";
+
+	/** 設定キー：やり直しまでの待ちの上限 */
+	public static final String KEY_RETRY_MAXIMUM_INTERVAL = "redis.settings.retry_maximum_interval";
+
+	/** 設定キー：使っていない接続を閉じるまでの時間 */
+	public static final String KEY_IDLE_CONNECTION_TIMEOUT = "redis.settings.idle_connection_timeout";
+
+	/** 設定キー：購読用に常に開けておく接続の数 */
+	public static final String KEY_SUBSCRIPTION_CONNECTION_MINIMUM_IDLE_SIZE
+		= "redis.settings.subscription_connection_minimum_idle_size";
+
+	/** 設定キー：購読用の接続プールの大きさ */
+	public static final String KEY_SUBSCRIPTION_CONNECTION_POOL_SIZE
+		= "redis.settings.subscription_connection_pool_size";
+
 	/* クライアント */
 	private static RedissonClient redissonClient;
 
@@ -97,20 +132,24 @@ public class RedisClient {
 			config.useSingleServer()
 				.setAddress(
 					"%s://%s:%s".formatted(
-						Conf.conf().getBoolean("redis.ssl", false) ? "rediss" : "redis"
+						Conf.conf().getBoolean(KEY_SSL, false) ? "rediss" : "redis"
 						, Conf.conf().getString(KEY_HOST, "")
 						, Conf.conf().getInt(KEY_PORT, DEFAULT_PORT)
 					)
 				)
-				.setConnectTimeout(Conf.conf().getInt("redis.settings.connection_timeout", 10000))
-				.setTimeout(Conf.conf().getInt("redis.settings.timeout", 3000))
-				.setConnectionMinimumIdleSize(Conf.conf().getInt("redis.settings.connection_minimum_idle", 24))
-				.setConnectionPoolSize(Conf.conf().getInt("redis.settings.connection_pool_size", 64))
-				.setRetryAttempts(Conf.conf().getInt("redis.settings.retry_attempts", 3))
-				.setRetryDelay(new EqualJitterDelay(Duration.ofMillis(Conf.conf().getInt("redis.settings.retry_minimum_interval", 500)), Duration.ofMillis(Conf.conf().getInt("redis.settings.retry_maximum_interval", 2000))))
-				.setIdleConnectionTimeout(Conf.conf().getInt("redis.settings.idle_connection_timeout", 10000))
-				.setSubscriptionConnectionMinimumIdleSize(Conf.conf().getInt("redis.settings.subscription_connection_minimum_idle_size", 1))
-				.setSubscriptionConnectionPoolSize(Conf.conf().getInt("redis.settings.subscription_connection_pool_size", 50))
+				.setConnectTimeout(millis(KEY_CONNECTION_TIMEOUT, Duration.ofSeconds(10)))
+				.setTimeout(millis(KEY_TIMEOUT, Duration.ofSeconds(3)))
+				.setConnectionMinimumIdleSize(Conf.conf().getInt(KEY_CONNECTION_MINIMUM_IDLE, 24))
+				.setConnectionPoolSize(Conf.conf().getInt(KEY_CONNECTION_POOL_SIZE, 64))
+				.setRetryAttempts(Conf.conf().getInt(KEY_RETRY_ATTEMPTS, 3))
+				.setRetryDelay(new EqualJitterDelay(
+					Conf.conf().getDuration(KEY_RETRY_MINIMUM_INTERVAL, Duration.ofMillis(500))
+					, Conf.conf().getDuration(KEY_RETRY_MAXIMUM_INTERVAL, Duration.ofSeconds(2))))
+				.setIdleConnectionTimeout(millis(KEY_IDLE_CONNECTION_TIMEOUT, Duration.ofSeconds(10)))
+				.setSubscriptionConnectionMinimumIdleSize(
+					Conf.conf().getInt(KEY_SUBSCRIPTION_CONNECTION_MINIMUM_IDLE_SIZE, 1))
+				.setSubscriptionConnectionPoolSize(
+					Conf.conf().getInt(KEY_SUBSCRIPTION_CONNECTION_POOL_SIZE, 50))
 			;
 
 			redissonClient = Redisson.create(config);
@@ -120,6 +159,20 @@ public class RedisClient {
 			clientLock.unlock();
 
 		}
+
+	}
+
+
+	/**
+	 * 時間をミリ秒で読む（Redisson の設定が int のミリ秒しか受けないため）
+	 *
+	 * @param key			キー
+	 * @param defaultValue	既定値
+	 * @return	ミリ秒
+	 */
+	private static int millis (String key, Duration defaultValue) {
+
+		return (int) Conf.conf().getDuration(key, defaultValue).toMillis();
 
 	}
 

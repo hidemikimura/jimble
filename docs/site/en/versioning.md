@@ -36,6 +36,7 @@ and jimble takes it at its word.
 | --- | --- |
 | **Public API** | What you touch when writing an application: `io.jimble.db`, `io.jimble.web.server`, `io.jimble.util.data` and so on |
 | **Internal** | What only exists inside an entry-point class: `io.jimble.db.sql.query.*` (inside `SQL`), `io.jimble.util.json.encoder` (inside `Dson`) and so on |
+| **Preview** | **Tracks an outside specification, so the promise below does not cover it.** Right now that is only `io.jimble.mcp.*` |
 
 The full list is in
 [`docs/api-packages.txt`](https://github.com/hidemikimura/jimble/blob/main/docs/api-packages.txt).
@@ -48,6 +49,26 @@ The full list is in
 **The list does not go stale.** Add a package and forget to classify it and
 `ApiSurfaceTest` fails. The same test checks that the samples under `examples/` do not
 import anything internal.
+
+### Preview — deliberately outside the promise
+
+**`io.jimble.mcp.*` is not covered by "one minor of deprecation before anything breaks",
+even at 1.0.**
+
+[MCP](./mcp) has published **five revisions in two years, every one of them breaking**
+(2026-07-28 dropped sessions and the GET stream). jimble's policy is to **name the
+revision it implements and implement exactly one**, so every time the spec moves, the
+choice is **break the public API or stop tracking the spec**. Putting it inside the
+promise means it can never track the spec again.
+
+The revision in force is readable as **`McpProtocol.version()`**. It is a method rather
+than a constant because **`public static final String` is inlined into your application's
+bytecode** — as a constant, upgrading jimble would leave your build holding the old
+revision string, with no warning.
+
+If you use `io.jimble.mcp.*`, **read the
+[CHANGELOG](https://github.com/hidemikimura/jimble/blob/main/CHANGELOG.md) before
+upgrading**. Breaks are always written there.
 
 ## When the signature is the same but the result changes
 

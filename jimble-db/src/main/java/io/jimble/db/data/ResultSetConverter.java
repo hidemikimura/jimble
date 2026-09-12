@@ -22,7 +22,8 @@ public class ResultSetConverter {
 	public static final int TYPE_GEOMETRY = -998;
 
 	/* 全ての列がNullのテーブルデータを削除する */
-	private static final boolean removeAllNullTableData = Conf.conf().getBoolean("db.removeAllNullTableData", false);
+	/** 設定キー：全部 null のテーブルを結果から落とすか */
+	public static final String KEY_REMOVE_ALL_NULL_TABLE_DATA = "db.remove_all_null_table_data";
 
 	/**
 	 * ResultSetからオブジェクトへ変換する.
@@ -51,6 +52,15 @@ public class ResultSetConverter {
 		try {
 
 			Data data = new Data();
+
+			/*
+			 * <b>クラス初期化のときに読んでいたのをやめた</b>（要件 D-159）。
+			 * {@code static final} で読むと、<b>設定を読み直しても反映されず</b>、
+			 * Conf が立ち上がる前にこのクラスに触れると落ちる
+			 * （{@code CipherUtil} が鍵を static で読んでいたのと同じ形）。
+			 */
+			boolean removeAllNullTableData =
+				Conf.conf().getBoolean(KEY_REMOVE_ALL_NULL_TABLE_DATA, false);
 
 			HashMap<String, Boolean> keepTableHash = new HashMap<>();
 

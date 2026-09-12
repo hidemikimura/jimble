@@ -171,7 +171,7 @@ conf/migration/blog_example/
 ### 複数のサーバーが同時に起動しても
 
 `db_lock` の行を `FOR UPDATE` で取ってから当てるので、**1台しか流れません。**
-待ちきれなかった側は起動に失敗します（`migration.lock_timeout_seconds`、既定 60 秒）。
+待ちきれなかった側は起動に失敗します（`migration.lock_timeout`、既定 60 秒）。
 
 > [!NOTE]
 > ロック待ちのタイムアウトは**そのセッションだけ**に設定します（`SET SESSION`）。
@@ -298,7 +298,7 @@ codegen {
 migration {
 	on_startup            = "auto"   # auto | true | false。auto はローカル以外で当てる
 	down                  = false    # 巻き戻すか
-	lock_timeout_seconds  = 60
+	lock_timeout  = 1m
 	resource_dir          = "migration"
 }
 

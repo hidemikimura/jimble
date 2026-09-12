@@ -150,8 +150,9 @@ Paging paging = context.request().paging();
 | --- | --- |
 | Keys it reads | `page` / `per` |
 | Defaults | `page = 1`, `per = 10` |
-| Everything | `per=all` (no LIMIT is added) |
-| Renaming the keys | `paging.page` / `paging.per` (configuration) |
+| Cap | `paging.max_per` (200 by default). **A larger request is rounded down to it** |
+| Everything | `per=all`. **The cap still applies, so 200 rows by default** (`paging.max_per = 0` for a real "everything") |
+| Renaming the keys | `paging.name_page` / `paging.name_per` (configuration) |
 | A non-numeric value | Ignored; the default is used |
 
 Write `context.request().paging(20)` to change the default used when no `per` arrives.

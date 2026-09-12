@@ -204,11 +204,11 @@ public final class DbScheduler implements CancelOrderNotify {
 
 			// batch_master を読み直す＋ハートビート
 			ticker.scheduleWithFixedDelay(this::reload
-				, 0, SchedulerConf.reloadIntervalMs(), TimeUnit.MILLISECONDS);
+				, 0, SchedulerConf.reloadInterval().toMillis(), TimeUnit.MILLISECONDS);
 
 			// cron
 			ticker.scheduleWithFixedDelay(() -> tick(ZonedDateTime.now())
-				, SchedulerConf.tickIntervalMs(), SchedulerConf.tickIntervalMs(), TimeUnit.MILLISECONDS);
+				, SchedulerConf.tickInterval().toMillis(), SchedulerConf.tickInterval().toMillis(), TimeUnit.MILLISECONDS);
 
 			// 「いま動かして」を受ける口（要件 F-B-11）
 			mqThreads = startQueues(extraQueues);
@@ -298,7 +298,7 @@ public final class DbScheduler implements CancelOrderNotify {
 			}
 
 			try {
-				Thread.sleep(SchedulerConf.exitCheckMs());
+				Thread.sleep(SchedulerConf.exitCheck().toMillis());
 			} catch (InterruptedException ex) {
 				Thread.currentThread().interrupt();
 				stopping = true;

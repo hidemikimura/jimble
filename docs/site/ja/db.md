@@ -23,7 +23,7 @@ db {
 		password = ""
 		password = ${?DB_PASSWORD}
 
-		maximumPoolSize      = 10
+		maximum_pool_size      = 10
 		connection_pool_type = "hikari"
 	}
 }

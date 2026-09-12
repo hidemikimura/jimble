@@ -109,7 +109,7 @@ public final class McpDispatch {
 					.formatted(McpProtocol.META_PROTOCOL_VERSION)), 400);
 		}
 
-		if (!McpProtocol.VERSION.equals(version)) {
+		if (!McpProtocol.version().equals(version)) {
 			return McpResponse.of(McpErrors.unsupportedVersion(id, version), 400);
 		}
 
@@ -228,7 +228,7 @@ public final class McpDispatch {
 
 		Data result = new Data();
 		result.put("resultType", McpProtocol.RESULT_TYPE_COMPLETE);
-		result.put("supportedVersions", List.of(McpProtocol.VERSION));
+		result.put("supportedVersions", List.of(McpProtocol.version()));
 		result.put("capabilities", capabilities);
 		result.put("_meta", meta);
 

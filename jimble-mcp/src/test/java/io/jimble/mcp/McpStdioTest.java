@@ -230,7 +230,7 @@ class McpStdioTest {
 		Data error = runLines(new McpRegistry(), null, body.getJsonString()).get(0).getData("error");
 
 		assertEquals(McpErrors.INVALID_REQUEST, error.getInt("code"));
-		assertTrue(error.getData("data").getStringList("supported").contains(McpProtocol.VERSION));
+		assertTrue(error.getData("data").getStringList("supported").contains(McpProtocol.version()));
 
 	}
 
@@ -248,7 +248,7 @@ class McpStdioTest {
 		Data result = run(registry, null
 			, request(1, McpProtocol.METHOD_SERVER_DISCOVER, new Data())).get(0).getData("result");
 
-		assertEquals(List.of(McpProtocol.VERSION), result.getStringList("supportedVersions"));
+		assertEquals(List.of(McpProtocol.version()), result.getStringList("supportedVersions"));
 		assertTrue(result.getData("capabilities").containsKey("tools"));
 
 		// 1つも登録していないものは名乗らない
@@ -448,7 +448,7 @@ class McpStdioTest {
 	private static Data request (int id, String method, Data params) {
 
 		Data meta = params.getDataOptional("_meta");
-		meta.put(McpProtocol.META_PROTOCOL_VERSION, McpProtocol.VERSION);
+		meta.put(McpProtocol.META_PROTOCOL_VERSION, McpProtocol.version());
 		params.put("_meta", meta);
 
 		Data body = new Data();

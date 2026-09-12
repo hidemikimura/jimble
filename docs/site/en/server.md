@@ -11,17 +11,17 @@ order: 6
 server {
 	host                 = ""         # Address to listen on. Empty means all of them
 	port                 = 9000
-	max_request_size     = 10485760   # Limit on the request body (10MB)
-	max_header_size      = 16384      # Limit on the headers as a whole (16KB)
-	idle_timeout_seconds = 60
+	max_request_size     = 10485760   # Limit on the request body (10MiB)
+	max_header_size      = 16384      # Limit on the headers as a whole (16KiB)
+	idle_timeout = 60s
 	trust_proxy          = false      # Whether to believe X-Forwarded-*
 	compression          = true       # Whether to gzip responses
 	access_log           = true       # Whether to write the access log ([Logging](./log))
 	bot_access_log       = true       # Whether to split out the bot access log
 	strict_routes        = false      # Throw on routes nothing can reach (turn this on in CI)
 
-	shutdown_grace_seconds   = 0      # From "start stopping" to refusing new requests (seconds)
-	shutdown_timeout_seconds = 15     # How long to wait for in-flight work (seconds)
+	shutdown_grace   = 0s      # From "start stopping" to refusing new requests (seconds)
+	shutdown_timeout = 15s     # How long to wait for in-flight work (seconds)
 }
 ```
 
@@ -63,15 +63,16 @@ server { host = "127.0.0.1" }
 
 | | Limit | When it is exceeded |
 | --- | --- | --- |
-| Request body | `server.max_request_size` (10MB) | **413** |
-| Headers as a whole | `server.max_header_size` (16KB) | the connection is cut |
-| A connection doing nothing | `server.idle_timeout_seconds` (60 seconds) | closed |
+| Request body | `server.max_request_size` (10MiB) | **413** |
+| Headers as a whole | `server.max_header_size` (16KiB) | the connection is cut |
+| A connection doing nothing | `server.idle_timeout` (60 seconds) | closed |
 
 Uploads have a separate limit of their own ([File upload](./upload)).
 
 > [!WARN]
-> **The body limit (10MB by default) is smaller than the total upload limit (50MB by default)**,
-> so raise both if you are going to accept large things.
+> **`upload.max_total_size` larger than `server.max_request_size` fails at startup**
+> — the body is cut here first, so the larger limit could never be reached.
+> Raise both if you are going to accept large things (both default to 10MiB).
 
 There are no read or write timeouts.
 
@@ -143,9 +144,9 @@ before(BotBlocker.of(context -> context.response().redirect("/")));   // return 
 **It does not stop dead.** `stop()` goes in this order.
 
 1. **Mark itself as stopping** — `Shutdown.isStopping()` becomes true. **Ordinary requests are still served**
-2. Wait `server.shutdown_grace_seconds` (default 0)
+2. Wait `server.shutdown_grace` (default 0)
 3. **Refuse new requests** (503)
-4. Wait for the in-flight ones to finish, up to `server.shutdown_timeout_seconds` (default 15 seconds)
+4. Wait for the in-flight ones to finish, up to `server.shutdown_timeout` (default 15 seconds)
 5. Stop the server
 
 **On SIGTERM this runs by itself** (that is what a container sends, and then it waits).
@@ -163,7 +164,7 @@ get("/health_check", context ->
 > It takes the load balancer a while to pull this machine out of rotation.
 > Answer 503 to the requests that arrive in the meantime and **from the outside that is an error.**
 > That is why there is room to wait between step 1 and step 3.
-> Put in the health check interval × the failure count (2 seconds × 3, say → `shutdown_grace_seconds = 10`).
+> Put in the health check interval × the failure count (2 seconds × 3, say → `shutdown_grace = 10s`).
 
 > [!WARN]
 > **If the wait runs out, it stops with work still in flight.**
@@ -183,5 +184,5 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 ```
 
 `X-Forwarded-For` is **appended to the existing value** (not overwritten).
-The timeouts are `proxy.connect_timeout_ms` (5 seconds) and `proxy.request_timeout_ms` (30 seconds),
+The timeouts are `proxy.connect_timeout` (5 seconds) and `proxy.request_timeout` (30 seconds),
 and a forward that fails returns **502**.

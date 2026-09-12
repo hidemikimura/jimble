@@ -74,6 +74,25 @@ public final class CipherUtil {
 	}
 
 	/**
+	 * 鍵か IV の<b>どちらかだけでも</b>書かれているか（要件 D-159）
+	 *
+	 * <p>
+	 * <b>{@link #isConfigured()} は両方揃って初めて true になる。</b>
+	 * 片方だけ書いてある状態は「暗号化を使うつもりだが、まだ揃っていない」
+	 * という途中の姿で、<b>そこから揃った瞬間に振る舞いが反転する</b>——
+	 * それを起動時に捕まえるために、こちらを見る。
+	 * </p>
+	 *
+	 * @return	どちらかが書かれていれば true
+	 */
+	public static boolean isPartlyConfigured () {
+
+		return !Conf.conf().getString(KEY_CIPHER_KEY, "").isEmpty()
+			|| !Conf.conf().getString(KEY_CIPHER_IV, "").isEmpty();
+
+	}
+
+	/**
 	 * 暗号化する
 	 *
 	 * @param src	文字列

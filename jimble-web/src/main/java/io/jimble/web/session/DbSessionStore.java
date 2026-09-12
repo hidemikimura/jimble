@@ -58,7 +58,7 @@ public final class DbSessionStore implements SessionStore {
 	 */
 	public DbSessionStore () {
 
-		this(SessionConf.table(), SessionConf.timeoutMinutes());
+		this(SessionConf.table(), SessionConf.timeout().toMinutes());
 
 	}
 

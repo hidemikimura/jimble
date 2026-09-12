@@ -35,6 +35,7 @@ jimble もそのとおりに扱います。
 | --- | --- |
 | **公開 API** | アプリを書くときに触るもの。`io.jimble.db`、`io.jimble.web.server`、`io.jimble.util.data` など |
 | **内部実装** | 入口クラスの内側でしかないもの。`io.jimble.db.sql.query.*`（`SQL` の内側）、`io.jimble.util.json.encoder`（`Dson` の内側）など |
+| **preview** | **外部の仕様に追随するので、下の約束の対象外**。いまは `io.jimble.mcp.*` だけです |
 
 全部の一覧は
 [`docs/api-packages.txt`](https://github.com/hidemikimura/jimble/blob/main/docs/api-packages.txt)
@@ -48,6 +49,25 @@ jimble もそのとおりに扱います。
 **この一覧は古くなりません。**パッケージを増やして一覧に書き忘れると、
 `ApiSurfaceTest` が落ちます。サンプル（`examples/`）が内部パッケージを
 import していないかも、同じテストが見ています。
+
+### preview——約束の外に置いてあるもの
+
+**`io.jimble.mcp.*` は 1.0 になっても「壊す前に非推奨期間を1マイナー置く」の対象外です。**
+
+[MCP](./mcp) は**2年で5版が出ており、毎回破壊的な変更が入っています**
+（2026-07-28 では、セッションと GET ストリームが消えました）。
+jimble は**対応する版を明記して1つだけ実装する**という方針なので、
+仕様が変わるたびに **「公開 API を壊す」か「仕様に追随しない」かの二択**になります。
+**約束の中に入れると、追随できなくなります。**
+
+対応している版は **`McpProtocol.version()`** で読めます。
+**定数ではなくメソッドなのは、`public static final String` が
+アプリのバイトコードへそのまま焼き付くから**です——
+定数のままだと、jimble を上げてもアプリは古い版の文字列を持ち続け、しかも警告が出ません。
+
+`io.jimble.mcp.*` を使っているなら、**版を上げるときは
+[CHANGELOG](https://github.com/hidemikimura/jimble/blob/main/CHANGELOG.md) を読んでください**。
+壊れるときは、必ずそこに書きます。
 
 ## シグネチャは同じなのに、結果が変わるとき
 

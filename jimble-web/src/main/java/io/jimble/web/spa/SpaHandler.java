@@ -182,7 +182,7 @@ public final class SpaHandler implements Handler {
 
 		// index.html は毎回確認させる（中身が変わりうる）
 		context.response().setResponseHeader("Cache-Control",
-			"public,max-age=%d,must-revalidate".formatted(AssetConf.maxAge()));
+			"public,max-age=%d,must-revalidate".formatted(AssetConf.maxAge().toSeconds()));
 		context.response().send(rewritten, "text/html", StandardCharsets.UTF_8);
 
 		return true;

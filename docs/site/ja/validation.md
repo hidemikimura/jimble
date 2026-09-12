@@ -150,8 +150,9 @@ Paging paging = context.request().paging();
 | --- | --- |
 | 読むキー | `page` / `per` |
 | 既定 | `page = 1`、`per = 10` |
-| 全件 | `per=all`（LIMIT を付けません） |
-| キー名の変更 | `paging.page` / `paging.per`（設定） |
+| 上限 | `paging.max_per`（既定 200）。**超える指定は上限に丸めます** |
+| 全件 | `per=all`。**上限が効くので、既定では 200 件までです**（`paging.max_per = 0` で本当に全件） |
+| キー名の変更 | `paging.name_page` / `paging.name_per`（設定） |
 | 数値でない値 | 無視して既定を使います |
 
 `context.request().paging(20)` と書けば、`per` が来ていないときの既定を変えられます。

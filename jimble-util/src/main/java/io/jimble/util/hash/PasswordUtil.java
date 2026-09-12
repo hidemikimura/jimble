@@ -72,21 +72,52 @@ public final class PasswordUtil {
 	 * 暗号化するか
 	 *
 	 * <p>
-	 * <b>既定は「鍵が設定されていれば true」。</b>
-	 * 明示したいときは {@code hash.password.encrypt} を書く。
+	 * <b>{@code cipher.*} を書いているなら、{@code hash.password.encrypt} も必ず書く。</b>
+	 * 書いていなければ<b>起動時に落ちる</b>。{@code cipher.*} をまったく書いていないアプリは
+	 * false（BCrypt だけ）で、いままでどおり何も書かなくてよい。
+	 * </p>
+	 *
+	 * <h4>なぜ既定をやめたのか（要件 D-159）</h4>
+	 * <p>
+	 * <b>既定は「{@link CipherUtil#isConfigured()}」——つまり
+	 * {@code cipher.key} と {@code cipher.iv} の<b>両方</b>が揃っていれば true だった。</b>
+	 * ところが Javadoc も CHANGELOG も要件も、そろって
+	 * <b>「{@code cipher.key} があれば true」</b>と書いていた。
 	 * </p>
 	 *
 	 * <p>
-	 * 既定を固定の false にしていないのは、<b>移送してきたアプリが黙って壊れる</b>
-	 * からである。保存済みのハッシュは暗号化されているので、
-	 * 鍵を設定しているのに平文の BCrypt として照合すると、全員ログインできなくなる。
+	 * つまり <b>{@code cipher.key} だけを足したアプリは false のまま</b>で、
+	 * <b>あとから {@code cipher.iv} を足した瞬間に反転する</b>——
+	 * 保存済みの BCrypt が「暗号化済み」として読まれ、
+	 * <b>全員がログインできなくなる</b>。返るのは「IDかパスワードが違います」だけである
+	 * （D-154 で踏んだのと同じ形）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>離れたキーで決まる既定は置かない。</b>暗号化を使うなら、そう書いてもらう。
 	 * </p>
 	 *
 	 * @return	暗号化する場合 = true
+	 * @throws IllegalStateException	{@code cipher.*} があるのに書かれていない場合
 	 */
 	public static boolean isEncrypt () {
 
-		return Conf.conf().getBoolean(KEY_ENCRYPT, CipherUtil.isConfigured());
+		if (Conf.conf().has(KEY_ENCRYPT)) {
+			return Conf.conf().getBoolean(KEY_ENCRYPT, false);
+		}
+
+		if (CipherUtil.isPartlyConfigured()) {
+
+			throw new IllegalStateException(
+				("cipher.* を設定しているなら %s も書いてください（true / false）。"
+					+ "いま保存されているパスワードが暗号化されているなら true、"
+					+ "BCrypt だけなら false です。"
+					+ "間違えると全員ログインできなくなり、返るのは「IDかパスワードが違います」だけです")
+					.formatted(KEY_ENCRYPT));
+
+		}
+
+		return false;
 
 	}
 

@@ -1,5 +1,6 @@
 package io.jimble.web.auth;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -10,9 +11,9 @@ import io.jimble.util.conf.Conf;
  *     lockout {
  *         enabled        = true    # 既定。DB が無ければ何もしない
  *         free_attempts  = 3       # ここまでは待たされない（打ち間違い）
- *         base_seconds   = 1       # 4回目から 1 → 2 → 4 → 8 …
- *         max_seconds    = 300     # 待ち時間の上限
- *         forget_hours   = 24      # これだけ間が空いたら数え直す
+ *         base           = 1s      # 4回目から 1 → 2 → 4 → 8 …
+ *         max            = 5m      # 待ち時間の上限
+ *         forget         = 24h     # これだけ間が空いたら数え直す
  *     }
  * }
  * </pre>
@@ -37,14 +38,14 @@ public final class LockoutConf {
 	/** 待たされない回数 */
 	public static final String KEY_FREE_ATTEMPTS = "auth.lockout.free_attempts";
 
-	/** 待ち時間の基準（秒） */
-	public static final String KEY_BASE_SECONDS = "auth.lockout.base_seconds";
+	/** 待ち時間の基準 */
+	public static final String KEY_BASE = "auth.lockout.base";
 
-	/** 待ち時間の上限（秒） */
-	public static final String KEY_MAX_SECONDS = "auth.lockout.max_seconds";
+	/** 待ち時間の上限 */
+	public static final String KEY_MAX = "auth.lockout.max";
 
 	/** 数え直すまでの時間 */
-	public static final String KEY_FORGET_HOURS = "auth.lockout.forget_hours";
+	public static final String KEY_FORGET = "auth.lockout.forget";
 
 	private LockoutConf () {
 	}
@@ -77,24 +78,26 @@ public final class LockoutConf {
 	}
 
 	/**
-	 * 待ち時間の基準（秒）
+	 * 待ち時間の基準
 	 *
-	 * @return	秒
+	 * @return	時間
 	 */
-	public static long baseSeconds () {
+	public static Duration base () {
 
-		return Math.max(1, Conf.conf().getLong(KEY_BASE_SECONDS, 1));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_BASE, Duration.ofSeconds(1))
+			, Duration.ofSeconds(1));
 
 	}
 
 	/**
-	 * 待ち時間の上限（秒）
+	 * 待ち時間の上限
 	 *
-	 * @return	秒
+	 * @return	時間
 	 */
-	public static long maxSeconds () {
+	public static Duration max () {
 
-		return Math.max(1, Conf.conf().getLong(KEY_MAX_SECONDS, 300));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_MAX, Duration.ofMinutes(5))
+			, Duration.ofSeconds(1));
 
 	}
 
@@ -107,9 +110,10 @@ public final class LockoutConf {
 	 *
 	 * @return	時間
 	 */
-	public static long forgetHours () {
+	public static Duration forget () {
 
-		return Math.max(1, Conf.conf().getLong(KEY_FORGET_HOURS, 24));
+		return Conf.atLeast(Conf.conf().getDuration(KEY_FORGET, Duration.ofHours(24))
+			, Duration.ofHours(1));
 
 	}
 

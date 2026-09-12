@@ -543,7 +543,7 @@ class SecretRotationTest {
 			 * 既定の有効期限（1年）で書き直すと、
 			 * <b>30分で切れるはずの Cookie が1年ブラウザに残る</b>
 			 */
-			assertEquals(SessionConf.timeoutMinutes() * 60
+			assertEquals(SessionConf.timeout().toSeconds()
 				, maxAgeOf(response, SessionConf.cookieName()), "寿命が変わっている");
 
 		} finally {

@@ -189,7 +189,7 @@ class GracefulShutdownTest {
 	void givesUpAfterTimeout () throws Exception {
 
 		Conf.replace(ConfigFactory
-			.parseString(ServerConf.KEY_SHUTDOWN_TIMEOUT_SECONDS + " = 1")
+			.parseString(ServerConf.KEY_SHUTDOWN_TIMEOUT + " = 1s")
 			.withFallback(Conf.conf().config()));
 
 		JimbleServer server = JimbleServer.start(app(), 0);

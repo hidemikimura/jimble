@@ -1,5 +1,6 @@
 package io.jimble.web.auth.mfa;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -14,7 +15,7 @@ import io.jimble.util.conf.Conf;
  *         period          = 30      # 秒。1つのコードが生きる長さ
  *         window          = 1       # 前後いくつの窓まで許すか
  *         recovery_codes  = 10      # 有効にするときに出す回復コードの数
- *         pending_seconds = 300     # パスワードのあと、コードを入れるまでの猶予
+ *         pending         = 5m      # パスワードのあと、コードを入れるまでの猶予
  *
  *         # 秘密鍵の暗号化に要る（無いと有効化を断る）
  *         secret_key      = ${?MFA_SECRET_KEY}
@@ -57,8 +58,8 @@ public final class MfaConf {
 	/** 回復コードの数 */
 	public static final String KEY_RECOVERY_CODES = "auth.mfa.recovery_codes";
 
-	/** コードを入れるまでの猶予（秒） */
-	public static final String KEY_PENDING_SECONDS = "auth.mfa.pending_seconds";
+	/** コードを入れるまでの猶予 */
+	public static final String KEY_PENDING = "auth.mfa.pending";
 
 	/** 秘密鍵を暗号化する鍵 */
 	public static final String KEY_SECRET_KEY = "auth.mfa.secret_key";
@@ -142,17 +143,18 @@ public final class MfaConf {
 	}
 
 	/**
-	 * コードを入れるまでの猶予（秒）
+	 * コードを入れるまでの猶予
 	 *
 	 * <p>
 	 * <b>長くしない。</b>この間、<b>パスワードだけ通った状態</b>がセッションに残る。
 	 * </p>
 	 *
-	 * @return	秒
+	 * @return	猶予
 	 */
-	public static long pendingSeconds () {
+	public static Duration pending () {
 
-		return Math.clamp(Conf.conf().getLong(KEY_PENDING_SECONDS, 300), 30, 1800);
+		return Conf.clamp(Conf.conf().getDuration(KEY_PENDING, Duration.ofMinutes(5))
+			, Duration.ofSeconds(30), Duration.ofMinutes(30));
 
 	}
 

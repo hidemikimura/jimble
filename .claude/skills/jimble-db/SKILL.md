@@ -231,3 +231,14 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 | マイグレーションとコード生成・型の対応 | <https://jimble.io/ja/codegen.md> |
 | キャッシュ | <https://jimble.io/ja/cache.md> |
 | テスト（`@Tag("db")` と実 DB） | <https://jimble.io/ja/testing.md> |
+
+## db.<名前> の設定（要件 D-159）
+
+**snake_case で書く**（`maximum_pool_size` / `minimum_idle` / `idle_timeout` /
+`max_lifetime` / `connection_timeout` / `keepalive_time` / `fetch_size` / `schema`）。
+**camelCase の古い綴りも読めるが、起動時に1度だけ警告が出る**（`scheme` は綴り違いだった）。
+
+**表に無いキーを書くと起動時に落ちる。**以前は黙って無視されたので、
+`maximum_pool_size` を打ち間違えたアプリは**プールが既定のまま**だった。
+
+時間は**単位を値に書く**（`idle_timeout = 5m`）。素の数値は落ちる。

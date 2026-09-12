@@ -73,7 +73,7 @@ public abstract class McpController extends Controller {
 		get(path, context -> methodNotAllowed(context, "GET"));
 		delete(path, context -> methodNotAllowed(context, "DELETE"));
 
-		Log.info("MCP を公開しました: POST %s（仕様 %s）".formatted(path, McpProtocol.VERSION));
+		Log.info("MCP を公開しました: POST %s（仕様 %s）".formatted(path, McpProtocol.version()));
 
 	}
 
@@ -139,7 +139,7 @@ public abstract class McpController extends Controller {
 		context.response().code(405);
 		context.response().setResponseHeader("Allow", "POST");
 		context.response().json("error"
-			, "%s は使えません。MCP %s では POST だけです".formatted(method, McpProtocol.VERSION));
+			, "%s は使えません。MCP %s では POST だけです".formatted(method, McpProtocol.version()));
 
 	}
 

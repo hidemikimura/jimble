@@ -1,5 +1,6 @@
 package io.jimble.db.migration;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -15,8 +16,8 @@ import io.jimble.util.conf.Conf;
  *   on_startup = auto          # auto | true | false
  *   # down を実行するか（既定 false。D-2）
  *   down = false
- *   # ロック待ちの上限秒数（F-G-19）
- *   lock_timeout_seconds = 60
+ *   # ロック待ちの上限（F-G-19）
+ *   lock_timeout = 60s
  *   # SQL ファイルを置くリソースディレクトリ
  *   resource_dir = "migration"
  * }
@@ -35,14 +36,14 @@ public final class MigrationConf {
 	/** 設定キー：down の実行 */
 	public static final String KEY_DOWN = "migration.down";
 
-	/** 設定キー：ロック待ちの上限秒数 */
-	public static final String KEY_LOCK_TIMEOUT_SECONDS = "migration.lock_timeout_seconds";
+	/** 設定キー：ロック待ちの上限 */
+	public static final String KEY_LOCK_TIMEOUT = "migration.lock_timeout";
 
 	/** 設定キー：SQL ファイルのリソースディレクトリ */
 	public static final String KEY_RESOURCE_DIR = "migration.resource_dir";
 
-	/** 既定のロック待ち上限秒数 */
-	public static final int DEFAULT_LOCK_TIMEOUT_SECONDS = 60;
+	/** 既定のロック待ち上限 */
+	public static final Duration DEFAULT_LOCK_TIMEOUT = Duration.ofSeconds(60);
 
 	/** 既定のリソースディレクトリ */
 	public static final String DEFAULT_RESOURCE_DIR = "migration";
@@ -89,13 +90,13 @@ public final class MigrationConf {
 	}
 
 	/**
-	 * ロック待ちの上限秒数
+	 * ロック待ちの上限
 	 *
-	 * @return	秒数
+	 * @return	上限
 	 */
-	public static int lockTimeoutSeconds () {
+	public static Duration lockTimeout () {
 
-		return Conf.conf().getInt(KEY_LOCK_TIMEOUT_SECONDS, DEFAULT_LOCK_TIMEOUT_SECONDS);
+		return Conf.conf().getDuration(KEY_LOCK_TIMEOUT, DEFAULT_LOCK_TIMEOUT);
 
 	}
 

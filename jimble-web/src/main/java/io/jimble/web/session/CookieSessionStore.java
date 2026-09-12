@@ -58,7 +58,7 @@ public final class CookieSessionStore implements SessionStore {
 	 */
 	public CookieSessionStore () {
 
-		this(SessionConf.secrets(), SessionConf.timeoutMinutes());
+		this(SessionConf.secrets(), SessionConf.timeout().toMinutes());
 
 	}
 

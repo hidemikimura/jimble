@@ -53,6 +53,16 @@ public final class Cookies {
 	public static final String METRIC_STALE = "cookie.stale_secret";
 
 	/**
+	 * 指標：署名の無い Cookie を通した回数（要件 D-159）
+	 *
+	 * <p>
+	 * <b>これが 0 になるまで {@code cookie.accept_unsigned} を戻せない。</b>
+	 * 数えないと、手順書に「しばらく待つ」としか書けない。
+	 * </p>
+	 */
+	public static final String METRIC_UNSIGNED = "cookie.unsigned";
+
+	/**
 	 * コンストラクタ
 	 *
 	 * @param source	リクエスト
@@ -99,8 +109,20 @@ public final class Cookies {
 			KeyMatch match = Signer.unsignAny(value, secrets);
 
 			if (match == null) {
+
+				/*
+				 * <b>署名を入れた直後は、まだ署名の無い Cookie が届く</b>（要件 D-159）。
+				 * {@code cookie.accept_unsigned = true} の間だけ、そのまま通す——
+				 * <b>書くほうは最初から署名する</b>ので、放っておけば入れ替わる。
+				 */
+				if (CookieConf.acceptUnsigned()) {
+					verified.put(entry.getKey(), value);
+					Metrics.count(METRIC_UNSIGNED);
+				}
+
 				// 検証に落ちた値は入れない。改ざんされた値をアプリに渡さないため
 				continue;
+
 			}
 
 			verified.put(entry.getKey(), match.value());

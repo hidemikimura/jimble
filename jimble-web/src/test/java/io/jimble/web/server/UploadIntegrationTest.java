@@ -165,7 +165,7 @@ class UploadIntegrationTest {
 	void rejectsTooLargeFile () throws Exception {
 
 		Conf.replace(ConfigFactory
-			.parseString(UploadConf.KEY_MAX_FILE_SIZE + " = 10")
+			.parseString(UploadConf.KEY_MAX_FILE_SIZE + " = 10B")
 			.withFallback(Conf.conf().config()));
 
 		HttpResponse<String> response = post(multipart(
@@ -181,7 +181,7 @@ class UploadIntegrationTest {
 	void cleansUpAfterRejection () throws Exception {
 
 		Conf.replace(ConfigFactory
-			.parseString(UploadConf.KEY_MAX_FILE_SIZE + " = 10")
+			.parseString(UploadConf.KEY_MAX_FILE_SIZE + " = 10B")
 			.withFallback(Conf.conf().config()));
 
 		long before = countTempFiles();

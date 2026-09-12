@@ -1,5 +1,6 @@
 package io.jimble.batch.scheduler;
 
+import java.time.Duration;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -7,9 +8,9 @@ import io.jimble.util.conf.Conf;
  *
  * <pre>
  * scheduler {
- *   reload_interval_ms  = 10000   # batch_master を読み直す間隔
- *   tick_interval_ms    = 1000    # cron を確かめる間隔
- *   exit_check_ms       = 3000    # 止められていないか確かめる間隔
+ *   reload_interval     = 10s     # batch_master を読み直す間隔
+ *   tick_interval       = 1s      # cron を確かめる間隔
+ *   exit_check          = 3s      # 止められていないか確かめる間隔
  *   execute_threads     = 10      # バッチを走らせるスレッド数（0 で無制限）
  *   queue_name          = "mq_scheduler"
  * }
@@ -17,14 +18,14 @@ import io.jimble.util.conf.Conf;
  */
 public final class SchedulerConf {
 
-	/** 設定キー：batch_master を読み直す間隔（ミリ秒） */
-	public static final String KEY_RELOAD_INTERVAL_MS = "scheduler.reload_interval_ms";
+	/** 設定キー：batch_master を読み直す間隔 */
+	public static final String KEY_RELOAD_INTERVAL = "scheduler.reload_interval";
 
-	/** 設定キー：cron を確かめる間隔（ミリ秒） */
-	public static final String KEY_TICK_INTERVAL_MS = "scheduler.tick_interval_ms";
+	/** 設定キー：cron を確かめる間隔 */
+	public static final String KEY_TICK_INTERVAL = "scheduler.tick_interval";
 
-	/** 設定キー：止められていないか確かめる間隔（ミリ秒） */
-	public static final String KEY_EXIT_CHECK_MS = "scheduler.exit_check_ms";
+	/** 設定キー：止められていないか確かめる間隔 */
+	public static final String KEY_EXIT_CHECK = "scheduler.exit_check";
 
 	/** 設定キー：バッチを走らせるスレッド数 */
 	public static final String KEY_EXECUTE_THREADS = "scheduler.execute_threads";
@@ -38,40 +39,40 @@ public final class SchedulerConf {
 	private SchedulerConf () {}
 
 	/**
-	 * batch_master を読み直す間隔（ミリ秒）
+	 * batch_master を読み直す間隔
 	 *
-	 * @return	ミリ秒
+	 * @return	間隔
 	 */
-	public static long reloadIntervalMs () {
+	public static Duration reloadInterval () {
 
-		return Conf.conf().getLong(KEY_RELOAD_INTERVAL_MS, 10000);
+		return Conf.conf().getDuration(KEY_RELOAD_INTERVAL, Duration.ofSeconds(10));
 
 	}
 
 	/**
-	 * cron を確かめる間隔（ミリ秒）
+	 * cron を確かめる間隔
 	 *
 	 * <p>
 	 * cron は分単位なので、100 ミリ秒ごとに見る意味はない。
 	 * 移送元は 100 ミリ秒だった（1分に 600 回）。
 	 * </p>
 	 *
-	 * @return	ミリ秒
+	 * @return	間隔
 	 */
-	public static long tickIntervalMs () {
+	public static Duration tickInterval () {
 
-		return Conf.conf().getLong(KEY_TICK_INTERVAL_MS, 1000);
+		return Conf.conf().getDuration(KEY_TICK_INTERVAL, Duration.ofSeconds(1));
 
 	}
 
 	/**
-	 * 止められていないか確かめる間隔（ミリ秒）
+	 * 止められていないか確かめる間隔
 	 *
-	 * @return	ミリ秒
+	 * @return	間隔
 	 */
-	public static long exitCheckMs () {
+	public static Duration exitCheck () {
 
-		return Conf.conf().getLong(KEY_EXIT_CHECK_MS, 3000);
+		return Conf.conf().getDuration(KEY_EXIT_CHECK, Duration.ofSeconds(3));
 
 	}
 

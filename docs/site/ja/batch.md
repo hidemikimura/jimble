@@ -64,7 +64,7 @@ for (Data row : rows) {
 ```
 
 **どちらも同じ指示を見ています。**DB を引くのは
-`batch.cancel_check_seconds` に1回だけなので、ループの中で毎回呼んで構いません。
+`batch.cancel_check` に1回だけなので、ループの中で毎回呼んで構いません。
 
 > [!TRAP]
 > **0.6.0 まで `BatchContext.isCancelOrdered()` は常に false でした。**
@@ -138,7 +138,7 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 | `chunk_failed_at` | 何かたまり目で落ちたか |
 | `chunk_canceled` | 中断で抜けたか |
 
-`chunk_written` は **`batch.progress_seconds`（既定5秒）ごとに書き換わる**ので、
+`chunk_written` は **`batch.progress`（既定5秒）ごとに書き換わる**ので、
 走っている最中でも管理画面から「いま何件目か」が見えます。
 
 ### 読む DB と書く DB は別です

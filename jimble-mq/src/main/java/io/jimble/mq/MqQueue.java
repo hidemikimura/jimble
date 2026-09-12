@@ -214,7 +214,7 @@ public final class MqQueue {
 					, db.dialect().intervalFromNow("SECOND", true))
 				, MqStatus.waiting.name()
 				, MqStatus.running.name()
-				, MqConf.staleSeconds());
+				, MqConf.stale().toSeconds());
 
 			if (count > 0) {
 				Log.warn("MQ の迷子を戻しました: %s / %d 件".formatted(queueName, count));
@@ -283,7 +283,7 @@ public final class MqQueue {
 	 */
 	private void worker (MqExecuteType type, CancelOrderNotify cancelOrderNotify) {
 
-		SleepManager sleepManager = new SleepManager(MqConf.pollMinMs(), MqConf.pollMaxMs());
+		SleepManager sleepManager = new SleepManager(MqConf.pollMin().toMillis(), MqConf.pollMax().toMillis());
 
 		while (!cancelOrderNotify.isCancelOrder()) {
 
@@ -546,7 +546,7 @@ public final class MqQueue {
 		}
 
 		int nextRetry = retryCount + 1;
-		long waitSeconds = MqConf.backoffSeconds(nextRetry);
+		long waitSeconds = MqConf.backoff(nextRetry).toSeconds();
 
 		Log.warn("MQ をやり直します: %s / id=%d / %d 回目 / %d 秒後"
 			.formatted(queueName, id, nextRetry, waitSeconds));

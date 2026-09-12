@@ -50,9 +50,9 @@ X-Accel-Buffering: no
 
 ```conf
 sse {
-	max_duration_seconds = 300   # 既定 5分
+	max_duration = 5m   # 既定 5分
 	max_events           = 0     # 0 = 無制限
-	retry_millis         = 3000  # クライアントの再接続間隔
+	retry         = 3s  # クライアントの再接続間隔
 }
 ```
 
@@ -78,7 +78,7 @@ for (Data row : rows) {
 
 ## 繋ぎ直し
 
-`EventSource` は切れたら自動で繋ぎ直します。`retry_millis` がその間隔です。
+`EventSource` は切れたら自動で繋ぎ直します。`retry` がその間隔です。
 
 **つまり、寿命で切れても勝手に繋ぎ直されます。**
 無限に続くストリームを作るのではなく、「5分ぶん流して切る、また繋がる」でよいです。

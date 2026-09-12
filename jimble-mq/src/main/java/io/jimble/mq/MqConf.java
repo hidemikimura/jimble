@@ -1,5 +1,6 @@
 package io.jimble.mq;
 
+import java.time.Duration;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.util.conf.Conf;
 
@@ -12,11 +13,11 @@ import io.jimble.util.conf.Conf;
  *     short_time  = 2      # 種別ごとのスレッド数（要件 F-M-08）
  *     long_time   = 8
  *   }
- *   poll_min_ms                = 10     # キューが空でないときの待ち
- *   poll_max_ms                = 1000   # キューが空のときの待ち（だんだん伸びる）
- *   retry_backoff_seconds      = 10     # リトライの間隔（回を追うごとに倍）
- *   retry_backoff_max_seconds  = 600
- *   stale_seconds              = 600    # この秒数 running のままなら落ちたとみなす
+ *   poll_min           = 10ms   # キューが空でないときの待ち
+ *   poll_max           = 1s     # キューが空のときの待ち（だんだん伸びる）
+ *   retry_backoff      = 10s    # リトライの間隔（回を追うごとに倍）
+ *   retry_backoff_max  = 10m
+ *   stale              = 10m    # これだけ running のままなら落ちたとみなす
  * }
  * </pre>
  */
@@ -25,20 +26,20 @@ public final class MqConf {
 	/** 設定キーの前置き：種別ごとのスレッド数 */
 	public static final String KEY_THREAD_COUNT = "mq.thread_count.";
 
-	/** 設定キー：キューが空でないときの待ち（ミリ秒） */
-	public static final String KEY_POLL_MIN_MS = "mq.poll_min_ms";
+	/** 設定キー：キューが空でないときの待ち */
+	public static final String KEY_POLL_MIN = "mq.poll_min";
 
-	/** 設定キー：キューが空のときの待ち（ミリ秒） */
-	public static final String KEY_POLL_MAX_MS = "mq.poll_max_ms";
+	/** 設定キー：キューが空のときの待ち */
+	public static final String KEY_POLL_MAX = "mq.poll_max";
 
-	/** 設定キー：リトライの間隔（秒） */
-	public static final String KEY_RETRY_BACKOFF_SECONDS = "mq.retry_backoff_seconds";
+	/** 設定キー：リトライの間隔 */
+	public static final String KEY_RETRY_BACKOFF = "mq.retry_backoff";
 
-	/** 設定キー：リトライ間隔の上限（秒） */
-	public static final String KEY_RETRY_BACKOFF_MAX_SECONDS = "mq.retry_backoff_max_seconds";
+	/** 設定キー：リトライ間隔の上限 */
+	public static final String KEY_RETRY_BACKOFF_MAX = "mq.retry_backoff_max";
 
-	/** 設定キー：落ちたとみなす秒数 */
-	public static final String KEY_STALE_SECONDS = "mq.stale_seconds";
+	/** 設定キー：落ちたとみなす時間 */
+	public static final String KEY_STALE = "mq.stale";
 
 	private MqConf () {}
 
@@ -57,83 +58,83 @@ public final class MqConf {
 	}
 
 	/**
-	 * キューが空でないときの待ち（ミリ秒）
+	 * キューが空でないときの待ち
 	 *
-	 * @return	ミリ秒
+	 * @return	待ち
 	 */
-	public static long pollMinMs () {
+	public static Duration pollMin () {
 
-		return Conf.conf().getLong(KEY_POLL_MIN_MS, 10);
+		return Conf.conf().getDuration(KEY_POLL_MIN, Duration.ofMillis(10));
 
 	}
 
 	/**
-	 * キューが空のときの待ち（ミリ秒）
+	 * キューが空のときの待ち
 	 *
-	 * @return	ミリ秒
+	 * @return	待ち
 	 */
-	public static long pollMaxMs () {
+	public static Duration pollMax () {
 
-		return Conf.conf().getLong(KEY_POLL_MAX_MS, 1000);
+		return Conf.conf().getDuration(KEY_POLL_MAX, Duration.ofSeconds(1));
 
 	}
 
 	/**
-	 * リトライの間隔（秒）
+	 * リトライの間隔
 	 *
-	 * @return	秒数
+	 * @return	間隔
 	 */
-	public static long retryBackoffSeconds () {
+	public static Duration retryBackoff () {
 
-		return Conf.conf().getLong(KEY_RETRY_BACKOFF_SECONDS, 10);
+		return Conf.conf().getDuration(KEY_RETRY_BACKOFF, Duration.ofSeconds(10));
 
 	}
 
 	/**
-	 * リトライ間隔の上限（秒）
+	 * リトライ間隔の上限
 	 *
-	 * @return	秒数
+	 * @return	上限
 	 */
-	public static long retryBackoffMaxSeconds () {
+	public static Duration retryBackoffMax () {
 
-		return Conf.conf().getLong(KEY_RETRY_BACKOFF_MAX_SECONDS, 600);
+		return Conf.conf().getDuration(KEY_RETRY_BACKOFF_MAX, Duration.ofMinutes(10));
 
 	}
 
 	/**
-	 * 落ちたとみなす秒数
+	 * 落ちたとみなす時間
 	 *
-	 * @return	秒数
+	 * @return	時間
 	 */
-	public static long staleSeconds () {
+	public static Duration stale () {
 
-		return Conf.conf().getLong(KEY_STALE_SECONDS, 600);
+		return Conf.conf().getDuration(KEY_STALE, Duration.ofMinutes(10));
 
 	}
 
 	/**
-	 * リトライまでの待ち（秒）
+	 * リトライまでの待ち
 	 *
 	 * @param attempt	何回目のリトライか（1 から）
-	 * @return	秒数
+	 * @return	待ち
 	 */
-	public static long backoffSeconds (int attempt) {
+	public static Duration backoff (int attempt) {
 
-		long base = retryBackoffSeconds();
-		long max = retryBackoffMaxSeconds();
+		Duration base = retryBackoff();
+		Duration max = retryBackoffMax();
 
 		if (attempt <= 1) {
-			return Math.min(base, max);
+			return base.compareTo(max) < 0 ? base : max;
 		}
 
 		// 10 → 20 → 40 → 80 …（上限まで）
-		long seconds = base;
+		Duration wait = base;
 
-		for (int i = 1; i < attempt && seconds < max; i++) {
-			seconds *= 2;
+		for (int i = 1; i < attempt && wait.compareTo(max) < 0; i++) {
+			wait = wait.multipliedBy(2);
 		}
 
-		return Math.min(seconds, max);
+		return wait.compareTo(max) < 0 ? wait : max;
 
 	}
 

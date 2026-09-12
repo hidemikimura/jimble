@@ -261,7 +261,7 @@ public final class BatchExecutor {
 	 * 全バッチ停止フラグが立っているか
 	 *
 	 * <p>
-	 * 立ててから {@link BatchConf#allStopHours()} だけ効く。
+	 * 立ててから {@link BatchConf#allStop()} だけ効く。
 	 * <b>外し忘れても、いつかは動き出す。</b>
 	 * </p>
 	 *
@@ -285,7 +285,7 @@ public final class BatchExecutor {
 			Data data = Data.fromJsonString(json);
 			long createdAt = data.getDateTime("created_at");
 
-			return System.currentTimeMillis() - createdAt <= BatchConf.allStopHours() * 60 * 60 * 1000;
+			return System.currentTimeMillis() - createdAt <= BatchConf.allStop().toMillis();
 
 		} catch (Exception ex) {
 
@@ -316,7 +316,7 @@ public final class BatchExecutor {
 						updated_at >= %s
 					LIMIT 1
 				""".formatted(db.dialect().intervalFromNow("SECOND", true))
-				, BatchConf.aliveSeconds());
+				, BatchConf.alive().toSeconds());
 
 			return row != null;
 
@@ -347,7 +347,7 @@ public final class BatchExecutor {
 					WHERE
 						updated_at < %s
 				""".formatted(db.dialect().intervalFromNow("SECOND", true))
-				, BatchConf.aliveSeconds() * 3);
+				, BatchConf.alive().toSeconds() * 3);
 
 		} catch (Exception ex) {
 

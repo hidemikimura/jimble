@@ -44,6 +44,18 @@ class ApiSurfaceTest {
 	/** 線引きの表 */
 	private static final String LIST = "docs/api-packages.txt";
 
+	/**
+	 * 外部の仕様に追随するので、1.0 の約束の対象外にするパッケージの頭（要件 D-158）
+	 *
+	 * <p>
+	 * <b>MCP は2年で5版が出ており、毎回破壊的な変更が入っている。</b>
+	 * jimble は1版だけ実装するので、仕様が変わるたびに
+	 * 「公開 API を壊す」か「仕様に追随しない」かの二択になる——
+	 * <b>「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
+	 * </p>
+	 */
+	private static final List<String> PREVIEW_PREFIXES = List.of("io.jimble.mcp");
+
 	/** 見に行くモジュール（公開しているものだけ。ツールと examples は見ない） */
 	private static final List<String> MODULES = List.of(
 		"jimble-core"
@@ -100,6 +112,40 @@ class ApiSurfaceTest {
 			fail(message.toString());
 
 		}
+
+	}
+
+	@Test
+	@DisplayName("D-158 追随する版を持つモジュールは、まるごと [preview] にある")
+	void previewModulesAreNotPublic () throws IOException {
+
+		Path root = projectRoot();
+
+		Set<String> preview = sectionOf(root.resolve(LIST), "[preview]");
+
+		List<String> misfiled = new ArrayList<>();
+
+		for (String pkg : packagesOnDisk(root)) {
+
+			boolean shouldBePreview = PREVIEW_PREFIXES.stream()
+				.anyMatch(prefix -> pkg.equals(prefix) || pkg.startsWith(prefix + "."));
+
+			if (shouldBePreview && !preview.contains(pkg)) {
+				misfiled.add(pkg);
+			}
+
+		}
+
+		/*
+		 * <b>パッケージを1つ足したときが危ない。</b>
+		 * {@code io.jimble.mcp.xxx} を作って [public] に書くと、
+		 * <b>そこだけ 1.0 の約束の中に入る</b>——
+		 * MCP の次の版が出たときに、壊せないものが1つ残る。
+		 */
+		assertTrue(misfiled.isEmpty()
+			, "1.0 の約束の対象外のはずが [preview] にありません: " + misfiled);
+
+		assertTrue(preview.size() >= 5, "[preview] が読めていない: " + preview.size());
 
 	}
 

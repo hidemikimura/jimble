@@ -1,9 +1,11 @@
 package io.jimble.web.csrf;
 
+import io.jimble.util.conf.Conf;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -46,6 +48,29 @@ public final class Csrf {
 	/** 検証しないメソッド（状態を変えない） */
 	public static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS", "TRACE");
 
+	/**
+	 * 設定キー：トークンの寿命（要件 D-159）
+	 *
+	 * <p>
+	 * <b>以前は {@code cookie.max_age}（既定1年）に相乗りしていた。</b>
+	 * アプリが自分の都合で {@code cookie.max_age = 1h} と書くと、
+	 * <b>CSRF トークンも1時間で切れる</b>——出るのは
+	 * 「CSRF トークンがありません」の 403 だけで、
+	 * <b>Cookie の設定を短くしたせいだとは分からない</b>。
+	 * </p>
+	 */
+	public static final String KEY_MAX_AGE = "csrf.max_age";
+
+	/**
+	 * 既定の寿命
+	 *
+	 * <p>
+	 * <b>1日にしてある。</b>開きっぱなしのフォームを一晩越えて送れる長さで、
+	 * かつ<b>盗まれたトークンが使える窓を1年にしない</b>ところを選んだ。
+	 * </p>
+	 */
+	public static final Duration DEFAULT_MAX_AGE = Duration.ofDays(1);
+
 	/** トークンの長さ（バイト） */
 	private static final int TOKEN_LENGTH = 32;
 
@@ -76,7 +101,7 @@ public final class Csrf {
 			 * <b>送信した瞬間に 403 になる</b>
 			 */
 			if (context.cookies().isStale(COOKIE_NAME)) {
-				context.cookies().put(COOKIE_NAME, token);
+				context.cookies().put(COOKIE_NAME, token, maxAge().toSeconds());
 			}
 
 			return token;
@@ -84,9 +109,20 @@ public final class Csrf {
 		}
 
 		token = generate();
-		context.cookies().put(COOKIE_NAME, token);
+		context.cookies().put(COOKIE_NAME, token, maxAge().toSeconds());
 
 		return token;
+
+	}
+
+	/**
+	 * トークンの寿命
+	 *
+	 * @return	寿命
+	 */
+	public static Duration maxAge () {
+
+		return Conf.conf().getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE);
 
 	}
 

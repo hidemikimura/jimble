@@ -84,7 +84,7 @@ public final class McpErrors {
 		error.put("message", "対応していないプロトコルの版です: %s".formatted(requested));
 
 		Data data = new Data();
-		data.put("supported", java.util.List.of(McpProtocol.VERSION));
+		data.put("supported", java.util.List.of(McpProtocol.version()));
 		error.put("data", data);
 
 		Data response = new Data();

@@ -43,7 +43,7 @@ public final class SessionId {
 			 * <b>30分で切れるはずの Cookie が1年ブラウザに残る</b>
 			 */
 			if (context.cookies().isStale(name)) {
-				context.cookies().put(name, sessionId, SessionConf.timeoutMinutes() * 60);
+				context.cookies().put(name, sessionId, SessionConf.timeout().toSeconds());
 			}
 
 			return sessionId;
@@ -51,7 +51,7 @@ public final class SessionId {
 		}
 
 		sessionId = StringUtil.uniqueString();
-		context.cookies().put(name, sessionId, SessionConf.timeoutMinutes() * 60);
+		context.cookies().put(name, sessionId, SessionConf.timeout().toSeconds());
 
 		return sessionId;
 

@@ -59,8 +59,8 @@ Data files = context.request().bodyFile();
 
 ```conf
 upload {
-	max_file_size  = 10485760   # 1ファイル。既定 10MB
-	max_total_size = 52428800   # 1リクエスト合計。既定 50MB
+	max_file_size  = 10MiB       # 1ファイル
+	max_total_size = 10MiB       # 1リクエスト合計
 	max_files      = 20         # 件数
 	temp_dir       = ""         # 空なら java.io.tmpdir
 }
@@ -78,9 +78,13 @@ upload {
 上限を超えた分までディスクに書いてしまうからです。
 
 > [!WARN]
-> **`server.max_request_size`（既定 10MB）のほうが先に効きます。**
-> `upload.max_total_size` の既定は 50MB なので、**そのままでは 50MB は届きません。**
-> 大きいものを許すなら、両方を上げてください。
+> **`server.max_request_size` のほうが先に効きます。**
+> `upload.max_total_size` がそれを超えていると、**起動時に落ちます**——
+> 先にサーバー側で切られるので、書いた上限に届かないためです。
+> 大きいものを許すなら、**両方を上げてください**。
+>
+> 0.6.x までは既定が 50MiB と 10MiB で**食い違っていました**（そのままでは 50MiB は届きません）。
+> いまはどちらも 10MiB です。
 
 ## 保存する
 

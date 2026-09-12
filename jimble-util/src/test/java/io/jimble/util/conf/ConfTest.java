@@ -5,6 +5,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -195,6 +196,111 @@ class ConfTest {
 		});
 
 	}
+
+	// endregion
+
+
+	// region 時間と大きさ（要件 D-159）
+
+	@Test
+	@DisplayName("D-159 単位つきの時間を読む")
+	void durationWithUnit () {
+
+		use(Map.of("a.wait", "30m", "a.short", "200ms", "a.long", "24h"));
+
+		assertEquals(Duration.ofMinutes(30), Conf.conf().getDuration("a.wait", Duration.ZERO));
+		assertEquals(Duration.ofMillis(200), Conf.conf().getDuration("a.short", Duration.ZERO));
+		assertEquals(Duration.ofHours(24), Conf.conf().getDuration("a.long", Duration.ZERO));
+
+		assertEquals(Duration.ofSeconds(5)
+			, Conf.conf().getDuration("a.nothing", Duration.ofSeconds(5)), "既定値が返らない");
+
+	}
+
+	@Test
+	@DisplayName("D-159 素の数値は落とす。直し方まで言う")
+	void bareNumberIsRefused () {
+
+		/*
+		 * <b>ここが「秒とミリ秒の取り違え」の入口だった。</b>
+		 * 単位をキーの名前に書いていたので、{@code assets.max_age = 3600000} は
+		 * <b>そのまま通って 41 日のキャッシュ</b>になった。落ちも警告も出ない。
+		 */
+		use(Map.of("a.wait", 3600000));
+
+		IllegalStateException thrown = assertThrows(IllegalStateException.class
+			, () -> Conf.conf().getDuration("a.wait", Duration.ZERO)
+			, "単位が無いのに通しています");
+
+		assertTrue(thrown.getMessage().contains("a.wait"), thrown.getMessage());
+		assertTrue(thrown.getMessage().contains("30m"), "直し方が書かれていない: " + thrown.getMessage());
+		assertTrue(thrown.getMessage().contains("3600000"), "いまの値が出ていない: " + thrown.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("D-159 単位つきの大きさを読む")
+	void bytesWithUnit () {
+
+		use(Map.of("a.size", "10MiB", "a.small", "512KiB"));
+
+		assertEquals(10L * 1024 * 1024, Conf.conf().getBytes("a.size", 0));
+		assertEquals(512L * 1024, Conf.conf().getBytes("a.small", 0));
+		assertEquals(99, Conf.conf().getBytes("a.nothing", 99));
+
+	}
+
+	@Test
+	@DisplayName("D-159 大きさも素の数値は落とす")
+	void bareNumberIsRefusedForBytes () {
+
+		use(Map.of("a.size", 10));
+
+		IllegalStateException thrown = assertThrows(IllegalStateException.class
+			, () -> Conf.conf().getBytes("a.size", 0));
+
+		assertTrue(thrown.getMessage().contains("10MiB"), thrown.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("バイト数を明示した B も通る")
+	void bytesUnitB () {
+
+		use(Map.of("a.size", "100B"));
+
+		assertEquals(100, Conf.conf().getBytes("a.size", 0));
+
+	}
+
+	@Test
+	@DisplayName("上下の限")
+	void clamp () {
+
+		assertEquals(Duration.ofSeconds(5)
+			, Conf.atLeast(Duration.ofSeconds(1), Duration.ofSeconds(5)));
+		assertEquals(Duration.ofSeconds(9)
+			, Conf.atLeast(Duration.ofSeconds(9), Duration.ofSeconds(5)));
+
+		assertEquals(Duration.ofSeconds(5)
+			, Conf.clamp(Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(9)));
+		assertEquals(Duration.ofSeconds(9)
+			, Conf.clamp(Duration.ofSeconds(99), Duration.ofSeconds(5), Duration.ofSeconds(9)));
+		assertEquals(Duration.ofSeconds(7)
+			, Conf.clamp(Duration.ofSeconds(7), Duration.ofSeconds(5), Duration.ofSeconds(9)));
+
+	}
+
+	// region ここで固定していないこと
+
+	/*
+	 * - <b>使える単位の綴り</b>は見ていない（{@code milliseconds} のような長い形も通る）。
+	 *   そこは HOCON の仕事である
+	 * - <b>既定値の側に単位が要るか</b>も見ていない。既定値は Java の {@code Duration} なので、
+	 *   そもそも単位を取り違えようがない
+	 */
+
+	// endregion
 
 	// endregion
 

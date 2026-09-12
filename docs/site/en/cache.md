@@ -50,7 +50,7 @@ cache.remove("top:posts");
 | `has(key, group)` / `remove(key)` / `removeGroup(group)` | |
 
 > [!NOTE]
-> **Values over 256KB are spilled to a file** (gzipped, `cache.temp_dir`).
+> **Values over 256KiB are spilled to a file** (gzipped, `cache.temp_dir`).
 > `CacheData#hasContentFile()` becomes true, and you can hand it straight to
 > `context.response().cache(data)` to return it as `Content-Encoding: gzip`.
 > There is no mechanism to delete older generations of those files, so keep an

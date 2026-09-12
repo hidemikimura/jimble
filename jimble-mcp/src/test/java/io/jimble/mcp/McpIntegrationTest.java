@@ -378,7 +378,7 @@ class McpIntegrationTest {
 			{"jsonrpc":"2.0","method":"notifications/something","params":{}}""";
 
 		HttpResponse<String> response = send("POST", body
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "notifications/something");
 
 		assertEquals(202, response.statusCode());
@@ -403,7 +403,7 @@ class McpIntegrationTest {
 		HttpResponse<String> response = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/call");
 
 		assertEquals(400, response.statusCode());
@@ -419,7 +419,7 @@ class McpIntegrationTest {
 		HttpResponse<String> response = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_weather","arguments":{"city":"東京"}}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/call"
 			, McpProtocol.HEADER_NAME, "broken");
 
@@ -443,7 +443,7 @@ class McpIntegrationTest {
 		HttpResponse<String> response = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"config://app"}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "resources/read"
 			, McpProtocol.HEADER_NAME, encoded);
 
@@ -458,7 +458,7 @@ class McpIntegrationTest {
 		HttpResponse<String> ok = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_weather","arguments":{"city":"東京","days":3}}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/call"
 			, McpProtocol.HEADER_NAME, "get_weather"
 			, "Mcp-Param-Days", "3");
@@ -468,7 +468,7 @@ class McpIntegrationTest {
 		HttpResponse<String> bad = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_weather","arguments":{"city":"東京","days":3}}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/call"
 			, McpProtocol.HEADER_NAME, "get_weather"
 			, "Mcp-Param-Days", "7");
@@ -491,7 +491,7 @@ class McpIntegrationTest {
 
 		Data error = Data.fromJsonString(response.body()).getData("error");
 		assertTrue(error.getData("data").getObjectListOptional("supported", Object.class)
-			.contains(McpProtocol.VERSION), response.body());
+			.contains(McpProtocol.version()), response.body());
 
 	}
 
@@ -515,7 +515,7 @@ class McpIntegrationTest {
 		HttpResponse<String> response = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2025-03-26"}}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/list");
 
 		assertEquals(400, response.statusCode());
@@ -529,7 +529,7 @@ class McpIntegrationTest {
 		HttpResponse<String> response = send("POST"
 			, """
 				{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, "tools/list"
 			, "Origin", "https://evil.example");
 
@@ -551,7 +551,7 @@ class McpIntegrationTest {
 		 * <b>仕様は「サーバーは実装しなければならない」と定めている。</b>
 		 * クライアントはこれで、今の版で話せる相手かどうかを最初に見分ける
 		 */
-		assertEquals(List.of(McpProtocol.VERSION), result.getStringList("supportedVersions"));
+		assertEquals(List.of(McpProtocol.version()), result.getStringList("supportedVersions"));
 
 		Data info = result.getData("_meta").getData(McpProtocol.META_SERVER_INFO);
 
@@ -579,7 +579,7 @@ class McpIntegrationTest {
 
 		assertEquals(200, response.statusCode(), response.body());
 
-		assertEquals(List.of(McpProtocol.VERSION)
+		assertEquals(List.of(McpProtocol.version())
 			, Data.fromJsonString(response.body()).getData("result").getStringList("supportedVersions"));
 
 	}
@@ -690,7 +690,7 @@ class McpIntegrationTest {
 			.version(HttpClient.Version.HTTP_1_1)
 			.header("Content-Type", "application/json")
 			.header("Accept", "text/event-stream")
-			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION)
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version())
 			.header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_SUBSCRIPTIONS_LISTEN)
 			.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
 			.build();
@@ -762,7 +762,7 @@ class McpIntegrationTest {
 			.version(HttpClient.Version.HTTP_1_1)
 			.header("Content-Type", "application/json")
 			.header("Accept", "text/event-stream")
-			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION)
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version())
 			.header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_SUBSCRIPTIONS_LISTEN)
 			.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
 			.build();
@@ -781,7 +781,7 @@ class McpIntegrationTest {
 		HttpResponse<String> cancelled = send("POST"
 			, """
 				{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":55}}"""
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, McpProtocol.NOTIFICATION_CANCELLED);
 
 		assertEquals(202, cancelled.statusCode());
@@ -882,12 +882,12 @@ class McpIntegrationTest {
 
 		if (name == null) {
 			return send("POST", body
-				, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+				, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 				, McpProtocol.HEADER_METHOD, method);
 		}
 
 		return send("POST", body
-			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
 			, McpProtocol.HEADER_METHOD, method
 			, McpProtocol.HEADER_NAME, name);
 
