@@ -240,57 +240,45 @@ class DbIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("D-156 失敗したら、rollback するまでその先も通らない")
-	void afterAFailureNothingElseWorksUntilRollback () throws Exception {
+	@DisplayName("D-156 失敗のあとに何を書いても、コミットまで進めなければ何も残らない")
+	void nothingSurvivesAFailedTransaction () throws Exception {
 
 		/*
-		 * <b>これは jimble の決まりではなく、DB の決まりである。</b>
+		 * <b>失敗のあとの文が通るかどうかは、製品によって違う。</b>
 		 *
-		 * PostgreSQL はトランザクションの中で1文でも失敗すると、
-		 * <b>ROLLBACK するまで以降の文を全部断る</b>
-		 * （{@code current transaction is aborted, commands ignored until end of transaction block}）。
+		 * - PostgreSQL：<b>ROLLBACK するまで以降を全部断る</b>
+		 *   （{@code current transaction is aborted, commands ignored until end of transaction block}）
+		 * - MySQL：<b>そのまま通る</b>（1文の失敗でトランザクションを中断しない）
 		 *
-		 * <b>0.6.x はこれを隠していた。</b>各文の catch がその場で {@code rollback()} を呼んでいたので、
-		 * <b>続けて書けているように見えて、実は前の文が全部消えていた</b>——
-		 * それが部分コミットの正体だった（D-155 / D-156）。
+		 * <b>この違いは CI が教えてくれた。</b>「PostgreSQL では通らない」を決まりとして書いたら、
+		 * MySQL の dbTest で落ちた——<b>手元に MariaDB が無く、確かめずに書いていた</b>。
 		 *
-		 * 隠すのをやめたので、<b>止まるべきところで止まる</b>。
+		 * <b>なので、ここで固定するのは「両方で同じこと」だけにする。</b>
+		 * すなわち<b>コミットが拒まれ、1行も残らない</b>。
+		 * 途中で何本通ったかは<b>製品の都合</b>であって、jimble の約束ではない。
+		 *
+		 * <b>MySQL 側でこそ守りが要る。</b>あちらは失敗のあとの文が本当に通るので、
+		 * {@code commit()} の守りが無ければ<b>それがそのままコミットされる</b>——
+		 * これが D-155 で塞いだ部分コミットである。
 		 */
 		DB db = DBUtil.getMainDB();
 
 		db.beginTransaction();
 
-		try {
+		insertSite(db, "失敗より前", 1L);
 
-			insertSite(db, "失敗より前", 1L);
+		db.update("UPDATE site SET そんな列は無い = 1");
+		assertTrue(db.isError(), "失敗していない（テストの前提が崩れています）");
 
-			db.update("UPDATE site SET そんな列は無い = 1");
-			assertTrue(db.isError());
+		// 通るか通らないかは製品による。どちらでもよい
+		db.insert(SQL.insert(TestSchema.Site.instance())
+			.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "失敗より後"));
 
-			// ここも通らない（DB が断っている）
-			db.insert(SQL.insert(TestSchema.Site.instance())
-				.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "失敗より後"));
+		assertThrows(CodeException.class, db::commitEndTransaction
+			, "エラーが出ているのにコミットしています");
 
-			assertTrue(db.isError(), "失敗のあとなのに通っています（DB の中断状態を隠しています）");
-
-		} finally {
-
-			db.rollback();
-
-			/*
-			 * <b>{@code endTransaction()} は最後の文のエラーを投げ直す</b>——
-			 * 巻き戻して決着を付けたあとでも投げる（0.6.x からの動き。ここでは直していない）。
-			 * 巻き戻すだけなら {@code rollback()} で、こちらは投げない。
-			 */
-			try {
-				db.endTransaction();
-			} catch (Exception ignore) {
-				// 上記のとおり
-			}
-
-		}
-
-		assertNull(db.select(SQL.select().from(TestSchema.Site.instance())));
+		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
+			, "拒んだのに残っています（部分コミット）");
 
 	}
 
@@ -373,20 +361,25 @@ class DbIntegrationTest {
 	// region ここで固定していないこと（トランザクション）
 
 	/*
-	 * <b>次の2つは、外してもここでは落ちない。</b>PostgreSQL だからである。
+	 * <b>失敗のあとに何本通るかは、ここでは固定していない。</b>
+	 * PostgreSQL は断り、MySQL は通す——<b>製品の都合</b>であって jimble の約束ではない。
+	 * 固定しているのは「コミットが拒まれ、1行も残らない」ほうである。
+	 *
+	 * <b>ミューテーションのうち2つは、PostgreSQL では落とせない。</b>
 	 *
 	 * - <b>{@code commit()} の守り</b>（{@code requireNoErrorSinceTransaction}）
 	 * - <b>守りが投げる前に巻き戻すこと</b>
 	 *
 	 * PostgreSQL は<b>中断したトランザクションへの COMMIT を ROLLBACK として扱う</b>ので、
-	 * 守りが無くても<b>結果としては入らない</b>。加えて {@code endTransaction()} が
+	 * 守りが無くても結果が同じになる。加えて {@code endTransaction()} が
 	 * 最後の文のエラーを投げ直すので、例外も出てしまう。
 	 *
-	 * <b>MySQL では効くはずである。</b>MySQL は1文の失敗でトランザクションを中断しないので、
-	 * 守りが無ければ<b>失敗のあとの文が本当にコミットされる</b>（＝部分コミットが戻る）。
-	 * <b>ただしこれは確かめていない</b>——この環境に MariaDB が無く、{@code dbTest} が走らない。
+	 * <b>MySQL では効く。</b>あちらは失敗のあとの文がそのまま通るので、
+	 * 守りが無ければ<b>それがコミットされる</b>——部分コミットが戻る。
+	 * <b>この前提は CI（dbTest / MySQL）が確かめた</b>：
+	 * 「PostgreSQL では通らない」と決め打ちした版が、MySQL で落ちた。
 	 *
-	 * <b>それでも両方残す。</b>「PostgreSQL がたまたま助けてくれる」に頼る形にはしない。
+	 * <b>だから両方残す。</b>「PostgreSQL がたまたま助けてくれる」に頼らない。
 	 */
 
 	// endregion

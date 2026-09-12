@@ -130,13 +130,19 @@ db.commitEndTransaction();
 rewrite would refuse, saying an error is still outstanding.
 
 > [!TRAP]
-> **Until you `rollback()`, nothing else goes through.** After one failed statement
-> PostgreSQL refuses every following statement until ROLLBACK
-> (`current transaction is aborted, commands ignored until end of transaction block`).
+> **Whether statements after a failure go through depends on the product.**
 >
-> **0.6.x hid this.** Every statement's `catch` called `rollback()` on the spot, so it
-> *looked* like you could carry on — while **everything before the failure had been thrown
-> away.** That was the partial commit. Nothing hides it now, so it stops where it should.
+> | | After a failed statement |
+> | --- | --- |
+> | PostgreSQL | **Refused** until `ROLLBACK` (`current transaction is aborted, ...`) |
+> | MySQL | **They run.** One failed statement does not abort the transaction |
+>
+> **Lean on neither.** What jimble promises is only this: **the commit is refused and not one
+> row survives.** After a failure, `rollback()` before you write anything else.
+>
+> **0.6.x hid the difference.** Every statement's `catch` called `rollback()` on the spot, so
+> on both products it *looked* like you could carry on — while **everything before the
+> failure had been thrown away.** That was the partial commit.
 
 ## What leaves the process, and what goes into the DB
 

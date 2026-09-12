@@ -140,8 +140,9 @@ DBTransaction.transaction(db, transaction -> {
 ロールバックして `CodeException`（`DB_004`）を投げる——
 エラーが戻り値で返る作りなので、<b>そのままだと部分的にコミットされていた</b>。
 
-**失敗したら、`rollback()` するまでその先は1文も通らない**（PostgreSQL がそう決めている）。
-エラーを見て分岐して続けたいときは、いったん `rollback()` してから書き直す。
+**失敗のあとの文が通るかは製品による**（PostgreSQL は断る／MySQL は通す）。
+どちらにも寄りかからず、**失敗したら続ける前に `rollback()` する**。
+枠組みが約束するのは「コミットは拒まれ、1行も残らない」ところまで。
 
 ```java
 db.beginTransaction();
