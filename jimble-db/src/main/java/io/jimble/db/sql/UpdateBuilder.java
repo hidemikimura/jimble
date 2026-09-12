@@ -6,9 +6,9 @@ import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.dsl.Dsl;
-import io.jimble.db.sql.query.parameter.Parameter;
-import io.jimble.db.sql.query.set.ISet;
-import io.jimble.db.sql.query.set.Set;
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+import io.jimble.db.internal.sql.query.set.ISet;
+import io.jimble.db.internal.sql.query.set.Set;
 import io.jimble.db.sql.query.where.IWhere;
 
 import java.util.ArrayList;

@@ -4,7 +4,7 @@ import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.util.data.definition.IColumn;
-import io.jimble.db.sql.query.where.condition.*;
+import io.jimble.db.internal.sql.query.where.condition.*;
 
 import java.util.ArrayList;
 import java.util.List;

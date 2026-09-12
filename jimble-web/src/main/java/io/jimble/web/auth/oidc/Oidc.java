@@ -1,7 +1,7 @@
 package io.jimble.web.auth.oidc;
 
 import io.jimble.util.data.Data;
-import io.jimble.util.http.httpclient.method.HttpPostExecutor;
+import io.jimble.util.internal.http.httpclient.method.HttpPostExecutor;
 import io.jimble.util.log.Log;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;

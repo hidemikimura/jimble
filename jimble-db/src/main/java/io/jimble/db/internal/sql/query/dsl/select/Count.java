@@ -1,0 +1,71 @@
+package io.jimble.db.internal.sql.query.dsl.select;
+
+import io.jimble.db.dialect.SqlFunction;
+import io.jimble.db.dialect.SqlWriter;
+import io.jimble.db.sql.query.dsl.IDsl;
+import io.jimble.db.sql.query.select.ISelect;
+
+/**
+ * count
+ */
+public class Count implements IDsl {
+
+	/* select */
+	private ISelect select = null;
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param select	select
+	 */
+	public Count (ISelect select) {
+
+		this.select = select;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void dslSql (SqlWriter sb) {
+
+		sb.function(SqlFunction.COUNT).append('(');
+		if (select == null) {
+			sb.append("*");
+		} else {
+			select.selectSql(sb);
+		}
+		sb.append(")");
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public boolean hasParameter() {
+
+		if (select == null) {
+			return false;
+		} else {
+			return select.hasParameter();
+		}
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Object getParameter() {
+
+		if (select == null) {
+			return null;
+		} else {
+			return select.getParameter();
+		}
+
+	}
+
+}

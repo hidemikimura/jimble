@@ -6,7 +6,7 @@ import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.MySqlDialect;
 import io.jimble.db.dialect.PostgreSqlDialect;
 import io.jimble.db.sql.query.dsl.Dsl;
-import io.jimble.db.sql.query.dsl.select.WindowFrame;
+import io.jimble.db.internal.sql.query.dsl.select.WindowFrame;
 import io.jimble.db.sql.query.select.ISelect;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -456,7 +456,7 @@ class SqlDslFunctionTest {
 			.select(
 				TestSchema.Site.id
 				, Dsl.rank()
-					.orderBy(new io.jimble.db.sql.query.order_by.OrderByQuery(
+					.orderBy(new io.jimble.db.internal.sql.query.order_by.OrderByQuery(
 						Dsl.ifThenElse(TestSchema.Site.feed_count.ge(20), 1, 0)).desc())
 					.as("rank"))
 			.from(TestSchema.Site.instance())

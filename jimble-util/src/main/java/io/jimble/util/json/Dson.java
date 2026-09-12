@@ -3,11 +3,11 @@ package io.jimble.util.json;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
-import io.jimble.util.json.decoder.IDecoder;
-import io.jimble.util.json.decoder.StreamDecoder;
-import io.jimble.util.json.encoder.DefaultEncoder;
-import io.jimble.util.json.encoder.IEncoder;
-import io.jimble.util.json.formatter.lang.StringFormatter;
+import io.jimble.util.internal.json.decoder.IDecoder;
+import io.jimble.util.internal.json.decoder.StreamDecoder;
+import io.jimble.util.internal.json.encoder.DefaultEncoder;
+import io.jimble.util.internal.json.encoder.IEncoder;
+import io.jimble.util.internal.json.formatter.lang.StringFormatter;
 import io.jimble.util.data.Data;
 
 import java.io.*;

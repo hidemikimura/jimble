@@ -7,8 +7,8 @@ import io.jimble.util.data.Data;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.util.data.definition.ISchema;
-import io.jimble.db.sql.query.from.FromQuery;
-import io.jimble.db.sql.query.from.IFrom;
+import io.jimble.db.internal.sql.query.from.FromQuery;
+import io.jimble.db.internal.sql.query.from.IFrom;
 import io.jimble.db.sql.query.where.IWhere;
 import io.jimble.util.log.Log;
 

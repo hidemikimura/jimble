@@ -5,7 +5,7 @@ import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 /**
  * log

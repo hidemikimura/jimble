@@ -116,6 +116,63 @@ class ApiSurfaceTest {
 	}
 
 	@Test
+	@DisplayName("NF-C-04 内部パッケージは名前で分かる")
+	void internalIsVisibleInTheName () throws IOException {
+
+		Path root = projectRoot();
+		Path list = root.resolve(LIST);
+
+		Set<String> internals = sectionOf(list, "[internal]");
+		Set<String> outside = new TreeSet<>(listedPackages(list));
+
+		outside.removeAll(internals);
+
+		List<String> problems = new ArrayList<>();
+
+		for (String pkg : internals) {
+
+			if (!isInternalName(pkg)) {
+				problems.add("[internal] なのに名前で分からない: " + pkg);
+			}
+
+		}
+
+		for (String pkg : outside) {
+
+			if (isInternalName(pkg)) {
+				problems.add("名前は internal なのに [internal] に無い: " + pkg);
+			}
+
+		}
+
+		/*
+		 * <b>表と名前が食い違うと、どちらを信じてよいか分からなくなる。</b>
+		 * 名前は import に出るので<b>利用者が見るのはそちら</b>で、
+		 * 表は<b>こちらが見る</b>——ずれたら、利用者だけが間違った側を見ることになる。
+		 */
+		assertTrue(problems.isEmpty(), String.join("\n  ", problems));
+
+		assertTrue(internals.size() > 40, "内部パッケージが読めていない: " + internals.size());
+
+	}
+
+	/**
+	 * 名前が「内部」と言っているか（要件 NF-C-04 / D-160）
+	 *
+	 * <p>
+	 * {@code io.jimble.<モジュール>.internal} から下が内部である。
+	 * </p>
+	 *
+	 * @param pkg	パッケージ
+	 * @return	内部の名前なら true
+	 */
+	private static boolean isInternalName (String pkg) {
+
+		return pkg.endsWith(".internal") || pkg.contains(".internal.");
+
+	}
+
+	@Test
 	@DisplayName("D-158 追随する版を持つモジュールは、まるごと [preview] にある")
 	void previewModulesAreNotPublic () throws IOException {
 

@@ -2,8 +2,8 @@ package io.jimble.db.cli;
 
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
-import io.jimble.db.generator.Generator;
-import io.jimble.db.generator.GeneratorConf;
+import io.jimble.db.internal.generator.Generator;
+import io.jimble.db.internal.generator.GeneratorConf;
 import io.jimble.db.migration.Migration;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.log.Log;

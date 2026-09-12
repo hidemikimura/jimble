@@ -19,7 +19,7 @@ import io.jimble.db.cache.DBCache;
 import io.jimble.db.lock.DBLock;
 import io.jimble.db.log.DBLog;
 import io.jimble.db.value.DBValue;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.util.log.Log;
 import io.jimble.db.redis.lock.RedisLock;

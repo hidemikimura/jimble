@@ -7,7 +7,7 @@ import io.jimble.core.lifecycle.AppLifecycle;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.thread.ThreadUtil;
 import io.jimble.util.data.Data;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 /**
  * 書き込み直後の参照を書き込み側へ寄せる（要件 F-D-19）

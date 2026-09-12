@@ -6,7 +6,7 @@ import io.jimble.db.TestDdl;
 import io.jimble.db.dialect.CastType;
 import io.jimble.db.dialect.DateUnit;
 import io.jimble.db.sql.query.dsl.Dsl;
-import io.jimble.db.sql.query.dsl.select.WindowFrame;
+import io.jimble.db.internal.sql.query.dsl.select.WindowFrame;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import org.junit.jupiter.api.AfterAll;

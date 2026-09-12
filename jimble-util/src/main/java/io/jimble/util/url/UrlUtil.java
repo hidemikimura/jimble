@@ -1,6 +1,6 @@
 package io.jimble.util.url;
 
-import io.jimble.util.charset.CharDetecter;
+import io.jimble.util.internal.charset.CharDetecter;
 
 import java.net.*;
 import java.util.ArrayList;

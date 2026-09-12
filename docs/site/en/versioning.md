@@ -35,16 +35,29 @@ and jimble takes it at its word.
 | | |
 | --- | --- |
 | **Public API** | What you touch when writing an application: `io.jimble.db`, `io.jimble.web.server`, `io.jimble.util.data` and so on |
-| **Internal** | What only exists inside an entry-point class: `io.jimble.db.sql.query.*` (inside `SQL`), `io.jimble.util.json.encoder` (inside `Dson`) and so on |
+| **Internal** | What only exists inside an entry-point class: `io.jimble.db.internal.sql.query.*` (inside `SQL`), `io.jimble.util.internal.json.encoder` (inside `Dson`) and so on |
 | **Preview** | **Tracks an outside specification, so the promise below does not cover it.** Right now that is only `io.jimble.mcp.*` |
 
 The full list is in
 [`docs/api-packages.txt`](https://github.com/hidemikimura/jimble/blob/main/docs/api-packages.txt).
 
+**The name says it.**
+
+> **Everything under `io.jimble.<module>.internal` is internal.**
+
+If `internal` appears in an `import`, that is something you must not touch.
+
 > [!TRAP]
 > **`public` does not mean public API.** Java has no modifier for "visible outside the
-> module but not meant for you", so **internals are `public` too**. Whether you may
-> touch something is decided by the list above, not by the keyword.
+> module but not meant for you", so **internals are `public` too**. The `internal` in the
+> name, and the list above, are the line — not the keyword.
+
+> [!NOTE]
+> **Names you write in a config file, or type on a command line, are public API.**
+> `io.jimble.util.log.encoder.LogbackJsonEncoder` in your `logback.xml`, and
+> `io.jimble.db.cli.JimbleDbCli` in a CI job that does not use Gradle, **break your
+> setup if we move them** even though nothing imports them. That is why they are not
+> under `internal`.
 
 **The list does not go stale.** Add a package and forget to classify it and
 `ApiSurfaceTest` fails. The same test checks that the samples under `examples/` do not

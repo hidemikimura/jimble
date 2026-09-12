@@ -1,7 +1,7 @@
 package io.jimble.web.auth.oidc;
 
 import io.jimble.util.data.Data;
-import io.jimble.util.http.httpclient.method.HttpGetExecutor;
+import io.jimble.util.internal.http.httpclient.method.HttpGetExecutor;
 import io.jimble.util.log.Log;
 
 import java.time.Duration;

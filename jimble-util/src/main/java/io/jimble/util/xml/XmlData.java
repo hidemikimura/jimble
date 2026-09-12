@@ -1,7 +1,7 @@
 package io.jimble.util.xml;
 
 import io.jimble.util.convertor.Convertor;
-import io.jimble.util.xml.converter.IXmlDataTextConverter;
+import io.jimble.util.internal.xml.converter.IXmlDataTextConverter;
 
 import java.util.*;
 

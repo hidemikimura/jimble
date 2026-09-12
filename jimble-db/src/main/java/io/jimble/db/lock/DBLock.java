@@ -6,7 +6,7 @@ import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.dialect.Sqls;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 import java.util.ArrayList;
 import java.util.List;

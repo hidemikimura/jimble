@@ -5,8 +5,8 @@ import io.jimble.util.data.definition.IColumn;
 
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.dsl.IDsl;
-import io.jimble.db.sql.query.order_by.IOrderBy;
-import io.jimble.db.sql.query.order_by.OrderByQuery;
+import io.jimble.db.internal.sql.query.order_by.IOrderBy;
+import io.jimble.db.internal.sql.query.order_by.OrderByQuery;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.select.SelectQuery;
 import io.jimble.db.sql.query.where.IWhere;

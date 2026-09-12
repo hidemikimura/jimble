@@ -1,7 +1,7 @@
 package io.jimble.util.convertor;
 
-import io.jimble.util.convertor.util.UserListConvertor;
-import io.jimble.util.convertor.util.UserMapConvertor;
+import io.jimble.util.internal.convertor.util.UserListConvertor;
+import io.jimble.util.internal.convertor.util.UserMapConvertor;
 import io.jimble.util.data.Data;
 
 import java.lang.reflect.*;

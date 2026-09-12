@@ -49,7 +49,7 @@ tasks.jar {
 }
 
 application {
-	mainClass = "io.jimble.cli.JimbleCli"
+	mainClass = "io.jimble.cli.internal.JimbleCli"
 	applicationName = "jimble"
 	applicationDefaultJvmArgs = listOf("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
 }

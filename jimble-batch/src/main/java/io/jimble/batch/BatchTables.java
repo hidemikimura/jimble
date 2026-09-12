@@ -2,7 +2,7 @@ package io.jimble.batch;
 
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 /**
  * バッチが使うテーブル

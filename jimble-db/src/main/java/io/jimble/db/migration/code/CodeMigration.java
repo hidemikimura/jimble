@@ -6,7 +6,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.lock.DBLock;
 import io.jimble.db.migration.Migration;
 import io.jimble.db.migration.MigrationException;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 import java.util.ArrayList;
 import java.util.Comparator;

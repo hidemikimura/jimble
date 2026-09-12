@@ -1,7 +1,7 @@
 package io.jimble.db;
 
 import io.jimble.db.log.DBLog;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
 import org.junit.jupiter.api.AfterAll;

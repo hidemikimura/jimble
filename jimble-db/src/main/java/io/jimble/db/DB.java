@@ -9,7 +9,7 @@ import io.jimble.db.sql.*;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.Dialects;
-import io.jimble.db.sql.query.parameter.Parameter;
+import io.jimble.db.internal.sql.query.parameter.Parameter;
 import io.jimble.db.sqlcache.SqlCache;
 import io.jimble.db.sqlcache.SqlCacheConf;
 import io.jimble.db.sqlcache.SqlCacheTags;

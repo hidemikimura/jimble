@@ -2,7 +2,7 @@ package io.jimble.mq;
 
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 /**
  * MQ が使うテーブル

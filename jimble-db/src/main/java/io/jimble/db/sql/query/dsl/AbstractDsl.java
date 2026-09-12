@@ -1,8 +1,8 @@
 package io.jimble.db.sql.query.dsl;
 
 import io.jimble.db.dialect.SqlWriter;
-import io.jimble.db.sql.query.order_by.IOrderBy;
-import io.jimble.db.sql.query.order_by.OrderByQuery;
+import io.jimble.db.internal.sql.query.order_by.IOrderBy;
+import io.jimble.db.internal.sql.query.order_by.OrderByQuery;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.select.SelectQuery;
 import io.jimble.db.sql.query.where.IWhere;
@@ -91,7 +91,7 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 * {@code IWhere} のメソッドは<b>全部ここを通す。</b>
 	 * 「この式は条件に書けない」ものは、
 	 * メソッドを1つずつ塞ぐのではなく<b>ここを塞ぐ</b>
-	 * （{@link io.jimble.db.sql.query.dsl.select.Over} がそうしている）。
+	 * （{@link io.jimble.db.internal.sql.query.dsl.select.Over} がそうしている）。
 	 * 1つずつ塞ぐ形にすると、条件のメソッドを増やしたときに<b>塞ぎ忘れる</b>。
 	 * </p>
 	 *

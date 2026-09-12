@@ -7,7 +7,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Dialects;
 import io.jimble.db.lock.DBLock;
 import io.jimble.db.migration.code.CodeMigration;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.comparator.FileNameComparator;
 import io.jimble.util.data.Data;
 import io.jimble.util.hash.Hash;

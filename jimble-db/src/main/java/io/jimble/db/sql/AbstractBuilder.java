@@ -6,7 +6,7 @@ import io.jimble.util.data.Data;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.db.sql.definition.table.TemporaryTable;
 import io.jimble.db.sql.query.dsl.Dsl;
-import io.jimble.db.sql.query.dsl.where.Match;
+import io.jimble.db.internal.sql.query.dsl.where.Match;
 import io.jimble.db.sql.query.where.IWhere;
 
 import java.util.ArrayList;

@@ -5,18 +5,26 @@
 # internal … 実装の都合。<b>予告なく変わる</b>
 # empty    … クラスを持たない入れ物
 #
-# <b>この表に無いパッケージができると ApiSurfaceTest が落ちる。</b>
-# 増やしたら、どちらなのかをここに書くこと（決め忘れだけを塞ぐ仕掛けで、
+# <b>内部は名前で分かる</b>（要件 NF-C-04 / D-160）。
+# io.jimble.<モジュール>.internal から下は全部内部で、
+# <b>名前と区分が食い違えば ApiSurfaceTest が落ちる</b>。
+#
+# <b>この表に無いパッケージができても落ちる。</b>
+# 増やしたら、どれなのかをここに書くこと（決め忘れだけを塞ぐ仕掛けで、
 # どちらにするかを決めるのは人の仕事である）。
 #
 # 判断の材料：
 #   - examples/ が import しているか（していれば公開）
 #   - docs/site が名指しで説明しているか（していれば公開）
-#   - 入口クラスの内側でしかないか（であれば内部）
+#   - 入口クラスの内側でしかないか（であれば内部 → 名前に internal を入れる）
 
-[empty] クラスを持たない入れ物（4）
+[empty] クラスを持たない入れ物（8）
 io.jimble
+io.jimble.cli
 io.jimble.core
+io.jimble.db.generator
+io.jimble.db.sql.definition
+io.jimble.db.sql.query
 io.jimble.util
 io.jimble.web
 
@@ -33,6 +41,7 @@ io.jimble.core.trace
 io.jimble.db
 io.jimble.db.cache
 io.jimble.db.cache.exception
+io.jimble.db.cli
 io.jimble.db.data
 io.jimble.db.dialect
 io.jimble.db.generator.data
@@ -43,7 +52,6 @@ io.jimble.db.migration.code
 io.jimble.db.redis
 io.jimble.db.redis.lock
 io.jimble.db.sql
-io.jimble.db.sql.definition
 io.jimble.db.sql.definition.column
 io.jimble.db.sql.definition.schema
 io.jimble.db.sql.definition.table
@@ -69,13 +77,13 @@ io.jimble.util.exception
 io.jimble.util.function
 io.jimble.util.geometry
 io.jimble.util.hash
-io.jimble.util.http
 io.jimble.util.info
 io.jimble.util.io
 io.jimble.util.io.output
 io.jimble.util.ip
 io.jimble.util.json
 io.jimble.util.log
+io.jimble.util.log.encoder
 io.jimble.util.map
 io.jimble.util.metrics
 io.jimble.util.net
@@ -121,64 +129,71 @@ io.jimble.web.ws
 io.jimble.web.ws.context
 
 [preview] 外部の仕様に追随する。1.0 の約束の対象外（5）
-# MCP は2年で5版が出ており、毎回破壊的な変更が入っている。
-# jimble は1版だけ実装する（McpProtocol）ので、仕様が変わるたびに
-# 「公開 API を壊す」か「仕様に追随しない」かの二択になる——
-# <b>1.0 の「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
-# 詳しくは docs/site/ja/versioning.md
 io.jimble.mcp
 io.jimble.mcp.prompt
 io.jimble.mcp.resource
 io.jimble.mcp.schema
 io.jimble.mcp.tool
+# MCP は2年で5版が出ており、毎回破壊的な変更が入っている。
+# jimble は1版だけ実装する（McpProtocol）ので、仕様が変わるたびに
+# 「公開 API を壊す」か「仕様に追随しない」かの二択になる——
+# <b>1.0 の「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
+# 詳しくは docs/site/ja/versioning.md
 
-[internal] 内部実装（49）
-io.jimble.cli
-io.jimble.db.cli
-io.jimble.db.generator
-io.jimble.db.generator.info
-io.jimble.db.sql.query
-io.jimble.db.sql.query.dsl.property
-io.jimble.db.sql.query.dsl.select
-io.jimble.db.sql.query.dsl.where
-io.jimble.db.sql.query.from
-io.jimble.db.sql.query.order_by
-io.jimble.db.sql.query.parameter
-io.jimble.db.sql.query.set
-io.jimble.db.sql.query.value
-io.jimble.db.sql.query.where.condition
-io.jimble.db.version
-io.jimble.util.charset
-io.jimble.util.convertor.array
-io.jimble.util.convertor.data
-io.jimble.util.convertor.io
-io.jimble.util.convertor.lang
-io.jimble.util.convertor.lang.exception
-io.jimble.util.convertor.math
-io.jimble.util.convertor.net
-io.jimble.util.convertor.nio
-io.jimble.util.convertor.org
-io.jimble.util.convertor.org.w3c
-io.jimble.util.convertor.org.w3c.dom
-io.jimble.util.convertor.sql
-io.jimble.util.convertor.time
-io.jimble.util.convertor.util
-io.jimble.util.convertor.util.regex
-io.jimble.util.http.httpclient
-io.jimble.util.http.httpclient.method
-io.jimble.util.http.httpclient.publisher
-io.jimble.util.http.util
-io.jimble.util.json.decoder
-io.jimble.util.json.decoder.stream
-io.jimble.util.json.decoder.stream.util
-io.jimble.util.json.encoder
-io.jimble.util.json.formatter
-io.jimble.util.json.formatter.array
-io.jimble.util.json.formatter.lang
-io.jimble.util.json.formatter.stream
-io.jimble.util.json.formatter.time
-io.jimble.util.json.formatter.util
-io.jimble.util.json.stream
-io.jimble.util.json.stream.writer
-io.jimble.util.log.encoder
-io.jimble.util.xml.converter
+[internal] 内部実装（56）
+io.jimble.cli.internal
+io.jimble.db.internal
+io.jimble.db.internal.generator
+io.jimble.db.internal.generator.info
+io.jimble.db.internal.sql
+io.jimble.db.internal.sql.query
+io.jimble.db.internal.sql.query.dsl
+io.jimble.db.internal.sql.query.dsl.property
+io.jimble.db.internal.sql.query.dsl.select
+io.jimble.db.internal.sql.query.dsl.where
+io.jimble.db.internal.sql.query.from
+io.jimble.db.internal.sql.query.order_by
+io.jimble.db.internal.sql.query.parameter
+io.jimble.db.internal.sql.query.set
+io.jimble.db.internal.sql.query.value
+io.jimble.db.internal.sql.query.where
+io.jimble.db.internal.sql.query.where.condition
+io.jimble.db.internal.version
+io.jimble.util.internal
+io.jimble.util.internal.charset
+io.jimble.util.internal.convertor
+io.jimble.util.internal.convertor.array
+io.jimble.util.internal.convertor.data
+io.jimble.util.internal.convertor.io
+io.jimble.util.internal.convertor.lang
+io.jimble.util.internal.convertor.lang.exception
+io.jimble.util.internal.convertor.math
+io.jimble.util.internal.convertor.net
+io.jimble.util.internal.convertor.nio
+io.jimble.util.internal.convertor.org
+io.jimble.util.internal.convertor.org.w3c
+io.jimble.util.internal.convertor.org.w3c.dom
+io.jimble.util.internal.convertor.sql
+io.jimble.util.internal.convertor.time
+io.jimble.util.internal.convertor.util
+io.jimble.util.internal.convertor.util.regex
+io.jimble.util.internal.http
+io.jimble.util.internal.http.httpclient
+io.jimble.util.internal.http.httpclient.method
+io.jimble.util.internal.http.httpclient.publisher
+io.jimble.util.internal.http.util
+io.jimble.util.internal.json
+io.jimble.util.internal.json.decoder
+io.jimble.util.internal.json.decoder.stream
+io.jimble.util.internal.json.decoder.stream.util
+io.jimble.util.internal.json.encoder
+io.jimble.util.internal.json.formatter
+io.jimble.util.internal.json.formatter.array
+io.jimble.util.internal.json.formatter.lang
+io.jimble.util.internal.json.formatter.stream
+io.jimble.util.internal.json.formatter.time
+io.jimble.util.internal.json.formatter.util
+io.jimble.util.internal.json.stream
+io.jimble.util.internal.json.stream.writer
+io.jimble.util.internal.xml
+io.jimble.util.internal.xml.converter

@@ -6,7 +6,7 @@ import io.jimble.db.dialect.Sqls;
 import io.jimble.util.convertor.PropertyUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;

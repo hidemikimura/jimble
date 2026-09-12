@@ -8,7 +8,7 @@ import io.jimble.db.cache.CacheData;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.dialect.Sqls;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 
 import java.io.File;
 import java.util.ArrayList;

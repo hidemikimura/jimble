@@ -4,7 +4,7 @@ import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;

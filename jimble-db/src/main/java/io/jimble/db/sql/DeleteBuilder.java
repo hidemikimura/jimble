@@ -3,7 +3,7 @@ package io.jimble.db.sql;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.util.data.definition.ITable;
-import io.jimble.db.sql.query.parameter.Parameter;
+import io.jimble.db.internal.sql.query.parameter.Parameter;
 import io.jimble.db.sql.query.where.IWhere;
 
 import java.util.ArrayList;

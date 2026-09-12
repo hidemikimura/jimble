@@ -5,7 +5,7 @@ import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.dialect.Sqls;
-import io.jimble.db.version.DBVersion;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.db.redis.RedisClient;
 import org.redisson.api.RLock;
 
