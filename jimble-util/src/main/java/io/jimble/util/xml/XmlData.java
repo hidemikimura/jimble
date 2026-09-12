@@ -207,31 +207,45 @@ public class XmlData {
 	/**
 	 * 子要素一覧を取得する
 	 *
+	 * <p>
+	 * <b>無ければ空の一覧を返す（要件 D-161）。</b>
+	 * 以前は {@code null} を返していたので、
+	 * {@code for (XmlData x : xml.getListChild("item"))} と書くと
+	 * <b>要素が0本のときだけ NullPointerException</b> になった——
+	 * 試したデータに1本でも入っていれば通るので、<b>気づかないまま本番へ出る</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>返ってくる空の一覧には足せない。</b>足したいときは
+	 * {@link #addChild(XmlData)} か {@link #getListChildOptional(String)} を使うこと——
+	 * <b>木に繋がっていない一覧に足しても、書き出しには出てこない</b>。
+	 * </p>
+	 *
 	 * @param  tagName タグ名
-	 * @return         子要素一覧
+	 * @return         子要素一覧（無ければ空）
 	 */
 	public List<XmlData> getListChild(String tagName) {
 
-		return children.get(tagName);
+		List<XmlData> result = children.get(tagName);
+
+		return result != null ? result : List.of();
 
 	}
 
 	/**
-	 * 子要素一覧を取得する
+	 * 子要素一覧を取得する（無ければ作って足す）
+	 *
+	 * <p>
+	 * <b>読むだけの口ではない。</b>無ければ<b>その場で木に足す</b>ので、
+	 * そのあと書き出すと<b>元には無かった枠が出てくる</b>。
+	 * </p>
 	 *
 	 * @param  tagName タグ名
-	 * @return         子要素一覧
+	 * @return         子要素一覧（木に繋がっている）
 	 */
 	public List<XmlData> getListChildOptional(String tagName) {
 
-		List<XmlData> result = getListChild(tagName);
-
-		if (result == null) {
-			result = new ArrayList<>();
-			children.put(tagName, result);
-		}
-
-		return result;
+		return children.computeIfAbsent(tagName, key -> new ArrayList<>());
 
 	}
 

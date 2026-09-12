@@ -8,6 +8,12 @@ import io.jimble.web.validation.error.ValidationErrorType;
 
 /**
  * メールアドレス
+ *
+ * <p>
+ * <b>全体が1つのメールアドレスであることを見る（要件 D-161）。</b>
+ * 以前は部分一致だったので、{@code こんにちは a@example.com です} も
+ * {@code a@example.com'; DROP--} も<b>通っていた</b>。
+ * </p>
  */
 public class EmailValidator implements IValidator {
 
@@ -27,7 +33,7 @@ public class EmailValidator implements IValidator {
 		}
 
 		try {
-			return Patterns.EMAIL_ADDRESS.matcher(str).find();
+			return Patterns.EMAIL_ADDRESS.matcher(str).matches();
 		} catch (Exception ex) {
 			return false;
 		}

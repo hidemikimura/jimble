@@ -1,5 +1,6 @@
 package io.jimble.util.log;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.net.HostNames;
 import io.jimble.util.net.LocalAddress;
 import io.jimble.util.string.StringUtil;
@@ -842,7 +843,7 @@ public class Log {
 
 				if (value != null && value.getClass().isArray()) {
 
-					dest.add(convertLogArray((Object[]) value));
+					dest.add(convertLogArray(ArrayUtil.toList(value).toArray()));
 
 				} else if (value instanceof Collection) {
 
@@ -886,7 +887,7 @@ public class Log {
 
 				if (value != null && value.getClass().isArray()) {
 
-					dest.add(convertLogArray((Object[]) value));
+					dest.add(convertLogArray(ArrayUtil.toList(value).toArray()));
 
 				} else if (value instanceof Collection) {
 
@@ -938,7 +939,7 @@ public class Log {
 
 					dest.put(
 						key.replace(LOG_KEY_PATTERN_1, "_").replace(LOG_KEY_PATTERN_2, "_")
-						, convertLogArray((Object[]) value)
+						, convertLogArray(ArrayUtil.toList(value).toArray())
 					);
 
 				} else if (value instanceof Collection) {

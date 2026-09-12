@@ -20,7 +20,7 @@ public class StartsWith implements ICondition {
 	 */
 	public StartsWith(Object value) {
 
-		this.value = String.valueOf(value) + "%";
+		this.value = LikeEscape.escape(String.valueOf(value)) + "%";
 
 	}
 
@@ -39,6 +39,7 @@ public class StartsWith implements ICondition {
 			select.selectSql(sb);
 		} else {
 			sb.append("?");
+			sb.append(LikeEscape.CLAUSE);
 		}
 
 	}

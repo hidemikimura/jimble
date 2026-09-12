@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.parse.Parse;
 import io.jimble.util.data.Data;
@@ -238,7 +239,12 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 		 * （between は size() >= 2 で見ているので、空でも影響しない）
 		 */
 		if (value.getClass().isArray()) {
-			Collections.addAll(res, (Object[]) value);
+			/*
+			 * <b>{@code (Object[])} にキャストしない（要件 D-162）。</b>
+			 * {@code long[]} は {@code Object[]} ではないので、
+			 * キャストすると<b>素の配列だけ必ず落ちる</b>。
+			 */
+			res.addAll(ArrayUtil.toList(value));
 		} else if (value instanceof List<?> list) {
 			res.addAll(list);
 		} else if (value instanceof Data data) {
@@ -271,11 +277,10 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 		}
 
 		if (value.getClass().isArray()) {
-			Object[] values = (Object[]) value;
-			if (values.length == 0) {
+			if (ArrayUtil.length(value) == 0) {
 				return null;
 			} else {
-				return values[0];
+				return ArrayUtil.get(value, 0);
 			}
 		} else if (value instanceof List<?> list) {
 			if (list.isEmpty()) {

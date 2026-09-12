@@ -124,8 +124,26 @@ public class IPv4 {
 				long network = ipLong & mask;
 				long broadcast = network | ~mask;
 
-				min = network + 1;
-				max = broadcast - 1;
+				/*
+				 * <b>前後を1つずつ削らない（要件 D-164）。</b>
+				 * 以前は {@code network + 1} 〜 {@code broadcast - 1} だった——
+				 * <b>ネットワークアドレスとブロードキャストアドレスを外す</b>という、
+				 * 「割り当てられるホスト」の数え方である。
+				 *
+				 * <b>ここが見たいのは「この網に入っているか」であって、
+				 * 「ホストとして使えるか」ではない。</b>削ると、
+				 *
+				 * - <b>{@code /32} が誰にも当たらない</b>（min > max になる）——
+				 *   1台だけを許す一覧のいちばんふつうの書き方で、<b>全員が外れる</b>
+				 * - <b>{@code /31} も同じく誰にも当たらない</b>（点対点でよく使う）
+				 * - {@code 10.0.0.0/8} に {@code 10.0.0.0} と
+				 *   {@code 10.255.255.255} が入らない
+				 *
+				 * <b>IPv6 側は削っていなかった</b>ので、同じ書き方をしても
+				 * <b>片方だけ答えが変わっていた</b>。
+				 */
+				min = network;
+				max = broadcast;
 			}
 
 			calculated = true;

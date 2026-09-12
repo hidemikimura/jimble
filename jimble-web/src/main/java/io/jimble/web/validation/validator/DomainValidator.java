@@ -8,6 +8,12 @@ import io.jimble.web.validation.error.ValidationErrorType;
 
 /**
  * ドメイン
+ *
+ * <p>
+ * <b>全体が1つのドメイン名（か IP アドレス）であることを見る（要件 D-161）。</b>
+ * 以前は部分一致だったので、{@code https://example.com} も
+ * {@code example.com/../etc} も<b>通っていた</b>。
+ * </p>
  */
 public class DomainValidator implements IValidator {
 
@@ -27,7 +33,7 @@ public class DomainValidator implements IValidator {
 		}
 
 		try {
-			return Patterns.DOMAIN_NAME.matcher(str).find();
+			return Patterns.DOMAIN_NAME.matcher(str).matches();
 		} catch (Exception ex) {
 			return false;
 		}

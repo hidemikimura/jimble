@@ -1,29 +1,68 @@
 package io.jimble.util.bot;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import io.jimble.util.json.Dson;
+import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 /**
- * bot判定
- * https://user-agents.net/download
+ * BOT 判定
+ *
+ * <p>
+ * 名乗り（User-Agent）を <a href="https://github.com/monperrus/crawler-user-agents">
+ * crawler-user-agents</a> の一覧と突き合わせる。
+ * 一覧は {@code crawler-user-agents.json} として<b>同梱している</b>。
+ * </p>
+ *
+ * <h2>これは2代目である（要件 D-164）</h2>
+ * <p>
+ * 初代（{@code BotUtil}）は<b>定義ファイルを同梱しておらず</b>、
+ * 読めなかったときの逃げ道が<b>移送元のディレクトリ構成のまま</b>だったので、
+ * <b>一覧が常に0件</b>で動いていた——
+ * true を返すのは「名乗りが空のとき」だけで、
+ * <b>巡回は全部「人」として数えられていた</b>。
+ * 誰も呼んでいなかったので<b>消して、こちらに名前を譲った</b>。
+ * </p>
+ *
+ * <p>
+ * <b>いちばん静かな壊れ方は、いまも「定義が0件のまま動くこと」である。</b>
+ * リソースが見つからなければ<b>その場で落とす</b>ようにしてあり、
+ * {@code BotUtilTest} が代表的な巡回を当てて見張っている。
+ * </p>
  */
 public class BotUtil {
 
+	/**
+	 * コンストラクタ
+	 *
+	 * <p>持ち物は無い。</p>
+	 */
+	public BotUtil () {
+	}
+
 	/* 読み込み済み判定 */
-	private static boolean loaded = false;
-
-	/* BOT IP */
-	private static HashSet<String> BOT_IP_HASH = new HashSet<>();
-
-	/* BOT UA */
-	private static HashSet<String> BOT_UA_HASH = new HashSet<>();
+	private static volatile boolean loaded = false;
 
 	/* ロック */
 	private static final ReentrantLock loadLock = new ReentrantLock();
+
+	/* パターンリスト */
+	private static final List<Pattern> patternList = new ArrayList<>();
+
+	/* UA結果マップ */
+	private static final Cache<String, Boolean> uaResultMapCache = Caffeine.newBuilder()
+		.maximumSize(10000)
+		.build();
+	private static final Map<String, Boolean> uaResultMap = uaResultMapCache.asMap();
 
 	/**
 	 * BOT判定
@@ -44,7 +83,32 @@ public class BotUtil {
 
 		load();
 
-		return BOT_IP_HASH.contains(ip) || BOT_UA_HASH.contains(ua.toLowerCase());
+		return isBot(ua);
+
+	}
+
+	/**
+	 * bot判定
+	 *
+	 * @param ua    UA
+	 * @return  bot判定
+	 */
+	private static boolean isBot (String ua) {
+
+		Boolean cached = uaResultMap.get(ua);
+		if (cached != null) {
+			return cached;
+		}
+
+		for (Pattern pattern : patternList) {
+			if (pattern.matcher(ua).find()) {
+				uaResultMap.put(ua, Boolean.TRUE);
+				return true;
+			}
+		}
+
+		uaResultMap.put(ua, Boolean.FALSE);
+		return false;
 
 	}
 
@@ -88,41 +152,22 @@ public class BotUtil {
 
 		long start = System.currentTimeMillis();
 
-		BOT_IP_HASH = new HashSet<>();
-		BOT_UA_HASH = new HashSet<>();
+		List<Data> jsonList = null;
 		try (
-			InputStream is = loadResource("user-agents_bot-crawler.txt");
-			InputStreamReader isr = new InputStreamReader(is, StandardCharsets.UTF_8);
-			BufferedReader br = new BufferedReader(isr)
+			Reader reader = loadResource("crawler-user-agents.json")
 		) {
-
-			String line;
-			while ((line = br.readLine()) != null) {
-				if (line.isEmpty()) {
-					continue;
-				}
-				int ipIndex = line.indexOf(" [ip:");
-				if (ipIndex > 0) {
-					int ipIndexEnd = line.indexOf("]", ipIndex + 1);
-					if (ipIndexEnd > 0) {
-						BOT_UA_HASH.add(line.substring(0, ipIndex).toLowerCase());
-						BOT_IP_HASH.add(line.substring(ipIndex + 5, ipIndexEnd));
-					} else {
-						BOT_UA_HASH.add(line.toLowerCase());
-					}
-				} else {
-					BOT_UA_HASH.add(line.toLowerCase());
-				}
-			}
-
+			jsonList = Dson.decodes(reader, List.class, Data.class);
 		} catch (Exception ex) {
-
 			Log.error(ex);
-
 		}
 
-		Log.info("loaded bot definition ua: " + BOT_UA_HASH.size());
-		Log.info("loaded bot definition ip: " + BOT_IP_HASH.size());
+		if (jsonList != null) {
+			for (Data data : jsonList) {
+				patternList.add(Pattern.compile(data.getString("pattern")));
+			}
+		}
+
+		Log.info("loaded bot definition ua pattern: " + patternList.size());
 		Log.info("loaded bot definition time: " + (System.currentTimeMillis() - start) + "ms");
 
 	}
@@ -134,35 +179,27 @@ public class BotUtil {
 	 * @return  入力ストリーム
 	 * @throws IOException 例外
 	 */
-	private static InputStream loadResource (String name) throws IOException {
+	private static Reader loadResource (String name) throws IOException {
 
-		// new File(BotUtil.class.protectionDomain().getCodeSource().getLocation().getPath(), "../../../resources/main/lib/base/util/common/bot/user-agents_bot-crawler.txt").exists()
-		try {
-			InputStream is = BotUtil.class.getResourceAsStream(name);
-			if (is == null) {
-				throw new FileNotFoundException(name);
-			}
-			return is;
-		} catch (Exception ex) {
-			return new FileInputStream(new File(BotUtil.class.getProtectionDomain().getCodeSource().getLocation().getPath(), "../../../resources/main/lib/base/util/common/bot/" + name));
+		/*
+		 * クラスパスから読む。
+		 *
+		 * 移送元はここに「見つからなければ jar の場所から
+		 * ../../../resources/main/lib/base/util/common/bot/ を辿る」という
+		 * 逃げ道があった。移送先ではそのパスが存在しないので、
+		 * <b>起動のたびにエラーを1行出して、ボットのパターンが0件のまま動いていた。</b>
+		 * 「ボット判定が効いていない」ことに気づけない形になっていたので、
+		 * 逃げ道を消してリソースを同梱した。
+		 */
+		InputStream inputStream = BotUtil.class.getResourceAsStream(name);
+
+		if (inputStream == null) {
+			throw new FileNotFoundException(
+				"ボット定義が見つかりません: %s（jimble-util の resources に同梱されているはず）".formatted(name));
 		}
 
-	}
-
-	public static void loadTest () {
-
-		try (
-			InputStream is = BotUtil.class.getResourceAsStream("user-agents_bot-crawler.txt");
-			InputStreamReader isr = new InputStreamReader(is, StandardCharsets.UTF_8);
-			BufferedReader br = new BufferedReader(isr)
-		) {
-
-			String line;
-			while ((line = br.readLine()) != null) {
-
-			}
-
-		} catch (Exception ex) {}
+		InputStreamReader isr = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+		return new BufferedReader(isr);
 
 	}
 

@@ -10,6 +10,17 @@ import java.util.regex.Pattern;
 
 /**
  * 正規表現
+ *
+ * <p>
+ * <b>全体が当てはまることを見る（要件 D-161）。</b>
+ * 以前は部分一致だったので、{@code regex("[0-9]{4}")} と書いたところに
+ * <b>{@code abc1234xyz} が通っていた</b>。
+ * </p>
+ *
+ * <p>
+ * <b>{@code ^...$} と書いてある正規表現はそのまま動く</b>（頭と尻の指定が重なるだけ）。
+ * <b>部分一致させたいときは {@code .*} で挟むこと。</b>
+ * </p>
  */
 public class RegexValidator implements IValidator {
 
@@ -79,7 +90,7 @@ public class RegexValidator implements IValidator {
 
 		compile();
 
-		return this.pattern.matcher(str).find();
+		return this.pattern.matcher(str).matches();
 
 	}
 

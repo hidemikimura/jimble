@@ -1,5 +1,6 @@
 package io.jimble.util.map;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.data.Data;
 
@@ -117,7 +118,7 @@ public class MapUtil {
 		} else if (src instanceof Collection<?> srcCollection) {
 			return mergeCollection(srcCollection, add);
 		} else if (src.getClass().isArray()) {
-			return mergeArray((Object[]) src, add);
+			return mergeArray(ArrayUtil.toList(src), add);
 		} else {
 			List<Object> newList = new ArrayList<>();
 			newList.add(src);
@@ -166,7 +167,7 @@ public class MapUtil {
 		if (add instanceof Collection<?> addCollection) {
 			srcCollection.addAll(addCollection);
 		} else if (add.getClass().isArray()) {
-			srcCollection.addAll(Arrays.asList((Object[]) add));
+			srcCollection.addAll(ArrayUtil.toList(add));
 		} else {
 			srcCollection.add(add);
 		}
@@ -182,12 +183,11 @@ public class MapUtil {
 	 * @param add   Object
 	 * @return  Array
 	 */
-	private static List<Object> mergeArray (Object[] src, Object add) {
+	private static List<Object> mergeArray (List<Object> src, Object add) {
 
-		List<Object> newList = new ArrayList<>(Arrays.asList(src));
+		List<Object> newList = new ArrayList<>(src);
 		if (add.getClass().isArray()) {
-			Object[] addArray = (Object[]) add;
-			newList.addAll(Arrays.asList(addArray));
+			newList.addAll(ArrayUtil.toList(add));
 		} else if (add instanceof Collection<?> addCollection) {
 			newList.addAll(addCollection);
 		} else {

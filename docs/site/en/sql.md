@@ -39,6 +39,17 @@ SQL.select(Post.id, Post.title).from(Post.instance())
 
 Call `where` more than once and the conditions are joined with AND.
 
+> [!NOTE]
+> **`contains`, `starts_with` and `ends_with` look for the text you passed, literally.**
+> A `50%` typed into a search box is looked up as the string **`50%`**, not as "anything starting with 50",
+> and `a_c` does not match `abc` (`%` and `_` are escaped and an `ESCAPE '!'` clause is added).
+> **When you want to write the `%` yourself, use `like(...)`** — that one passes the value through as-is.
+
+> [!NOTE]
+> **`in(...)` takes a `List` or an array**, including primitive arrays such as `long[]` and `int[]`.
+> **An empty list (or `null`) fails while the SQL is being built** — `IN ()` is broken SQL, and
+> collapsing it to `IN (NULL)` **matches no row and quietly returns nothing**.
+
 ## Joins
 
 ```java

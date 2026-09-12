@@ -1,5 +1,6 @@
 package io.jimble.util.csv;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import de.siegmar.fastcsv.writer.LineDelimiter;
 import de.siegmar.fastcsv.writer.QuoteStrategies;
 import io.jimble.util.convertor.Convertor;
@@ -34,28 +35,24 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	/* CSVライター */
 	private de.siegmar.fastcsv.writer.CsvWriter csvWriter;
 
-	/* ボディ出力済み判定 */
+	/* 1行でも書いたか */
 	private boolean bodyWritten = false;
 
 	/**
-	 * ボディ出力済み判定
+	 * 1行でも書いたか
 	 *
-	 * @return	ボディ出力済み判定
+	 * <p>
+	 * <b>以前は誰も見ていない旗だった（要件 D-161）。</b>
+	 * 立てるのも外すのも呼ぶ側の仕事で、<b>枠組みは一度も読んでいなかった</b>——
+	 * 値を入れる {@code setBodyWritten} は消し、いまは
+	 * {@link #writeLine(Object...)} が自分で立てる。
+	 * </p>
+	 *
+	 * @return	1行でも書いた場合 = true
 	 */
 	public boolean isBodyWritten() {
 
 		return bodyWritten;
-
-	}
-
-	/**
-	 * ボディ出力済み判定を設定する
-	 *
-	 * @param bodyWritten	ボディ出力済み判定
-	 */
-	public void setBodyWritten(boolean bodyWritten) {
-
-		this.bodyWritten = bodyWritten;
 
 	}
 
@@ -124,12 +121,34 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	}
 
 	/**
+	 * 書き始めたあとの設定変更を止める
+	 *
+	 * <p>
+	 * <b>組み立ては1回きりである（要件 D-161）。</b>
+	 * 1行でも書いたあとに区切りや引用符を変えても<b>何も起きなかった</b>——
+	 * 出来上がった CSV は<b>指定したはずの形になっていない</b>のに、
+	 * 例外もログも出ない。
+	 * </p>
+	 *
+	 * @param what	変えようとしたもの
+	 */
+	private void refuseAfterWriting (String what) {
+
+		if (bodyWritten) {
+			throw new IllegalStateException(
+				"書き始めたあとで " + what + " は変えられません（書き出す前に設定してください）");
+		}
+
+	}
+
+	/**
 	 * 改行コードを設定する
 	 *
 	 * @return	CsvWriter
 	 */
 	public CsvWriter setLineSeparatorCRLF () {
 
+		refuseAfterWriting("改行コード");
 		this.lineSeparator = LineDelimiter.CRLF;
 		return this;
 
@@ -142,6 +161,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 */
 	public CsvWriter setLineSeparatorCR () {
 
+		refuseAfterWriting("改行コード");
 		this.lineSeparator = LineDelimiter.CR;
 		return this;
 
@@ -154,6 +174,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 */
 	public CsvWriter setLineSeparatorLF () {
 
+		refuseAfterWriting("改行コード");
 		this.lineSeparator = LineDelimiter.LF;
 		return this;
 
@@ -167,6 +188,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 */
 	public CsvWriter setRecordSeparator (char recordSeparator) {
 
+		refuseAfterWriting("区切り文字");
 		this.recordSeparator = recordSeparator;
 		return this;
 
@@ -180,6 +202,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 */
 	public CsvWriter setQuoteCharacter (char quoteCharacter) {
 
+		refuseAfterWriting("引用符");
 		this.quoteCharacter = quoteCharacter;
 		return this;
 
@@ -213,6 +236,8 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	public void writeLine (Object... record) throws Exception {
 
 		createCsvWriter();
+
+		bodyWritten = true;
 
 		List<Object> tempRecord = extractParams(record);
 		List<String> _record = new ArrayList<>();
@@ -253,7 +278,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 			} else if (param instanceof Collection<?>) {
 				params.addAll(extractParams(((Collection<?>) param).toArray()));
 			} else if (param.getClass().isArray()) {
-				params.addAll(Arrays.asList((Object[]) param));
+				params.addAll(extractParams(ArrayUtil.toList(param).toArray()));
 			} else {
 				params.add(param);
 			}

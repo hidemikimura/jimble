@@ -20,7 +20,7 @@ public class EndsWith implements ICondition {
 	 */
 	public EndsWith(Object value) {
 
-		this.value = "%" + String.valueOf(value);
+		this.value = "%" + LikeEscape.escape(String.valueOf(value));
 
 	}
 
@@ -37,6 +37,7 @@ public class EndsWith implements ICondition {
 			dsl.dslSql(sb);
 		} else {
 			sb.append("?");
+			sb.append(LikeEscape.CLAUSE);
 		}
 
 	}

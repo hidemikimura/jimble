@@ -8,6 +8,16 @@ import io.jimble.web.validation.error.ValidationErrorType;
 
 /**
  * URL
+ *
+ * <p>
+ * <b>全体が1つの URL であることを見る（要件 D-161）。</b>
+ * 以前は部分一致だったので、{@code 見て https://example.com ここ} や
+ * {@code https://example.com そのあとに何か} も<b>通っていた</b>。
+ * </p>
+ *
+ * <p>
+ * <b>スキームは要らない。</b>{@code example.com} も URL として通る。
+ * </p>
  */
 public class UrlValidator implements IValidator {
 
@@ -27,7 +37,7 @@ public class UrlValidator implements IValidator {
 		}
 
 		try {
-			return Patterns.WEB_URL.matcher(str).find();
+			return Patterns.WEB_URL.matcher(str).matches();
 		} catch (Exception ex) {
 			return false;
 		}

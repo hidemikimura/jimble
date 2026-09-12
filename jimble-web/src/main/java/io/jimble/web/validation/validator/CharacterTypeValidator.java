@@ -12,6 +12,14 @@ import java.util.regex.Pattern;
 
 /**
  * 文字種別
+ *
+ * <p>
+ * <b>全体が当てはまることを見る（要件 D-161）。</b>
+ * 組み立てる正規表現は {@code ^[...]+$} だが、
+ * <b>{@code find()} で当てていたので取りこぼしがあった</b>——
+ * Java の {@code $} は<b>末尾の改行1つの手前にも当たる</b>ので、
+ * 半角数字だけを許したところに {@code "12\n"} が通っていた。
+ * </p>
  */
 public class CharacterTypeValidator implements IValidator {
 
@@ -76,6 +84,16 @@ public class CharacterTypeValidator implements IValidator {
 				return;
 			}
 
+			/*
+			 * <b>どちらも無いと {@code ^[]+$} になって、正規表現として壊れる。</b>
+			 * 出るのは実行時の {@code PatternSyntaxException} で、
+			 * <b>「文字種別の指定を忘れた」とは読めない</b>。
+			 */
+			if (!this.settings.containsKey("types") && !this.settings.containsKey("symbols")) {
+				throw new IllegalStateException(
+					"characterType に文字種も文字も指定されていません（何も通らない検証になります）");
+			}
+
 			StringBuilder sb = new StringBuilder();
 			sb.append("^[");
 			if (this.settings.containsKey("types")) {
@@ -118,7 +136,7 @@ public class CharacterTypeValidator implements IValidator {
 
 		compile();
 
-		return pattern.matcher(str).find();
+		return pattern.matcher(str).matches();
 
 	}
 

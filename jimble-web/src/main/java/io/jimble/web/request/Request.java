@@ -1,7 +1,7 @@
 package io.jimble.web.request;
 
 import io.jimble.util.conf.Conf;
-import io.jimble.util.bot.BotUtil2;
+import io.jimble.util.bot.BotUtil;
 import io.jimble.util.convertor.UploadFile;
 import io.jimble.util.useragent.UserAgentInfo;
 import io.jimble.util.useragent.UserAgentUtil;
@@ -947,7 +947,7 @@ public class Request extends Data {
 	public boolean isBotAccess () {
 
 		if (isBotAccess == null) {
-			isBotAccess = BotUtil2.isBot(address(), userAgent().ua);
+			isBotAccess = BotUtil.isBot(address(), userAgent().ua);
 		}
 
 		return isBotAccess;

@@ -20,7 +20,7 @@ public class Contains implements ICondition {
 	 */
 	public Contains(Object value) {
 
-		this.value = "%" + String.valueOf(value) + "%";
+		this.value = "%" + LikeEscape.escape(String.valueOf(value)) + "%";
 
 	}
 
@@ -39,6 +39,7 @@ public class Contains implements ICondition {
 			select.selectSql(sb);
 		} else {
 			sb.append("?");
+			sb.append(LikeEscape.CLAUSE);
 		}
 
 	}

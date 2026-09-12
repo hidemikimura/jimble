@@ -140,7 +140,7 @@ io.jimble.mcp.tool
 # <b>1.0 の「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
 # 詳しくは docs/site/ja/versioning.md
 
-[internal] 内部実装（56）
+[internal] 内部実装（57）
 io.jimble.cli.internal
 io.jimble.db.internal
 io.jimble.db.internal.generator
@@ -160,6 +160,7 @@ io.jimble.db.internal.sql.query.where
 io.jimble.db.internal.sql.query.where.condition
 io.jimble.db.internal.version
 io.jimble.util.internal
+io.jimble.util.internal.array
 io.jimble.util.internal.charset
 io.jimble.util.internal.convertor
 io.jimble.util.internal.convertor.array

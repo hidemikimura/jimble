@@ -1,5 +1,6 @@
 package io.jimble.db.internal.sql.query.where.condition;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.SelectBuilder;
 import io.jimble.db.sql.query.dsl.IDsl;
@@ -50,8 +51,14 @@ public class In implements ICondition {
 				sb.append("?");
 			}
 		} else if (value != null && value.getClass().isArray()) {
-			Object[] array = (Object[]) value;
-			for (int i = 0; i < array.length; i++) {
+			/*
+			 * <b>{@code (Object[])} にキャストしない（要件 D-162）。</b>
+			 * {@code long[]} や {@code int[]} は {@code Object[]} ではないので、
+			 * キャストすると<b>{@code class [J cannot be cast to ...} で落ちる</b>——
+			 * {@code isArray()} で受けておきながら、<b>素の配列だけ必ず落ちていた</b>。
+			 */
+			int length = ArrayUtil.length(value);
+			for (int i = 0; i < length; i++) {
 				if (i > 0) {
 					sb.append(", ");
 				}
@@ -79,8 +86,7 @@ public class In implements ICondition {
 		} else if (value instanceof Collection<?> list) {
 			return !list.isEmpty();
 		} else if (value != null && value.getClass().isArray()) {
-			Object[] array = (Object[]) value;
-			return array.length > 0;
+			return ArrayUtil.length(value) > 0;
 		} else {
 			return true;
 		}

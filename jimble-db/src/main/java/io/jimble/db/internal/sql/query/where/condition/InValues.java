@@ -1,5 +1,6 @@
 package io.jimble.db.internal.sql.query.where.condition;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.sql.SqlBuildException;
 
 import java.util.Collection;
@@ -51,7 +52,7 @@ final class InValues {
 		} else if (value instanceof Collection<?> list) {
 			size = list.size();
 		} else if (value.getClass().isArray()) {
-			size = ((Object[]) value).length;
+			size = ArrayUtil.length(value);
 		} else {
 			return;
 		}

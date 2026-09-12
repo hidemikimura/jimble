@@ -1,5 +1,6 @@
 package io.jimble.db.internal.sql.query.parameter;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.data.Data;
 
 import java.util.ArrayList;
@@ -56,8 +57,8 @@ public class Parameter {
 				res.addAll(flattenObject(listObj));
 			}
 		} else if (o.getClass().isArray()) {
-			Object[] arr = (Object[]) o;
-			for (Object arrObj : arr) {
+			// 素の配列（long[] など）も通る（要件 D-162）
+			for (Object arrObj : ArrayUtil.toList(o)) {
 				res.addAll(flattenObject(arrObj));
 			}
 		} else {

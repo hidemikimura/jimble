@@ -1,5 +1,6 @@
 package io.jimble.util.internal.convertor.util;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.json.Dson;
@@ -66,7 +67,7 @@ public final class ListUtil {
 
 		} else if (obj.getClass().isArray()) {
 
-			for (Object o : (Object[]) obj) {
+			for (Object o : ArrayUtil.toList(obj)) {
 				list.add(Convertor.convert(conf, o, args));
 			}
 

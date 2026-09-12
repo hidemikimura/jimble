@@ -1,5 +1,6 @@
 package io.jimble.db.sql;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
 import io.jimble.db.sql.definition.column.Column;
@@ -77,8 +78,8 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 					selectList.addAll(expandSelectArray(listObject));
 				}
 			} else if (o.getClass().isArray()) {
-				Object[] objects = (Object[]) o;
-				for (Object arrayObject : objects) {
+				// 素の配列（long[] など）も通る（要件 D-162）
+				for (Object arrayObject : ArrayUtil.toList(o)) {
 					selectList.addAll(expandSelectArray(arrayObject));
 				}
 			} else {

@@ -1,5 +1,6 @@
 package io.jimble.util.internal.convertor.util;
 
+import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
@@ -78,9 +79,8 @@ public final class MapUtil {
 
 		} else if (obj.getClass().isArray()) {
 
-			Object[] objs = (Object[]) obj;
 			int index = 0;
-			for (Object o : objs) {
+			for (Object o : ArrayUtil.toList(obj)) {
 				Object key = Convertor.convert(conf, String.valueOf(index++), argsKey);
 				Object value = Convertor.convert(conf, o, argsValue);
 				map.put(key, value);
