@@ -1,6 +1,7 @@
 package io.jimble.web.router;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -248,6 +249,33 @@ final class Scope {
 	boolean isSealed () {
 
 		return sealed;
+
+	}
+
+	/**
+	 * このブロックに直接書かれた属性のキー（要件 D-157）
+	 *
+	 * <p>
+	 * <b>同じ名前のキーが2つ無いかを、起動時に見るために要る。</b>
+	 * {@link #resolveAttributeKeys()} は親を辿るので、木を降りて集めるにはこちらを使う。
+	 * </p>
+	 *
+	 * @return	キー
+	 */
+	Collection<AttributeKey<?>> ownAttributeKeys () {
+
+		return attributes.keySet();
+
+	}
+
+	/**
+	 * 中のブロック
+	 *
+	 * @return	ブロック
+	 */
+	List<Scope> children () {
+
+		return children;
 
 	}
 

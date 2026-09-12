@@ -5,6 +5,9 @@ import io.jimble.util.data.TableNest;
 import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.stream.Stream;
+import java.util.function.IntFunction;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -428,11 +431,24 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	// endregion
 
-	// region List（触られたら読む）
+	// region 触られたら読む（要件 D-157）
 
-	/**
-	 * {@inheritDoc}
+	/*
+	 * <b>ArrayList の公開メソッドを、1つ残らずここに並べてある。</b>
+	 *
+	 * 以前は「読む側」だけを選んで上書きしていたので、
+	 * {@code add} / {@code set} / {@code clear} / {@code addAll} や、
+	 * Java 21 で生えた {@code addFirst} / {@code removeLast} は
+	 * <b>未読み込みの空リストをそのまま触っていた</b>——
+	 * 落ちも警告も出さず、<b>「空のリスト」として振る舞っていた</b>。
+	 *
+	 * <b>漏れは AsyncListAccessFunnelTest が反射で見張る。</b>
+	 * JDK が List にメソッドを足したら、そこで落ちる。
+	 *
+	 * <b>equals / hashCode / toString は通さない</b>（上の「同一性」を参照）。
+	 * デバッガやログが覗いただけでクエリが飛ぶのは困る。
 	 */
+
 	@Override
 	public int size () {
 
@@ -441,31 +457,6 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public Object get (int index) {
-
-		loadData();
-		return super.get(index);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public boolean contains (Object o) {
-
-		loadData();
-		return super.contains(o);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
 	public boolean isEmpty () {
 
@@ -474,102 +465,14 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
-	public @NonNull Iterator<Object> iterator () {
+	public boolean contains (Object o) {
 
 		loadData();
-		return super.iterator();
+		return super.contains(o);
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull ListIterator<Object> listIterator (int index) {
-
-		loadData();
-		return super.listIterator(index);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull ListIterator<Object> listIterator () {
-
-		loadData();
-		return super.listIterator();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void forEach (Consumer<? super Object> action) {
-
-		loadData();
-		super.forEach(action);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull Spliterator<Object> spliterator () {
-
-		loadData();
-		return super.spliterator();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void sort (Comparator<? super Object> c) {
-
-		loadData();
-		super.sort(c);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>
-	 * <b>移送元はここが抜けていた。</b>{@code ArrayList.toArray()} は内部配列を直接見るので、
-	 * 未読み込みのリストが<b>黙って空の配列</b>になっていた。
-	 * </p>
-	 */
-	@Override
-	public Object @NonNull [] toArray () {
-
-		loadData();
-		return super.toArray();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public <T> T @NonNull [] toArray (T @NonNull [] a) {
-
-		loadData();
-		return super.toArray(a);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
 	public int indexOf (Object o) {
 
@@ -578,9 +481,6 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
 	public int lastIndexOf (Object o) {
 
@@ -589,20 +489,46 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
-	public @NonNull List<Object> subList (int fromIndex, int toIndex) {
+	public Object clone () {
 
 		loadData();
-		return super.subList(fromIndex, toIndex);
+		return super.clone();
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
+	public Object[] toArray () {
+
+		loadData();
+		return super.toArray();
+
+	}
+
+	@Override
+	public <T> T[] toArray (T[] a) {
+
+		loadData();
+		return super.toArray(a);
+
+	}
+
+	@Override
+	public <T> T[] toArray (IntFunction<T[]> generator) {
+
+		loadData();
+		return super.toArray(generator);
+
+	}
+
+	@Override
+	public Object get (int index) {
+
+		loadData();
+		return super.get(index);
+
+	}
+
 	@Override
 	public Object getFirst () {
 
@@ -611,9 +537,6 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
 	public Object getLast () {
 
@@ -622,9 +545,126 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
+	public Object set (int index, Object element) {
+
+		loadData();
+		return super.set(index, element);
+
+	}
+
+	@Override
+	public boolean add (Object element) {
+
+		loadData();
+		return super.add(element);
+
+	}
+
+	@Override
+	public void add (int index, Object element) {
+
+		loadData();
+		super.add(index, element);
+
+	}
+
+	@Override
+	public void addFirst (Object element) {
+
+		loadData();
+		super.addFirst(element);
+
+	}
+
+	@Override
+	public void addLast (Object element) {
+
+		loadData();
+		super.addLast(element);
+
+	}
+
+	@Override
+	public Object remove (int index) {
+
+		loadData();
+		return super.remove(index);
+
+	}
+
+	@Override
+	public boolean remove (Object o) {
+
+		loadData();
+		return super.remove(o);
+
+	}
+
+	@Override
+	public Object removeFirst () {
+
+		loadData();
+		return super.removeFirst();
+
+	}
+
+	@Override
+	public Object removeLast () {
+
+		loadData();
+		return super.removeLast();
+
+	}
+
+	@Override
+	public void clear () {
+
+		loadData();
+		super.clear();
+
+	}
+
+	@Override
+	public boolean addAll (Collection<?> collection) {
+
+		loadData();
+		return super.addAll(collection);
+
+	}
+
+	@Override
+	public boolean addAll (int index, Collection<?> collection) {
+
+		loadData();
+		return super.addAll(index, collection);
+
+	}
+
+	@Override
+	public boolean removeAll (Collection<?> collection) {
+
+		loadData();
+		return super.removeAll(collection);
+
+	}
+
+	@Override
+	public boolean retainAll (Collection<?> collection) {
+
+		loadData();
+		return super.retainAll(collection);
+
+	}
+
+	@Override
+	public boolean containsAll (Collection<?> collection) {
+
+		loadData();
+		return super.containsAll(collection);
+
+	}
+
 	@Override
 	public boolean removeIf (Predicate<? super Object> filter) {
 
@@ -633,14 +673,107 @@ public abstract class AsyncList extends ArrayList<Object> implements Async {
 
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
+	public void forEach (Consumer<? super Object> action) {
+
+		loadData();
+		super.forEach(action);
+
+	}
+
 	@Override
 	public void replaceAll (UnaryOperator<Object> operator) {
 
 		loadData();
 		super.replaceAll(operator);
+
+	}
+
+	@Override
+	public void sort (Comparator<? super Object> comparator) {
+
+		loadData();
+		super.sort(comparator);
+
+	}
+
+	@Override
+	public Iterator<Object> iterator () {
+
+		loadData();
+		return super.iterator();
+
+	}
+
+	@Override
+	public ListIterator<Object> listIterator () {
+
+		loadData();
+		return super.listIterator();
+
+	}
+
+	@Override
+	public ListIterator<Object> listIterator (int index) {
+
+		loadData();
+		return super.listIterator(index);
+
+	}
+
+	@Override
+	public List<Object> subList (int fromIndex, int toIndex) {
+
+		loadData();
+		return super.subList(fromIndex, toIndex);
+
+	}
+
+	@Override
+	public Spliterator<Object> spliterator () {
+
+		loadData();
+		return super.spliterator();
+
+	}
+
+	@Override
+	public Stream<Object> stream () {
+
+		loadData();
+		return super.stream();
+
+	}
+
+	@Override
+	public Stream<Object> parallelStream () {
+
+		loadData();
+		return super.parallelStream();
+
+	}
+
+	@Override
+	public List<Object> reversed () {
+
+		loadData();
+		return super.reversed();
+
+	}
+
+	@Override
+	public void ensureCapacity (int minCapacity) {
+
+		loadData();
+		super.ensureCapacity(minCapacity);
+
+	}
+
+	@Override
+	public void trimToSize () {
+
+		loadData();
+		super.trimToSize();
 
 	}
 

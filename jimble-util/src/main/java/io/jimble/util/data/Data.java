@@ -13,6 +13,9 @@ import java.io.Writer;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * データ
@@ -2458,5 +2461,350 @@ public class Data extends LinkedHashMap<String, Object> {
 		return value.getClass().getSimpleName();
 
 	}
+
+
+	// region 触る前の口（要件 D-157）
+
+	/**
+	 * 中身に触る前に呼ばれる
+	 *
+	 * <p>
+	 * <b>ここは何もしない。</b>
+	 * {@link io.jimble.util.data.async.AsyncData} が<b>ここだけを上書きして</b>、
+	 * 遅延読み込みを起こす。
+	 * </p>
+	 *
+	 * <h4>なぜ1本にまとめたのか</h4>
+	 * <p>
+	 * <b>以前は {@code AsyncData} が読み取り 17 個を1つずつ上書きしていた。</b>
+	 * 上書きし忘れた分だけ穴が開くので、
+	 * {@code asyncData.remove("id")} や {@code computeIfAbsent} は
+	 * <b>未読み込みの空マップを触って、黙って null を返していた。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>穴は増える一方だった。</b>Java 21 で {@code LinkedHashMap} が
+	 * {@code SequencedMap} になり、{@code putFirst} / {@code pollLastEntry} などが
+	 * <b>誰も上書きしないまま生えた</b>。
+	 * <b>JDK が足すたびに穴が開く形</b>をやめるために、口を1本にした。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>漏れは {@code DataAccessFunnelTest} が見張る。</b>
+	 * {@code LinkedHashMap} の公開メソッドを反射で数えて、
+	 * <b>ここを通っていないものが1つでもあれば落ちる。</b>
+	 * </p>
+	 *
+	 * <h4>通していないもの</h4>
+	 * <p>
+	 * <b>{@code equals} / {@code hashCode} / {@code toString} は通さない。</b>
+	 * デバッガやログが触るところなので、<b>覗いただけでクエリが飛ぶ</b>のは困る
+	 * （{@code AsyncData} はこの3つを「未読み込み」と答える形で自分で持っている）。
+	 * </p>
+	 */
+	protected void beforeAccess () {
+	}
+
+	/**
+	 * すでに持っている値だけ（{@link #beforeAccess()} を通さない）
+	 *
+	 * <p>
+	 * {@code AsyncData.loadedValues()} が「読み込みを起こさずに中を見る」ために使う。
+	 * </p>
+	 *
+	 * @return	値
+	 */
+	protected final Collection<Object> rawValues () {
+
+		/*
+		 * <b>{@code super.values()} は使えない。</b>
+		 * {@code LinkedHashMap.values()} は<b>中で {@code sequencedValues()} を呼ぶ</b>ので、
+		 * こちらが上書きしたほうへ戻ってきて<b>口を通ってしまう</b>
+		 * （読み込みを起こさないつもりの口が、読み込みを起こす）。
+		 *
+		 * {@code forEach} は連結リストを自分で辿るだけで、
+		 * <b>ビューを1つも作らない</b>ので、ここから出ない。
+		 */
+		List<Object> values = new ArrayList<>(super.size());
+
+		super.forEach((key, value) -> values.add(value));
+
+		return values;
+
+	}
+
+	@Override
+	public int size () {
+
+		beforeAccess();
+		return super.size();
+
+	}
+
+	@Override
+	public boolean isEmpty () {
+
+		beforeAccess();
+		return super.isEmpty();
+
+	}
+
+	@Override
+	public boolean containsKey (Object key) {
+
+		beforeAccess();
+		return super.containsKey(key);
+
+	}
+
+	@Override
+	public boolean containsValue (Object value) {
+
+		beforeAccess();
+		return super.containsValue(value);
+
+	}
+
+	@Override
+	public Object get (Object key) {
+
+		beforeAccess();
+		return super.get(key);
+
+	}
+
+	@Override
+	public Object put (String key, Object value) {
+
+		beforeAccess();
+		return super.put(key, value);
+
+	}
+
+	@Override
+	public Object remove (Object key) {
+
+		beforeAccess();
+		return super.remove(key);
+
+	}
+
+	@Override
+	public void putAll (Map<? extends String, ? extends Object> map) {
+
+		beforeAccess();
+		super.putAll(map);
+
+	}
+
+	@Override
+	public void clear () {
+
+		beforeAccess();
+		super.clear();
+
+	}
+
+	@Override
+	public Set<String> keySet () {
+
+		beforeAccess();
+		return super.keySet();
+
+	}
+
+	@Override
+	public Collection<Object> values () {
+
+		beforeAccess();
+		return super.values();
+
+	}
+
+	@Override
+	public Set<Map.Entry<String, Object>> entrySet () {
+
+		beforeAccess();
+		return super.entrySet();
+
+	}
+
+	@Override
+	public Object getOrDefault (Object key, Object defaultValue) {
+
+		beforeAccess();
+		return super.getOrDefault(key, defaultValue);
+
+	}
+
+	@Override
+	public void forEach (BiConsumer<? super String, ? super Object> action) {
+
+		beforeAccess();
+		super.forEach(action);
+
+	}
+
+	@Override
+	public void replaceAll (BiFunction<? super String, ? super Object, ? extends Object> function) {
+
+		beforeAccess();
+		super.replaceAll(function);
+
+	}
+
+	@Override
+	public Object putIfAbsent (String key, Object value) {
+
+		beforeAccess();
+		return super.putIfAbsent(key, value);
+
+	}
+
+	@Override
+	public boolean remove (Object key, Object value) {
+
+		beforeAccess();
+		return super.remove(key, value);
+
+	}
+
+	@Override
+	public boolean replace (String key, Object oldValue, Object newValue) {
+
+		beforeAccess();
+		return super.replace(key, oldValue, newValue);
+
+	}
+
+	@Override
+	public Object replace (String key, Object value) {
+
+		beforeAccess();
+		return super.replace(key, value);
+
+	}
+
+	@Override
+	public Object computeIfAbsent (String key, Function<? super String, ? extends Object> mappingFunction) {
+
+		beforeAccess();
+		return super.computeIfAbsent(key, mappingFunction);
+
+	}
+
+	@Override
+	public Object computeIfPresent (String key, BiFunction<? super String, ? super Object, ? extends Object> remappingFunction) {
+
+		beforeAccess();
+		return super.computeIfPresent(key, remappingFunction);
+
+	}
+
+	@Override
+	public Object compute (String key, BiFunction<? super String, ? super Object, ? extends Object> remappingFunction) {
+
+		beforeAccess();
+		return super.compute(key, remappingFunction);
+
+	}
+
+	@Override
+	public Object merge (String key, Object value, BiFunction<? super Object, ? super Object, ? extends Object> remappingFunction) {
+
+		beforeAccess();
+		return super.merge(key, value, remappingFunction);
+
+	}
+
+	@Override
+	public Object putFirst (String key, Object value) {
+
+		beforeAccess();
+		return super.putFirst(key, value);
+
+	}
+
+	@Override
+	public Object putLast (String key, Object value) {
+
+		beforeAccess();
+		return super.putLast(key, value);
+
+	}
+
+	@Override
+	public Map.Entry<String, Object> firstEntry () {
+
+		beforeAccess();
+		return super.firstEntry();
+
+	}
+
+	@Override
+	public Map.Entry<String, Object> lastEntry () {
+
+		beforeAccess();
+		return super.lastEntry();
+
+	}
+
+	@Override
+	public Map.Entry<String, Object> pollFirstEntry () {
+
+		beforeAccess();
+		return super.pollFirstEntry();
+
+	}
+
+	@Override
+	public Map.Entry<String, Object> pollLastEntry () {
+
+		beforeAccess();
+		return super.pollLastEntry();
+
+	}
+
+	@Override
+	public SequencedMap<String, Object> reversed () {
+
+		beforeAccess();
+		return super.reversed();
+
+	}
+
+	@Override
+	public SequencedSet<String> sequencedKeySet () {
+
+		beforeAccess();
+		return super.sequencedKeySet();
+
+	}
+
+	@Override
+	public SequencedCollection<Object> sequencedValues () {
+
+		beforeAccess();
+		return super.sequencedValues();
+
+	}
+
+	@Override
+	public SequencedSet<Map.Entry<String, Object>> sequencedEntrySet () {
+
+		beforeAccess();
+		return super.sequencedEntrySet();
+
+	}
+
+	@Override
+	public Object clone () {
+
+		beforeAccess();
+		return super.clone();
+
+	}
+
+	// endregion
 
 }

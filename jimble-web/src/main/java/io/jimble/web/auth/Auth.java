@@ -329,7 +329,7 @@ public final class Auth {
 			return Principal.ANONYMOUS;
 		}
 
-		return new Principal(id, context.session().get(KEY_NAME), context.session().get(KEY_ROLE));
+		return Principal.of(id, context.session().get(KEY_NAME), context.session().get(KEY_ROLE));
 
 	}
 

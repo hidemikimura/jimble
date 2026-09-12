@@ -66,7 +66,7 @@ import io.jimble.util.log.Log;
 Web だけでなくバッチや MQ も含めた「一つの実行」のほう。
 
 **アクセサに `get` は付かない。**`principal.id()` / `principal.name()` /
-`principal.hasRole("x")`。`Principal` は record。
+`principal.hasRole("x")`。`Principal` は **final class**（`Principal.of(id, name, role)` で作る。record ではない）。
 
 ## Spring の癖でよく間違えるところ
 

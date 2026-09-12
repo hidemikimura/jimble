@@ -84,6 +84,8 @@ path("/docs", () -> {
 ```
 
 `AttributeKey` は既定値を持つので、**`null` の判定が要らない**。
+**キーは作ったインスタンスそのもの**なので、`static final` で1つだけ持って使い回す
+（同じ名前で別に `new` したものは別のキー。同名が2つあると `seal()` で落ちる）。
 
 ```java
 static final AttributeKey<Boolean> NO_AUTH = new AttributeKey<>("no_auth", false);

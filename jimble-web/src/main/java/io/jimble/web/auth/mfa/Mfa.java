@@ -509,7 +509,7 @@ public final class Mfa {
 			return Principal.ANONYMOUS;
 		}
 
-		return new Principal(id
+		return Principal.of(id
 			, context.session().get(KEY_PENDING_NAME), context.session().get(KEY_PENDING_ROLE));
 
 	}

@@ -153,6 +153,17 @@ public final class Route {
 	}
 
 	/**
+	 * このルートに付いている属性のキー（要件 D-157）
+	 *
+	 * @return	キー
+	 */
+	java.util.Collection<AttributeKey<?>> attributeKeys () {
+
+		return attributes.keySet();
+
+	}
+
+	/**
 	 * タグを追加する
 	 *
 	 * @param values	タグ

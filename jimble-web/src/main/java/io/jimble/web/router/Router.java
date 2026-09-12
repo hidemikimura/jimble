@@ -7,7 +7,9 @@ import io.jimble.web.server.ServerConf;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -504,7 +506,91 @@ public final class Router {
 		scope.root().seal();
 		rootTree.forEachRoute(Route::seal);
 
+		checkDuplicateAttributeNames();
 		checkUnreachable();
+
+	}
+
+	/**
+	 * 同じ名前の属性キーが2つ無いかを見る（要件 D-157）
+	 *
+	 * <p>
+	 * <b>キーはインスタンスそのもの</b>（{@link AttributeKey}）なので、
+	 * 名前がぶつかっても<b>振る舞いは正しい</b>——別のキーとして扱われる。
+	 * それでも落とすのは、<b>ログと診断で見分けが付かなくなる</b>ためである。
+	 * {@code auth_public} が2つ出てきたとき、
+	 * <b>どちらが {@code Auth.PUBLIC} なのかを読み手が決められない。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>起動時に落とす。</b>リクエストが来てからでは、
+	 * 出たログのほうを疑うことになる。
+	 * </p>
+	 */
+	private void checkDuplicateAttributeNames () {
+
+		Map<String, AttributeKey<?>> seen = new LinkedHashMap<>();
+		List<String> duplicated = new ArrayList<>();
+
+		collectAttributeNames(scope.root(), seen, duplicated);
+
+		rootTree.forEachRoute(route -> {
+			for (AttributeKey<?> key : route.attributeKeys()) {
+				noteAttributeName(key, seen, duplicated);
+			}
+		});
+
+		if (duplicated.isEmpty()) {
+			return;
+		}
+
+		throw new IllegalStateException(
+			"同じ名前の属性キーが2つ以上あります: %s"
+				.formatted(String.join(", ", duplicated))
+			+ "。キーはインスタンスで見分けるので動きはしますが、ログで区別が付きません。"
+			+ "どちらかの名前を変えてください");
+
+	}
+
+	/**
+	 * ブロックを降りながらキーを集める
+	 *
+	 * @param target		ブロック
+	 * @param seen			見た名前
+	 * @param duplicated	ぶつかった名前
+	 */
+	private void collectAttributeNames (
+		Scope target, Map<String, AttributeKey<?>> seen, List<String> duplicated) {
+
+		for (AttributeKey<?> key : target.ownAttributeKeys()) {
+			noteAttributeName(key, seen, duplicated);
+		}
+
+		for (Scope child : target.children()) {
+			collectAttributeNames(child, seen, duplicated);
+		}
+
+	}
+
+	/**
+	 * キーを1つ数える
+	 *
+	 * @param key			キー
+	 * @param seen			見た名前
+	 * @param duplicated	ぶつかった名前
+	 */
+	private void noteAttributeName (
+		AttributeKey<?> key, Map<String, AttributeKey<?>> seen, List<String> duplicated) {
+
+		AttributeKey<?> first = seen.putIfAbsent(key.name(), key);
+
+		/*
+		 * <b>同じインスタンスを何度見ても重複ではない。</b>
+		 * ブロックからルートへ配られたキーは、同じものが何度も出てくる。
+		 */
+		if (first != null && first != key && !duplicated.contains(key.name())) {
+			duplicated.add(key.name());
+		}
 
 	}
 

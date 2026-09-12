@@ -167,6 +167,16 @@ if (context.route().route().attribute(NO_AUTH)) {
 An `AttributeKey` carries a default. Routes without the attribute get that default,
 so you never write a `null` check.
 
+> [!TIP]
+> **A key is the instance you created.**
+> Hold one in a `static final` field and reuse it.
+> Another key created with the same name is a *different* key, so writing through
+> one and reading through the other gives you the default.
+>
+> **Creating a key with the same name as a framework key (`Auth.PUBLIC`, say) does not
+> take over its slot.** It does make the two indistinguishable in logs, though, so
+> two keys sharing a name **fail at startup** — rename one.
+
 ### Setting it for a whole block
 
 **You do not have to write it on every route.** Call `attribute()` in a block and it

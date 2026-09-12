@@ -33,6 +33,15 @@ post.getJsonString();   // ← here it fires
 `AsyncData` behaves as a `Data` and `AsyncList` as a `List`, so once loaded they are
 ordinary data.
 
+**Touching one loads it — reading or writing.** `get` and `size` of course, but also
+`put` / `remove` / `add` / `clear` / `computeIfAbsent` / `putFirst`.
+
+> [!NOTE]
+> **Up to 0.6.x the write side did not trigger a load.** Calling `remove("id")` on an
+> unloaded node removed a key from an *empty* map, and the value came back the moment
+> someone read it. An `add` before the load was **overwritten and lost**. Nothing
+> crashed and nothing was logged, so the first sign was someone reporting a wrong result.
+
 ## What you can look at without triggering a load
 
 ```java

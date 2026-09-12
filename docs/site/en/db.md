@@ -103,6 +103,16 @@ SQL.select().from(Post.instance()).where(Post.id.eq(1L));
 Each data source can name a different product (MySQL for the main one,
 PostgreSQL for reporting, and so on).
 
+> [!NOTE]
+> **Only MySQL (MariaDB) and PostgreSQL are supported.**
+> An unknown name **fails at startup** — falling back to MySQL silently would send
+> backtick-quoted SQL to an application written for PostgreSQL.
+>
+> **There is no hook for adding your own dialect** (`Dialect` is `sealed`). A dialect
+> has 40-odd methods, one per SQL function, so **every function jimble adds would
+> break an outside implementation.** If you need another product, ask for it to be
+> added to the framework.
+
 ### What you cannot write for a given product
 
 **What you cannot write raises `DialectException` at the point where the SQL is

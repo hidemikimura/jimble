@@ -221,7 +221,8 @@ public abstract class AsyncData extends Data implements Async {
 	 */
 	public Collection<Object> loadedValues () {
 
-		return super.values();
+		/* Data.values() は beforeAccess() を通すので、通らない口を使う */
+		return rawValues();
 
 	}
 
@@ -423,117 +424,36 @@ public abstract class AsyncData extends Data implements Async {
 
 	// endregion
 
-	// region Map（触られたら読む）
+	// region 触られたら読む（要件 D-157）
 
 	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public Object get (Object key) {
-
-		loadData();
-		return super.get(key);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public Object getOrDefault (Object key, Object defaultValue) {
-
-		loadData();
-		return super.getOrDefault(key, defaultValue);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull Set<String> keySet () {
-
-		loadData();
-		return super.keySet();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull Collection<Object> values () {
-
-		loadData();
-		return super.values();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public @NonNull Set<Map.Entry<String, Object>> entrySet () {
-
-		loadData();
-		return super.entrySet();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void forEach (BiConsumer<? super String, ? super Object> action) {
-
-		loadData();
-		super.forEach(action);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public int size () {
-
-		loadData();
-		return super.size();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public boolean isEmpty () {
-
-		loadData();
-		return super.isEmpty();
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public boolean containsKey (Object key) {
-
-		loadData();
-		return super.containsKey(key);
-
-	}
-
-	/**
-	 * {@inheritDoc}
+	 * 中身に触られたら読む
 	 *
-	 * <p>移送元はここが抜けていて、未読み込みだと黙って false を返していた。</p>
+	 * <p>
+	 * <b>ここ1つだけを上書きしている。</b>
+	 * {@link Data} が {@code LinkedHashMap} の公開メソッドを全部ここへ通すので、
+	 * <b>上書きし忘れたメソッドという概念が無くなる。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * <b>以前は読み取りを1つずつ上書きしていた</b>ので、
+	 * {@code remove} / {@code putIfAbsent} / {@code computeIfAbsent} や、
+	 * Java 21 で生えた {@code putFirst} / {@code pollLastEntry} は
+	 * <b>未読み込みの空マップをそのまま触っていた</b>——
+	 * 落ちも警告も出さず、<b>「その項目は無い」と答えていた</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>読み込みの最中に呼ばれても回らない。</b>
+	 * {@code load()} が返した中身を {@code setData} が {@code put} で入れるので、
+	 * ここは<b>読み込みの中からも呼ばれる</b>——
+	 * {@code AsyncState} が「読み込みの最中」を持っていて、そこで止まる。
+	 * </p>
 	 */
 	@Override
-	public boolean containsValue (Object value) {
+	protected void beforeAccess () {
 
 		loadData();
-		return super.containsValue(value);
 
 	}
 

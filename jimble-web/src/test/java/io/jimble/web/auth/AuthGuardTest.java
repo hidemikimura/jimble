@@ -211,7 +211,7 @@ class AuthGuardTest {
 	@DisplayName("F-W-28 null を渡しても空文字になる（NPE を配らない）")
 	void nullsBecomeEmpty () {
 
-		Principal principal = new Principal(1, null, null);
+		Principal principal = Principal.of(1, null, null);
 
 		assertEquals("", principal.name());
 		assertEquals("", principal.role());
