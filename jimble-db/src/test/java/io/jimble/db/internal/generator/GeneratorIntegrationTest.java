@@ -190,54 +190,53 @@ class GeneratorIntegrationTest {
 
 		String table = read(source("table/gen_item/GenItem.java"));
 
-		assertTrue(table.contains("new Column(INSTANCE, \"id\", long.class"), table);
-		assertTrue(table.contains("new Column(INSTANCE, \"code\", java.lang.String.class"), table);
-		assertTrue(table.contains("new Column(INSTANCE, \"price\", int.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"id\", long.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"code\", java.lang.String.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"price\", int.class"), table);
 		// tinyint(1) は boolean
-		assertTrue(table.contains("new Column(INSTANCE, \"is_active\", boolean.class"), table);
-		assertTrue(table.contains("new Column(INSTANCE, \"created_at\", java.util.Date.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"is_active\", boolean.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"created_at\", java.util.Date.class"), table);
 		// decimal(10,2) は double（PostgreSQL は numeric として返る）
-		assertTrue(table.contains("new Column(INSTANCE, \"amount\", double.class"), table);
+		assertTrue(table.contains("new Column(instance(), \"amount\", double.class"), table);
 
 	}
 
 	/**
-	 * テーブルの実体が1つだけであること（D-173）
+	 * 生成物が、クラス初期化の輪で壊れない形であること（D-174）
 	 *
 	 * <p>
-	 * <b>かつては {@code instance()} が毎回 {@code new} を返していた。</b>
-	 * 列4本のテーブルなら、クラス初期化だけで同じテーブルが4個できる。
-	 * しかも {@code Table} に {@code equals} が無いので、
-	 * <b>{@code GenItem.id.table()} と {@code GenItem.instance()} が等しくならなかった</b>——
-	 * 「同じテーブルか」を見ているところが、静かに外れる。
+	 * <b>スキーマクラスとテーブルクラスは互いを呼ぶ。</b>
+	 * スキーマはテーブルの定数を持ち、テーブルは自分を作るのにスキーマを {@code new} する。
+	 * <b>テーブルクラスを先に触るとこの輪が回り</b>、
+	 * {@code instance()} が共有の静的フィールドを返す形だと
+	 * <b>スキーマの定数が {@code null} になる</b>（初期化の途中だから）。
 	 * </p>
 	 *
-	 * <p>ここで固定していないこと：{@code Table} / {@code Column} の {@code equals}（同一性のままである）。</p>
+	 * <p>
+	 * <b>毎回 {@code new} を返せば null にならない</b>——
+	 * 初期化の途中の静的フィールドを読まないからである。
+	 * 実際に輪を回して確かめるのは {@code GeneratedShapeInitTest} で、
+	 * ここは<b>生成される字面</b>を見張る。
+	 * </p>
+	 *
+	 * <p>ここで固定していないこと：{@code Table} / {@code Column} の {@code equals}。</p>
 	 */
 	@Test
-	@DisplayName("D-173 テーブルの実体は1つだけで、列より先に作られる")
-	void tableInstanceIsSingleton () {
+	@DisplayName("D-174 生成物は共有の静的フィールドを持たない（クラス初期化の輪で null になる）")
+	void tableInstanceIsNotAStaticField () {
 
 		Generator.generate(outputDir.toFile(), PACKAGE);
 
 		String table = read(source("table/gen_item/GenItem.java"));
 
-		assertTrue(table.contains("private static final GenItem INSTANCE = new GenItem(")
-			, "実体が1つに固定されていない:\n" + table);
+		assertFalse(table.contains("INSTANCE")
+			, "共有の静的フィールドを持っている（クラス初期化の輪でスキーマの定数が null になる）:\n" + table);
 
-		assertTrue(table.contains("public static GenItem instance () { return INSTANCE; }")
-			, "instance() が毎回 new を返している:\n" + table);
+		assertTrue(table.contains("public static GenItem instance () { return new GenItem(")
+			, "instance() が毎回 new を返していない:\n" + table);
 
-		assertFalse(table.contains("new Column(instance()")
-			, "列が instance() 経由でテーブルを掴んでいる（呼ぶたびに別物になる）:\n" + table);
-
-		/*
-		 * <b>並び順が効く。</b>静的初期化は上から走るので、
-		 * INSTANCE が列より下にあると列は null を掴む。
-		 */
-		assertTrue(table.indexOf("private static final GenItem INSTANCE")
-				< table.indexOf("public static final Column id")
-			, "INSTANCE が列より後ろにある（列が null を掴む）:\n" + table);
+		assertTrue(table.contains("new Column(instance(), ")
+			, "列が instance() 経由でテーブルを掴んでいない:\n" + table);
 
 	}
 

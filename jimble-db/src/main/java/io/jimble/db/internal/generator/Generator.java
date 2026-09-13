@@ -443,24 +443,34 @@ public class Generator {
 			textOutput.writeLine("");
 
 			/*
-			 * <b>実体は1つだけ作る（D-173）。</b>
+			 * <b>{@code instance()} は毎回 new を返す。ここを共有の定数にしてはいけない（D-174）。</b>
 			 *
-			 * かつては列ごとに {@code instance()} を呼んでいて、
-			 * <b>その中身が毎回 new</b> だった——列4本のテーブルなら、
-			 * クラス初期化だけで同じテーブルが4個できる。
-			 * しかも {@code Table} に {@code equals} が無いので
-			 * <b>{@code Staff.id.table()} と {@code Staff.instance()} が等しくならなかった</b>。
+			 * 一度シングルトンにしたが、<b>静的初期化が輪になっていて壊れた</b>。
 			 *
-			 * <b>列より先に書くこと。</b>静的初期化は上から順に走るので、
-			 * 列の定義より下に置くと {@code null} を掴む。
+			 * <pre>
+			 * Group.&lt;clinit&gt;  → new Oreteki()            スキーマの clinit を起こす
+			 *   Oreteki.&lt;clinit&gt; → Group.instance()       Group はまだ初期化の途中
+			 *     → INSTANCE はまだ null
+			 *   Oreteki.group = null                        ← ここ
+			 * </pre>
+			 *
+			 * <b>どちらのクラスを先に触るかで結果が変わる。</b>
+			 * スキーマクラスを先に触れば通り、テーブルクラスを先に触ると null になる。
+			 * しかも <b>{@code NullPointerException} は出ない</b>——
+			 * {@code from(null)} が黙って通っていたので、
+			 * <b>SELECT と FROM だけが消えた SQL</b> が発行される。
+			 *
+			 * <b>毎回 new なら輪になっても null にならない。</b>
+			 * 初期化の途中の静的フィールドを<b>読まない</b>からである。
+			 *
+			 * 「同じテーブルが列の数だけできる」のはクラス初期化のとき1度きりで、
+			 * <b>{@code Staff.id.table()} と {@code Staff.instance()} が等しくない</b>ほうは
+			 * {@code Table} / {@code Column} に {@code equals} を入れれば直せる——
+			 * <b>それは 1.0 のあとでもできる</b>（equals の追加は互換である）。
 			 */
-			textOutput.writeLine("\t/* このテーブルの実体（1つだけ作る） */");
-			textOutput.writeLine("\tprivate static final %s INSTANCE = new %s(new %s(), \"%s\");".formatted(tableInfo.className, tableInfo.className, schemeClassName, tableInfo.name));
-			textOutput.writeLine("");
-
 			for (ColumnInfo columnInfo : tableInfo.columnList) {
 				textOutput.writeLine("\t/* %s */".formatted(columnInfo.comment));
-				textOutput.writeLine("\tpublic static final Column %s = new Column(INSTANCE, \"%s\", %s.class, %s, %s, %s);".formatted(columnInfo.name, columnInfo.name, columnInfo.typeClass.getTypeName(), String.valueOf(columnInfo.nullable), getColumnDefaultValueString(columnInfo), String.valueOf(columnInfo.primaryKey)));
+				textOutput.writeLine("\tpublic static final Column %s = new Column(instance(), \"%s\", %s.class, %s, %s, %s);".formatted(columnInfo.name, columnInfo.name, columnInfo.typeClass.getTypeName(), String.valueOf(columnInfo.nullable), getColumnDefaultValueString(columnInfo), String.valueOf(columnInfo.primaryKey)));
 				textOutput.writeLine("");
 			}
 			textOutput.writeLine("");
@@ -530,7 +540,7 @@ public class Generator {
 			textOutput.writeLine("\tpublic %s (ISchema schema, String name) { super(schema, name); }".formatted(tableInfo.className));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("\tpublic static %s instance () { return INSTANCE; }".formatted(tableInfo.className));
+			textOutput.writeLine("\tpublic static %s instance () { return new %s(new %s(), \"%s\"); }".formatted(tableInfo.className, tableInfo.className, schemeClassName, tableInfo.name));
 			textOutput.writeLine("");
 
 			textOutput.writeLine("}");

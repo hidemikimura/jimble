@@ -17,26 +17,23 @@ import java.util.List;
  */
 public class Notice extends Table {
 
-	/* このテーブルの実体（1つだけ作る） */
-	private static final Notice INSTANCE = new Notice(new ApprovalJobsExample(), "notice");
-
 	/* id */
-	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
 
 	/* request_id */
-	public static final Column request_id = new Column(INSTANCE, "request_id", long.class, false, null, false);
+	public static final Column request_id = new Column(instance(), "request_id", long.class, false, null, false);
 
 	/* to_staff_id */
-	public static final Column to_staff_id = new Column(INSTANCE, "to_staff_id", long.class, false, null, false);
+	public static final Column to_staff_id = new Column(instance(), "to_staff_id", long.class, false, null, false);
 
 	/* kind */
-	public static final Column kind = new Column(INSTANCE, "kind", java.lang.String.class, false, null, false);
+	public static final Column kind = new Column(instance(), "kind", java.lang.String.class, false, null, false);
 
 	/* sent_at */
-	public static final Column sent_at = new Column(INSTANCE, "sent_at", java.util.Date.class, true, null, false);
+	public static final Column sent_at = new Column(instance(), "sent_at", java.util.Date.class, true, null, false);
 
 	/* created_at */
-	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -63,6 +60,6 @@ public class Notice extends Table {
 
 	public Notice (ISchema schema, String name) { super(schema, name); }
 
-	public static Notice instance () { return INSTANCE; }
+	public static Notice instance () { return new Notice(new ApprovalJobsExample(), "notice"); }
 
 }

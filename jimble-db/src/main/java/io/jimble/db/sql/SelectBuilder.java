@@ -101,10 +101,33 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * FROM句
 	 *
+	 * <p>
+	 * <b>{@code null} は受け取らない（D-174）。</b>
+	 * 受け取っていたころは、<b>SELECT と FROM だけが消えた SQL</b> が出来上がっていた——
+	 * </p>
+	 *
+	 * <pre>
+	 * SELECT
+	 * WHERE (`group`.`deleted_at` IS NULL)
+	 * ORDER BY `group`.`sort_order` ASC
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>組み立てでは例外も出ない。</b>落ちるのは DB に投げたときで、
+	 * 出てくるのは「SQL 構文エラー」だけである——
+	 * <b>どこで null になったのかは、そこからは分からない</b>。
+	 * </p>
+	 *
 	 * @param from	FROM句
 	 * @return	SelectBuilder
 	 */
 	public SelectBuilder from(IFrom from) {
+
+		if (from == null) {
+			throw new SqlBuildException(
+				"from(null) は組み立てられません"
+					+ "（テーブルの定数が null です。生成物のクラス初期化の順を疑ってください）");
+		}
 
 		this.from = from;
 		return this;
@@ -701,6 +724,17 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 * @param sb	書き出し先
 	 */
 	private void sqlSelect(SqlWriter sb) {
+
+		/*
+		 * <b>FROM が無いまま組み立てない（D-174）。</b>
+		 * 引数無しの {@code select()} は FROM のテーブルから列を並べるので、
+		 * FROM が無いと<b>列も出ない</b>——{@code SELECT} だけの SQL になる。
+		 * ここで落とさないと、気づくのは DB の構文エラーである。
+		 */
+		if (from == null) {
+			throw new SqlBuildException(
+				"FROM がありません（select には from(...) が要ります）");
+		}
 
 		sb.append("SELECT");
 		if (selectList.isEmpty()) {

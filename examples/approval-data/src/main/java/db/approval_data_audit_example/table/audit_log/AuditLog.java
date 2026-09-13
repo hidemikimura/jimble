@@ -17,23 +17,20 @@ import java.util.List;
  */
 public class AuditLog extends Table {
 
-	/* このテーブルの実体（1つだけ作る） */
-	private static final AuditLog INSTANCE = new AuditLog(new ApprovalDataAuditExample(), "audit_log");
-
 	/* id */
-	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
 
 	/* staff_id */
-	public static final Column staff_id = new Column(INSTANCE, "staff_id", long.class, false, null, false);
+	public static final Column staff_id = new Column(instance(), "staff_id", long.class, false, null, false);
 
 	/* action */
-	public static final Column action = new Column(INSTANCE, "action", java.lang.String.class, false, null, false);
+	public static final Column action = new Column(instance(), "action", java.lang.String.class, false, null, false);
 
 	/* target */
-	public static final Column target = new Column(INSTANCE, "target", java.lang.String.class, false, null, false);
+	public static final Column target = new Column(instance(), "target", java.lang.String.class, false, null, false);
 
 	/* created_at */
-	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -60,6 +57,6 @@ public class AuditLog extends Table {
 
 	public AuditLog (ISchema schema, String name) { super(schema, name); }
 
-	public static AuditLog instance () { return INSTANCE; }
+	public static AuditLog instance () { return new AuditLog(new ApprovalDataAuditExample(), "audit_log"); }
 
 }

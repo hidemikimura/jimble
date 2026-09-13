@@ -17,26 +17,23 @@ import java.util.List;
  */
 public class Attachment extends Table {
 
-	/* このテーブルの実体（1つだけ作る） */
-	private static final Attachment INSTANCE = new Attachment(new ApprovalFormsExample(), "attachment");
-
 	/* 添付ID */
-	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
 
 	/* 申請ID */
-	public static final Column request_id = new Column(INSTANCE, "request_id", long.class, false, null, false);
+	public static final Column request_id = new Column(instance(), "request_id", long.class, false, null, false);
 
 	/* 保存したファイル名 */
-	public static final Column file_name = new Column(INSTANCE, "file_name", java.lang.String.class, false, null, false);
+	public static final Column file_name = new Column(instance(), "file_name", java.lang.String.class, false, null, false);
 
 	/* 種類 */
-	public static final Column content_type = new Column(INSTANCE, "content_type", java.lang.String.class, false, null, false);
+	public static final Column content_type = new Column(instance(), "content_type", java.lang.String.class, false, null, false);
 
 	/* 大きさ */
-	public static final Column bytes = new Column(INSTANCE, "bytes", long.class, false, null, false);
+	public static final Column bytes = new Column(instance(), "bytes", long.class, false, null, false);
 
 	/* 作成日時 */
-	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -63,6 +60,6 @@ public class Attachment extends Table {
 
 	public Attachment (ISchema schema, String name) { super(schema, name); }
 
-	public static Attachment instance () { return INSTANCE; }
+	public static Attachment instance () { return new Attachment(new ApprovalFormsExample(), "attachment"); }
 
 }

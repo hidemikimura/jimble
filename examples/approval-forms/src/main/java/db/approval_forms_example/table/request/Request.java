@@ -17,29 +17,26 @@ import java.util.List;
  */
 public class Request extends Table {
 
-	/* このテーブルの実体（1つだけ作る） */
-	private static final Request INSTANCE = new Request(new ApprovalFormsExample(), "request");
-
 	/* 申請ID */
-	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
 
 	/* 種別（travel / supply / book） */
-	public static final Column kind = new Column(INSTANCE, "kind", java.lang.String.class, false, null, false);
+	public static final Column kind = new Column(instance(), "kind", java.lang.String.class, false, null, false);
 
 	/* 金額（円） */
-	public static final Column amount = new Column(INSTANCE, "amount", long.class, false, null, false);
+	public static final Column amount = new Column(instance(), "amount", long.class, false, null, false);
 
 	/* 希望日 */
-	public static final Column needed_on = new Column(INSTANCE, "needed_on", java.util.Date.class, true, null, false);
+	public static final Column needed_on = new Column(instance(), "needed_on", java.util.Date.class, true, null, false);
 
 	/* 備考 */
-	public static final Column note = new Column(INSTANCE, "note", java.lang.String.class, true, null, false);
+	public static final Column note = new Column(instance(), "note", java.lang.String.class, true, null, false);
 
 	/* 状態（draft / pending） */
-	public static final Column status = new Column(INSTANCE, "status", java.lang.String.class, false, null, false);
+	public static final Column status = new Column(instance(), "status", java.lang.String.class, false, null, false);
 
 	/* 作成日時 */
-	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -66,6 +63,6 @@ public class Request extends Table {
 
 	public Request (ISchema schema, String name) { super(schema, name); }
 
-	public static Request instance () { return INSTANCE; }
+	public static Request instance () { return new Request(new ApprovalFormsExample(), "request"); }
 
 }

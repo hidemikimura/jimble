@@ -17,17 +17,14 @@ import java.util.List;
  */
 public class Department extends Table {
 
-	/* このテーブルの実体（1つだけ作る） */
-	private static final Department INSTANCE = new Department(new ApprovalListExample(), "department");
-
 	/* id */
-	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
+	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
 
 	/* name */
-	public static final Column name = new Column(INSTANCE, "name", java.lang.String.class, false, null, false);
+	public static final Column name = new Column(instance(), "name", java.lang.String.class, false, null, false);
 
 	/* created_at */
-	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -54,6 +51,6 @@ public class Department extends Table {
 
 	public Department (ISchema schema, String name) { super(schema, name); }
 
-	public static Department instance () { return INSTANCE; }
+	public static Department instance () { return new Department(new ApprovalListExample(), "department"); }
 
 }
