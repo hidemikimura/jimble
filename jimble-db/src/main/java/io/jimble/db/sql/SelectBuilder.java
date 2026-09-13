@@ -726,14 +726,19 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	private void sqlSelect(SqlWriter sb) {
 
 		/*
-		 * <b>FROM が無いまま組み立てない（D-174）。</b>
+		 * <b>何も出ない組み立てを通さない（D-174）。</b>
+		 *
 		 * 引数無しの {@code select()} は FROM のテーブルから列を並べるので、
 		 * FROM が無いと<b>列も出ない</b>——{@code SELECT} だけの SQL になる。
 		 * ここで落とさないと、気づくのは DB の構文エラーである。
+		 *
+		 * <b>「FROM が無い」だけでは落とさない。</b>
+		 * 列を名指ししてあれば {@code SELECT NOW()} のような文は成り立つ——
+		 * <b>落とすのは、列も FROM も無いときだけ</b>である。
 		 */
-		if (from == null) {
+		if (from == null && selectList.isEmpty()) {
 			throw new SqlBuildException(
-				"FROM がありません（select には from(...) が要ります）");
+				"SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）");
 		}
 
 		sb.append("SELECT");

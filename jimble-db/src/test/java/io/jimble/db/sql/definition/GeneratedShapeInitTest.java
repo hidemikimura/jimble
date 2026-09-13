@@ -140,13 +140,32 @@ class GeneratedShapeInitTest {
 
 	}
 
-	/** FROM を付けないまま組み立てようとしたら落ちること */
+	/**
+	 * 列も FROM も無いまま組み立てようとしたら落ちること
+	 *
+	 * <p>
+	 * <b>「FROM が無い」だけでは落とさない。</b>列を名指ししてあれば
+	 * {@code SELECT NOW()} のような文は成り立つので、
+	 * <b>落とすのは、どちらも無くて何も出ないとき</b>だけである。
+	 * </p>
+	 */
 	@Test
-	@DisplayName("D-174 FROM の無い select は組み立てられない")
-	void selectWithoutFromIsRefused () {
+	@DisplayName("D-174 列も FROM も無い select は組み立てられない")
+	void selectWithNothingIsRefused () {
 
 		assertThrows(SqlBuildException.class
-			, () -> SQL.select(Group.id).sql(Dialects.of("mysql")));
+			, () -> SQL.select().sql(Dialects.of("mysql")));
+
+	}
+
+	/** 列を名指ししてあれば、FROM が無くても組み立てられること */
+	@Test
+	@DisplayName("D-174 列を名指しした FROM 無しの select は通る")
+	void selectWithColumnsButNoFromIsAllowed () {
+
+		String sql = SQL.select(Group.id).sql(Dialects.of("mysql"));
+
+		assertTrue(sql.startsWith("SELECT "), sql);
 
 	}
 
