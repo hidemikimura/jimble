@@ -44,6 +44,30 @@ versions (`getIntObject` and friends) or `isNull(key)`. See [Utilities](./util).
 > puts that empty string into the `Data`.** Reading alone adds keys, so do not call it
 > just before serialising to JSON or inside a loop ([Utilities](./util)).
 
+## Headers and cookies (when the same name arrives twice)
+
+Read them from `context.request().source()`.
+
+| Method | What it holds |
+| --- | --- |
+| `headers()` | Headers, keys lower-cased. **Two lines with the same name are joined with `", "`** (`Cookie` uses `"; "`) |
+| `cookies()` | Cookies. **If the same name arrives twice, only the first** |
+| `headerValues()` | Headers, **before joining** (`Map<String, List<String>>`) |
+| `cookieValues()` | Cookies, **before discarding** (`Map<String, List<String>>`) |
+
+`headers()` / `cookies()` is normally enough.
+Reach for `...Values()` only when **the fact that it arrived twice** is what you need.
+
+> [!TRAP]
+> **The same cookie name can arrive twice.**
+> It happens when the same name is set on a different path or domain.
+> **Which one comes first is not decided by the cookie spec.**
+>
+> When this happens to a session ID, **logins drop out at random**——
+> no exception is raised, and the next request may look fine.
+> jimble **warns when two or more arrive** (it does not log the values).
+> If you see that warning, line up `Path` / `Domain` and set the cookie again.
+
 ## Nested parameters
 
 You can nest with either `.` or `[ ]`.

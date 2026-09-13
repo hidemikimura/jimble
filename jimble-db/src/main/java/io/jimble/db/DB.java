@@ -74,6 +74,15 @@ public class DB implements Closeable, AutoCloseable {
 	/* トランザクションを開けてから、1度でもエラーが出たか */
 	private boolean errorSinceTransaction = false;
 
+	/*
+	 * 直前の insert が「採番値」を返したか。
+	 *
+	 * <b>戻り値だけでは、採番値なのか件数なのか分からない</b>（要件 F-D-30）。
+	 * 見分けるのに要るのは<b>ここでしか分からない1ビット</b>なので、
+	 * {@link #insertKey(String, Object...)} のために持っておく。
+	 */
+	private boolean insertReturnedKey = false;
+
 	/**
 	 * エラー判定
 	 *
@@ -141,6 +150,29 @@ public class DB implements Closeable, AutoCloseable {
 	public CodeException getError () {
 
 		return error;
+
+	}
+
+	/**
+	 * エラーが出ていたら投げる
+	 *
+	 * <p>
+	 * <b>{@code ...OrThrow} 系だけがここを通る。</b>
+	 * 既定の作法（戻り値で返す）は変えていない。
+	 * </p>
+	 *
+	 * @param what	何をしていたか
+	 */
+	private void requireNoError (String what) {
+
+		CodeException cause = this.error;
+
+		if (cause == null) {
+			return;
+		}
+
+		throw new SqlExecuteException(
+			"%s を実行できませんでした: %s".formatted(what, cause.getMessage()), cause);
 
 	}
 
@@ -684,7 +716,11 @@ public class DB implements Closeable, AutoCloseable {
 	 * 読めなかったときだけ {@code null} である。<b>同じ select 系で
 	 * {@code null} の意味が違う</b>——1.0 では
 	 * <b>戻り値の型を変えられない</b>ので、揃えるのは 2.0 になる。
-	 * それまでは、この2行を書くのが正しい読み方である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>2行書き忘れないために {@link #selectOrThrow(String, Object...)} がある</b>（1.1 で足した）。
+	 * あちらは読めなければ投げるので、<b>{@code null} は「1件も無かった」だけ</b>になる。
 	 * </p>
 	 *
 	 * @param sql       SQL
@@ -726,6 +762,61 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
+	/**
+	 * 1件取得する（読めなければ投げる）
+	 *
+	 * @param builder   SelectBuilder
+	 * @return  結果。1件も無ければ null
+	 */
+	public Data selectOrThrow (SelectBuilder builder) {
+
+		Data row = select(builder);
+
+		requireNoError("SELECT");
+
+		return row;
+
+	}
+
+	/**
+	 * 1件取得する（読めなければ投げる）
+	 *
+	 * <p>
+	 * <b>{@link #select(String, Object...)} との違いは、{@code null} の意味が1つになること</b>だけである。
+	 * あちらは「1件も無かった」と「読めなかった」の両方を {@code null} で返すので、
+	 * </p>
+	 *
+	 * <pre>
+	 * Data user = db.select(sql, id);
+	 * if (user == null) { return 誰でもない; }   // ← DB が落ちていても、ここを通る
+	 * </pre>
+	 *
+	 * <p>
+	 * と書くと、<b>DB が読めなかった日に「そんな利用者はいません」と答える。</b>
+	 * 例外も出ないしログにも残らない（{@link #isError()} を見ていないので）。
+	 * こちらを使えば、読めなかったときは {@link SqlExecuteException} で止まる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>既定の作法を変えたわけではない。</b>{@link #select(String, Object...)} は
+	 * そのままなので、{@link #isError()} を見ている既存のコードは何も直さなくてよい。
+	 * </p>
+	 *
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @return  結果。<b>1件も無ければ null</b>
+	 * @throws SqlExecuteException  読めなかったとき
+	 */
+	public Data selectOrThrow (String sql, Object...params) {
+
+		Data row = select(sql, params);
+
+		requireNoError("SELECT");
+
+		return row;
+
+	}
+
 	// endregion
 
 	// region 複数件取得する
@@ -745,9 +836,16 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 複数件取得する
 	 *
+	 * <p>
+	 * <b>0件は空リスト、読めなかったときだけ {@code null} である</b>（{@link #select} とは違う）。
+	 * <b>{@code null} かどうかを見ずに回すと、読めなかった日に
+	 * {@code NullPointerException} で落ちる</b>——落ちるだけまだよい。
+	 * 落としたくないなら {@link #selectListOrThrow(String, Object...)}。
+	 * </p>
+	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  結果。0件なら空リスト。読めなければ null
 	 */
 	public List<Data> selectList(String sql, Object...params) {
 
@@ -781,6 +879,58 @@ public class DB implements Closeable, AutoCloseable {
 			closeAfterQuery();
 
 		}
+
+	}
+
+	/**
+	 * 複数件取得する（読めなければ投げる）
+	 *
+	 * @param builder   SelectBuilder
+	 * @return  結果。0件なら空リスト
+	 */
+	public List<Data> selectListOrThrow (SelectBuilder builder) {
+
+		return requireList(selectList(builder));
+
+	}
+
+	/**
+	 * 複数件取得する（読めなければ投げる）
+	 *
+	 * <p>
+	 * <b>{@code null} を返さない。</b>読めなかったときは {@link SqlExecuteException} で止まる。
+	 * </p>
+	 *
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @return  結果。<b>0件なら空リスト</b>
+	 * @throws SqlExecuteException  読めなかったとき
+	 */
+	public List<Data> selectListOrThrow (String sql, Object...params) {
+
+		return requireList(selectList(sql, params));
+
+	}
+
+	/**
+	 * 取れていなければ投げる
+	 *
+	 * @param list	{@link #selectList} の戻り値
+	 * @return	そのまま
+	 */
+	private List<Data> requireList (List<Data> list) {
+
+		requireNoError("SELECT");
+
+		/*
+		 * ここに来て null なら、エラーの印が立っていないのに null が返っている。
+		 * <b>戻り値の意味が壊れているので、空リストで隠さず落とす。</b>
+		 */
+		if (list == null) {
+			throw new SqlExecuteException("結果を取得できませんでした（エラーの印は立っていません）");
+		}
+
+		return list;
 
 	}
 
@@ -1102,6 +1252,11 @@ public class DB implements Closeable, AutoCloseable {
 	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>採番値だけがほしいなら {@link #insertKey(String, Object...)}</b>（1.1 で足した）。
+	 * あちらは<b>件数を返さない</b>ので、返ってきた {@code 1} は必ず「id=1」である。
+	 * </p>
+	 *
 	 * @param builder   InsertBuilder
 	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
 	 */
@@ -1146,6 +1301,11 @@ public class DB implements Closeable, AutoCloseable {
 	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>採番値だけがほしいなら {@link #insertKey(String, Object...)}</b>（1.1 で足した）。
+	 * あちらは<b>件数を返さない</b>ので、返ってきた {@code 1} は必ず「id=1」である。
+	 * </p>
+	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
 	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
@@ -1153,6 +1313,7 @@ public class DB implements Closeable, AutoCloseable {
 	public long insert (String sql, Object...params) {
 
 		this.error = null;
+		this.insertReturnedKey = false;
 
 		// 書き込みコネクションを取得する
 		getWriteConnection();
@@ -1198,7 +1359,12 @@ public class DB implements Closeable, AutoCloseable {
 				 */
 				long key = dialect().generatedKey(rs);
 
-				return key > 0 ? key : count;
+				if (key > 0) {
+					this.insertReturnedKey = true;
+					return key;
+				}
+
+				return count;
 
 			}
 
@@ -1221,6 +1387,73 @@ public class DB implements Closeable, AutoCloseable {
 			closeAfterQuery();
 
 		}
+
+	}
+
+	/**
+	 * 登録して、採番された値を返す
+	 *
+	 * @param builder   InsertBuilder
+	 * @return  採番された値
+	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
+	 */
+	public long insertKey (InsertBuilder builder) {
+
+		return requireKey(insert(builder));
+
+	}
+
+	/**
+	 * 登録して、採番された値を返す
+	 *
+	 * <p>
+	 * <b>{@link #insert(String, Object...)} の2義性を消しただけ</b>である。
+	 * あちらは「採番値が取れればその値、取れなければ件数」なので、
+	 * </p>
+	 *
+	 * <pre>
+	 * long id = db.insert(builder);   // 1 が返った
+	 * </pre>
+	 *
+	 * <p>
+	 * の {@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
+	 * <b>その表に採番列があるかどうかで決まる</b>。表の定義を1本変えただけで、
+	 * 呼ぶ側を1行も触っていないのに<b>意味が変わる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * こちらは<b>採番値以外を返さない</b>。採番されなかったら投げる——
+	 * 採番列の無い表に入れているなら {@link #insertNoReturnKey(String, Object...)} が正しい。
+	 * </p>
+	 *
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @return  採番された値
+	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
+	 */
+	public long insertKey (String sql, Object...params) {
+
+		return requireKey(insert(sql, params));
+
+	}
+
+	/**
+	 * 採番値が返っていなければ投げる
+	 *
+	 * @param value	{@link #insert} の戻り値
+	 * @return	採番された値
+	 */
+	private long requireKey (long value) {
+
+		requireNoError("INSERT");
+
+		if (!insertReturnedKey) {
+			throw new SqlExecuteException(
+				"採番された値が返りませんでした"
+					+ "（採番列の無い表に入れているなら insertNoReturnKey を使ってください）");
+		}
+
+		return value;
 
 	}
 

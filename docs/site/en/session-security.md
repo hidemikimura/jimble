@@ -31,6 +31,36 @@ session {
 | `redis` | Several servers. You need the speed |
 | `cookie` | You want to keep nothing on the server. The contents are signed |
 
+### Cleaning up expired sessions
+
+Only the `db` store **accumulates rows** (Redis has TTLs, and cookies are not stored server-side at all).
+Call the cleanup from a batch.
+
+```java
+SessionStores.defaultStore().cleanupExpired();
+```
+
+> [!TRAP]
+> **Do not write `SessionStores.db().cleanupExpired()`.**
+> It keeps working the day you switch the setting to Redis——
+> it simply goes on cleaning the DB session table, with no exception and no warning.
+> Redis expires its own keys, so **nobody notices that what you meant to clean has changed.**
+>
+> Call it through `defaultStore()` and it is correct whatever the store is
+> (a store with nothing to clean returns `0`).
+
+### Writing your own store
+
+Implement `SessionStore` and swap it in once at startup.
+
+```java
+SessionStores.replace(new MemcachedSessionStore());
+```
+
+`context.sessionStore(...)` applies to **that request only**.
+Use `replace` when you want it to be the application-wide default——
+specifying it route by route means **the one route you forget reads from somewhere else.**
+
 ### Regenerate the session id on login
 
 **Call `regenerateId()` as soon as the login succeeds.**

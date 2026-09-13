@@ -276,6 +276,47 @@ DB のエラーは例外ではなく戻り値で返ります。
 `select` 系は `null`、`insert` は `-1`、`update` / `delete` は `-1` です。
 理由は `db.getError()` に入っています。
 
+### 「1件も無かった」と「読めなかった」を見分ける
+
+`select` の `null` には**2つの意味**があります。
+
+```java
+Data user = db.select(sql, id);
+if (user == null) { return 誰でもない; }   // ← DB が読めなくても、ここを通ります
+```
+
+これだと **DB が落ちた日に「そんな利用者はいません」と答えます。**
+例外も出ませんし、ログにも残りません（`isError()` を見ていないので）。
+
+見分ける書き方は2つあります。
+
+```java
+// 1. これまでどおり isError() を見る
+Data user = db.select(sql, id);
+if (db.isError()) { throw ...; }
+if (user == null) { return 誰でもない; }
+
+// 2. 読めなければ投げてもらう（1.1 から）
+Data user = db.selectOrThrow(sql, id);
+if (user == null) { return 誰でもない; }   // null は「1件も無かった」だけ
+```
+
+| メソッド | 戻り値 |
+| --- | --- |
+| `selectOrThrow` | 1件。**`null` は「1件も無かった」だけ**。読めなければ `SqlExecuteException` |
+| `selectListOrThrow` | 複数件。**0件は空リスト**。読めなければ `SqlExecuteException` |
+| `insertKey` | **採番された値だけ**。採番列が無いか、入らなければ `SqlExecuteException` |
+
+> [!TRAP]
+> **`insert` の戻り値も2つの意味を持ちます。**
+> 採番された値が取れればその値、取れなければ**入った件数**です。
+> `1` が「id=1 を入れた」なのか「1件入った」なのかは、
+> **その表に採番列があるかどうかで決まります**——
+> **採番列を1本足しただけで、呼ぶ側を触っていないのに意味が変わります。**
+>
+> 採番値がほしいなら `insertKey`、件数がほしいなら `insertNoReturnKey` です。
+
+
 ## マイグレーション
 
 `conf/migration/<スキーマ名>/001_xxx.sql` に置きます。

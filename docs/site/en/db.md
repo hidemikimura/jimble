@@ -284,6 +284,47 @@ DB errors come back as return values, not exceptions.
 `select` returns `null`, `insert` returns `-1`, `update` / `delete` return `-1`.
 The reason is in `db.getError()`.
 
+### Telling "no rows" apart from "could not read"
+
+`null` from `select` has **two meanings**.
+
+```java
+Data user = db.select(sql, id);
+if (user == null) { return nobody; }   // ← taken even when the DB cannot be read
+```
+
+Written this way, **the day the DB goes down your app answers "no such user".**
+No exception, nothing in the log (because `isError()` was never checked).
+
+There are two ways to tell them apart.
+
+```java
+// 1. Check isError(), as before
+Data user = db.select(sql, id);
+if (db.isError()) { throw ...; }
+if (user == null) { return nobody; }
+
+// 2. Have it thrown for you (since 1.1)
+Data user = db.selectOrThrow(sql, id);
+if (user == null) { return nobody; }   // null means "no rows", nothing else
+```
+
+| Method | Returns |
+| --- | --- |
+| `selectOrThrow` | One row. **`null` means "no rows" only**. `SqlExecuteException` if it cannot be read |
+| `selectListOrThrow` | Rows. **Empty list for no rows**. `SqlExecuteException` if it cannot be read |
+| `insertKey` | **The generated key only**. `SqlExecuteException` if there is no generated column, or the insert failed |
+
+> [!TRAP]
+> **The return value of `insert` also carries two meanings.**
+> It is the generated key when one comes back, and **the number of rows inserted** when one does not.
+> Whether `1` means "inserted id=1" or "inserted 1 row"
+> **depends on whether the table has a generated column**——
+> **add one auto-increment column and the meaning changes without touching the caller.**
+>
+> Use `insertKey` for the key and `insertNoReturnKey` for the count.
+
+
 ## Migrations
 
 Put them in `conf/migration/<schema name>/001_xxx.sql`.

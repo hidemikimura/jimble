@@ -193,6 +193,34 @@ final class HelidonRequestSource implements RequestSource {
 	}
 
 	@Override
+	public Map<String, List<String>> headerValues () {
+
+		Map<String, List<String>> result = new LinkedHashMap<>();
+
+		request.headers().forEach(header ->
+			result.put(header.name().toLowerCase(), List.copyOf(header.allValues())));
+
+		return result;
+
+	}
+
+	@Override
+	public Map<String, List<String>> cookieValues () {
+
+		Map<String, List<String>> result = new LinkedHashMap<>();
+
+		try {
+			request.headers().cookies().toMap().forEach((name, values) ->
+				result.put(name, List.copyOf(values)));
+		} catch (Exception ignore) {
+			// Cookie ヘッダが無い場合
+		}
+
+		return result;
+
+	}
+
+	@Override
 	public Map<String, List<String>> queryParams () {
 
 		return toMultiMap(request.query());

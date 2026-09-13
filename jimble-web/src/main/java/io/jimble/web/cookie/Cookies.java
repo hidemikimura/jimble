@@ -2,6 +2,7 @@ package io.jimble.web.cookie;
 
 import io.jimble.util.crypto.KeyMatch;
 import io.jimble.util.crypto.Signer;
+import io.jimble.util.log.Log;
 import io.jimble.util.metrics.Metrics;
 import io.jimble.util.data.Data;
 import io.jimble.web.http.RequestSource;
@@ -82,7 +83,28 @@ public final class Cookies {
 		 */
 		List<String> secrets = null;
 
-		for (Map.Entry<String, String> entry : source.cookies().entrySet()) {
+		for (Map.Entry<String, List<String>> received : source.cookieValues().entrySet()) {
+
+			if (received.getValue().isEmpty()) {
+				continue;
+			}
+
+			Map.Entry<String, String> entry = Map.entry(received.getKey(), received.getValue().getFirst());
+
+			/*
+			 * <b>同じ名前が2つ来たら、先頭を採って残りを捨てる——が、黙っては捨てない。</b>
+			 *
+			 * 別のパスやドメインに同じ名前で置かれると起こる。
+			 * <b>どれが先頭になるかは Cookie の仕様では決まっていない</b>ので、
+			 * セッション ID でこれが起きると<b>ログインが不定期に外れる</b>——
+			 * しかも例外は出ないし、次のリクエストでは直っていることがある。
+			 *
+			 * 値は出さない（セッション ID がログに残る）。名前と本数だけ出す。
+			 */
+			if (received.getValue().size() > 1) {
+				Log.warn("同じ名前の Cookie が %d 本来ています（先頭だけ使います）: %s"
+					.formatted(received.getValue().size(), received.getKey()));
+			}
 
 			/*
 			 * <b>いちばん先に元へ戻す</b>（{@link CookieValue}）。

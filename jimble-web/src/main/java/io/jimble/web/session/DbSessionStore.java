@@ -184,6 +184,7 @@ public final class DbSessionStore implements SessionStore {
 	 *
 	 * @return	消した件数
 	 */
+	@Override
 	public int cleanupExpired () {
 
 		initialize();

@@ -70,7 +70,43 @@ public final class SessionStores {
 	}
 
 	/**
+	 * 既定の保存先を差し替える（自前の保存先を使うための拡張点）
+	 *
+	 * <p>
+	 * <b>{@link SessionStore} を実装したものを、アプリ全体の既定にできる。</b>
+	 * これが無いと、自前の保存先は {@code context.sessionStore(...)} で
+	 * <b>ルートごとに指定して回るしかない</b>——1本でも書き忘れると、
+	 * そのルートだけ別の場所を読む。
+	 * </p>
+	 *
+	 * <pre>
+	 * // 起動時に1回
+	 * SessionStores.replace(new MemcachedSessionStore());
+	 * </pre>
+	 *
+	 * <p>
+	 * 変わるのは<b>既定の保存先だけ</b>である。{@link #db()} / {@link #redis()} /
+	 * {@link #cookie()} は自分の保存先を返しつづける。
+	 * </p>
+	 *
+	 * @param value	保存先。null なら設定から作り直す
+	 */
+	public static void replace (SessionStore value) {
+
+		synchronized (SessionStores.class) {
+			defaultStore = value;
+		}
+
+	}
+
+	/**
 	 * DB セッション
+	 *
+	 * <p>
+	 * <b>掃除は {@code SessionStores.defaultStore().cleanupExpired()} で呼ぶこと</b>——
+	 * ここから呼ぶと、設定を Redis に変えても DB を掃除しつづける
+	 * （{@link SessionStore#cleanupExpired()}）。
+	 * </p>
 	 *
 	 * @return	保存先
 	 */

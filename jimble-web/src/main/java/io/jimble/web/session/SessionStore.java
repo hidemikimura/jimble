@@ -60,4 +60,32 @@ public interface SessionStore {
 	 */
 	void destroy (WebContext context);
 
+	/**
+	 * 期限切れを消す（要件 F-S-09）
+	 *
+	 * <p>
+	 * <b>掃除が要るかどうかは保存先で違う。</b>Redis は TTL が消し、
+	 * Cookie はそもそも持っていない。<b>自分で溜め込むのは DB だけ</b>である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>ここに置いたのは、掃除する側が保存先を知らずに済むようにするため</b>である。
+	 * {@code SessionStores.db().cleanupExpired()} と書くと、
+	 * 設定を Redis に変えた日に<b>DB のセッション表だけを掃除しつづける</b>——
+	 * 動くし、例外も出ない。
+	 * </p>
+	 *
+	 * <pre>
+	 * // 保存先が何であっても正しい
+	 * SessionStores.defaultStore().cleanupExpired();
+	 * </pre>
+	 *
+	 * @return	消した件数。掃除の要らない保存先は 0
+	 */
+	default int cleanupExpired () {
+
+		return 0;
+
+	}
+
 }

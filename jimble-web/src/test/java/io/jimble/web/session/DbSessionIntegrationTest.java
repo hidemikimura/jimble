@@ -356,7 +356,13 @@ class DbSessionIntegrationTest {
 				.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("DAY", true))
 			, 1);
 
-		assertEquals(1, SessionStores.db().cleanupExpired());
+		/*
+		 * <b>具体クラスを名指ししない。</b>{@code SessionStores.db()} と書くと、
+		 * 設定を Redis に変えた日に<b>DB のセッション表だけを掃除しつづける</b>。
+		 * ここを通しておけば、{@link SessionStore#cleanupExpired()} の
+		 * 上書きが外れたとき（既定の 0 に落ちたとき）に落ちる。
+		 */
+		assertEquals(1, SessionStores.defaultStore().cleanupExpired());
 		assertEquals(0, count());
 
 	}

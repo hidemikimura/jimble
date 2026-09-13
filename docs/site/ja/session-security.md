@@ -31,6 +31,36 @@ session {
 | `redis` | サーバーが複数台。速さが要る |
 | `cookie` | サーバーに何も置きたくない。中身は署名される |
 
+### 期限切れを掃除する
+
+`db` の保存先だけは**自分で溜め込みます**（Redis は TTL が消し、Cookie はそもそも置いていません）。
+掃除はバッチから呼んでください。
+
+```java
+SessionStores.defaultStore().cleanupExpired();
+```
+
+> [!TRAP]
+> **`SessionStores.db().cleanupExpired()` と書かないでください。**
+> 設定を Redis に変えた日も**そのまま動きます**——
+> DB のセッション表だけを掃除しつづけるだけで、例外も警告も出ません。
+> Redis のほうは TTL が消すので**誰も困らないまま、掃除するつもりの対象が入れ替わっています。**
+>
+> `defaultStore()` から呼べば、保存先が何であっても正しくなります
+> （掃除の要らない保存先は `0` を返します）。
+
+### 自分で保存先を書く
+
+`SessionStore` を実装して、起動時に1回差し替えます。
+
+```java
+SessionStores.replace(new MemcachedSessionStore());
+```
+
+`context.sessionStore(...)` は**そのリクエストだけ**です。
+アプリ全体の既定にしたいときは `replace` を使ってください——
+ルートごとに指定して回ると、**1本でも書き忘れたルートが別の場所を読みます。**
+
 ### ログインしたらセッション ID を振り直す
 
 **ログインが通った直後に `regenerateId()` を呼んでください。**
