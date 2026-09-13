@@ -60,6 +60,31 @@ final class RouteTree {
 	 */
 	private Map<String, RouteTree> staticsIgnoreCase = null;
 
+	/*
+	 * 固定セグメントの子を、文字列を作らずに引くための表（要件 D-168）。
+	 *
+	 * <b>開番地法（linear probing）で、鍵は seal() のときに並べる。</b>
+	 * {@code HashMap} は引くのに<b>鍵の {@code String} が要る</b>——
+	 * それを作るのが、1回のマッチのいちばん大きい費用だった。
+	 *
+	 * <b>null なら seal() 前である。</b>そのときは {@link #statics} を引く（遅いだけ）。
+	 */
+	private String[] staticKeys = null;
+
+	/* {@link #staticKeys} と同じ位置の子 */
+	private RouteTree[] staticNodes = null;
+
+	/*
+	 * パスパラメータの子を並べたもの（要件 D-168）。
+	 *
+	 * <b>{@code entrySet()} を回すと、階層ごとに反復子を1つ作る。</b>
+	 * 登録順は配列の並びで保つ。
+	 */
+	private String[] variableNames = null;
+
+	/* {@link #variableNames} と同じ位置の子 */
+	private RouteTree[] variableNodes = null;
+
 	/**
 	 * コンストラクタ（ルートノード）
 	 */
@@ -82,6 +107,119 @@ final class RouteTree {
 
 
 	// region 登録
+
+	/**
+	 * 引くための表を作る（要件 D-168）
+	 *
+	 * <p>
+	 * <b>木そのものは変えない。</b>登録に使う {@link #statics} と
+	 * {@link #variables} はそのまま残し、<b>引くための並びを横に作る</b>——
+	 * こうしておくと、<b>登録のときの振る舞いが1バイトも変わらない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 固定セグメントは<b>開番地法の表</b>にする。詰まりすぎないように
+	 * <b>数の2倍以上</b>の長さ（2の冪）を取るので、
+	 * <b>空き（{@code null}）に当たったところで打ち切れる</b>。
+	 * </p>
+	 */
+	void index () {
+
+		int capacity = tableSize(statics.size());
+
+		if (capacity > 0) {
+
+			/*
+			 * <b>必ず空きが残ることを、ここで確かめる（要件 D-168）。</b>
+			 * 満杯の表を線形に探すと、<b>無いものを探したときに1周してしまう</b>——
+			 * 打ち切りは書いてあるが、<b>打ち切りに頼る状態にしない</b>。
+			 * 起動時に1度だけの検査である。
+			 */
+			if (capacity < statics.size() * 2) {
+				throw new IllegalStateException(
+					"固定セグメントの表が小さすぎます: %d 個に対して %d"
+						.formatted(statics.size(), capacity));
+			}
+
+			staticKeys = new String[capacity];
+			staticNodes = new RouteTree[capacity];
+
+			int mask = capacity - 1;
+
+			for (Map.Entry<String, RouteTree> entry : statics.entrySet()) {
+
+				int at = spread(entry.getKey().hashCode()) & mask;
+
+				while (staticKeys[at] != null) {
+					at = (at + 1) & mask;
+				}
+
+				staticKeys[at] = entry.getKey();
+				staticNodes[at] = entry.getValue();
+
+			}
+
+		} else {
+			staticKeys = null;
+			staticNodes = null;
+		}
+
+		if (variables.isEmpty()) {
+			variableNames = null;
+			variableNodes = null;
+		} else {
+			variableNames = variables.keySet().toArray(new String[0]);
+			variableNodes = variables.values().toArray(new RouteTree[0]);
+		}
+
+		for (RouteTree child : statics.values()) {
+			child.index();
+		}
+
+		for (RouteTree child : variables.values()) {
+			child.index();
+		}
+
+	}
+
+	/**
+	 * 表の長さ（2の冪、数の2倍以上）
+	 *
+	 * @param size	入れるものの数
+	 * @return	長さ。入れるものが無ければ 0
+	 */
+	private static int tableSize (int size) {
+
+		if (size == 0) {
+			return 0;
+		}
+
+		int capacity = 2;
+
+		while (capacity < size * 2) {
+			capacity <<= 1;
+		}
+
+		return capacity;
+
+	}
+
+	/**
+	 * ハッシュを散らす
+	 *
+	 * <p>
+	 * <b>{@code String.hashCode()} は上の桁に偏る。</b>
+	 * {@code HashMap} と同じように、上位を下位へ混ぜてから使う。
+	 * </p>
+	 *
+	 * @param hash	ハッシュ
+	 * @return	散らしたもの
+	 */
+	private static int spread (int hash) {
+
+		return hash ^ (hash >>> 16);
+
+	}
 
 	/**
 	 * 大文字小文字を見ない索引を作る（要件 D-166）
@@ -282,8 +420,26 @@ final class RouteTree {
 		/* 見つかったルート */
 		private Route route;
 
-		/* パス変数 */
-		private final PathVariables variables = PathVariables.empty();
+		/*
+		 * パス変数（要件 D-168）。
+		 *
+		 * <b>束縛するものがあって初めて作る。</b>
+		 * 固定セグメントだけのルートでも {@code LinkedHashMap} を1つ作っていた——
+		 * <b>いちばん多いのがその形</b>である。
+		 */
+		private Map<String, String> variables;
+
+		/*
+		 * 1つだけのときの名前と値（要件 D-168）。
+		 *
+		 * <b>ほとんどのルートは変数が1つである</b>（{@code /posts/{id}}）。
+		 * そのために {@code LinkedHashMap} を1つ作ると<b>112 byte</b> かかる——
+		 * {@code Map.of(k, v)} なら 32 byte で足りる。
+		 */
+		private String singleName;
+
+		/* 1つだけのときの値 */
+		private String singleValue;
 
 		/*
 		 * パスは合っていたが、メソッドが違ったもの（要件 F-R-25）。
@@ -294,6 +450,49 @@ final class RouteTree {
 		 * それは<b>叩かれると効く</b>（RouterBench が見ている）。
 		 */
 		private Set<String> allowed;
+
+		/**
+		 * パス変数を束縛する
+		 *
+		 * @param name	変数名
+		 * @param value	値
+		 */
+		private void bind (String name, String value) {
+
+			if (variables != null) {
+				variables.put(name, value);
+				return;
+			}
+
+			if (singleName == null) {
+				singleName = name;
+				singleValue = value;
+				return;
+			}
+
+			// 2つ目が来たら、そこで表に移す
+			variables = new LinkedHashMap<>();
+			variables.put(singleName, singleValue);
+			variables.put(name, value);
+
+		}
+
+		/**
+		 * 束縛したパス変数
+		 *
+		 * @return	パス変数
+		 */
+		private PathVariables variables () {
+
+			if (variables != null) {
+				return new PathVariables(variables);
+			}
+
+			return singleName == null
+				? PathVariables.EMPTY
+				: new PathVariables(Map.of(singleName, singleValue));
+
+		}
 
 		/**
 		 * 当たりうるメソッドを覚える
@@ -325,21 +524,21 @@ final class RouteTree {
 	 * </p>
 	 *
 	 * @param method		メソッド
-	 * @param segments		セグメント列
+	 * @param path			パス
 	 * @param rootErrors	未マッチのときに使う error（一番外側のスコープのもの）
 	 * @return	マッチ結果
 	 */
-	RouteMatch match (String method, PathSegments segments, List<ErrorHandler> rootErrors) {
+	RouteMatch match (String method, PathCursor path, List<ErrorHandler> rootErrors) {
 
 		State state = new State();
 
-		if (!find(state, method, segments, 0)) {
+		if (!find(state, method, path, 0)) {
 
 			/*
 			 * 未マッチでもトップレベルの error は適用する（アプリ全体の404ページ用）。
 			 * <b>パスは合っていてメソッドだけ違う</b>のなら、それも一緒に返す（要件 F-R-25）。
 			 */
-			return new RouteMatch(null, PathVariables.empty(), List.of(), List.of(), rootErrors
+			return new RouteMatch(null, PathVariables.EMPTY, List.of(), List.of(), rootErrors
 				, allowed(state, method));
 
 		}
@@ -347,7 +546,7 @@ final class RouteTree {
 		Route route = state.route;
 
 		return new RouteMatch(
-			route, state.variables, route.beforeHooks(), route.afterHooks(), route.errorHooks());
+			route, state.variables(), route.beforeHooks(), route.afterHooks(), route.errorHooks());
 
 	}
 
@@ -392,14 +591,14 @@ final class RouteTree {
 	 * </p>
 	 *
 	 * @param method	メソッド
-	 * @param segments	セグメント列
+	 * @param path		パス
 	 * @return	当たったルート。当たらなければ null
 	 */
-	Route probe (String method, PathSegments segments) {
+	Route probe (String method, PathCursor path) {
 
 		State state = new State();
 
-		return find(state, method, segments, 0) ? state.route : null;
+		return find(state, method, path, 0) ? state.route : null;
 
 	}
 
@@ -434,14 +633,14 @@ final class RouteTree {
 	 *
 	 * @param state		探索状態
 	 * @param method	メソッド
-	 * @param segments	セグメント列
+	 * @param path		パス
 	 * @param index		現在位置
 	 * @return	マッチしたら true
 	 */
-	private boolean find (State state, String method, PathSegments segments, int index) {
+	private boolean find (State state, String method, PathCursor path, int index) {
 
 		// 終端
-		if (index == segments.size()) {
+		if (index == path.size()) {
 
 			Route route = routes.get(method);
 
@@ -456,11 +655,15 @@ final class RouteTree {
 
 		}
 
-		String segment = segments.get(index);
+		/*
+		 * 1. 固定セグメント（要件 D-168）
+		 *
+		 * <b>鍵の文字列を作らずに引く。</b>seal() で並べた表を、
+		 * パスの一部と直に突き合わせる。
+		 */
+		RouteTree staticChild = staticChild(path, index);
 
-		// 1. 固定セグメント
-		RouteTree staticChild = statics.get(segment);
-		if (staticChild != null && staticChild.find(state, method, segments, index + 1)) {
+		if (staticChild != null && staticChild.find(state, method, path, index + 1)) {
 			return true;
 		}
 
@@ -468,26 +671,53 @@ final class RouteTree {
 		 * 1'. 綴りだけ違う固定セグメント（要件 D-166）
 		 *
 		 * <b>そのままの綴りを先に試したあとで見る。</b>
-		 * 逆にすると、<b>大文字小文字だけ違う2本を書いたときに
-		 * 意図しないほうへ当たる</b>——もっとも、その2本は seal() で落としている。
+		 * こちらは文字列を作る——<b>{@code router.ignore_case} を入れた人だけの費用</b>である。
 		 */
 		if (staticsIgnoreCase != null) {
 
-			RouteTree lowerChild = staticsIgnoreCase.get(segment.toLowerCase(Locale.ROOT));
+			RouteTree lowerChild = staticsIgnoreCase.get(
+				path.text(index).toLowerCase(Locale.ROOT));
 
 			if (lowerChild != null && lowerChild != staticChild
-				&& lowerChild.find(state, method, segments, index + 1)) {
+				&& lowerChild.find(state, method, path, index + 1)) {
 				return true;
 			}
 
 		}
 
 		// 2. パスパラメータ（登録順）
-		for (Map.Entry<String, RouteTree> entry : variables.entrySet()) {
-			if (entry.getValue().find(state, method, segments, index + 1)) {
-				state.variables.put(entry.getKey(), segment);
-				return true;
+		if (variableNames != null) {
+
+			for (int at = 0; at < variableNames.length; at++) {
+
+				if (variableNodes[at].find(state, method, path, index + 1)) {
+					/*
+					 * <b>ここで初めて文字列を作る。</b>
+					 * 当たった枝の、束縛する1つぶんだけである。
+					 */
+					state.bind(variableNames[at], path.text(index));
+					return true;
+				}
+
 			}
+
+		} else {
+
+			/*
+			 * <b>seal() 前は元の道を通る（要件 D-168）。</b>
+			 * 並べた配列が無いときに<b>ここを飛ばすと、変数の枝が丸ごと消える</b>——
+			 * 到達不能ルートの検出（要件 F-R-13）を {@code seal()} を呼ばずに使うと、
+			 * <b>変数のルートが全部「一生呼ばれない」と出る</b>。
+			 */
+			for (Map.Entry<String, RouteTree> entry : variables.entrySet()) {
+
+				if (entry.getValue().find(state, method, path, index + 1)) {
+					state.bind(entry.getKey(), path.text(index));
+					return true;
+				}
+
+			}
+
 		}
 
 		// 3. ワイルドカード
@@ -495,7 +725,7 @@ final class RouteTree {
 
 		if (wildcard != null) {
 			state.route = wildcard;
-			state.variables.put(PathVariables.WILDCARD, segments.joinFrom(index));
+			state.bind(PathVariables.WILDCARD, path.joinFrom(index));
 			return true;
 		}
 
@@ -503,6 +733,53 @@ final class RouteTree {
 		state.allow(wildcards.keySet());
 
 		return false;
+
+	}
+
+	/**
+	 * 固定セグメントの子を、文字列を作らずに引く（要件 D-168）
+	 *
+	 * @param path	パス
+	 * @param index	位置
+	 * @return	子。無ければ null
+	 */
+	private RouteTree staticChild (PathCursor path, int index) {
+
+		/*
+		 * <b>seal() 前は遅いほうを引く。</b>
+		 * 起動時の到達不能ルートの検出（要件 F-R-13）がここを通る。
+		 */
+		if (staticKeys == null) {
+			return statics.isEmpty() ? null : statics.get(path.text(index));
+		}
+
+		int mask = staticKeys.length - 1;
+		int at = spread(path.hash(index)) & mask;
+
+		/*
+		 * <b>回る回数を表の長さで止める。</b>
+		 * 表は入れたものの2倍以上あるので<b>必ず空きがあり、ここには届かない</b>——
+		 * それでも書いてあるのは、<b>届いたときの壊れ方が「返ってこない」</b>だからである。
+		 * 誤った答えなら気づけるが、<b>止まらないスレッドは気づけない</b>。
+		 */
+		for (int step = 0; step < staticKeys.length; step++) {
+
+			String key = staticKeys[at];
+
+			// 空きに当たったら、そこで無い
+			if (key == null) {
+				return null;
+			}
+
+			if (path.matches(index, key)) {
+				return staticNodes[at];
+			}
+
+			at = (at + 1) & mask;
+
+		}
+
+		return null;
 
 	}
 

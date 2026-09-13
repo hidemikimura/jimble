@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	テストのログ設定（要件 NF-P-06 / D-169）。
+
+	これが無いと logback の既定（全部まとめてコンソール）になる。
+	テストではそれが2つの意味で困る。
+
+	1. ベンチが「アプリの設定」を測ってしまう。
+	   ベンチ1回で 50 万行が標準出力へ流れていて、
+	   1リクエストの実測 6,722 byte / 8,477ns のうち
+	   1,105 byte / 5,816ns が「コンソールへ書くぶん」だった。
+	   それは logback の設定であって jimble の費用ではないし、
+	   実際のアプリは jimble new が置く logback.xml で別の出し方をする。
+	   壁（RequestBench）が見張りたいのは「jimble が知らないうちに太ること」なので、
+	   アプリ側の設定は混ぜない。
+
+	2. 50 万行を捨てるためだけに書く。
+	   テストの実行時間がそれだけ延びる。
+
+	アクセスログは NOP へ流す。OFF ではなく NOP なのは、
+	logback がイベントを組み立てるところまでは実際のアプリも通るためで、
+	そこを測らないと今度は小さく見えすぎる。
+
+	警告とエラーはコンソールに残す。
+	テストが落ちたときに手がかりが消えるほうが困る。
+-->
+<configuration>
+
+	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+
+	<!-- 捨てる先。イベントの組み立てまでは通す -->
+	<appender name="nop" class="ch.qos.logback.core.helpers.NOPAppender"/>
+
+	<!-- アクセスログ（要件 NF-O-02 / F-H-05） -->
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="nop"/>
+	</logger>
+
+	<logger name="access.bot" level="INFO" additivity="false">
+		<appender-ref ref="nop"/>
+	</logger>
+
+	<root level="WARN">
+		<appender-ref ref="console"/>
+	</root>
+
+</configuration>

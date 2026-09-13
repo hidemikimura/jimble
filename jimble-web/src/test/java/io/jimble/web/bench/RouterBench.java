@@ -130,8 +130,23 @@ class RouterBench {
 		assertTrue(eight <= two * 4, "深さ8=%d / 深さ2=%d".formatted(eight, two));
 		assertTrue(four <= two * 2, "深さ4=%d / 深さ2=%d".formatted(four, two));
 
-		// 上限（実測 704 byte）。ここを超えたら、1回のマッチで何かを作り始めている
-		assertTrue(eight <= 1024, "深さ8で %d byte 使っている".formatted(eight));
+		/*
+		 * 上限（実測 288 byte。要件 D-168）。
+		 *
+		 * <b>ここを超えたら、セグメントごとに文字列を作り始めている。</b>
+		 * 割らずに当てるようにする前は<b>深さ8で 744 byte</b>だった——
+		 * 元の作りに戻ると、この壁に当たる。
+		 */
+		assertTrue(eight <= 512, "深さ8で %d byte 使っている".formatted(eight));
+
+		/*
+		 * <b>深さで増えるぶんも見る。</b>覚えるのは区切りの位置（int 2つ）だけなので、
+		 * <b>1段あたり十数 byte</b>で済む。文字列を作る形に戻すと、
+		 * 1段あたり<b>50 byte 前後</b>になる。
+		 */
+		assertTrue(eight - two <= 128
+			, "深さ2→8 で %d byte 増えている（セグメントごとに文字列を作っていませんか）"
+				.formatted(eight - two));
 
 	}
 
@@ -155,6 +170,13 @@ class RouterBench {
 		 * 全部を舐め直すもの（404 のときだけ遅い）は、<b>叩かれると効く</b>
 		 */
 		assertTrue(missed <= matched, "当たらないほうが高い: %d / %d".formatted(missed, matched));
+
+		/*
+		 * <b>当たらないときは、何も束縛しない（要件 D-168）。</b>
+		 * 実測 160 byte——<b>パス変数の入れ物すら作らない</b>。
+		 * 404 は叩かれるところなので、ここが太ると効く。
+		 */
+		assertTrue(missed <= 320, "当たらないのに %d byte 使っている".formatted(missed));
 
 	}
 

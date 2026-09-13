@@ -144,6 +144,10 @@ server {
 	smart_async_writes   = false    # 列があるとき、空いていればその場で書く
 }
 
+metrics {
+	enabled = true                  # メトリクスを数えるか
+}
+
 router {
 	ignore_case           = false   # パスの大文字小文字を区別しないか
 	redirect_to_canonical = false   # 正規の URL へ 301 で寄せるか

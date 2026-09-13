@@ -1,6 +1,6 @@
 package io.jimble.web.router;
 
-import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
 
 /**
  * ルーティングの設定（要件 F-R-24 / D-166）
@@ -34,6 +34,12 @@ public final class RouterConf {
 	/** 設定キー：正規の URL へ寄せるか */
 	public static final String KEY_REDIRECT_TO_CANONICAL = "router.redirect_to_canonical";
 
+	/** リクエストごとに読むもの（要件 D-167） */
+	private static final ConfFlag IGNORE_CASE = ConfFlag.of(KEY_IGNORE_CASE, false);
+
+	/** リクエストごとに読むもの（要件 D-167） */
+	private static final ConfFlag REDIRECT_TO_CANONICAL = ConfFlag.of(KEY_REDIRECT_TO_CANONICAL, false);
+
 	private RouterConf () {}
 
 	/**
@@ -59,7 +65,7 @@ public final class RouterConf {
 	 */
 	public static boolean ignoreCase () {
 
-		return Conf.conf().getBoolean(KEY_IGNORE_CASE, false);
+		return IGNORE_CASE.get();
 
 	}
 
@@ -84,7 +90,7 @@ public final class RouterConf {
 	 */
 	public static boolean redirectToCanonical () {
 
-		return Conf.conf().getBoolean(KEY_REDIRECT_TO_CANONICAL, false);
+		return REDIRECT_TO_CANONICAL.get();
 
 	}
 

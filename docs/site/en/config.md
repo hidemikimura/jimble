@@ -151,6 +151,10 @@ server {
 	smart_async_writes   = false    # with a queue, write inline while it is not busy
 }
 
+metrics {
+	enabled = true                  # whether to record metrics
+}
+
 router {
 	ignore_case           = false   # whether to match paths case-insensitively
 	redirect_to_canonical = false   # whether to 301 to the canonical URL

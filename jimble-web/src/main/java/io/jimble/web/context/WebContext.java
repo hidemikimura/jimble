@@ -9,6 +9,7 @@ import io.jimble.core.trace.Span;
 import io.jimble.core.trace.SpanKind;
 import io.jimble.core.trace.Tracing;
 import io.jimble.util.metrics.Metrics;
+import io.jimble.util.metrics.MetricsConf;
 import io.jimble.web.server.Dispatcher;
 import io.jimble.web.server.ServerConf;
 import io.jimble.web.cookie.Cookies;
@@ -501,6 +502,31 @@ public final class WebContext extends Context<WebContext> {
 
 	}
 
+	/** メトリクスの名前：リクエスト数 */
+	private static final String METRIC_REQUEST = "http.request";
+
+	/**
+	 * メトリクスの名前：ステータスの区分（要件 D-167）
+	 *
+	 * <p>
+	 * <b>先に作っておく。</b>{@code 0} は使わない（位取りのため）。
+	 * </p>
+	 */
+	private static final String[] METRIC_STATUS = {
+		"http.status.0xx"
+		, "http.status.1xx"
+		, "http.status.2xx"
+		, "http.status.3xx"
+		, "http.status.4xx"
+		, "http.status.5xx"
+	};
+
+	/** メトリクスの名前：表に無いステータス */
+	private static final String METRIC_STATUS_OTHER = "http.status.other";
+
+	/** メトリクスの名前：どのルートにも当たらなかったもの */
+	private static final String METRIC_UNMATCHED = "http.(unmatched)";
+
 	/**
 	 * メトリクスに入れる（要件 NF-O-04）
 	 *
@@ -517,14 +543,51 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	private void recordMetrics () {
 
-		Metrics.count("http.request");
-		Metrics.count("http.status.%dxx".formatted(response.code() / 100));
+		/*
+		 * <b>切ってあれば、名前も作らない（要件 D-167）。</b>
+		 * {@code Metrics} の側でも見ているが、そちらに任せると
+		 * <b>名前を作る費用だけ払う</b>ことになる——
+		 * 高いのは数えるところではなく<b>名前のほう</b>である。
+		 */
+		if (!MetricsConf.enabled()) {
+			return;
+		}
 
+		Metrics.count(METRIC_REQUEST);
+		Metrics.count(statusMetric(response.code()));
+
+		/*
+		 * <b>名前は登録したときに作ってある（要件 D-167）。</b>
+		 * ここで組み立てていたときは、それだけで 1039 byte / 644ns——
+		 * <b>数える処理の全部より重かった</b>。
+		 */
 		String name = route != null && route.matched()
-			? "%s %s".formatted(request.method(), route.route().pattern())
-			: "(unmatched)";
+			? route.route().metricName()
+			: METRIC_UNMATCHED;
 
-		Metrics.record("http.%s".formatted(name), elapsed().toNanos());
+		Metrics.record(name, elapsed().toNanos());
+
+	}
+
+	/**
+	 * ステータスの名前（要件 D-167）
+	 *
+	 * <p>
+	 * <b>5通りしか無いので作らない。</b>
+	 * {@code "http.status.%dxx".formatted(code / 100)} と書くと、
+	 * <b>毎回同じ5つのうちの1つを作り直す</b>ことになる。
+	 * </p>
+	 *
+	 * @param code	ステータスコード
+	 * @return	名前
+	 */
+	private static String statusMetric (int code) {
+
+		int group = code / 100;
+
+		return group >= 1 && group < METRIC_STATUS.length
+			? METRIC_STATUS[group]
+			: METRIC_STATUS_OTHER;
 
 	}
 
@@ -548,9 +611,14 @@ public final class WebContext extends Context<WebContext> {
 			return;
 		}
 
+		/*
+		 * <b>名前は登録したときに作ってある（要件 D-167）。</b>
+		 * ここはトレースが有効なときしか通らないが、
+		 * <b>同じ文字列を2か所で組み立てる理由が無い</b>。
+		 */
 		String name = route != null && route.matched()
-			? "%s %s".formatted(request.method(), route.route().pattern())
-			: "%s (unmatched)".formatted(request.method());
+			? route.route().label()
+			: request.method() + " (unmatched)";
 
 		span.name(name);
 		span.attribute("http.request.method", request.method());
@@ -576,23 +644,30 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	private void writeAccessLog () {
 
-		Data fields = new Data();
-		fields.put("method", request.method());
-		fields.put("path", request.path());
-		fields.put("query", request.query());
-		fields.put("status", response.code());
-		fields.put("elapsed", elapsed().toNanos() / 1000000d);
-		fields.put("matched", route != null && route.matched());
-
 		/*
 		 * ボットのアクセスは別のロガーへ（要件 F-H-05）。
 		 * まとめて出すと、ボットの分で人のアクセスが埋もれる。
 		 */
 		boolean isBot = ServerConf.botAccessLog() && request.isBotAccess();
 
-		fields.put("bot", isBot);
-
-		Log.access("%s %s %d".formatted(request.method(), request.path(), response.code()), fields, isBot);
+		/*
+		 * <b>項目は渡された Data に直に入れる（要件 D-170）。</b>
+		 * 自分で Data を1つ作って渡すと、ログ側がもう1つ作って<b>写し替える</b>——
+		 * 1行のログのために Map が2つできる（実測 1095 → 648 byte）。
+		 *
+		 * <b>組み立ては連結でする（要件 D-169）。</b>
+		 * {@code String.format} は 489 byte、連結は 56 byte——
+		 * <b>1リクエストに1回、必ず通るところ</b>である。
+		 */
+		Log.access(request.method() + " " + request.path() + " " + response.code(), isBot, fields -> {
+			fields.put("method", request.method());
+			fields.put("path", request.path());
+			fields.put("query", request.query());
+			fields.put("status", response.code());
+			fields.put("elapsed", elapsed().toNanos() / 1000000d);
+			fields.put("matched", route != null && route.matched());
+			fields.put("bot", isBot);
+		});
 
 	}
 

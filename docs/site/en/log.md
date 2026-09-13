@@ -97,12 +97,22 @@ server {
 }
 ```
 
-**This is the largest single piece of a request** (about 40% of what it allocates — around 3,400 bytes).
+**This is the largest single piece of a request** (about half of what it allocates — around 1,965 bytes).
 Turning it off stops both the work of building the line and the bot judgement
-(matching the User-Agent). Requests per second move by around 10%
-(52,537 → 57,030 on a 10-core Mac at 8 connections).
-**That figure varies by machine, so measure it on yours before turning it off**
-(`jimble-load/load.sh` measures the two side by side).
+(matching the User-Agent).
+
+How much requests per second move is decided mostly by **how you write `logback.xml`.**
+Measured on a 2-core machine at 1 connection (D-172), jimble with the access log off runs at
+**94% of raw Helidon** — jimble's own overhead barely shows up at all.
+From there, **building the line costs -10% (+10µs at p50)** and
+**writing that line out as JSON costs -29% (+110µs at p50)**.
+So most of the price is not jimble; it is logback writing synchronously.
+Before turning the log off, look at **how it is written**
+(wrap it in an `AsyncAppender`, send it somewhere else, drop some fields).
+
+**That figure varies by machine, so measure it on yours**
+(`jimble-load/load.sh` puts raw Helidon, the log written, the log built but discarded,
+and the log off side by side).
 
 **Metrics and tracing stay.** The access log is the only thing that goes.
 
@@ -275,6 +285,31 @@ Metrics.gauge("cache.size", () -> cache.size());
 > [!NOTE]
 > `Metrics.reset()` is **for tests**. Calling it in a running application throws away everything counted so far.
 
+### What it costs, and turning it off
+
+**Recording itself costs 0 bytes and 58ns** (measured). The memory it holds grows with the
+number of **distinct names**, a few dozen to a few hundred bytes each — **not with how often you count**.
+
+> [!TRAP]
+> **The expensive part is the name.**
+> ```java
+> Metrics.count("http.status.%dxx".formatted(code / 100));   // over 1000 bytes
+> ```
+> Building it with `String.format` on every request costs **more than all of the counting put together**.
+> **Build names once and reuse them** — inside jimble, a route's name is built when the route is registered.
+
+To turn it off:
+
+```conf
+metrics {
+	enabled = false
+}
+```
+
+`count`, `record` and `gauge` all become no-ops and `Metrics.snapshot()` stays empty.
+**It will not make anything faster** (there was hardly any cost to begin with). The reason to
+turn it off is that an application which never exposes the numbers has **no use for them**.
+
 ## Tracing
 
 Follow one request across services (requirement NF-O-05). **You only pay for it if you use it.**
@@ -397,6 +432,7 @@ assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
 | `server.access_log` | `true` | Writes the access log. `false` writes nothing at all |
 | `server.bot_access_log` | `true` | Splits the bot access log out into `access.bot` |
 | `log.db` | `false` | Enables `DBLog.save(...)` |
+| `metrics.enabled` | `true` | Record metrics. `false` leaves `snapshot()` empty |
 
 > [!NOTE]
 > **There are no configuration keys for log level, destination, or format.** That is `logback.xml`'s job.

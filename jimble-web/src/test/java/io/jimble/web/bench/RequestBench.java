@@ -76,7 +76,7 @@ class RequestBench {
 	 * 1リクエストの上限（byte）
 	 *
 	 * <p>
-	 * 実測は 約 8,100 byte（Gradle 経由・マッチしたとき。測るたびに数十 byte 動く）。
+	 * 実測は 約 4,020 byte（Gradle 経由・マッチしたとき。測るたびに数十 byte 動く）。
 	 * <b>目標ではなく壁である。</b>
 	 * 4割ほど余裕を持たせてあるのは、<b>直していないのに赤くなる日を作らない</b>ためである
 	 * （JDK の細かい版が変わるだけでも数十 byte は動く）。
@@ -84,7 +84,24 @@ class RequestBench {
 	 * 実際の値は {@code build/bench/bench.txt} に出る。
 	 * </p>
 	 */
-	private static final long MAX_BYTES = 10_240;
+	private static final long MAX_BYTES = 5_632;
+
+	/**
+	 * アクセスログを切ったときの上限（byte。要件 D-167）
+	 *
+	 * <p>
+	 * 実測は 約 2,190 byte。<b>ここが別に要る理由</b>——
+	 * 全体の壁（{@link #MAX_BYTES}）は<b>アクセスログ 1,965 byte に埋もれる</b>ので、
+	 * <b>後始末に数百 byte 積んでも気づけない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * ここで守っているのは<b>「リクエストごとに設定を読み直さない」</b>ことと
+	 * <b>「メトリクスの名前を組み立て直さない」</b>ことである（要件 D-167）。
+	 * どちらも戻すと<b>1,000 byte 単位で増える</b>ので、この壁に当たる。
+	 * </p>
+	 */
+	private static final long MAX_BYTES_WITHOUT_ACCESS_LOG = 3_072;
 
 	/** ルータ */
 	private static Router router;
@@ -172,7 +189,33 @@ class RequestBench {
 			Conf.reload();
 		}
 
+		/*
+		 * <b>アクセスログを切ったときにも壁を置く（要件 D-167）。</b>
+		 * 全体の壁だけだと<b>アクセスログに埋もれて</b>、
+		 * 後始末に数百 byte 積んでも気づけない。
+		 */
+		assertTrue(withoutAccessLog <= MAX_BYTES_WITHOUT_ACCESS_LOG
+			, "アクセスログを切って %d byte 使っている（上限 %d）。リクエストごとに設定を読み直していないか、メトリクスの名前を組み立てていないか見てください"
+				.formatted(withoutAccessLog, MAX_BYTES_WITHOUT_ACCESS_LOG));
+
 		long accessLog = closed - withoutAccessLog;
+
+		/*
+		 * <b>アクセスログ1行の壁（要件 D-169）。</b>
+		 *
+		 * 実測 約 1,965 byte。ここは<b>1リクエストにつき必ず1回</b>通る。
+		 *
+		 * <b>どこまで捕まるかを、実際に戻して測ってある。</b>
+		 * 項目を自分の {@code Data} に入れて渡す形（Map が2つできる）に戻すと
+		 * <b>赤くなる</b>（+530）。{@code String.format} に戻しても<b>赤くなる</b>（+580）。
+		 * {@code path()} に {@code request()} の Data を作らせるだけの +180 は<b>すり抜ける</b>。
+		 * 余裕は 17%（実測のぶれは走るたびに数十 byte。
+		 * この数字は差で出しているので、引き算の相手が動くとこちらも動く）で、
+		 * <b>ここは「気づく」ための数字であって「守る」ための数字ではない</b>。
+		 */
+		assertTrue(accessLog <= 2_304
+			, "アクセスログ1行に %d byte 使っている（上限 2304）。項目を別の Data に入れて渡していないか、String.format を足していないか見てください"
+				.formatted(accessLog));
 
 		Bench.derived("　うち Context の生成（Request / Response / 実行ID / 区間）", created - sourceSink);
 		Bench.derived("　うち ルーティング", routed - created);

@@ -479,7 +479,7 @@ public final class Router {
 
 		seal();
 
-		return tree.match(method, PathSegments.ofRawPath(rawPath), scope.root().ownErrors());
+		return tree.match(method, PathCursor.ofRawPath(rawPath), scope.root().ownErrors());
 
 	}
 
@@ -507,6 +507,16 @@ public final class Router {
 		rootTree.forEachRoute(Route::seal);
 
 		checkDuplicateAttributeNames();
+
+		/*
+		 * 引くための表を作る（要件 D-168）。
+		 *
+		 * <b>到達不能の検出より前に作る。</b>あちらは本物のマッチャに聞くので、
+		 * <b>表が無いと遅いほうの道を通る</b>——答えは同じだが、
+		 * <b>速いほうを試さないまま起動する</b>ことになる。
+		 */
+		rootTree.index();
+
 		checkUnreachable();
 
 		/*

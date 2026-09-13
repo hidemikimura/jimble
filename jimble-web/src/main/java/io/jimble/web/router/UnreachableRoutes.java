@@ -150,7 +150,7 @@ final class UnreachableRoutes {
 
 		if (!wildcard) {
 
-			Route found = tree.probe(info.method(), PathSegments.of(fill(pattern, probe)));
+			Route found = tree.probe(info.method(), PathCursor.of(fill(pattern, probe)));
 
 			return found == info.route() ? null : found;
 
@@ -168,7 +168,7 @@ final class UnreachableRoutes {
 				path.add(probe);
 			}
 
-			Route found = tree.probe(info.method(), PathSegments.of(path));
+			Route found = tree.probe(info.method(), PathCursor.of(path));
 
 			if (found == info.route()) {
 				return null;

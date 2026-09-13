@@ -54,8 +54,24 @@ import java.util.function.LongSupplier;
  *
  * <h2>費用</h2>
  * <p>
- * 1回あたり {@link LongAdder} と配列の加算が数回で、確保するメモリは名前1つにつき
- * 数十〜数百 byte。<b>常に動いている</b>（切る設定は持たない）。
+ * <b>数えること自体は 0 byte / 58ns である</b>（実測）。
+ * 1回あたり {@link LongAdder} と配列の加算が数回で、
+ * 確保するメモリは<b>名前1つにつき</b>数十〜数百 byte——
+ * <b>数えた回数では増えない</b>。
+ * </p>
+ *
+ * <p>
+ * <b>高くつくのは名前のほうである。</b>
+ * {@code "http.status.%dxx".formatted(code / 100)} のように
+ * <b>リクエストごとに組み立てる</b>と、それだけで 1000 byte を超える——
+ * <b>数える処理の全部より重い</b>。名前は<b>先に作って使い回すこと</b>（要件 D-167）。
+ * </p>
+ *
+ * <p>
+ * {@link MetricsConf#enabled} で<b>切れる</b>（既定は有効）。
+ * 切ると {@link #count(String)} も {@link #record(String, long)} も
+ * {@link #gauge(String, LongSupplier)} も何もしないので、
+ * <b>{@link #snapshot()} は空のまま</b>になる。
  * </p>
  */
 public final class Metrics {
@@ -108,7 +124,7 @@ public final class Metrics {
 	 */
 	public static void count (String name, long delta) {
 
-		if (name == null) {
+		if (name == null || !MetricsConf.enabled()) {
 			return;
 		}
 
@@ -136,7 +152,7 @@ public final class Metrics {
 	 */
 	public static void record (String name, long nanos) {
 
-		if (name == null || nanos < 0) {
+		if (name == null || nanos < 0 || !MetricsConf.enabled()) {
 			return;
 		}
 
@@ -169,7 +185,7 @@ public final class Metrics {
 	 */
 	public static void gauge (String name, LongSupplier supplier) {
 
-		if (name == null || supplier == null) {
+		if (name == null || supplier == null || !MetricsConf.enabled()) {
 			return;
 		}
 

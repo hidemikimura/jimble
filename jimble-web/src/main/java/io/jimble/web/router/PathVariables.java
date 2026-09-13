@@ -16,6 +16,17 @@ public final class PathVariables {
 	/** ワイルドカードのキー */
 	public static final String WILDCARD = "*";
 
+	/**
+	 * 何も束縛していないもの（要件 D-168）
+	 *
+	 * <p>
+	 * <b>使い回す。</b>外から書き換える口が無い（{@link #put} はこのパッケージの中だけ）ので、
+	 * <b>1つで足りる</b>——固定セグメントだけのルートは、
+	 * それまで<b>毎回 {@code LinkedHashMap} を1つ作っていた</b>。
+	 * </p>
+	 */
+	static final PathVariables EMPTY = new PathVariables(Map.of());
+
 	/* 値 */
 	private final Map<String, String> values;
 

@@ -132,15 +132,15 @@ cleanup () {
 trap cleanup EXIT
 
 # 1つの相手を、接続数を変えながら測る
-#   $1 名前  $2 起こすコマンド（文字列）  $3 ポート  $4 叩くパス
+#   $1 名前  $2 起こすコマンド（文字列）  $3 ポート  $4 叩くパス  $5 JVM に渡すもの（省略可）
 run_target () {
-	local label="$1" start="$2" port="$3" path="$4"
+	local label="$1" start="$2" port="$3" path="$4" opts="${5:-}"
 
 	echo
 	echo "== $label =="
 
 	# shellcheck disable=SC2086
-	JAVA_HOME="$RUN_JAVA_HOME" $start >"$LOG_DIR/$label.log" 2>&1 &
+	JAVA_HOME="$RUN_JAVA_HOME" JAVA_OPTS="$opts" $start >"$LOG_DIR/$label.log" 2>&1 &
 	local pid=$!
 	PIDS+=("$pid")
 
@@ -175,11 +175,23 @@ echo "接続数: $CONNECTIONS / 温め ${WARMUP}秒 / 測る ${MEASURE}秒"
 echo "台: $(uname -srm) / コア $(getconf _NPROCESSORS_ONLN 2>/dev/null || echo '?')"
 
 run_target "helidon" "$BIN server helidon 9010" 9010 "/"
+
+# アクセスログを実際に書き出すもの（雛形と同じ JSON）。実物に近いのはこれである
 run_target "jimble" "$BIN server jimble 9011" 9011 "/"
 
 # アクセスログを切ったもの。素の helidon は1行も書かないので、
 # これを並べないと「上乗せ分」と「helidon が持っていない機能の代金」が混ざる
 run_target "jimble-nolog" "$BIN server jimble-nolog 9012" 9012 "/"
+
+#
+# アクセスログを組み立てるが、書き出さないもの（NOP アペンダ）。
+#
+# jimble と jimble-nolog を並べただけだと、
+# 「jimble が1行を組み立てる代金」と「logback が1行を書き出す代金」が混ざる。
+# 後者は jimble ではなくアプリのログ設定の話なので、間に1つ挟んで分ける。
+#
+run_target "jimble-lognop" "$BIN server jimble 9013" 9013 "/" \
+	"-Dlogback.configurationFile=logback-nop.xml"
 
 if [ "$BLOG" = 1 ]; then
 	# サンプルアプリは DB とテンプレートを通る。DB が要る（conf/application.conf を見る）
@@ -217,9 +229,16 @@ cat <<'NOTE'
   読めない行を消すのではなく、印を付けて残してある。
 
   helidon と jimble-nolog の差が、jimble の素の上乗せ分である。
-  jimble と jimble-nolog の差が、アクセスログ1行の代金である
-  （素の helidon は1行も書かないので、ここを分けないと混ざる）。
+  jimble-lognop と jimble-nolog の差が、アクセスログ1行を組み立てる代金である。
+  jimble と jimble-lognop の差が、その1行を書き出す代金である
+  （JSON にして標準出力へ流すぶん。これは jimble ではなく
+   アプリの logback.xml の話なので、分けておかないと jimble の費用に見える）。
   blog との差は、DB とテンプレートとアプリの分である。
+
+  ログ設定を置かずに測ると、この表は両方向に狂う。
+  既定のパターンはアクセスログのフィールドを丸ごと落とす（安く見える）一方、
+  root が DEBUG のままなので helidon の起動ログまで流れる（高く見える）。
+  jimble-load/src/main/resources/logback.xml がそれを揃えている。
 
   「失敗 N ★」が出ていたら、その行の数字は読まないこと。
   500 を返すのはたいてい速いので、壊れているときほど良い数字が出る。

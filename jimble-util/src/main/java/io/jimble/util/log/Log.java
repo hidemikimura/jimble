@@ -1,5 +1,6 @@
 package io.jimble.util.log;
 
+import java.util.function.Consumer;
 import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.net.HostNames;
 import io.jimble.util.net.LocalAddress;
@@ -719,11 +720,50 @@ public class Log {
 	 */
 	public static void access (String message, Data fields, boolean isBot) {
 
+		access(message, isBot, fields == null ? null : data -> data.putAll(fields));
+
+	}
+
+	/**
+	 * アクセスログ（項目は渡された Data に直に入れる。要件 F-H-05 / D-170）
+	 *
+	 * <h4>なぜ「詰めてもらう」形なのか</h4>
+	 * <p>
+	 * <b>1行のログのために Map を2つ作っていた。</b>
+	 * 呼ぶ側が項目を入れた {@code Data} を1つ作り、
+	 * こちらがログ用の {@code Data} をもう1つ作って、<b>片方をもう片方へ写していた</b>——
+	 * 実測 1095 byte で、<b>1つにまとめると 648 byte</b> になる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>渡ってくるのは、枠組みの項目（実行 ID・SQL 実行回数など）が入った状態のものである。</b>
+	 * そこへ足すだけでよい。
+	 * </p>
+	 *
+	 * <pre>
+	 * Log.access("GET /posts/1 200", false, fields -&gt; {
+	 *     fields.put("method", "GET");
+	 *     fields.put("path", "/posts/1");
+	 * });
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>受け取った {@code Data} を外へ持ち出さないこと。</b>
+	 * 書き出したあとは出力先のものになる（出力先が非同期なら、あとから読まれる）。
+	 * </p>
+	 *
+	 * @param message	メッセージ
+	 * @param isBot		ボットからのアクセスか
+	 * @param fields	項目を詰める人。無ければ {@code null}
+	 */
+	public static void access (String message, boolean isBot, Consumer<Data> fields) {
+
 		Log log = getLog();
 
 		Data data = log.createLogObject(null);
+
 		if (fields != null) {
-			data.putAll(fields);
+			fields.accept(data);
 		}
 
 		log.logInfo(isBot ? LOGGER_ACCESS_BOT : LOGGER_ACCESS, message, data);

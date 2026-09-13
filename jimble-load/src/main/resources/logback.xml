@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	負荷測定のログ設定（要件 NF-P-08）。
+
+	これが無いと logback の既定になる。既定は2つの意味で測定を壊す。
+
+	1. 実物より安く見える。
+	   既定のパターンはメッセージしか書かないので、アクセスログの
+	   フィールド（実行 ID・SQL 実行回数・所要時間…）が丸ごと落ちる。
+	   実際のアプリは jimble new が置く conf/logback.xml で
+	   JSON エンコーダを通す。そのぶんの代金が測れていなかった。
+
+	2. 実物より高く見える。
+	   root が DEBUG のまま helidon の起動ログまでコンソールへ流れる。
+	   それは jimble の費用ではない。
+
+	そこで、アクセスログの出し方は雛形（jimble-cli の skeleton/logback.xml.txt）
+	に合わせ、それ以外は WARN まで落としてある。
+	「書かずに組み立てるだけ」の値段が知りたいときは
+	-Dlogback.configurationFile=logback-nop.xml を渡す（load.sh の jimble-lognop）。
+-->
+<configuration>
+
+	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+
+	<!-- 機械が読む形。1行に1つの JSON（雛形と同じ） -->
+	<appender name="json" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder class="io.jimble.util.log.encoder.LogbackJsonEncoder"/>
+	</appender>
+
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="json"/>
+	</logger>
+
+	<logger name="access.bot" level="INFO" additivity="false">
+		<appender-ref ref="json"/>
+	</logger>
+
+	<root level="WARN">
+		<appender-ref ref="console"/>
+	</root>
+
+</configuration>

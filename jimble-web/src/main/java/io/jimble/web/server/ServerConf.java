@@ -2,6 +2,7 @@ package io.jimble.web.server;
 
 import java.time.Duration;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
 
 /**
  * HTTP サーバーの設定（要件 F-H-01〜F-H-05）
@@ -115,6 +116,23 @@ public final class ServerConf {
 	 * </p>
 	 */
 	public static final int MIN_WRITE_QUEUE_LENGTH = 2;
+
+	/**
+	 * リクエストごとに読むもの（要件 D-167）
+	 *
+	 * <p>
+	 * <b>{@code Conf.conf().getBoolean(...)} は1回 143 byte / 150ns かかる。</b>
+	 * <b>出す・出さないに関わらず、確かめる費用は毎回かかる</b>ので、
+	 * 覚えておく（設定が入れ替わったら読み直す）。
+	 * </p>
+	 */
+	private static final ConfFlag ACCESS_LOG = ConfFlag.of(KEY_ACCESS_LOG, true);
+
+	/** リクエストごとに読むもの（要件 D-167） */
+	private static final ConfFlag BOT_ACCESS_LOG = ConfFlag.of(KEY_BOT_ACCESS_LOG, true);
+
+	/** リクエストごとに読むもの（要件 D-167） */
+	private static final ConfFlag TRUST_PROXY = ConfFlag.of(KEY_TRUST_PROXY, false);
 
 	private ServerConf () {}
 
@@ -310,7 +328,7 @@ public final class ServerConf {
 	 */
 	public static boolean trustProxy () {
 
-		return Conf.conf().getBoolean(KEY_TRUST_PROXY, false);
+		return TRUST_PROXY.get();
 
 	}
 
@@ -332,7 +350,7 @@ public final class ServerConf {
 	 */
 	public static boolean botAccessLog () {
 
-		return Conf.conf().getBoolean(KEY_BOT_ACCESS_LOG, true);
+		return BOT_ACCESS_LOG.get();
 
 	}
 
@@ -360,7 +378,7 @@ public final class ServerConf {
 	 */
 	public static boolean accessLog () {
 
-		return Conf.conf().getBoolean(KEY_ACCESS_LOG, true);
+		return ACCESS_LOG.get();
 
 	}
 

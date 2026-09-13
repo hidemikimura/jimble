@@ -53,6 +53,19 @@ public final class Route {
 	/* 確定した error（内側 → 外側） */
 	private List<ErrorHandler> errorHooks = List.of();
 
+	/*
+	 * 表に出すときの名前（要件 D-167）。
+	 *
+	 * <b>作るのは1回だけ。</b>メトリクスの名前もトレースの区間名も
+	 * 「メソッド + パターン」で、<b>登録した時点で決まっている</b>——
+	 * リクエストごとに組み立てると、それだけで<b>数える処理の全部より重い</b>
+	 * （実測 1039 byte / 644ns）。
+	 */
+	private final String label;
+
+	/* メトリクスの名前（要件 D-167） */
+	private final String metricName;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -67,6 +80,44 @@ public final class Route {
 		this.pattern = Objects.requireNonNull(pattern, "pattern");
 		this.handler = handler;
 		this.executorSuppliers = executorSuppliers == null ? List.of() : List.copyOf(executorSuppliers);
+
+		this.label = this.method + " " + this.pattern;
+		this.metricName = "http." + this.label;
+
+	}
+
+	/**
+	 * 表に出すときの名前（要件 D-167）
+	 *
+	 * <p>
+	 * {@code "GET /posts/{id}"}。<b>トレースの区間名</b>とログに使う。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>生のパスは使わない。</b>{@code /posts/1} {@code /posts/2} … と
+	 * <b>種類が無限に増える</b>ので、見る道具の側が壊れる（要件 D-124）。
+	 * </p>
+	 *
+	 * <p><b>登録したときに1回だけ作る。</b>リクエストごとに組み立てない。</p>
+	 *
+	 * @return	名前
+	 */
+	public String label () {
+
+		return label;
+
+	}
+
+	/**
+	 * メトリクスの名前（要件 D-167）
+	 *
+	 * <p>{@code "http.GET /posts/{id}"}。<b>登録したときに1回だけ作る。</b></p>
+	 *
+	 * @return	名前
+	 */
+	public String metricName () {
+
+		return metricName;
 
 	}
 

@@ -32,6 +32,25 @@ public class Request extends Data {
 	/* 入力口（HTTP サーバー実装を包む） */
 	private final RequestSource source;
 
+	/*
+	 * よく使う3つは、それぞれで覚える（要件 D-169）。
+	 *
+	 * <b>{@link #request()} の Data を作らせないため。</b>
+	 * あちらは 8 項目まとめて作るので<b>1リクエストあたり 960 byte</b> かかる——
+	 * アクセスログが使うのは {@code method} {@code path} {@code query} の3つだけである。
+	 *
+	 * <b>代わりに、{@code request()} の Data を書き換えても、
+	 * ここの戻りは変わらなくなった。</b>元から書き換える口として案内していないので、
+	 * 変える側に倒している。
+	 */
+	private String method;
+
+	/* 覚えておくパス（要件 D-169） */
+	private String path;
+
+	/* 覚えておくアドレス（要件 D-169） */
+	private String address;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -72,8 +91,8 @@ public class Request extends Data {
 		if (!containsKey("request")) {
 			Data data = getDataOptional("request");
 			if (source != null) {
-				data.put("address", source.remoteAddress());
-				data.put("method", source.method());
+				data.put("address", address());
+				data.put("method", method());
 				data.put("url", source.url());
 				data.put("protocol", source.protocol());
 				data.put("scheme", source.scheme());
@@ -86,7 +105,7 @@ public class Request extends Data {
 				 * {@code before} フックがパス文字列で判定していると、
 				 * <b>{@code //admin} だけがすり抜ける</b>。
 				 */
-				data.put("path", PathSegments.canonicalRawPath(source.path()));
+				data.put("path", path());
 			}
 		}
 
@@ -102,7 +121,12 @@ public class Request extends Data {
 	public String address () {
 
 		header();
-		return request().getStringOptional("address");
+
+		if (address == null) {
+			address = source == null ? "" : source.remoteAddress();
+		}
+
+		return address;
 
 	}
 
@@ -113,7 +137,11 @@ public class Request extends Data {
 	 */
 	public String method () {
 
-		return request().getStringOptional("method");
+		if (method == null) {
+			method = source == null ? "" : source.method();
+		}
+
+		return method;
 
 	}
 
@@ -210,7 +238,11 @@ public class Request extends Data {
 	 */
 	public String path () {
 
-		return request().getStringOptional("path");
+		if (path == null) {
+			path = source == null ? "" : PathSegments.canonicalRawPath(source.path());
+		}
+
+		return path;
 
 	}
 

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	負荷測定のログ設定のうち、アクセスログを捨てるほう（要件 NF-P-08）。
+
+	OFF ではなく NOP なのは、jimble が1行を組み立てるところまでは
+	実際のアプリも必ず通るためである。ここを OFF にすると
+	jimble-nolog と同じものを2回測ることになる。
+
+	logback.xml との差が「書き出す（JSON にして標準出力へ流す）ぶん」、
+	jimble-nolog との差が「1行を組み立てるぶん」である。
+
+	使い方: -Dlogback.configurationFile=logback-nop.xml
+-->
+<configuration>
+
+	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+
+	<!-- 捨てる先。イベントの組み立てまでは通す -->
+	<appender name="nop" class="ch.qos.logback.core.helpers.NOPAppender"/>
+
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="nop"/>
+	</logger>
+
+	<logger name="access.bot" level="INFO" additivity="false">
+		<appender-ref ref="nop"/>
+	</logger>
+
+	<root level="WARN">
+		<appender-ref ref="console"/>
+	</root>
+
+</configuration>
