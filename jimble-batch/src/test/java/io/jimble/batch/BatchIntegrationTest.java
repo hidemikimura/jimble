@@ -65,7 +65,7 @@ class BatchIntegrationTest {
 		public void execute (BatchArgs args) {
 
 			RUN_COUNT.incrementAndGet();
-			executeInfo().putData("site_id", args.cliArgs.getString("site_id"));
+			executeInfo().putData("site_id", args.cliArgs().getString("site_id"));
 
 		}
 
@@ -241,7 +241,7 @@ class BatchIntegrationTest {
 		db.execute("TRUNCATE TABLE batch_history");
 		db.execute("TRUNCATE TABLE batch_execute_info");
 
-		BatchExecutor.allReleaseNotStart();
+		BatchExecutor.releaseAll();
 		BatchRegistry.clear();
 
 		RUN_COUNT.set(0);
@@ -402,7 +402,7 @@ class BatchIntegrationTest {
 		register();
 
 		BatchArgs args = args(OkBatch.class);
-		args.cliArgs.putData("site_id", "42");
+		args.cliArgs().putData("site_id", "42");
 
 		assertEquals(BatchResult.completed, BatchExecutor.execute(args));
 		assertEquals(1, RUN_COUNT.get());
@@ -493,7 +493,7 @@ class BatchIntegrationTest {
 			, BatchMasterStatus.disable.name(), OkBatch.class.getName());
 
 		BatchArgs args = args(OkBatch.class);
-		args.forceExecute = true;
+		args.forceExecute(true);
 
 		assertEquals(BatchResult.completed, BatchExecutor.execute(args));
 		assertEquals(1, RUN_COUNT.get());
@@ -506,13 +506,13 @@ class BatchIntegrationTest {
 
 		register();
 
-		assertTrue(BatchExecutor.allNotStart());
+		assertTrue(BatchExecutor.stopAll());
 		assertTrue(BatchExecutor.isAllNotStart());
 
 		assertEquals(BatchResult.skipped_all_stopped, BatchExecutor.execute(args(OkBatch.class)));
 		assertEquals(0, RUN_COUNT.get());
 
-		assertTrue(BatchExecutor.allReleaseNotStart());
+		assertTrue(BatchExecutor.releaseAll());
 		assertFalse(BatchExecutor.isAllNotStart());
 
 		assertEquals(BatchResult.completed, BatchExecutor.execute(args(OkBatch.class)));

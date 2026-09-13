@@ -17,26 +17,29 @@ import java.util.List;
  */
 public class Request extends Table {
 
+	/* このテーブルの実体（1つだけ作る） */
+	private static final Request INSTANCE = new Request(new ApprovalDataExample(), "request");
+
 	/* id */
-	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
 
 	/* staff_id */
-	public static final Column staff_id = new Column(instance(), "staff_id", long.class, false, null, false);
+	public static final Column staff_id = new Column(INSTANCE, "staff_id", long.class, false, null, false);
 
 	/* amount */
-	public static final Column amount = new Column(instance(), "amount", long.class, false, null, false);
+	public static final Column amount = new Column(INSTANCE, "amount", long.class, false, null, false);
 
 	/* status */
-	public static final Column status = new Column(instance(), "status", java.lang.String.class, false, null, false);
+	public static final Column status = new Column(INSTANCE, "status", java.lang.String.class, false, null, false);
 
 	/* decided_by */
-	public static final Column decided_by = new Column(instance(), "decided_by", long.class, true, null, false);
+	public static final Column decided_by = new Column(INSTANCE, "decided_by", long.class, true, null, false);
 
 	/* decided_at */
-	public static final Column decided_at = new Column(instance(), "decided_at", java.util.Date.class, true, null, false);
+	public static final Column decided_at = new Column(INSTANCE, "decided_at", java.util.Date.class, true, null, false);
 
 	/* created_at */
-	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -63,6 +66,6 @@ public class Request extends Table {
 
 	public Request (ISchema schema, String name) { super(schema, name); }
 
-	public static Request instance () { return new Request(new ApprovalDataExample(), "request"); }
+	public static Request instance () { return INSTANCE; }
 
 }

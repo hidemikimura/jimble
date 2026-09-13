@@ -99,9 +99,9 @@ public class ValidationRules {
 						ValidationResult validationResult = validationRule.validate(db, req, isInsertRequest, value);
 						if (validationResult.error()) {
 							errorData.putData(column, new Data()
-								.putData("validation_type", validationResult.validationError().errorType)
-								.putData("validation_setting", validationResult.validationError().settings)
-								.putData("input", validationResult.validationError().value)
+								.putData("validation_type", validationResult.validationError().errorType())
+								.putData("validation_setting", validationResult.validationError().settings())
+								.putData("input", validationResult.validationError().value())
 							);
 							break;
 						}
@@ -132,9 +132,9 @@ public class ValidationRules {
 				if (validationResult.error()) {
 					for (Column column : validationResult.getTargetColumnList()) {
 						errorData.putData(column, new Data()
-							.putData("validation_type", validationResult.validationError().errorType)
-							.putData("validation_setting", validationResult.validationError().settings)
-							.putData("input", validationResult.validationError().value)
+							.putData("validation_type", validationResult.validationError().errorType())
+							.putData("validation_setting", validationResult.validationError().settings())
+							.putData("input", validationResult.validationError().value())
 						);
 					}
 				}

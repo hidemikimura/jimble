@@ -58,8 +58,8 @@ public class PostCleanupBatch extends AbstractBatch {
 	public void execute (BatchArgs args) {
 
 		// 引数があればそちら、無ければマスタの設定
-		long days = args.cliArgs.containsKey("days")
-			? args.cliArgs.getLong("days")
+		long days = args.cliArgs().containsKey("days")
+			? args.cliArgs().getLong("days")
 			: settings().getLong("days");
 
 		List<Data> posts = BlogExample.db().selectList(

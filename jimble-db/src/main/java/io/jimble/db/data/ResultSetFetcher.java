@@ -20,8 +20,39 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 	/* SQLステートメント */
 	private Statement statement;
 
-	/* エラー判定 */
-	public boolean isError = false;
+	/**
+	 * 読んでいる途中で落ちたか
+	 *
+	 * <p>
+	 * <b>public フィールドではない（D-173）。</b>フィールドは 1.0 のあと
+	 * アクセサに置き換えられない。ここは<b>立てる向きにしか動かない</b>ので、
+	 * 入口も {@link #markError()} だけにしてある——
+	 * {@code isError = false} と書き戻せると、<b>落ちたことが消える</b>。
+	 * </p>
+	 */
+	private boolean error = false;
+
+	/**
+	 * 読んでいる途中で落ちたか
+	 *
+	 * @return	落ちたなら true
+	 */
+	public boolean isError () {
+
+		return error;
+
+	}
+
+	/**
+	 * 落ちたことを記録する
+	 *
+	 * <p><b>戻す道は無い。</b></p>
+	 */
+	public void markError () {
+
+		this.error = true;
+
+	}
 
 
 	// region コンストラクタ

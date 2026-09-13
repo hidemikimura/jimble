@@ -86,7 +86,7 @@ public final class JimbleDbCli {
 		load();
 
 		for (DBSource dbSource : DBUtil.getDataSourceList()) {
-			Log.info("migrate: " + dbSource.name);
+			Log.info("migrate: " + dbSource.name());
 			Migration.migrate(dbSource, JimbleDbCli.class);
 		}
 

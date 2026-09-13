@@ -17,17 +17,20 @@ import java.util.List;
  */
 public class Staff extends Table {
 
+	/* このテーブルの実体（1つだけ作る） */
+	private static final Staff INSTANCE = new Staff(new ApprovalListExample(), "staff");
+
 	/* id */
-	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
 
 	/* department_id */
-	public static final Column department_id = new Column(instance(), "department_id", long.class, false, null, false);
+	public static final Column department_id = new Column(INSTANCE, "department_id", long.class, false, null, false);
 
 	/* name */
-	public static final Column name = new Column(instance(), "name", java.lang.String.class, false, null, false);
+	public static final Column name = new Column(INSTANCE, "name", java.lang.String.class, false, null, false);
 
 	/* created_at */
-	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -54,6 +57,6 @@ public class Staff extends Table {
 
 	public Staff (ISchema schema, String name) { super(schema, name); }
 
-	public static Staff instance () { return new Staff(new ApprovalListExample(), "staff"); }
+	public static Staff instance () { return INSTANCE; }
 
 }

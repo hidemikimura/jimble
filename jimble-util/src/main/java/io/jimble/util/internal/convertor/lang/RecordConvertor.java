@@ -43,10 +43,10 @@ public class RecordConvertor<E> implements IConvertor<E> {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			return null;
 		}
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 
 		RecordComponent[] recordComponents = destClasses[0].getRecordComponents();
@@ -96,8 +96,8 @@ public class RecordConvertor<E> implements IConvertor<E> {
 
 		/* 循環参照後処理. */
 
-		conf.Hierarchy--;
-		conf.hashSet.remove(hash);
+		conf.hierarchy(conf.hierarchy() - 1);
+		conf.hashSet().remove(hash);
 
 		return (E) res;
 

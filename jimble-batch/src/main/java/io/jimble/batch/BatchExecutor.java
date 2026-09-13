@@ -86,7 +86,7 @@ public final class BatchExecutor {
 
 		BatchArgs batchArgs = parseArgs(args);
 
-		if (batchArgs.className == null || batchArgs.className.isEmpty()) {
+		if (batchArgs.className() == null || batchArgs.className().isEmpty()) {
 			Log.error("バッチのクラス名が指定されていません: class=<クラス名> を渡してください");
 			return BatchResult.invalid_args;
 		}
@@ -103,16 +103,16 @@ public final class BatchExecutor {
 	 */
 	public static BatchResult execute (BatchArgs batchArgs) {
 
-		AbstractBatch batch = BatchRegistry.create(batchArgs.className);
+		AbstractBatch batch = BatchRegistry.create(batchArgs.className());
 
 		if (batch == null) {
 			Log.error("バッチが登録されていません: %s / BatchRegistry.add(%s::new) を書いてください"
-				.formatted(batchArgs.className, simpleName(batchArgs.className)));
+				.formatted(batchArgs.className(), simpleName(batchArgs.className())));
 			return BatchResult.skipped_not_registered;
 		}
 
 		if (isAllNotStart()) {
-			Log.warn("全バッチ停止フラグが立っています: %s".formatted(batchArgs.className));
+			Log.warn("全バッチ停止フラグが立っています: %s".formatted(batchArgs.className()));
 			return BatchResult.skipped_all_stopped;
 		}
 
@@ -136,7 +136,7 @@ public final class BatchExecutor {
 
 			for (String arg : args) {
 
-				batchArgs.cliArgsList.add(arg);
+				batchArgs.addCliArg(arg);
 
 				int index = arg.indexOf('=');
 
@@ -148,18 +148,18 @@ public final class BatchExecutor {
 				String value = arg.substring(index + 1);
 
 				if ("env".equalsIgnoreCase(key)) {
-					batchArgs.env = value;
+					batchArgs.env(value);
 				} else if ("class".equalsIgnoreCase(key)) {
-					batchArgs.className = value;
+					batchArgs.className(value);
 				} else {
-					batchArgs.cliArgs.putData(key, value);
+					batchArgs.cliArgs().putData(key, value);
 				}
 
 			}
 
 		}
 
-		batchArgs.schedulerId = BatchConf.schedulerId();
+		batchArgs.schedulerId(BatchConf.schedulerId());
 
 		checkEnv(batchArgs);
 
@@ -186,11 +186,11 @@ public final class BatchExecutor {
 	 */
 	private static void checkEnv (BatchArgs batchArgs) {
 
-		if (batchArgs.env == null || batchArgs.env.isEmpty()) {
+		if (batchArgs.env() == null || batchArgs.env().isEmpty()) {
 			return;
 		}
 
-		if (batchArgs.env.equals(Conf.env())) {
+		if (batchArgs.env().equals(Conf.env())) {
 			return;
 		}
 
@@ -199,21 +199,34 @@ public final class BatchExecutor {
 			  env= では環境は変わりません（設定はここに来る前に読み終わっています）。
 			  JVM の引数で渡してください。
 			    java -Djimble.env=%s -cp app.jar %s ..."""
-			.formatted(batchArgs.env, Conf.env(), batchArgs.env, "<起動クラス>"));
+			.formatted(batchArgs.env(), Conf.env(), batchArgs.env(), "<起動クラス>"));
 
 	}
 
 	// region 全バッチ停止（要件 F-B-07）
 
 	/**
-	 * 全バッチ停止フラグを立てる
+	 * 全バッチ停止フラグを立てる（要件 F-B-07）
+	 *
+	 * <p>
+	 * <b>これは書き込みである。</b>かつては {@code allNotStart()} という名前だった——
+	 * {@code boolean} を返すので<b>名前からは問い合わせに見え</b>、
+	 * 状態を見るつもりで呼んだ監視エンドポイントや管理画面が、
+	 * <b>全バッチを止める</b>ことになる。読むのは {@link #isAllNotStart()} である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>DB が無ければ false を返す（D-173）。</b>かつては {@code true} だった——
+	 * <b>何も書いていないのに「立てられた」と言う</b>ので、止まったつもりでバッチが走り続ける。
+	 * </p>
 	 *
 	 * @return	立てられた場合 = true
 	 */
-	public static boolean allNotStart () {
+	public static boolean stopAll () {
 
 		if (!DBUtil.isUseDB()) {
-			return true;
+			Log.warn("DB が無いので全バッチ停止フラグを立てられません（バッチは止まりません）");
+			return false;
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
@@ -232,11 +245,20 @@ public final class BatchExecutor {
 	}
 
 	/**
-	 * 全バッチ停止フラグを外す
+	 * 全バッチ停止フラグを外す（要件 F-B-07）
+	 *
+	 * <p>
+	 * <b>これも書き込みである。</b>かつては {@code allReleaseNotStart()} だった。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>DB が無ければ何も外すものが無いので true を返す</b>——
+	 * 立てる側（{@link #stopAll()}）と違って、<b>結果として「止まっていない」は正しい</b>。
+	 * </p>
 	 *
 	 * @return	外せた場合 = true
 	 */
-	public static boolean allReleaseNotStart () {
+	public static boolean releaseAll () {
 
 		if (!DBUtil.isUseDB()) {
 			return true;

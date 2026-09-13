@@ -113,7 +113,7 @@ public final class Formatter {
 
 		boolean isAutoClose = true;
 		if (conf != null) {
-			isAutoClose = conf.isAutoClose;
+			isAutoClose = conf.isAutoClose();
 		}
 
 		try (
@@ -155,7 +155,7 @@ public final class Formatter {
 
 		boolean isAutoClose = true;
 		if (conf != null) {
-			isAutoClose = conf.isAutoClose;
+			isAutoClose = conf.isAutoClose();
 		}
 
 		try (
@@ -199,10 +199,10 @@ public final class Formatter {
 			conf.clearHashSet();
 		}
 
-		conf.isClearHashSet = false;
+		conf.isClearHashSet(false);
 
 		if (src == null) {
-			if (conf.isOutputNullValue) {
+			if (conf.isOutputNullValue()) {
 				NullFormatter.INSTANCE.format(writer, conf, null);
 			}
 			return null;

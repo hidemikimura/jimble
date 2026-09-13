@@ -284,11 +284,17 @@ public final class Route {
 				continue;
 			}
 
-			Object resolved = scope.resolveAttribute(key);
-
-			if (resolved != null) {
-				attributes.put(key, resolved);
-			}
+			/*
+			 * <b>null も引き継ぐ（D-173）。</b>かつては {@code != null} で弾いていたので、
+			 * <b>書く場所で結果が違った</b>——ルートに直接書いた {@code null} は
+			 * 値として入るのに、ブロックに書いた {@code null} は黙って捨てられ、
+			 * <b>キーの既定値に戻る</b>。「ここだけ null にして外す」が、
+			 * 書いた場所によって効いたり効かなかったりする。
+			 *
+			 * <b>ここで回しているのは「どこかに書かれたキー」だけ</b>なので、
+			 * そのまま入れてよい（書かれていないキーは来ない）。
+			 */
+			attributes.put(key, scope.resolveAttribute(key));
 
 		}
 

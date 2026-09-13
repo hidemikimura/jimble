@@ -17,17 +17,20 @@ import java.util.List;
  */
 public class Rate extends Table {
 
+	/* このテーブルの実体（1つだけ作る） */
+	private static final Rate INSTANCE = new Rate(new ApprovalDataExample(), "rate");
+
 	/* id */
-	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
 
 	/* code */
-	public static final Column code = new Column(instance(), "code", java.lang.String.class, false, null, false);
+	public static final Column code = new Column(INSTANCE, "code", java.lang.String.class, false, null, false);
 
 	/* value */
-	public static final Column value = new Column(instance(), "value", long.class, false, null, false);
+	public static final Column value = new Column(INSTANCE, "value", long.class, false, null, false);
 
 	/* updated_at */
-	public static final Column updated_at = new Column(instance(), "updated_at", java.util.Date.class, false, null, false);
+	public static final Column updated_at = new Column(INSTANCE, "updated_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -54,6 +57,6 @@ public class Rate extends Table {
 
 	public Rate (ISchema schema, String name) { super(schema, name); }
 
-	public static Rate instance () { return new Rate(new ApprovalDataExample(), "rate"); }
+	public static Rate instance () { return INSTANCE; }
 
 }

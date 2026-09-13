@@ -36,10 +36,10 @@ public final class ListUtil {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			return;
 		}
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		/** 変換処理. */
 
@@ -76,7 +76,13 @@ public final class ListUtil {
 			String json = (String) obj;
 			if (json.startsWith("[") && json.endsWith("]")) {
 
-				List<Object> jsonList = Dson.decodes(json, List.class);
+				/*
+				 * <b>生の {@code List} が返る（D-173）。</b>
+				 * {@code Class<T>} を受ける版が選ばれるので、{@code List.class} からは
+				 * <b>型引数が分からない</b>——JSON の配列なので中身は何でも入りうる。
+				 * ここは要素を1つずつ {@code Object} として回すだけなので、それでよい。
+				 */
+				List<?> jsonList = Dson.decodes(json, List.class);
 				for (Object o : jsonList) {
 					list.add(Convertor.convert(conf, o, args));
 				}
@@ -95,8 +101,8 @@ public final class ListUtil {
 
 		/** 循環参照後処理. */
 
-		conf.Hierarchy--;
-		conf.hashSet.remove(hash);
+		conf.hierarchy(conf.hierarchy() - 1);
+		conf.hashSet().remove(hash);
 
 	}
 

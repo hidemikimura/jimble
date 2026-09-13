@@ -132,7 +132,7 @@ public final class Convertor {
 		}
 
 		if (convertor == null
-			&& (conf == null || conf.isOutputUnknown)) {
+			&& (conf == null || conf.isOutputUnknown())) {
 			convertor = BeanConvertor.INSTANCE;
 		}
 

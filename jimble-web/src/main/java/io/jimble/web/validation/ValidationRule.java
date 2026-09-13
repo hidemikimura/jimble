@@ -78,12 +78,7 @@ public class ValidationRule {
 	 */
 	private ValidationError createError (Object value, IValidator validator) {
 
-		ValidationError validationError = new ValidationError();
-		validationError.errorType = validator.errorType();
-		validationError.settings = validator.settings();
-		validationError.value = value;
-
-		return validationError;
+		return new ValidationError(validator.errorType(), validator.settings(), value);
 
 	}
 

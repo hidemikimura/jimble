@@ -46,8 +46,8 @@ public class MqWorkerBatch extends AbstractBatch {
 	@Override
 	public void execute (BatchArgs args) {
 
-		long runSeconds = args.cliArgs.containsKey("run_seconds")
-			? args.cliArgs.getLong("run_seconds")
+		long runSeconds = args.cliArgs().containsKey("run_seconds")
+			? args.cliArgs().getLong("run_seconds")
 			: 50;
 
 		long deadline = System.currentTimeMillis() + runSeconds * 1000;

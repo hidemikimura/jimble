@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /**
  * CORS
  */
-public class Cors {
+public final class Cors {
 
 	/* 全Origin許可判定 */
 	private boolean isAllAllowOrigin = false;
@@ -25,8 +25,16 @@ public class Cors {
 	/* Access-Control-Expose-Headers */
 	private final List<String> exposeHeaders = new ArrayList<>();
 
-	/* Access-Control-Allow-Credentials */
-	private boolean allowCredentials = true;
+	/*
+	 * Access-Control-Allow-Credentials
+	 *
+	 * <b>既定は false である（D-173）。</b>かつては true だった——
+	 * allAllowOrigin() と並ぶと「どの origin にも Cookie 付きを許す」ことになり、
+	 * しかも受け取った origin をそのまま返すので、
+	 * ブラウザが * に掛けている「Cookie は付けない」という制約も効かない。
+	 * Cookie を渡してよい相手は、名指しで決めるものである。
+	 */
+	private boolean allowCredentials = false;
 
 	/* Access-Control-Max-Age */
 	private int maxAge = 600;
@@ -62,7 +70,12 @@ public class Cors {
 	 */
 	public List<String> allowedOrigins () {
 
-		return allowedOrigins;
+		/*
+		 * 中の List は返さない（D-173）。返すと add(...) で足せてしまうが、
+		 * マッチャは addAllowXxx のときにしか作り直さないので
+		 * 足した分は以後ずっと無視される——通ると思って足したものが、通らない。
+		 */
+		return java.util.Collections.unmodifiableList(allowedOrigins);
 
 	}
 
@@ -72,6 +85,17 @@ public class Cors {
 	 * @return  Cors
 	 */
 	public Cors allAllowOrigin () {
+
+		/*
+		 * Cookie 付きの「どこからでも」は作らせない（D-173）。
+		 * この2つが揃うと、任意のサイトが利用者のログイン状態のまま API を叩ける。
+		 * 受け取った origin をそのまま返す作りなので、ブラウザ側の制約も効かない。
+		 */
+		if (allowCredentials) {
+			throw new IllegalStateException(
+				"allAllowOrigin() と allowCredentials(true) は同時に指定できません"
+					+ "（どの origin にも Cookie 付きを許すことになります）");
+		}
 
 		this.isAllAllowOrigin = true;
 		return this;
@@ -99,7 +123,12 @@ public class Cors {
 	 */
 	public List<String> allowedHeaders () {
 
-		return allowedHeaders;
+		/*
+		 * 中の List は返さない（D-173）。返すと add(...) で足せてしまうが、
+		 * マッチャは addAllowXxx のときにしか作り直さないので
+		 * 足した分は以後ずっと無視される——通ると思って足したものが、通らない。
+		 */
+		return java.util.Collections.unmodifiableList(allowedHeaders);
 
 	}
 
@@ -124,7 +153,12 @@ public class Cors {
 	 */
 	public List<String> allowedMethods () {
 
-		return allowedMethods;
+		/*
+		 * 中の List は返さない（D-173）。返すと add(...) で足せてしまうが、
+		 * マッチャは addAllowXxx のときにしか作り直さないので
+		 * 足した分は以後ずっと無視される——通ると思って足したものが、通らない。
+		 */
+		return java.util.Collections.unmodifiableList(allowedMethods);
 
 	}
 
@@ -164,7 +198,12 @@ public class Cors {
 	 */
 	public List<String> exposeHeaders () {
 
-		return exposeHeaders;
+		/*
+		 * 中の List は返さない（D-173）。返すと add(...) で足せてしまうが、
+		 * マッチャは addAllowXxx のときにしか作り直さないので
+		 * 足した分は以後ずっと無視される——通ると思って足したものが、通らない。
+		 */
+		return java.util.Collections.unmodifiableList(exposeHeaders);
 
 	}
 
@@ -199,6 +238,12 @@ public class Cors {
 	 * @return  Cors
 	 */
 	public Cors allowCredentials (boolean allowCredentials) {
+
+		if (allowCredentials && isAllAllowOrigin) {
+			throw new IllegalStateException(
+				"allAllowOrigin() と allowCredentials(true) は同時に指定できません"
+					+ "（どの origin にも Cookie 付きを許すことになります）");
+		}
 
 		this.allowCredentials = allowCredentials;
 		return this;

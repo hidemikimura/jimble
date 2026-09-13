@@ -32,75 +32,327 @@ public class Configration {
 	private int hash = 0;
 
 	/**
-	 * 階層.
+	 * 循環参照を見つけるための記録（書き出している最中に動く）
+	 *
+	 * <p><b>設定ではなく作業用の状態である。</b></p>
 	 */
-	public int Hierarchy = 0;
+	private final HashSet<Integer> hashSet = new HashSet<>();
+
+	/** いま何段目か（書き出している最中に動く） */
+	private int hierarchy = 0;
+
+	/** これ以上は降りない段数 */
+	private int maxHierarchy = 50;
+
+	/** 日付を日付として出すか */
+	private boolean isOutputDateType = false;
+
+	/** 日付の書式 */
+	private DateTimeFormatter outputDateTypeFormat = null;
+
+	/** 字下げして出すか */
+	private boolean isOutputIndent = false;
+
+	/** null の項目も出すか */
+	private boolean isOutputNullValue = true;
+
+	/** 厳格に出すか */
+	private boolean isOutputStrict = false;
+
+	/** 書き終わったら閉じるか */
+	private boolean isAutoClose = true;
+
+	/** テーブルネストの扱い（要件 F-A-11）。既定は「そのまま」 */
+	private TableNest tableNest = TableNest.AS_IS;
+
+	/** 1件ごとに循環参照の記録を消すか */
+	private boolean isClearHashSet = true;
+
+	/** 4バイト文字を落とすか */
+	private boolean isRemove4ByteCharacter = false;
+
+	/** 知らないクラスも出すか */
+	private boolean isOutputUnknown = true;
 
 	/**
-	 * 最大階層.
+	 * いま何段目か（書き出している最中に動く）
+	 *
+	 * @return	いま何段目か（書き出している最中に動く）
 	 */
-	public int MaxHierarchy = 50;
+	public int hierarchy () {
+
+		return hierarchy;
+
+	}
 
 	/**
-	 * 日付型出力
+	 * いま何段目か（書き出している最中に動く） を決める
+	 *
+	 * @param hierarchy	いま何段目か（書き出している最中に動く）
 	 */
-	public boolean isOutputDateType = false;
+	public void hierarchy (int hierarchy) {
+
+		this.hierarchy = hierarchy;
+
+	}
 
 	/**
-	 * 日付型出力フォーマッタ
+	 * これ以上は降りない段数
+	 *
+	 * @return	これ以上は降りない段数
 	 */
-	public DateTimeFormatter outputDateTypeFormat = null;
+	public int maxHierarchy () {
+
+		return maxHierarchy;
+
+	}
 
 	/**
-	 * インデント出力判定.
+	 * これ以上は降りない段数 を決める
+	 *
+	 * @param maxHierarchy	これ以上は降りない段数
 	 */
-	public boolean isOutputIndent = false;
+	public void maxHierarchy (int maxHierarchy) {
+
+		this.maxHierarchy = maxHierarchy;
+
+	}
 
 	/**
-	 * Null値出力判定.
+	 * 日付を日付として出すか
+	 *
+	 * @return	日付を日付として出すか
 	 */
-	public boolean isOutputNullValue = true;
+	public boolean isOutputDateType () {
+
+		return isOutputDateType;
+
+	}
 
 	/**
-	 * 厳格モード.
+	 * 日付を日付として出すか を決める
+	 *
+	 * @param isOutputDateType	日付を日付として出すか
 	 */
-	public boolean isOutputStrict = false;
+	public void isOutputDateType (boolean isOutputDateType) {
+
+		this.isOutputDateType = isOutputDateType;
+
+	}
 
 	/**
-	 * 自動クローズ
+	 * 日付の書式
+	 *
+	 * @return	日付の書式
 	 */
-	public boolean isAutoClose = true;
+	public DateTimeFormatter outputDateTypeFormat () {
+
+		return outputDateTypeFormat;
+
+	}
 
 	/**
-	 * テーブルネストの扱い（要件 F-A-11）.
+	 * 日付の書式 を決める
+	 *
+	 * @param outputDateTypeFormat	日付の書式
+	 */
+	public void outputDateTypeFormat (DateTimeFormatter outputDateTypeFormat) {
+
+		this.outputDateTypeFormat = outputDateTypeFormat;
+
+	}
+
+	/**
+	 * 字下げして出すか
+	 *
+	 * @return	字下げして出すか
+	 */
+	public boolean isOutputIndent () {
+
+		return isOutputIndent;
+
+	}
+
+	/**
+	 * 字下げして出すか を決める
+	 *
+	 * @param isOutputIndent	字下げして出すか
+	 */
+	public void isOutputIndent (boolean isOutputIndent) {
+
+		this.isOutputIndent = isOutputIndent;
+
+	}
+
+	/**
+	 * null の項目も出すか
+	 *
+	 * @return	null の項目も出すか
+	 */
+	public boolean isOutputNullValue () {
+
+		return isOutputNullValue;
+
+	}
+
+	/**
+	 * null の項目も出すか を決める
+	 *
+	 * @param isOutputNullValue	null の項目も出すか
+	 */
+	public void isOutputNullValue (boolean isOutputNullValue) {
+
+		this.isOutputNullValue = isOutputNullValue;
+
+	}
+
+	/**
+	 * 厳格に出すか
+	 *
+	 * @return	厳格に出すか
+	 */
+	public boolean isOutputStrict () {
+
+		return isOutputStrict;
+
+	}
+
+	/**
+	 * 厳格に出すか を決める
+	 *
+	 * @param isOutputStrict	厳格に出すか
+	 */
+	public void isOutputStrict (boolean isOutputStrict) {
+
+		this.isOutputStrict = isOutputStrict;
+
+	}
+
+	/**
+	 * 書き終わったら閉じるか
+	 *
+	 * @return	書き終わったら閉じるか
+	 */
+	public boolean isAutoClose () {
+
+		return isAutoClose;
+
+	}
+
+	/**
+	 * 書き終わったら閉じるか を決める
+	 *
+	 * @param isAutoClose	書き終わったら閉じるか
+	 */
+	public void isAutoClose (boolean isAutoClose) {
+
+		this.isAutoClose = isAutoClose;
+
+	}
+
+	/**
+	 * テーブルネストの扱い（要件 F-A-11）。既定は「そのまま」
+	 *
+	 * @return	テーブルネストの扱い（要件 F-A-11）。既定は「そのまま」
+	 */
+	public TableNest tableNest () {
+
+		return tableNest;
+
+	}
+
+	/**
+	 * テーブルネストの扱い（要件 F-A-11）。既定は「そのまま」 を決める
+	 *
+	 * @param tableNest	テーブルネストの扱い（要件 F-A-11）。既定は「そのまま」
+	 */
+	public void tableNest (TableNest tableNest) {
+
+		this.tableNest = tableNest;
+
+	}
+
+	/**
+	 * 1件ごとに循環参照の記録を消すか
+	 *
+	 * @return	1件ごとに循環参照の記録を消すか
+	 */
+	public boolean isClearHashSet () {
+
+		return isClearHashSet;
+
+	}
+
+	/**
+	 * 1件ごとに循環参照の記録を消すか を決める
+	 *
+	 * @param isClearHashSet	1件ごとに循環参照の記録を消すか
+	 */
+	public void isClearHashSet (boolean isClearHashSet) {
+
+		this.isClearHashSet = isClearHashSet;
+
+	}
+
+	/**
+	 * 4バイト文字を落とすか
+	 *
+	 * @return	4バイト文字を落とすか
+	 */
+	public boolean isRemove4ByteCharacter () {
+
+		return isRemove4ByteCharacter;
+
+	}
+
+	/**
+	 * 4バイト文字を落とすか を決める
+	 *
+	 * @param isRemove4ByteCharacter	4バイト文字を落とすか
+	 */
+	public void isRemove4ByteCharacter (boolean isRemove4ByteCharacter) {
+
+		this.isRemove4ByteCharacter = isRemove4ByteCharacter;
+
+	}
+
+	/**
+	 * 知らないクラスも出すか
+	 *
+	 * @return	知らないクラスも出すか
+	 */
+	public boolean isOutputUnknown () {
+
+		return isOutputUnknown;
+
+	}
+
+	/**
+	 * 知らないクラスも出すか を決める
+	 *
+	 * @param isOutputUnknown	知らないクラスも出すか
+	 */
+	public void isOutputUnknown (boolean isOutputUnknown) {
+
+		this.isOutputUnknown = isOutputUnknown;
+
+	}
+
+	/**
+	 * 循環参照を見つけるための記録
 	 *
 	 * <p>
-	 * {@code AsyncData} / {@code AsyncList} を書き出すときに、
-	 * テーブル名でネストするかどうか。既定は「そのまま」で、
-	 * <b>これまでと出力が変わらない</b>。
+	 * <b>作業用の状態なので、そのまま返す。</b>書き出している最中に
+	 * 出入りするものであって、設定ではない。
 	 * </p>
+	 *
+	 * @return	記録
 	 */
-	public TableNest tableNest = TableNest.AS_IS;
+	public HashSet<Integer> hashSet () {
 
-	/**
-	 * 循環参照ハッシュセット.
-	 */
-	public HashSet<Integer> hashSet = new HashSet<>();
+		return hashSet;
 
-	/**
-	 * 循環参照ハッシュセットリセット
-	 */
-	public boolean isClearHashSet = true;
-
-	/**
-	 * 4バイト文字除去
-	 */
-	public boolean isRemove4ByteCharacter = false;
-
-	/**
-	 * 不明クラスの出力
-	 */
-	public boolean isOutputUnknown = true;
+	}
 
 	/**
 	 * 循環参照ハッシュセットクリア
@@ -235,7 +487,7 @@ public class Configration {
 	 */
 	public boolean isMaxHierarchy () {
 
-		return MaxHierarchy > 0 && Hierarchy > MaxHierarchy;
+		return maxHierarchy > 0 && hierarchy > maxHierarchy;
 	}
 
 	/**

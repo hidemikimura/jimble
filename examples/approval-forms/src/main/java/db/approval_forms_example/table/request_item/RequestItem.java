@@ -17,20 +17,23 @@ import java.util.List;
  */
 public class RequestItem extends Table {
 
+	/* このテーブルの実体（1つだけ作る） */
+	private static final RequestItem INSTANCE = new RequestItem(new ApprovalFormsExample(), "request_item");
+
 	/* 明細ID */
-	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
 
 	/* 申請ID */
-	public static final Column request_id = new Column(instance(), "request_id", long.class, false, null, false);
+	public static final Column request_id = new Column(INSTANCE, "request_id", long.class, false, null, false);
 
 	/* 品目 */
-	public static final Column name = new Column(instance(), "name", java.lang.String.class, false, null, false);
+	public static final Column name = new Column(INSTANCE, "name", java.lang.String.class, false, null, false);
 
 	/* 金額（円） */
-	public static final Column amount = new Column(instance(), "amount", long.class, false, null, false);
+	public static final Column amount = new Column(INSTANCE, "amount", long.class, false, null, false);
 
 	/* 並び順 */
-	public static final Column sort_no = new Column(instance(), "sort_no", int.class, false, null, false);
+	public static final Column sort_no = new Column(INSTANCE, "sort_no", int.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -57,6 +60,6 @@ public class RequestItem extends Table {
 
 	public RequestItem (ISchema schema, String name) { super(schema, name); }
 
-	public static RequestItem instance () { return new RequestItem(new ApprovalFormsExample(), "request_item"); }
+	public static RequestItem instance () { return INSTANCE; }
 
 }

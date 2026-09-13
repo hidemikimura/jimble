@@ -28,8 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class WsSession {
 
-	/* helidon のセッション */
-	private final io.helidon.websocket.WsSession session;
+	/* 出口（helidon はこの向こう側） */
+	private final WsSink sink;
 
 	/* 接続に紐づく情報 */
 	private final Map<String, Object> attributes = new ConcurrentHashMap<>();
@@ -43,15 +43,19 @@ public final class WsSession {
 	/**
 	 * コンストラクタ
 	 *
-	 * <p>フレームワーク内部から呼ぶ。</p>
+	 * <p>
+	 * <b>フレームワーク内部から呼ぶ。</b>
+	 * 受け取るのは {@link WsSink} であって helidon の型ではない（D-173）——
+	 * ここが helidon だと、<b>公開パッケージの署名に helidon が出る</b>。
+	 * </p>
 	 *
-	 * @param session	helidon のセッション
+	 * @param sink		出口
 	 * @param path		パス
 	 * @param headers	アップグレード時のヘッダ
 	 */
-	WsSession (io.helidon.websocket.WsSession session, String path, Data headers) {
+	public WsSession (WsSink sink, String path, Data headers) {
 
-		this.session = session;
+		this.sink = sink;
 		this.path = path;
 		this.headers = headers;
 
@@ -67,8 +71,7 @@ public final class WsSession {
 
 		try {
 
-			session.send(text, true);
-			return true;
+			return sink.send(text);
 
 		} catch (Exception ex) {
 
@@ -100,7 +103,7 @@ public final class WsSession {
 	public void close (String reason) {
 
 		try {
-			session.close(io.helidon.websocket.WsCloseCodes.NORMAL_CLOSE, reason);
+			sink.close(reason);
 		} catch (Exception ex) {
 			Log.debug("WebSocket を閉じるときに切れていました: " + ex.getMessage());
 		}

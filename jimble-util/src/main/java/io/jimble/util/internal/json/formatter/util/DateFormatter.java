@@ -39,14 +39,14 @@ public class DateFormatter implements IFormatter {
 	public void format (OutputStreamWriterWrapper writer, Configration conf, Object obj) throws Exception {
 
 		Object f = null;
-		if (conf != null && conf.outputDateTypeFormat != null) {
+		if (conf != null && conf.outputDateTypeFormat() != null) {
 
 			LocalDateTime localDateTime = ((Date) obj).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
 			writer.write('"');
-			if (conf.isOutputDateType) {
+			if (conf.isOutputDateType()) {
 				writer.write("date::");
 			}
-			writer.write(conf.outputDateTypeFormat.format(localDateTime));
+			writer.write(conf.outputDateTypeFormat().format(localDateTime));
 			writer.write('"');
 
 		} else if (conf != null && (f = conf.get(FormatterConfigKeys.FORMAT_DATE_TO_STRING)) != null) {
@@ -54,7 +54,7 @@ public class DateFormatter implements IFormatter {
 			if (f instanceof DateFormat) {
 
 				writer.write('"');
-				if (conf.isOutputDateType) {
+				if (conf.isOutputDateType()) {
 					writer.write("date::");
 				}
 				writer.write(((DateFormat) f).format(obj));
@@ -65,7 +65,7 @@ public class DateFormatter implements IFormatter {
 				writer.write('"');
 				try {
 					SimpleDateFormat sdf = new SimpleDateFormat(f.toString());
-					if (conf.isOutputDateType) {
+					if (conf.isOutputDateType()) {
 						writer.write("date::");
 					}
 					writer.write(sdf.format(obj));
@@ -78,7 +78,7 @@ public class DateFormatter implements IFormatter {
 
 				LocalDateTime localDateTime = ((Date) obj).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
 				writer.write('"');
-				if (conf.isOutputDateType) {
+				if (conf.isOutputDateType()) {
 					writer.write("date::");
 				}
 				writer.write(DATE_TIME_FORMATTER.format(localDateTime));
@@ -90,7 +90,7 @@ public class DateFormatter implements IFormatter {
 
 			LocalDateTime localDateTime = ((Date) obj).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
 			writer.write('"');
-			if (conf != null && conf.isOutputDateType) {
+			if (conf != null && conf.isOutputDateType()) {
 				writer.write("date::");
 			}
 			writer.write(DATE_TIME_FORMATTER.format(localDateTime));

@@ -33,14 +33,14 @@ public class ArrayFormatter implements IFormatter {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			writer.write("[]", 0, 2);
 			return;
 		}
 
 		/** 出力処理. */
 
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		writer.write('[');
 
@@ -79,7 +79,7 @@ public class ArrayFormatter implements IFormatter {
 
 		}
 
-		conf.Hierarchy--;
+		conf.hierarchy(conf.hierarchy() - 1);
 
 		if (isOutput) {
 			writer.writeln(conf);
@@ -89,7 +89,7 @@ public class ArrayFormatter implements IFormatter {
 
 		/** 循環参照後処理. */
 
-		conf.hashSet.remove(hash);
+		conf.hashSet().remove(hash);
 	}
 
 }

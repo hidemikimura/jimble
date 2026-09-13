@@ -619,17 +619,17 @@ public final class DbScheduler implements CancelOrderNotify {
 
 		BatchArgs args = new BatchArgs();
 
-		args.env = Conf.env();
-		args.className = className;
-		args.fromScheduler = true;
-		args.schedulerId = schedulerId;
-		args.cron = cron;
-		args.forceExecute = force;
+		args.env(Conf.env());
+		args.className(className);
+		args.fromScheduler(true);
+		args.schedulerId(schedulerId);
+		args.cron(cron);
+		args.forceExecute(force);
 
 		if (executeInfo != null) {
-			args.cliArgs = executeInfo.getDataOptional("args");
+			args.cliArgs(executeInfo.getDataOptional("args"));
 			Data settings = executeInfo.getDataOptional("settings");
-			args.settings = settings.isEmpty() ? null : settings;
+			args.settings(settings.isEmpty() ? null : settings);
 		}
 
 		BatchResult result = batch.run(args, this);

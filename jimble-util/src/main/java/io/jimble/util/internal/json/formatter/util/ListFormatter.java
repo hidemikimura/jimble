@@ -40,14 +40,14 @@ public class ListFormatter implements IFormatter {
 			hash = System.identityHashCode(obj);
 		}
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			writer.write("[]", 0, 2);
 			return;
 		}
 
 		/** 出力処理. */
 
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		writer.write('[');
 
@@ -61,8 +61,8 @@ public class ListFormatter implements IFormatter {
 		 *
 		 * 循環参照のハッシュは<b>組み直す前のノード</b>で取ってある。
 		 */
-		if (obj instanceof AsyncList asyncList && conf.tableNest != TableNest.AS_IS) {
-			list = asyncList.reshape(conf.tableNest);
+		if (obj instanceof AsyncList asyncList && conf.tableNest() != TableNest.AS_IS) {
+			list = asyncList.reshape(conf.tableNest());
 		}
 
 		int length = list.size();
@@ -97,7 +97,7 @@ public class ListFormatter implements IFormatter {
 
 		}
 
-		conf.Hierarchy--;
+		conf.hierarchy(conf.hierarchy() - 1);
 
 		if (isOutput) {
 			writer.writeln(conf);
@@ -108,7 +108,7 @@ public class ListFormatter implements IFormatter {
 
 		/** 循環参照後処理. */
 
-		conf.hashSet.remove(hash);
+		conf.hashSet().remove(hash);
 
 	}
 

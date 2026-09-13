@@ -150,7 +150,7 @@ class ValidationTest {
 		ValidationResult result = rule.validate(null, new Data(), false, null);
 
 		assertTrue(result.error());
-		assertEquals(ValidationErrorType.Empty, result.validationError().errorType);
+		assertEquals(ValidationErrorType.Empty, result.validationError().errorType());
 
 	}
 

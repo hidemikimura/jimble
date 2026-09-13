@@ -85,8 +85,8 @@ class PagingIntegrationTest {
 
 		SelectListResponse response = DBUtil.getMainDB().selectListWithRowCount(select().paging(paging));
 
-		assertEquals(10, response.list.size(), "1ページ分だけ取れていない");
-		assertEquals(TOTAL, response.rowCount, "総件数が LIMIT に影響されている");
+		assertEquals(10, response.list().size(), "1ページ分だけ取れていない");
+		assertEquals(TOTAL, response.rowCount(), "総件数が LIMIT に影響されている");
 
 		assertEquals(TOTAL, paging.totalCount());
 		assertEquals(3, paging.maxPage(), "25 件を 10 件ずつなら 3 ページ");
@@ -94,7 +94,7 @@ class PagingIntegrationTest {
 		// docs:end
 
 		// 2ページ目の先頭は 11 件目
-		assertEquals("item-11", response.list.getFirst().getString(PagingItem.name));
+		assertEquals("item-11", response.list().getFirst().getString(PagingItem.name));
 
 	}
 
@@ -107,7 +107,7 @@ class PagingIntegrationTest {
 
 		SelectListResponse response = DBUtil.getMainDB().selectListWithRowCount(select().paging(paging));
 
-		assertEquals(5, response.list.size());
+		assertEquals(5, response.list().size());
 		assertEquals(TOTAL, paging.totalCount());
 		assertEquals(5, paging.count());
 
@@ -122,7 +122,7 @@ class PagingIntegrationTest {
 
 		SelectListResponse response = DBUtil.getMainDB().selectListWithRowCount(select().paging(paging));
 
-		assertEquals(0, response.list.size());
+		assertEquals(0, response.list().size());
 		assertEquals(TOTAL, paging.totalCount());
 		assertEquals(3, paging.maxPage());
 
@@ -137,7 +137,7 @@ class PagingIntegrationTest {
 
 		SelectListResponse response = DBUtil.getMainDB().selectListWithRowCount(select().paging(paging));
 
-		assertEquals(TOTAL, response.list.size());
+		assertEquals(TOTAL, response.list().size());
 		assertEquals(1, paging.maxPage());
 
 	}

@@ -203,7 +203,22 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 							}
 							break;
 						default:
-							break;
+							/*
+							 * <b>知らない語は落とす（D-173）。</b>
+							 *
+							 * かつては {@code break;} だけで、<b>その条件が黙って消えていた</b>。
+							 * 消えた先が {@code DELETE} や {@code UPDATE} だと、
+							 * <b>条件が1つも残らず WHERE 無しの文になる</b>——
+							 * {@code {"id|gte": 3}} と書いた（正しくは {@code ge}）だけで、
+							 * 表が丸ごと消える。SQL は通るし、例外も出ない。
+							 *
+							 * 同じメソッドの {@code {"id|in": []}} には
+							 * 「黙って0件になるのを避ける」と理由が書いてあるのに、
+							 * こちらには何も書かれていなかった。
+							 */
+							throw new SqlBuildException(
+								"where に知らない演算子があります: \"%s\"（%s.%s）"
+									.formatted(querys[1], tableName, querys[0]));
 					}
 				}
 

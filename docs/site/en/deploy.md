@@ -66,7 +66,7 @@ Case does not matter.
 > **A warning is logged once at startup** — silently falling back to `local` would let
 > **a production machine call itself local** and keep running.
 >
-> For the record, **`-Djimble.env=prod` used to leave `isProduction()` false** (fixed in 0.6.1):
+> For the record, **`-Djimble.env=prod` used to leave `isProduction()` false** (fixed in 1.0):
 > the check only matched the literal `production`.
 
 ## Where the configuration is read from

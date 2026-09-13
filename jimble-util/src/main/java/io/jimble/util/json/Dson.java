@@ -9,6 +9,7 @@ import io.jimble.util.internal.json.encoder.DefaultEncoder;
 import io.jimble.util.internal.json.encoder.IEncoder;
 import io.jimble.util.internal.json.formatter.lang.StringFormatter;
 import io.jimble.util.data.Data;
+import io.jimble.util.log.Log;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -237,6 +238,53 @@ public final class Dson {
 	}
 
 	/**
+	 * JSON 文字列をオブジェクトにデコードする（型を1つだけ指定する）
+	 *
+	 * <p>
+	 * <b>戻り値の型が、渡したクラスに縛られる（D-173）。</b>
+	 * 可変長のほう（{@code Class<?>...}）は {@code <T>} をどこにも縛っていないので、
+	 * <b>受け取る変数の型が何であってもコンパイルが通る</b>——
+	 * </p>
+	 *
+	 * <pre>
+	 * Foo f = Dson.decodes(json, Data.class);   // 通る。落ちるのは代入のとき
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>{@code ClassCastException} は呼んだ側の行で出る</b>ので、
+	 * どこが間違っているのかは分かるが、<b>気づくのは動かしたときである</b>。
+	 * 型を1つだけ渡すならこちらが選ばれ、<b>その場でコンパイルエラーになる</b>。
+	 * </p>
+	 *
+	 * @param <T>       変換先の型
+	 * @param value     JSON 文字列
+	 * @param destClass 変換希望クラス
+	 * @return デコード結果
+	 */
+	public static <T> T decodes (String value, Class<T> destClass) {
+
+		return new Dson().decode(value, destClass);
+
+	}
+
+	/**
+	 * JSON 文字列をオブジェクトにデコードする（型を1つだけ指定する）
+	 *
+	 * <p>戻り値の型が、渡したクラスに縛られる（D-173）。</p>
+	 *
+	 * @param <T>       変換先の型
+	 * @param conf      設定情報
+	 * @param value     JSON 文字列
+	 * @param destClass 変換希望クラス
+	 * @return デコード結果
+	 */
+	public static <T> T decodes (Configration conf, String value, Class<T> destClass) {
+
+		return new Dson().decode(conf, value, destClass);
+
+	}
+
+	/**
 	 * JSON文字列をオブジェクトにデコードする.
 	 *
 	 * @param value       JSON文字列
@@ -295,7 +343,7 @@ public final class Dson {
 				conf.clearHashSet();
 			}
 
-			conf.isClearHashSet = false;
+			conf.isClearHashSet(false);
 
 			if (destClasses.length == 0) {
 				// デコード指定がない場合、デコード指定を「Map」にする
@@ -351,7 +399,7 @@ public final class Dson {
 				conf.clearHashSet();
 			}
 
-			conf.isClearHashSet = false;
+			conf.isClearHashSet(false);
 
 			if (destClasses.length == 0) {
 				destClasses = new Class<?>[]{Data.class};
@@ -408,7 +456,7 @@ public final class Dson {
 				conf.clearHashSet();
 			}
 
-			conf.isClearHashSet = false;
+			conf.isClearHashSet(false);
 
 			if (destClasses.length == 0) {
 				destClasses = new Class<?>[]{Data.class};
@@ -461,7 +509,7 @@ public final class Dson {
 				conf.clearHashSet();
 			}
 
-			conf.isClearHashSet = false;
+			conf.isClearHashSet(false);
 
 			if (destClasses.length == 0) {
 				destClasses = new Class<?>[]{Data.class};
@@ -498,7 +546,7 @@ public final class Dson {
 	 */
 	public static String encodes (Object json) {
 
-		return new Dson().encode(json);
+		return encodeAndReport(new Dson(), dson -> dson.encode(json));
 	}
 
 	/**
@@ -510,7 +558,40 @@ public final class Dson {
 	 */
 	public static String encodes (Configration conf, Object json) {
 
-		return new Dson().encode(conf, json);
+		return encodeAndReport(new Dson(), dson -> dson.encode(conf, json));
+	}
+
+	/**
+	 * 使い捨ての Dson で書き出し、失敗していたらログに残す（D-173）
+	 *
+	 * <p>
+	 * <b>ここが黙って倒れる道だった。</b>{@code static} の {@code encodes} は
+	 * その場で {@code Dson} を作って捨てるので、
+	 * <b>中で記録された失敗を誰も読まない</b>——
+	 * 呼んだ側に返るのは空文字だけで、{@code Data.getJsonString()} は
+	 * それを <b>{@code {}}</b> に変える。
+	 * </p>
+	 *
+	 * <p>
+	 * つまり<b>API が 200 で空の JSON を返し、ログにも何も出ない</b>状態になっていた。
+	 * 戻り値は変えられない（{@code String} で、呼ぶ側が大量にある）ので、
+	 * <b>せめて理由をログに残す</b>。
+	 * </p>
+	 *
+	 * @param dson		使い捨ての Dson
+	 * @param encoder	書き出し
+	 * @return	JSON 文字列（失敗したら空文字）
+	 */
+	private static String encodeAndReport (Dson dson, java.util.function.Function<Dson, String> encoder) {
+
+		String result = encoder.apply(dson);
+
+		if (dson.isError()) {
+			Log.error(dson.getErrorException(), "JSON に書き出せませんでした（空の JSON が返ります）");
+		}
+
+		return result;
+
 	}
 
 	/**

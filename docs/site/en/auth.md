@@ -344,7 +344,7 @@ is parked with `Mfa.pending` and sent to that screen — exactly as on the passw
 > [!TRAP]
 > **Without it, that person cannot get in** (they get a 401).
 > In 0.6.0 they were **silently logged in**, so **choosing "Sign in with Google" skipped
-> the second factor entirely.** Refusing beats waving them through (fixed in 0.6.1).
+> the second factor entirely.** Refusing beats waving them through (fixed in 1.0).
 
 ### What this does not do
 

@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 /**
  * リクエスト情報
  */
-public class Request extends Data {
+public final class Request extends Data {
 
 	/* Context */
 	private final WebContext context;
@@ -878,9 +878,9 @@ public class Request extends Data {
 				Data data = body.getDataOptional("file");
 				if (source != null) {
 					for (UploadFile uploadFile : source.files()) {
-						List<Object> list = data.getObjectListOptional(uploadFile.name);
+						List<Object> list = data.getObjectListOptional(uploadFile.name());
 						list.add(uploadFile);
-						data.putData(uploadFile.name, list);
+						data.putData(uploadFile.name(), list);
 					}
 				}
 			}
@@ -1004,7 +1004,7 @@ public class Request extends Data {
 	public boolean isBotAccess () {
 
 		if (isBotAccess == null) {
-			isBotAccess = BotUtil.isBot(address(), userAgent().ua);
+			isBotAccess = BotUtil.isBot(address(), userAgent().ua());
 		}
 
 		return isBotAccess;

@@ -36,10 +36,10 @@ public final class MapUtil {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			return;
 		}
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		/** 変換処理. */
 
@@ -112,8 +112,8 @@ public final class MapUtil {
 
 		/** 循環参照後処理. */
 
-		conf.Hierarchy--;
-		conf.hashSet.remove(hash);
+		conf.hierarchy(conf.hierarchy() - 1);
+		conf.hashSet().remove(hash);
 
 	}
 

@@ -156,16 +156,16 @@ public class FormController extends Controller {
 
 		UploadFile uploadFile = firstFile(context);
 
-		if (uploadFile == null || uploadFile.fileSize <= 0) {
+		if (uploadFile == null || uploadFile.fileSize() <= 0) {
 			return null;
 		}
 
-		String extension = extensionOf(uploadFile.fileName);
+		String extension = extensionOf(uploadFile.fileName());
 
 		if (!ALLOWED_EXTENSIONS.contains(extension)) {
 			throw new io.jimble.web.http.HttpException(
 				400, "受け付けられない形式です: %s（%s のみ）"
-					.formatted(uploadFile.fileName, String.join(" ", ALLOWED_EXTENSIONS)));
+					.formatted(uploadFile.fileName(), String.join(" ", ALLOWED_EXTENSIONS)));
 		}
 
 		Path dir = Path.of(UPLOAD_DIR);
@@ -177,7 +177,7 @@ public class FormController extends Controller {
 		 * 一時ファイルはリクエストが終わると消える（要件 F-W-06）。
 		 * 残したいものはここで移す。
 		 */
-		Files.copy(uploadFile.file.toPath(), dir.resolve(saved), StandardCopyOption.REPLACE_EXISTING);
+		Files.copy(uploadFile.file().toPath(), dir.resolve(saved), StandardCopyOption.REPLACE_EXISTING);
 
 		return saved;
 

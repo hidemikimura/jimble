@@ -116,6 +116,16 @@ public final class JimbleOtel {
 	 * OTLP 以外へ出したいとき、テストで中身を見たいときに使う。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>{@code SpanExporter}（OpenTelemetry SDK の型）がここに出るのは決めごとである（D-173）。</b>
+	 * このモジュールは<b>OpenTelemetry へ繋ぐためだけに在る</b>ので、
+	 * SDK を隠すと「出す先を自分で決める」ができなくなる。
+	 * だから {@code jimble-otel} は SDK を {@code api} で持っている。
+	 * <b>SDK を知りたくないアプリは、このモジュールを足さなければよい</b>——
+	 * トレースの口（{@code Tracer} / {@code Span}）は {@code jimble-core} にあって、
+	 * そちらに OpenTelemetry の型は出てこない。
+	 * </p>
+	 *
 	 * @param serviceName	サービス名
 	 * @param exporter		出す先
 	 * @param ratio			拾う割合（0.0〜1.0）

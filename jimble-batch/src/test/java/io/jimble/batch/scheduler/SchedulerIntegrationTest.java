@@ -63,7 +63,7 @@ class SchedulerIntegrationTest {
 		public void execute (BatchArgs args) {
 
 			RUN_COUNT.incrementAndGet();
-			RUN_ARGS.add(String.valueOf(args.cliArgs.getStringOptional("site_id")));
+			RUN_ARGS.add(String.valueOf(args.cliArgs().getStringOptional("site_id")));
 			executeInfo().putData("ran", true);
 
 		}
@@ -81,7 +81,7 @@ class SchedulerIntegrationTest {
 		public void execute (BatchArgs args) {
 
 			RUN_COUNT.incrementAndGet();
-			RUN_ARGS.add(String.valueOf(args.cliArgs.getStringOptional("site_id")));
+			RUN_ARGS.add(String.valueOf(args.cliArgs().getStringOptional("site_id")));
 
 		}
 
@@ -332,9 +332,9 @@ class SchedulerIntegrationTest {
 
 		// 1回目：引数つきで走らせる
 		BatchArgs args = new BatchArgs();
-		args.className = ManualBatch.class.getName();
-		args.cliArgs.putData("site_id", "42");
-		args.schedulerId = "test-scheduler";
+		args.className(ManualBatch.class.getName());
+		args.cliArgs().putData("site_id", "42");
+		args.schedulerId("test-scheduler");
 
 		new ManualBatch().run(args, null);
 

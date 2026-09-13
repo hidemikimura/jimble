@@ -1,5 +1,10 @@
-package io.jimble.web.ws;
+package io.jimble.web.internal.ws;
 
+import io.jimble.web.ws.WsHandler;
+import io.jimble.web.ws.WsRoutes;
+import io.jimble.web.ws.WsSession;
+import io.jimble.web.ws.WsSink;
+import io.jimble.web.ws.context.WsContext;
 import io.helidon.common.buffers.BufferData;
 import io.helidon.http.Headers;
 import io.helidon.http.HttpPrologue;
@@ -119,8 +124,8 @@ public final class WsBridge {
 
 			this.headers = collected;
 
-			// この時点ではまだ helidon のセッションが無いので、送れない口だけ渡す
-			WsSession upgrading = new WsSession(null, path, collected);
+			// この時点ではまだ helidon のセッションが無いので、送れない口を渡す
+			WsSession upgrading = new WsSession(NOT_CONNECTED, path, collected);
 
 			if (!handler.onUpgrade(upgrading)) {
 				throw new WsUpgradeException("WebSocket のアップグレードを断りました: " + path);
@@ -136,7 +141,7 @@ public final class WsBridge {
 		@Override
 		public void onOpen (io.helidon.websocket.WsSession wsSession) {
 
-			this.session = new WsSession(wsSession, path, headers);
+			this.session = new WsSession(new HelidonWsSink(wsSession), path, headers);
 
 			run(context -> handler.onOpen(context));
 
@@ -234,6 +239,61 @@ public final class WsBridge {
 			 * @throws Exception	失敗した場合
 			 */
 			void run (WsContext context) throws Exception;
+
+		}
+
+	}
+
+
+	/**
+	 * まだ繋がっていないときの出口
+	 *
+	 * <p>
+	 * アップグレードの判定中は helidon のセッションがまだ無い。
+	 * <b>null を渡すのではなく、断る口を渡す</b>——
+	 * null だと、送ろうとしたところで {@code NullPointerException} になる。
+	 * </p>
+	 */
+	private static final WsSink NOT_CONNECTED = new WsSink() {
+
+		@Override
+		public boolean send (String text) {
+
+			// まだ繋がっていない。onUpgrade の中から送ることはできない
+			return false;
+
+		}
+
+		@Override
+		public void close (String reason) {
+
+			// 繋がっていないので閉じるものが無い
+
+		}
+
+	};
+
+	/**
+	 * helidon のセッションへの出口
+	 *
+	 * <p><b>helidon の型が出てくるのはここまでである。</b></p>
+	 *
+	 * @param session	helidon のセッション
+	 */
+	private record HelidonWsSink (io.helidon.websocket.WsSession session) implements WsSink {
+
+		@Override
+		public boolean send (String text) {
+
+			session.send(text, true);
+			return true;
+
+		}
+
+		@Override
+		public void close (String reason) {
+
+			session.close(io.helidon.websocket.WsCloseCodes.NORMAL_CLOSE, reason);
 
 		}
 

@@ -277,8 +277,15 @@ public final class Remember {
 	 *
 	 * <p>「全端末からログアウト」もこれである。</p>
 	 *
+	 * <p>
+	 * <b>消せなかったら投げる（D-173）。</b>かつては DB が落ちていても {@code 0} を返していた——
+	 * <b>「1つも無かった」と見分けが付かない</b>ので、呼んだ側は消えたつもりで先へ進む。
+	 * ここで消え損なうと、<b>盗まれた Cookie がそのまま生き残る</b>。
+	 * </p>
+	 *
 	 * @param userId	利用者 ID
 	 * @return	消した件数
+	 * @throws IllegalStateException	消せなかった場合
 	 */
 	public static int forgetAll (long userId) {
 
@@ -287,10 +294,26 @@ public final class Remember {
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
-			return db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db)), userId);
-		} catch (Exception ex) {
+
+			int deleted = db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db)), userId);
+
+			if (db.isError()) {
+				throw new IllegalStateException("ログインの記憶を消せませんでした: %d（%s）"
+					.formatted(userId, db.getError() == null ? "理由不明" : db.getError().getMessage()));
+			}
+
+			return deleted;
+
+		} catch (IllegalStateException ex) {
+
 			Log.error(ex, "ログインの記憶を消せませんでした: %d".formatted(userId));
-			return 0;
+			throw ex;
+
+		} catch (Exception ex) {
+
+			Log.error(ex, "ログインの記憶を消せませんでした: %d".formatted(userId));
+			throw new IllegalStateException("ログインの記憶を消せませんでした: %d".formatted(userId), ex);
+
 		}
 
 	}

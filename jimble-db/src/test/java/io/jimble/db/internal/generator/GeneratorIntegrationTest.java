@@ -190,14 +190,54 @@ class GeneratorIntegrationTest {
 
 		String table = read(source("table/gen_item/GenItem.java"));
 
-		assertTrue(table.contains("new Column(instance(), \"id\", long.class"), table);
-		assertTrue(table.contains("new Column(instance(), \"code\", java.lang.String.class"), table);
-		assertTrue(table.contains("new Column(instance(), \"price\", int.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"id\", long.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"code\", java.lang.String.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"price\", int.class"), table);
 		// tinyint(1) は boolean
-		assertTrue(table.contains("new Column(instance(), \"is_active\", boolean.class"), table);
-		assertTrue(table.contains("new Column(instance(), \"created_at\", java.util.Date.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"is_active\", boolean.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"created_at\", java.util.Date.class"), table);
 		// decimal(10,2) は double（PostgreSQL は numeric として返る）
-		assertTrue(table.contains("new Column(instance(), \"amount\", double.class"), table);
+		assertTrue(table.contains("new Column(INSTANCE, \"amount\", double.class"), table);
+
+	}
+
+	/**
+	 * テーブルの実体が1つだけであること（D-173）
+	 *
+	 * <p>
+	 * <b>かつては {@code instance()} が毎回 {@code new} を返していた。</b>
+	 * 列4本のテーブルなら、クラス初期化だけで同じテーブルが4個できる。
+	 * しかも {@code Table} に {@code equals} が無いので、
+	 * <b>{@code GenItem.id.table()} と {@code GenItem.instance()} が等しくならなかった</b>——
+	 * 「同じテーブルか」を見ているところが、静かに外れる。
+	 * </p>
+	 *
+	 * <p>ここで固定していないこと：{@code Table} / {@code Column} の {@code equals}（同一性のままである）。</p>
+	 */
+	@Test
+	@DisplayName("D-173 テーブルの実体は1つだけで、列より先に作られる")
+	void tableInstanceIsSingleton () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		String table = read(source("table/gen_item/GenItem.java"));
+
+		assertTrue(table.contains("private static final GenItem INSTANCE = new GenItem(")
+			, "実体が1つに固定されていない:\n" + table);
+
+		assertTrue(table.contains("public static GenItem instance () { return INSTANCE; }")
+			, "instance() が毎回 new を返している:\n" + table);
+
+		assertFalse(table.contains("new Column(instance()")
+			, "列が instance() 経由でテーブルを掴んでいる（呼ぶたびに別物になる）:\n" + table);
+
+		/*
+		 * <b>並び順が効く。</b>静的初期化は上から走るので、
+		 * INSTANCE が列より下にあると列は null を掴む。
+		 */
+		assertTrue(table.indexOf("private static final GenItem INSTANCE")
+				< table.indexOf("public static final Column id")
+			, "INSTANCE が列より後ろにある（列が null を掴む）:\n" + table);
 
 	}
 
@@ -364,7 +404,7 @@ class GeneratorIntegrationTest {
 	 */
 	private File source (String relative) {
 
-		return outputDir.resolve(DBUtil.getMainDataSource().name.toLowerCase()).resolve(relative).toFile();
+		return outputDir.resolve(DBUtil.getMainDataSource().name().toLowerCase()).resolve(relative).toFile();
 
 	}
 

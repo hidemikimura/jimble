@@ -65,13 +65,13 @@ public class BeanFormatter implements IFormatter {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			writer.write("{}", 0, 2);
 			return;
 		}
 
-		int h = conf.Hierarchy;
-		conf.Hierarchy++;
+		int h = conf.hierarchy();
+		conf.hierarchy(conf.hierarchy() + 1);
 		boolean isOutput = false;
 
 		/** 出力処理. */
@@ -88,7 +88,7 @@ public class BeanFormatter implements IFormatter {
 
 			Object v = info.getProperty(obj);
 
-			if (conf.isOutputNullValue || v != null) {
+			if (conf.isOutputNullValue() || v != null) {
 
 				if (isOutput) {
 					writer.write(',');
@@ -114,8 +114,8 @@ public class BeanFormatter implements IFormatter {
 
 		/** 循環参照後処理. */
 
-		conf.Hierarchy--;
-		conf.hashSet.remove(hash);
+		conf.hierarchy(conf.hierarchy() - 1);
+		conf.hashSet().remove(hash);
 	}
 
 }

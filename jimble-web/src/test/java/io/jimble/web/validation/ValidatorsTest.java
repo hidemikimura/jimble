@@ -86,7 +86,7 @@ class ValidatorsTest {
 	 */
 	private static ValidationErrorType errorType (ValidationRule rule, Object value) throws CodeException {
 
-		return rule.validate(null, new Data(), false, value).validationError().errorType;
+		return rule.validate(null, new Data(), false, value).validationError().errorType();
 
 	}
 

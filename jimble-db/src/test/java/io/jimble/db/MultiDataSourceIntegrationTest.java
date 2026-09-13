@@ -80,13 +80,13 @@ class MultiDataSourceIntegrationTest {
 
 		List<DBSource> sources = DBUtil.getDataSourceList();
 
-		assertTrue(sources.size() >= 2, sources.stream().map(source -> source.name).toList().toString());
+		assertTrue(sources.size() >= 2, sources.stream().map(source -> source.name()).toList().toString());
 
 		assertNotNull(DBUtil.getDataSource(MAIN_DB));
 		assertNotNull(DBUtil.getDataSource(SUB_DB));
 
 		// main = true が付いているものが1つだけメインになる
-		assertEquals(MAIN_DB, DBUtil.getMainDataSource().name);
+		assertEquals(MAIN_DB, DBUtil.getMainDataSource().name());
 
 	}
 

@@ -362,7 +362,7 @@ class ConnectionLeakTest {
 	 */
 	private static int activeConnections () {
 
-		if (DBUtil.getMainDataSource().dataSource instanceof HikariDataSource hikari) {
+		if (DBUtil.getMainDataSource().dataSource() instanceof HikariDataSource hikari) {
 			return hikari.getHikariPoolMXBean().getActiveConnections();
 		}
 

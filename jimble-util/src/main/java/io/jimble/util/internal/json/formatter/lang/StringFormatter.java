@@ -35,10 +35,10 @@ public class StringFormatter implements IFormatter {
 		}
 
 		String s = PropertyUtil.toString(obj);
-		if (conf != null && conf.isRemove4ByteCharacter) {
+		if (conf != null && conf.isRemove4ByteCharacter()) {
 			s = s.replaceAll("[^\\u0000-\\uFFFF]", "");
 		}
-		boolean isOutputStrict = conf != null && conf.isOutputStrict;
+		boolean isOutputStrict = conf != null && conf.isOutputStrict();
 		int length = s.length();
 //		char[] charArray = s.toCharArray();
 		int start = 0;

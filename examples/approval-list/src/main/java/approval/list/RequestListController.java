@@ -80,7 +80,7 @@ public final class RequestListController {
 		SelectListResponse response = ApprovalListExample.db().selectListWithRowCount(builder);
 
 		context.response()
-			.json("items", flatten(response.list))
+			.json("items", flatten(response.list()))
 			.json("page", paging.page())
 			.json("per", paging.per())
 			.json("total", paging.totalCount())

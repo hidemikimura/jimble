@@ -6,6 +6,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.migration.MigrationException;
 import io.jimble.util.data.Data;
+import io.jimble.util.log.Log;
 
 /**
  * コードマイグレーション
@@ -149,7 +150,13 @@ public abstract class AbstractCodeMigration {
 			throw new MigrationException("コードマイグレーションの状態を取得できませんでした: " + versionKey(), db.getError());
 		}
 
-		return row == null || MigrationCodeState.waiting.name().equals(row.getString("state"));
+		if (row != null) {
+			return MigrationCodeState.waiting.name().equals(row.getString("state"));
+		}
+
+		warnIfRenamed(db);
+
+		return true;
 
 	}
 
@@ -224,6 +231,44 @@ public abstract class AbstractCodeMigration {
 			, errorInfo.isEmpty() ? null : errorInfo
 			, versionKey()
 		);
+
+	}
+
+	/**
+	 * 名前を変えただけではないかを見る（D-173）
+	 *
+	 * <p>
+	 * <b>版のキーにクラスの完全名が入っている。</b>だから
+	 * <b>パッケージを移しただけ・名前を変えただけで、済んだ移行がもう一度走る</b>——
+	 * 冪等に書いていなければ、二重に登録され、二重に消える。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>キーは DB に残る。</b>1.0 のあとに形を変えると、
+	 * <b>既存アプリの移行が全部「未実行」に見える</b>ので、形は動かせない。
+	 * できるのは「同じ日付・同じクラス名（パッケージ違い）の行が既にある」と気づいて言うことだけである。
+	 * </p>
+	 *
+	 * @param db	DB
+	 */
+	private void warnIfRenamed (DB db) {
+
+		Data row = db.select(
+			"SELECT version FROM migration_code WHERE version LIKE ? AND version <> ?"
+			, versionYyyyMmDd() + "-%." + getClass().getSimpleName()
+			, versionKey());
+
+		if (db.isError() || row == null) {
+			return;
+		}
+
+		Log.warn(("""
+			コードマイグレーションが未実行に見えますが、同じ日付・同じクラス名の行が既にあります。
+			  いま: %s
+			  DB  : %s
+			クラスを移動・改名しませんでしたか。版のキーには完全名が入るので、\
+			移すと済んだ移行がもう一度走ります（冪等でなければ二重に効きます）。""")
+			.formatted(versionKey(), row.getString("version")));
 
 	}
 

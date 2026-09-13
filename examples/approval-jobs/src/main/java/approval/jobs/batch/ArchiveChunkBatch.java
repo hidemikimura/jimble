@@ -229,7 +229,7 @@ public class ArchiveChunkBatch extends AbstractChunkBatch<Data> {
 	 */
 	private long days (BatchArgs args) {
 
-		String fromArgs = args.cliArgs.getStringOptional(KEY_DAYS);
+		String fromArgs = args.cliArgs().getStringOptional(KEY_DAYS);
 
 		if (!fromArgs.isEmpty()) {
 			return Long.parseLong(fromArgs);

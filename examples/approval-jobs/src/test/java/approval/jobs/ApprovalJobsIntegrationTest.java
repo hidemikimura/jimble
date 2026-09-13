@@ -145,7 +145,7 @@ class ApprovalJobsIntegrationTest {
 		db.execute("TRUNCATE TABLE batch_master");
 		BatchRegistry.sync(db);
 
-		BatchExecutor.allReleaseNotStart();
+		BatchExecutor.releaseAll();
 
 		seed(db);
 

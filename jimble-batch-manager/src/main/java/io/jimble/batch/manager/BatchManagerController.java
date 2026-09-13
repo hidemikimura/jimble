@@ -68,7 +68,7 @@ import java.util.List;
  *   <li>知らない {@code kind} の状態変更を<b>黙って 200 で返していた</b></li>
  * </ol>
  */
-public class BatchManagerController extends Controller {
+public final class BatchManagerController extends Controller {
 
 	/** 画面のリソース置き場 */
 	public static final String ASSET_DIR = "jimble/batch-manager";
@@ -87,7 +87,21 @@ public class BatchManagerController extends Controller {
 	}
 
 	/**
-	 * コンストラクタ
+	 * コンストラクタ（手で全部決める）
+	 *
+	 * <p>
+	 * <b>{@code batch_manager.enabled} は見ない（D-173）。</b>
+	 * 引数で全部渡している以上、<b>ここで設定を混ぜると
+	 * 「渡したのに生えない」が起きる</b>——それはそれで分かりにくい。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>設定で切り替えたいなら、引数無しの
+	 * {@link #BatchManagerController()} を使うこと。</b>
+	 * かつてはこの違いが書かれていなかったので、
+	 * <b>{@code batch_manager.enabled = false} を全環境に配っても、
+	 * この書き方のアプリだけ管理画面が開いたままだった</b>。
+	 * </p>
 	 *
 	 * @param basePath	パス
 	 * @param username	ユーザー名
@@ -228,9 +242,9 @@ public class BatchManagerController extends Controller {
 			return;
 		}
 
-		paging.set(response.list.size(), response.rowCount);
+		paging.set(response.list().size(), response.rowCount());
 
-		context.response().json("rows", response.list);
+		context.response().json("rows", response.list());
 
 	}
 
@@ -373,9 +387,9 @@ public class BatchManagerController extends Controller {
 			return;
 		}
 
-		paging.set(response.list.size(), response.rowCount);
+		paging.set(response.list().size(), response.rowCount());
 
-		context.response().json("rows", response.list);
+		context.response().json("rows", response.list());
 
 	}
 
@@ -580,7 +594,7 @@ public class BatchManagerController extends Controller {
 		boolean enable = request.getBoolean("enabled");
 
 		boolean ok = switch (kind) {
-			case "batch" -> enable ? BatchExecutor.allReleaseNotStart() : BatchExecutor.allNotStart();
+			case "batch" -> enable ? BatchExecutor.releaseAll() : BatchExecutor.stopAll();
 			case "scheduler" -> enable ? SchedulerControl.enable() : SchedulerControl.disable();
 			// 移送元は知らない kind でも 200 を返していた
 			default -> false;

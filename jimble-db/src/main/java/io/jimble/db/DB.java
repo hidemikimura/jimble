@@ -5,6 +5,7 @@ import io.jimble.util.data.Data;
 import io.jimble.db.data.ResultSetFetcher;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.data.SelectListResponse;
+import io.jimble.util.paging.Paging;
 import io.jimble.db.sql.*;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.dialect.Dialect;
@@ -163,7 +164,7 @@ public class DB implements Closeable, AutoCloseable {
 		}
 
 		this.dbSource = dbSource;
-		this.enableLongConnectionLog = dbSource.conf.longConnectionLog;
+		this.enableLongConnectionLog = dbSource.conf().longConnectionLog();
 
 	}
 
@@ -220,7 +221,7 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public String getDBName () {
 
-		return this.dbSource.name;
+		return this.dbSource.name();
 
 	}
 
@@ -250,7 +251,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		if (enableLongConnectionLog && connectionStart > 0) {
 			long diff = System.currentTimeMillis() - connectionStart;
-			if (diff >= dbSource.conf.longConnectionTime) {
+			if (diff >= dbSource.conf().longConnectionTime()) {
 				Log.error("DB long connection: " + diff + "ms");
 			}
 		}
@@ -381,7 +382,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.fetchSizeLimit = limit;
 		if (this.fetchSizeLimit) {
-			this.fetchSize = dbSource.conf.fetchSize;
+			this.fetchSize = dbSource.conf().fetchSize();
 			if (this.fetchSize <= 0) {
 				this.fetchSize = Integer.MIN_VALUE;
 			}
@@ -666,9 +667,29 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 1件取得する
 	 *
+	 * <p>
+	 * <b>{@code null} には2つの意味がある（D-173）。</b>
+	 * 「1件も無かった」と「読めなかった」である。<b>見分けるには
+	 * {@link #isError()} を見ること</b>——
+	 * </p>
+	 *
+	 * <pre>
+	 * Data row = db.select(sql, id);
+	 * if (db.isError()) { ... 読めなかった ... }
+	 * if (row == null)  { ... 1件も無かった ... }
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>{@code selectList} とは揃っていない。</b>あちらは 0件が空リストで、
+	 * 読めなかったときだけ {@code null} である。<b>同じ select 系で
+	 * {@code null} の意味が違う</b>——1.0 では
+	 * <b>戻り値の型を変えられない</b>ので、揃えるのは 2.0 になる。
+	 * それまでは、この2行を書くのが正しい読み方である。
+	 * </p>
+	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  結果。1件も無いか、読めなければ null
 	 */
 	public Data select(String sql, Object...params) {
 
@@ -678,7 +699,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			selectListWithFetcher(fetcher, sql, params);
 
-			if (fetcher.isError || this.error != null) {
+			if (fetcher.isError() || this.error != null) {
 				return null;
 			}
 
@@ -736,7 +757,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			selectListWithFetcher(fetcher, sql, params);
 
-			if (fetcher.isError || this.error != null) {
+			if (fetcher.isError() || this.error != null) {
 				return null;
 			}
 
@@ -813,21 +834,21 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public SelectListResponse selectListWithRowCount (SelectBuilder builder) {
 
-		SelectListResponse res = new SelectListResponse();
+		List<Data> list = selectList(builder);
 
-		res.list = selectList(builder);
-
+		long rowCount = 0;
 		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
 		if (data != null) {
-			res.rowCount = data.getLong("cnt");
+			rowCount = data.getLong("cnt");
 		}
 
-		if (builder.paging() != null && res.list != null) {
-			builder.paging().set(res.list.size(), res.rowCount);
-			res.paging = builder.paging();
+		Paging paging = null;
+		if (builder.paging() != null && list != null) {
+			builder.paging().set(list.size(), rowCount);
+			paging = builder.paging();
 		}
 
-		return res;
+		return new SelectListResponse(list, rowCount, paging);
 
 	}
 
@@ -840,9 +861,8 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public SelectListResponse selectListWithRowCount (String sql, Object...params) {
 
-		SelectListResponse res = new SelectListResponse();
-
-		res.list = selectList(sql, params);
+		List<Data> list = selectList(sql, params);
+		long rowCount = 0;
 
 		{
 			String _sql = sql.toUpperCase();
@@ -889,11 +909,11 @@ public class DB implements Closeable, AutoCloseable {
 
 			Data data = select(sb.toString(), newParams);
 			if (data != null) {
-				res.rowCount = data.getLong("cnt");
+				rowCount = data.getLong("cnt");
 			}
 		}
 
-		return res;
+		return new SelectListResponse(list, rowCount, null);
 
 	}
 
@@ -909,11 +929,12 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public SelectListResponse selectListWithRowCountPerformance (SelectBuilder builder) {
 
-		SelectListResponse res = new SelectListResponse();
+		long rowCount = 0;
+		List<Data> list;
 
 		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
 		if (data != null) {
-			res.rowCount = data.getLong("cnt");
+			rowCount = data.getLong("cnt");
 		}
 
 		{
@@ -939,15 +960,16 @@ public class DB implements Closeable, AutoCloseable {
 				pkColumn.in(idTable)
 			);
 
-			res.list = selectList(builder);
+			list = selectList(builder);
 		}
 
-		if (builder.paging() != null && res.list != null) {
-			builder.paging().set(res.list.size(), res.rowCount);
-			res.paging = builder.paging();
+		Paging paging = null;
+		if (builder.paging() != null && list != null) {
+			builder.paging().set(list.size(), rowCount);
+			paging = builder.paging();
 		}
 
-		return res;
+		return new SelectListResponse(list, rowCount, paging);
 
 	}
 
@@ -1000,7 +1022,7 @@ public class DB implements Closeable, AutoCloseable {
 			} else {
 				// フェッチサイズを制限しない場合
 				int _fetchSize = 0;
-				_fetchSize = dbSource.conf.fetchSize;
+				_fetchSize = dbSource.conf().fetchSize();
 				if (_fetchSize <= 0) {
 					_fetchSize = Integer.MIN_VALUE;
 				}
@@ -1027,7 +1049,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			fetcher.isError = true;
+			fetcher.markError();
 			setError(new CodeException("DB_999", ex.getMessage()));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
@@ -1061,8 +1083,27 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 登録する
 	 *
+	 * <p>
+	 * <b>戻り値には2つの意味がある（D-173）。</b>
+	 * 採番された値が取れればその値、取れなければ<b>入った件数</b>である。
+	 * だから <b>{@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
+	 * この戻り値だけでは分からない</b>——
+	 * <b>その表に自動採番の列があるかどうかで決まる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>採番列を1本足しただけで、戻り値の意味が変わる。</b>
+	 * 件数がほしいなら {@link #insertNoReturnKey}、
+	 * 採番値がほしいなら採番列のある表でこちらを使うこと。
+	 * </p>
+	 *
+	 * <p>
+	 * 失敗したときは <b>{@code -1}</b> で、理由は {@link #getError()} に入る。
+	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
+	 * </p>
+	 *
 	 * @param builder   InsertBuilder
-	 * @return  結果
+	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
 	 */
 	public long insert (InsertBuilder builder) {
 
@@ -1086,9 +1127,28 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 登録する
 	 *
+	 * <p>
+	 * <b>戻り値には2つの意味がある（D-173）。</b>
+	 * 採番された値が取れればその値、取れなければ<b>入った件数</b>である。
+	 * だから <b>{@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
+	 * この戻り値だけでは分からない</b>——
+	 * <b>その表に自動採番の列があるかどうかで決まる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>採番列を1本足しただけで、戻り値の意味が変わる。</b>
+	 * 件数がほしいなら {@link #insertNoReturnKey}、
+	 * 採番値がほしいなら採番列のある表でこちらを使うこと。
+	 * </p>
+	 *
+	 * <p>
+	 * 失敗したときは <b>{@code -1}</b> で、理由は {@link #getError()} に入る。
+	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
+	 * </p>
+	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
 	 */
 	public long insert (String sql, Object...params) {
 
@@ -1426,6 +1486,31 @@ public class DB implements Closeable, AutoCloseable {
 
 	// region 実行する
 
+	/**
+	 * SQL をそのまま実行する（DDL や、ビルダーで組めない文）
+	 *
+	 * <p>
+	 * <b>戻り値は「成功したか」である（D-173）。</b>
+	 * かつては JDBC の {@code Statement#execute()} をそのまま返していた——
+	 * あれは<b>「結果セットが返ってきたか」</b>であって、成功したかではない。
+	 * {@code DELETE} も {@code CREATE TABLE} も、<b>うまくいったのに false</b> が返っていた。
+	 * Javadoc も1行も無かったので、<b>読む側は false を失敗と読むしかない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 失敗したときは {@link #getError()} に理由が入る（作法は
+	 * <a href="https://jimble.io/ja/principles">原則</a>のとおり、戻り値で分岐して理由をここから取る）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>結果セットが要るなら {@code select} 系を使うこと。</b>
+	 * ここでは結果セットを読まずに閉じる。
+	 * </p>
+	 *
+	 * @param sql		SQL
+	 * @param params	パラメータ
+	 * @return	成功した場合 = true
+	 */
 	public boolean execute (String sql, Object...params) {
 
 		this.error = null;
@@ -1445,8 +1530,11 @@ public class DB implements Closeable, AutoCloseable {
 
 			long start = System.nanoTime();
 
-			// SQLを実行する
-			boolean result = st.execute();
+			/*
+			 * <b>戻り値は捨てる。</b>{@code Statement#execute()} が返すのは
+			 * 「結果セットが返ってきたか」であって、成功したかではない。
+			 */
+			st.execute();
 
 			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
@@ -1456,7 +1544,7 @@ public class DB implements Closeable, AutoCloseable {
 			// SQL結果キャッシュを消す（要件 F-D-28）
 			invalidateCache();
 
-			return result;
+			return true;
 
 		} catch (Exception ex) {
 
@@ -1771,19 +1859,40 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * バッチ実行結果成功判定
 	 *
+	 * <p>
+	 * <b>受け取るのは {@code List<Integer>} ではない（D-173）。</b>
+	 * {@code List<Integer>} で固定すると、<b>{@code List<Long>} を受ける版を
+	 * あとから足せない</b>——消去したあとの署名が同じ
+	 * （{@code isBatchSuccess(List)}）になって衝突する。
+	 * {@code insertBatch} が採番値を {@code Long} で返すようになった日に、
+	 * <b>置く場所が無い</b>ことに気づくことになる。
+	 * </p>
+	 *
+	 * <p>
+	 * JDBC の約束では、{@code -2}（{@code SUCCESS_NO_INFO}）も成功である。
+	 * </p>
+	 *
 	 * @param list	バッチ実行結果
 	 * @return	成功の場合 = true
 	 */
-	public static boolean isBatchSuccess (List<Integer> list) {
+	public static boolean isBatchSuccess (List<? extends Number> list) {
 
 		if (list == null || list.isEmpty()) {
 			return false;
 		}
 
-		for (int res : list) {
-			if (res < 0 && res != -2) {
+		for (Number res : list) {
+
+			if (res == null) {
 				return false;
 			}
+
+			long value = res.longValue();
+
+			if (value < 0 && value != -2) {
+				return false;
+			}
+
 		}
 
 		return true;
@@ -2239,7 +2348,7 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	private String leakMessage () {
 
-		String name = dbSource == null ? "?" : dbSource.name;
+		String name = dbSource == null ? "?" : dbSource.name();
 
 		if (isTransaction()) {
 			return "コミットもロールバックもされていないトランザクションが残っていました。"

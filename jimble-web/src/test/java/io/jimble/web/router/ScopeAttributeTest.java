@@ -276,4 +276,67 @@ class ScopeAttributeTest {
 
 	// endregion
 
+	/**
+	 * ブロックに書いた {@code null} が、ルートにも届くこと（D-173）
+	 *
+	 * <p>
+	 * <b>書く場所で結果が違っていた。</b>ルートに直接書いた {@code null} は値として入るのに、
+	 * ブロックに書いた {@code null} は黙って捨てられ、<b>キーの既定値に戻っていた</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>「ここだけ外す」が効かない。</b>外側のブロックで {@code ROLE} を立てておいて、
+	 * 内側のブロックで {@code null} にして外す——という書き方が、
+	 * <b>外れずに外側の値のまま通る</b>。例外も警告も出ない。
+	 * </p>
+	 */
+	@Test
+	@DisplayName("D-173 ブロックに書いた null も、書いたとおりに届く")
+	void nullInABlockIsKept () {
+
+		Router router = new Router();
+
+		router.attribute(ROLE, "admin");
+
+		Router open = router.path("/open");
+		open.attribute(ROLE, null);
+		open.get("", context -> { });
+
+		router.get("/closed", context -> { });
+
+		router.seal();
+
+		assertNull(attribute(router, "GET", "/open", ROLE)
+			, "内側で null にしたのに、外側の値が残っている");
+
+		assertEquals("admin", attribute(router, "GET", "/closed", ROLE));
+
+	}
+
+	/**
+	 * ルートに直接書いた {@code null} と、同じ結果になること
+	 *
+	 * <p><b>書く場所で違うことが問題だった。</b>ここで揃っていることを見る。</p>
+	 */
+	@Test
+	@DisplayName("D-173 ルートに書いた null と、ブロックに書いた null が同じになる")
+	void nullIsTheSameWhereverWritten () {
+
+		Router direct = new Router();
+		direct.attribute(ROLE, "admin");
+		direct.get("/x", context -> { }).attribute(ROLE, null);
+		direct.seal();
+
+		Router inBlock = new Router();
+		inBlock.attribute(ROLE, "admin");
+		Router block = inBlock.path("/x");
+		block.attribute(ROLE, null);
+		block.get("", context -> { });
+		inBlock.seal();
+
+		assertEquals(attribute(direct, "GET", "/x", ROLE), attribute(inBlock, "GET", "/x", ROLE)
+			, "書く場所で結果が違う");
+
+	}
+
 }

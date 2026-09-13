@@ -32,13 +32,13 @@ public class LocalDateTimeFormatter implements IFormatter {
 	public void format (OutputStreamWriterWrapper writer, Configration conf, Object obj) throws Exception {
 
 		Object f = null;
-		if (conf != null && conf.outputDateTypeFormat != null) {
+		if (conf != null && conf.outputDateTypeFormat() != null) {
 
 			writer.write('"');
-			if (conf.isOutputDateType) {
+			if (conf.isOutputDateType()) {
 				writer.write("date::");
 			}
-			writer.write(conf.outputDateTypeFormat.format((LocalDateTime) obj));
+			writer.write(conf.outputDateTypeFormat().format((LocalDateTime) obj));
 			writer.write('"');
 
 		} else if (conf != null && (f = conf.get(FormatterConfigKeys.FORMAT_DATE_TO_STRING)) != null) {
@@ -46,7 +46,7 @@ public class LocalDateTimeFormatter implements IFormatter {
 			if (f instanceof DateTimeFormatter) {
 
 				writer.write('"');
-				if (conf.isOutputDateType) {
+				if (conf.isOutputDateType()) {
 					writer.write("date::");
 				}
 				writer.write(((DateTimeFormatter) f).format((LocalDateTime) obj));
@@ -57,7 +57,7 @@ public class LocalDateTimeFormatter implements IFormatter {
 				writer.write('"');
 				try {
 					DateTimeFormatter sdf = DateTimeFormatter.ofPattern(f.toString());
-					if (conf.isOutputDateType) {
+					if (conf.isOutputDateType()) {
 						writer.write("date::");
 					}
 					writer.write(sdf.format((LocalDateTime) obj));
@@ -69,7 +69,7 @@ public class LocalDateTimeFormatter implements IFormatter {
 			} else {
 
 				writer.write('"');
-				if (conf.isOutputDateType) {
+				if (conf.isOutputDateType()) {
 					writer.write("date::");
 				}
 				writer.write(sdf.format((LocalDateTime) obj));
@@ -80,7 +80,7 @@ public class LocalDateTimeFormatter implements IFormatter {
 		} else {
 
 			writer.write('"');
-			if (conf != null && conf.isOutputDateType) {
+			if (conf != null && conf.isOutputDateType()) {
 				writer.write("date::");
 			}
 			writer.write(sdf.format((LocalDateTime) obj));

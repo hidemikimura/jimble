@@ -30,6 +30,9 @@ import java.util.Map;
  */
 final class HelidonRequestSource implements RequestSource {
 
+	/* Cookie ヘッダの名前（中身の区切りが "; " なので、連結もそれに合わせる） */
+	private static final String COOKIE_HEADER = "cookie";
+
 	/** multipart のメディアタイプ */
 	private static final String MULTIPART = "multipart/form-data";
 
@@ -145,8 +148,25 @@ final class HelidonRequestSource implements RequestSource {
 		Map<String, String> result = new LinkedHashMap<>();
 
 		request.headers().forEach(header -> {
-			// 複数値は ";" で連結する（jooby_base と同じ形）
-			result.put(header.name().toLowerCase(), String.join(";", header.allValues()));
+
+			String name = header.name().toLowerCase();
+
+			/*
+			 * 連結の区切りはヘッダで違う（D-173）。
+			 *
+			 * 全部 ";" で繋いでいたが、HTTP で複数値を1行にまとめる区切りは ", " である（RFC 9110）。
+			 * ";" はその中の「パラメータの区切り」——Accept: text/html;q=0.9 の ; である。
+			 *
+			 * つまり Accept: a, b と Accept: c が2行で来ると、かつては a, b;c になっていた——
+			 * c が b のパラメータとして読まれる。例外は出ないし、たいていのリクエストは通る。
+			 * 変わるのは選ばれる型だけである。
+			 *
+			 * Cookie だけは中身の区切りが "; " なので、そちらで繋ぐ。
+			 */
+			String separator = COOKIE_HEADER.equals(name) ? "; " : ", ";
+
+			result.put(name, String.join(separator, header.allValues()));
+
 		});
 
 		return result;
@@ -215,13 +235,13 @@ final class HelidonRequestSource implements RequestSource {
 	public void cleanup () {
 
 		for (UploadFile uploadFile : multipartFiles) {
-			if (uploadFile.file == null) {
+			if (uploadFile.file() == null) {
 				continue;
 			}
 			try {
-				Files.deleteIfExists(uploadFile.file.toPath());
+				Files.deleteIfExists(uploadFile.file().toPath());
 			} catch (IOException ex) {
-				Log.warn("アップロードの一時ファイルを消せませんでした: " + uploadFile.file);
+				Log.warn("アップロードの一時ファイルを消せませんでした: " + uploadFile.file());
 			}
 		}
 
@@ -305,7 +325,7 @@ final class HelidonRequestSource implements RequestSource {
 				long remaining = Math.min(maxFileSize, maxTotalSize - totalSize);
 				UploadFile uploadFile = save(part, remaining);
 
-				totalSize += uploadFile.fileSize;
+				totalSize += uploadFile.fileSize();
 				multipartFiles.add(uploadFile);
 
 			}
@@ -366,14 +386,12 @@ final class HelidonRequestSource implements RequestSource {
 
 		}
 
-		UploadFile uploadFile = new UploadFile();
-		uploadFile.name = part.name();
-		uploadFile.fileName = part.fileName().orElse("");
-		uploadFile.contentType = part.contentType() == null ? "" : part.contentType().text();
-		uploadFile.fileSize = written;
-		uploadFile.file = tempFile.toFile();
-
-		return uploadFile;
+		return new UploadFile(
+			part.name()
+			, part.fileName().orElse("")
+			, part.contentType() == null ? "" : part.contentType().text()
+			, written
+			, tempFile.toFile());
 
 	}
 

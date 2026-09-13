@@ -40,7 +40,7 @@ public class IterableFormatter implements IFormatter {
 			hash = System.identityHashCode(obj);
 		}
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			writer.write("[]", 0, 2);
 			return;
 		}
@@ -48,7 +48,7 @@ public class IterableFormatter implements IFormatter {
 		/** 出力処理. */
 
 		boolean isOutput = false;
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		writer.write('[');
 
@@ -58,8 +58,8 @@ public class IterableFormatter implements IFormatter {
 		Iterable< ? > iterable = (Iterable< ? >) obj;
 
 		// テーブルネストの組み直し（要件 F-A-11）
-		if (obj instanceof AsyncList asyncList && conf.tableNest != TableNest.AS_IS) {
-			iterable = asyncList.reshape(conf.tableNest);
+		if (obj instanceof AsyncList asyncList && conf.tableNest() != TableNest.AS_IS) {
+			iterable = asyncList.reshape(conf.tableNest());
 		}
 
 		Iterator< ? > it = iterable.iterator();
@@ -90,7 +90,7 @@ public class IterableFormatter implements IFormatter {
 
 		}
 
-		conf.Hierarchy--;
+		conf.hierarchy(conf.hierarchy() - 1);
 
 		if (isOutput) {
 			writer.writeln(conf);
@@ -101,7 +101,7 @@ public class IterableFormatter implements IFormatter {
 
 		/** 循環参照後処理. */
 
-		conf.hashSet.remove(hash);
+		conf.hashSet().remove(hash);
 
 	}
 

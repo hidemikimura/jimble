@@ -179,11 +179,11 @@ public class SaveUseCase extends AbstractExecutor<WebContext> {
 
 		UploadFile uploadFile = firstFile(context);
 
-		if (uploadFile == null || uploadFile.fileSize <= 0) {
+		if (uploadFile == null || uploadFile.fileSize() <= 0) {
 			return;
 		}
 
-		String extension = extensionOf(uploadFile.fileName);
+		String extension = extensionOf(uploadFile.fileName());
 
 		if (!ALLOWED_EXTENSIONS.contains(extension)) {
 			throw new HttpException(400, "添付は %s だけです".formatted(String.join(" / ", ALLOWED_EXTENSIONS)));
@@ -204,7 +204,7 @@ public class SaveUseCase extends AbstractExecutor<WebContext> {
 			 * <b>ここで写す。</b>一時ファイルはリクエストが終わると消えるので、
 			 * パスだけ DB に入れると、あとで無いファイルを掴む
 			 */
-			Files.copy(uploadFile.file.toPath(), dir.resolve(saved), StandardCopyOption.REPLACE_EXISTING);
+			Files.copy(uploadFile.file().toPath(), dir.resolve(saved), StandardCopyOption.REPLACE_EXISTING);
 
 		} catch (IOException ex) {
 			throw new HttpException(500, "添付を保存できませんでした", ex);
@@ -214,8 +214,8 @@ public class SaveUseCase extends AbstractExecutor<WebContext> {
 			SQL.insert(Attachment.instance())
 				.value(Attachment.request_id, id)
 				.value(Attachment.file_name, saved)
-				.value(Attachment.content_type, uploadFile.contentType)
-				.value(Attachment.bytes, uploadFile.fileSize)
+				.value(Attachment.content_type, uploadFile.contentType())
+				.value(Attachment.bytes, uploadFile.fileSize())
 				.value(Attachment.created_at, new Date()));
 
 	}

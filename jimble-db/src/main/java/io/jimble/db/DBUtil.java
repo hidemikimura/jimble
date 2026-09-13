@@ -106,7 +106,7 @@ public class DBUtil {
 					return false;
 				}
 			} catch (Throwable ex) {
-				Log.error("DB health check failed: " + dbSource.name, ex);
+				Log.error("DB health check failed: " + dbSource.name(), ex);
 			}
 		}
 
@@ -263,7 +263,7 @@ public class DBUtil {
 			Log.info("load DB: " + dbName);
 
 			DBSource dbSource = new DBSource();
-			dbSource.name = dbName;
+			dbSource.name(dbName);
 
 			Config configDb;
 			try {
@@ -282,11 +282,11 @@ public class DBUtil {
 				try {
 					start = System.currentTimeMillis();
 					read(writeDbConf, configDb);
-					dbSource.conf = writeDbConf;
-					if (dbSource.conf.schema == null || dbSource.conf.schema.isEmpty()) {
-						dbSource.conf.schema = dbName;
+					dbSource.conf(writeDbConf);
+					if (dbSource.conf().schema() == null || dbSource.conf().schema().isEmpty()) {
+						dbSource.conf().schema(dbName);
 					}
-					dbSource.dataSource = createDataSource(writeDbConf);
+					dbSource.dataSource(createDataSource(writeDbConf));
 					end = System.currentTimeMillis();
 
 					{
@@ -295,12 +295,12 @@ public class DBUtil {
 						 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
 						 * 作りにいって二度失敗する。元の例外をそのまま上げる。
 						 */
-						dbSource.dataSource.getConnection().close();
+						dbSource.dataSource().getConnection().close();
 					}
 
 					String version = "unknown";
 					try (
-						Connection connection = dbSource.dataSource.getConnection();
+						Connection connection = dbSource.dataSource().getConnection();
 						PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
 						ResultSet resultSet = st.executeQuery()
 					) {
@@ -317,7 +317,7 @@ public class DBUtil {
 					 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
 					 */
 					if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
-						if (writeDbConf.createDatabaseSql == null || writeDbConf.createDatabaseSql.isEmpty()) {
+						if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
 							Log.error("failed create write datasource: " + dbName, ex);
 							return false;
 						}
@@ -326,21 +326,21 @@ public class DBUtil {
 							return false;
 						}
 						isCreated = true;
-						String url = writeDbConf.url;
-						writeDbConf.url = dbSource.dialect().maintenanceUrl(url);
+						String url = writeDbConf.url();
+						writeDbConf.url(dbSource.dialect().maintenanceUrl(url));
 						try {
 							DataSource dataSource = createDataSource(writeDbConf);
 							PreparedStatement st = null;
 							try (
 								Connection connection = dataSource.getConnection()
 							) {
-								st = connection.prepareStatement(writeDbConf.createDatabaseSql);
+								st = connection.prepareStatement(writeDbConf.createDatabaseSql());
 								st.execute();
 							} catch (Exception ex3) {
 								Log.error("failed create write datasource: " + dbName, ex);
 								return false;
 							} finally {
-								writeDbConf.url = url;
+								writeDbConf.url(url);
 								if (st != null) {
 									IOUtil.close(st);
 								}
@@ -361,15 +361,15 @@ public class DBUtil {
 				try {
 					start = System.currentTimeMillis();
 					DBSource readDbSource = new DBSource();
-					readDbSource.name = dbName;
+					readDbSource.name(dbName);
 					DBConf readDbConf = DBConf.from(writeDbConf);
 					read(readDbConf, configDb.getConfig("read"));
-					readDbSource.conf = readDbConf;
-					if (readDbSource.conf.schema == null || readDbSource.conf.schema.isEmpty()) {
-						readDbSource.conf.schema = dbName;
+					readDbSource.conf(readDbConf);
+					if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
+						readDbSource.conf().schema(dbName);
 					}
-					readDbSource.dataSource = createDataSource(readDbConf);
-					dbSource.readSource = readDbSource;
+					readDbSource.dataSource(createDataSource(readDbConf));
+					dbSource.readSource(readDbSource);
 					useRead = true;
 					end = System.currentTimeMillis();
 					Log.info("success create read datasource: " + dbName + " (" + (end - start) +"ms)");
@@ -387,30 +387,30 @@ public class DBUtil {
 					try {
 						start = System.currentTimeMillis();
 						DBSource subDbSource = new DBSource();
-						subDbSource.parent = dbSource;
-						subDbSource.name = dbName;
+						subDbSource.parent(dbSource);
+						subDbSource.name(dbName);
 						DBConf subDbConf = DBConf.from(writeDbConf);
 						read(subDbConf, subConfig);
-						subDbSource.conf = subDbConf;
-						if (subDbSource.conf.schema == null || subDbSource.conf.schema.isEmpty()) {
-							subDbSource.conf.schema = dbName;
+						subDbSource.conf(subDbConf);
+						if (subDbSource.conf().schema() == null || subDbSource.conf().schema().isEmpty()) {
+							subDbSource.conf().schema(dbName);
 						}
-						subDbSource.dataSource = createDataSource(subDbConf);
+						subDbSource.dataSource(createDataSource(subDbConf));
 
 						if (subConfig.hasPath("read")) {
 							DBSource readDbSource = new DBSource();
-							readDbSource.name = dbName;
+							readDbSource.name(dbName);
 							DBConf readDbConf = DBConf.from(subDbConf);
 							read(readDbConf, subConfig.getConfig("read"));
-							readDbSource.conf = readDbConf;
-							if (readDbSource.conf.schema == null || readDbSource.conf.schema.isEmpty()) {
-								readDbSource.conf.schema = dbName;
+							readDbSource.conf(readDbConf);
+							if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
+								readDbSource.conf().schema(dbName);
 							}
-							readDbSource.dataSource = createDataSource(readDbConf);
-							subDbSource.readSource = readDbSource;
+							readDbSource.dataSource(createDataSource(readDbConf));
+							subDbSource.readSource(readDbSource);
 						}
 
-						dbSource.subsDbSourceMap.put(subDbName, subDbSource);
+						dbSource.putSubDBSource(subDbName, subDbSource);
 						end = System.currentTimeMillis();
 						Log.info("success create sub datasource: " + dbName + " (" + (end - start) +"ms)");
 					} catch (Exception ex) {
@@ -553,10 +553,10 @@ public class DBUtil {
 
 		for (DBSource source : dataSources.values()) {
 
-			registerPoolMetrics(source.name, source);
+			registerPoolMetrics(source.name(), source);
 
-			for (Map.Entry<String, DBSource> sub : source.subsDbSourceMap.entrySet()) {
-				registerPoolMetrics("%s.%s".formatted(source.name, sub.getKey()), sub.getValue());
+			for (Map.Entry<String, DBSource> sub : source.subsDbSourceMap().entrySet()) {
+				registerPoolMetrics("%s.%s".formatted(source.name(), sub.getKey()), sub.getValue());
 			}
 
 		}
@@ -571,10 +571,10 @@ public class DBUtil {
 	 */
 	private static void registerPoolMetrics (String name, DBSource source) {
 
-		registerPoolMetrics(name, source.dataSource);
+		registerPoolMetrics(name, source.dataSource());
 
-		if (source.readSource != null) {
-			registerPoolMetrics("%s.read".formatted(name), source.readSource.dataSource);
+		if (source.readSource() != null) {
+			registerPoolMetrics("%s.read".formatted(name), source.readSource().dataSource());
 		}
 
 	}
@@ -655,32 +655,32 @@ public class DBUtil {
 
 		for (DBSource source : dataSources.values()) {
 			try {
-				((HikariDataSource) source.dataSource).close();
+				((HikariDataSource) source.dataSource()).close();
 			} catch (Exception ignore) {}
 			try {
-				((AgroalDataSource) source.dataSource).close();
+				((AgroalDataSource) source.dataSource()).close();
 			} catch (Exception ignore) {}
-			if (source.readSource != null) {
+			if (source.readSource() != null) {
 				try {
-					((HikariDataSource) source.readSource.dataSource).close();
+					((HikariDataSource) source.readSource().dataSource()).close();
 				} catch (Exception ignore) {}
 				try {
-					((AgroalDataSource) source.readSource.dataSource).close();
+					((AgroalDataSource) source.readSource().dataSource()).close();
 				} catch (Exception ignore) {}
 			}
-			for (DBSource sub : source.subsDbSourceMap.values()) {
+			for (DBSource sub : source.subsDbSourceMap().values()) {
 				try {
-					((HikariDataSource) sub.dataSource).close();
+					((HikariDataSource) sub.dataSource()).close();
 				} catch (Exception ignore) {}
 				try {
-					((AgroalDataSource) sub.dataSource).close();
+					((AgroalDataSource) sub.dataSource()).close();
 				} catch (Exception ignore) {}
-				if (sub.readSource != null) {
+				if (sub.readSource() != null) {
 					try {
-						((HikariDataSource) sub.readSource.dataSource).close();
+						((HikariDataSource) sub.readSource().dataSource()).close();
 					} catch (Exception ignore) {}
 					try {
-						((AgroalDataSource) sub.readSource.dataSource).close();
+						((AgroalDataSource) sub.readSource().dataSource()).close();
 					} catch (Exception ignore) {}
 				}
 			}
@@ -706,7 +706,7 @@ public class DBUtil {
 	 */
 	private static DataSource createDataSource (DBConf dbConf) {
 
-		if ("agroal".equalsIgnoreCase(dbConf.connectionPoolType)) {
+		if ("agroal".equalsIgnoreCase(dbConf.connectionPoolType())) {
 			try {
 				return AgroalDataSource.from(new AgroalDataSourceConfigurationSupplier()
 					.dataSourceImplementation(AgroalDataSourceConfiguration.DataSourceImplementation.AGROAL)
@@ -723,54 +723,54 @@ public class DBUtil {
 										cf
 											.autoCommit(true)
 										;
-										if (dbConf.url != null && !dbConf.url.isEmpty()) {
-											cf.jdbcUrl(dbConf.url);
+										if (dbConf.url() != null && !dbConf.url().isEmpty()) {
+											cf.jdbcUrl(dbConf.url());
 										}
-										if (dbConf.driver != null && !dbConf.driver.isEmpty()) {
-											cf.connectionProviderClassName(dbConf.driver);
+										if (dbConf.driver() != null && !dbConf.driver().isEmpty()) {
+											cf.connectionProviderClassName(dbConf.driver());
 										}
-										if (dbConf.user != null && !dbConf.user.isEmpty()) {
-											cf.principal(new NamePrincipal(dbConf.user));
+										if (dbConf.user() != null && !dbConf.user().isEmpty()) {
+											cf.principal(new NamePrincipal(dbConf.user()));
 										}
-										if (dbConf.password != null) {
-											cf.credential(new SimplePassword(dbConf.password));
+										if (dbConf.password() != null) {
+											cf.credential(new SimplePassword(dbConf.password()));
 										}
-										if (dbConf.transactionIsolation != null) {
+										if (dbConf.transactionIsolation() != null) {
 											try {
-												AgroalConnectionFactoryConfiguration.TransactionIsolation transactionIsolation = AgroalConnectionFactoryConfiguration.TransactionIsolation.valueOf(dbConf.transactionIsolation);
+												AgroalConnectionFactoryConfiguration.TransactionIsolation transactionIsolation = AgroalConnectionFactoryConfiguration.TransactionIsolation.valueOf(dbConf.transactionIsolation());
 												cf.jdbcTransactionIsolation(transactionIsolation);
 											} catch (Exception ignore) {}
 										}
-										if (dbConf.connectionTimeout > 0) {
-											cf.loginTimeout(Duration.ofMillis(dbConf.connectionTimeout));
+										if (dbConf.connectionTimeout() > 0) {
+											cf.loginTimeout(Duration.ofMillis(dbConf.connectionTimeout()));
 										}
-										if (dbConf.connectionTestQuery != null && !dbConf.connectionTestQuery.isEmpty()) {
-											cf.initialSql(dbConf.connectionTestQuery);
-										} else if (dbConf.connectionInitSql != null && !dbConf.connectionInitSql.isEmpty()) {
-											cf.initialSql(dbConf.connectionInitSql);
+										if (dbConf.connectionTestQuery() != null && !dbConf.connectionTestQuery().isEmpty()) {
+											cf.initialSql(dbConf.connectionTestQuery());
+										} else if (dbConf.connectionInitSql() != null && !dbConf.connectionInitSql().isEmpty()) {
+											cf.initialSql(dbConf.connectionInitSql());
 										}
 										return cf;
 									}
 								)
 							;
-							if (dbConf.minimumIdle > 0) {
-								cp.minSize(dbConf.minimumIdle);
-								cp.initialSize(dbConf.minimumIdle);
+							if (dbConf.minimumIdle() > 0) {
+								cp.minSize(dbConf.minimumIdle());
+								cp.initialSize(dbConf.minimumIdle());
 							}
-							if (dbConf.maximumPoolSize > 0) {
-								cp.maxSize(dbConf.maximumPoolSize);
+							if (dbConf.maximumPoolSize() > 0) {
+								cp.maxSize(dbConf.maximumPoolSize());
 							}
-							if (dbConf.connectionTimeout > 0) {
-								cp.acquisitionTimeout(Duration.ofMillis(dbConf.connectionTimeout + 1000));
+							if (dbConf.connectionTimeout() > 0) {
+								cp.acquisitionTimeout(Duration.ofMillis(dbConf.connectionTimeout() + 1000));
 							}
-							if (dbConf.keepaliveTime > 0) {
-								cp.idleValidationTimeout(Duration.ofMillis(dbConf.idleTimeout));
+							if (dbConf.keepaliveTime() > 0) {
+								cp.idleValidationTimeout(Duration.ofMillis(dbConf.idleTimeout()));
 							}
-							if (dbConf.idleTimeout > 0) {
-								cp.reapTimeout(Duration.ofMillis(dbConf.idleTimeout));
+							if (dbConf.idleTimeout() > 0) {
+								cp.reapTimeout(Duration.ofMillis(dbConf.idleTimeout()));
 							}
-							if (dbConf.maxLifetime > 0) {
-								cp.maxLifetime(Duration.ofMillis(dbConf.maxLifetime));
+							if (dbConf.maxLifetime() > 0) {
+								cp.maxLifetime(Duration.ofMillis(dbConf.maxLifetime()));
 							}
 							return cp;
 						}
@@ -780,41 +780,41 @@ public class DBUtil {
 		}
 
 		HikariConfig hikariConfig = new HikariConfig();
-		if (dbConf.driver != null && !dbConf.driver.isEmpty()) {
-			hikariConfig.setDriverClassName(dbConf.driver);
+		if (dbConf.driver() != null && !dbConf.driver().isEmpty()) {
+			hikariConfig.setDriverClassName(dbConf.driver());
 		}
-		if (dbConf.url != null && !dbConf.url.isEmpty()) {
-			hikariConfig.setJdbcUrl(dbConf.url);
+		if (dbConf.url() != null && !dbConf.url().isEmpty()) {
+			hikariConfig.setJdbcUrl(dbConf.url());
 		}
-		if (dbConf.user != null && !dbConf.user.isEmpty()) {
-			hikariConfig.setUsername(dbConf.user);
+		if (dbConf.user() != null && !dbConf.user().isEmpty()) {
+			hikariConfig.setUsername(dbConf.user());
 		}
-		if (dbConf.password != null) {
-			hikariConfig.setPassword(dbConf.password);
+		if (dbConf.password() != null) {
+			hikariConfig.setPassword(dbConf.password());
 		}
-		if (dbConf.maximumPoolSize > 0) {
-			hikariConfig.setMaximumPoolSize(dbConf.maximumPoolSize);
+		if (dbConf.maximumPoolSize() > 0) {
+			hikariConfig.setMaximumPoolSize(dbConf.maximumPoolSize());
 		}
-		if (dbConf.minimumIdle > 0) {
-			hikariConfig.setMinimumIdle(dbConf.minimumIdle);
+		if (dbConf.minimumIdle() > 0) {
+			hikariConfig.setMinimumIdle(dbConf.minimumIdle());
 		}
-		if (dbConf.idleTimeout > 0) {
-			hikariConfig.setIdleTimeout(dbConf.idleTimeout);
+		if (dbConf.idleTimeout() > 0) {
+			hikariConfig.setIdleTimeout(dbConf.idleTimeout());
 		}
-		if (dbConf.maxLifetime > 0) {
-			hikariConfig.setMaxLifetime(dbConf.maxLifetime);
+		if (dbConf.maxLifetime() > 0) {
+			hikariConfig.setMaxLifetime(dbConf.maxLifetime());
 		}
-		if (dbConf.connectionTimeout > 0) {
-			hikariConfig.setConnectionTimeout(dbConf.connectionTimeout);
+		if (dbConf.connectionTimeout() > 0) {
+			hikariConfig.setConnectionTimeout(dbConf.connectionTimeout());
 		}
-		if (dbConf.connectionInitSql != null && !dbConf.connectionInitSql.isEmpty()) {
-			hikariConfig.setConnectionInitSql(dbConf.connectionInitSql);
+		if (dbConf.connectionInitSql() != null && !dbConf.connectionInitSql().isEmpty()) {
+			hikariConfig.setConnectionInitSql(dbConf.connectionInitSql());
 		}
-		if (dbConf.connectionTestQuery != null && !dbConf.connectionTestQuery.isEmpty()) {
-			hikariConfig.setConnectionTestQuery(dbConf.connectionTestQuery);
+		if (dbConf.connectionTestQuery() != null && !dbConf.connectionTestQuery().isEmpty()) {
+			hikariConfig.setConnectionTestQuery(dbConf.connectionTestQuery());
 		}
-		if (dbConf.keepaliveTime > 0) {
-			hikariConfig.setKeepaliveTime(dbConf.keepaliveTime);
+		if (dbConf.keepaliveTime() > 0) {
+			hikariConfig.setKeepaliveTime(dbConf.keepaliveTime());
 		}
 
 		return new HikariDataSource(hikariConfig);
@@ -833,40 +833,40 @@ public class DBUtil {
 
 		checkKeys(config);
 
-		dbConf.driver = string(innerConf, config, "driver", dbConf.driver);
-		dbConf.url = string(innerConf, config, "url", dbConf.url);
-		dbConf.user = string(innerConf, config, "username", dbConf.user);
-		dbConf.password = string(innerConf, config, "password", dbConf.password);
+		dbConf.driver(string(innerConf, config, "driver", dbConf.driver()));
+		dbConf.url(string(innerConf, config, "url", dbConf.url()));
+		dbConf.user(string(innerConf, config, "username", dbConf.user()));
+		dbConf.password(string(innerConf, config, "password", dbConf.password()));
 
 		if (has(config, "maximum_pool_size")) {
-			dbConf.maximumPoolSize = innerConf.getInt(spelling(config, "maximum_pool_size"));
+			dbConf.maximumPoolSize(innerConf.getInt(spelling(config, "maximum_pool_size")));
 		}
 		if (has(config, "minimum_idle")) {
-			dbConf.minimumIdle = innerConf.getInt(spelling(config, "minimum_idle"));
+			dbConf.minimumIdle(innerConf.getInt(spelling(config, "minimum_idle")));
 		}
 		if (has(config, "fetch_size")) {
-			dbConf.fetchSize = innerConf.getInt(spelling(config, "fetch_size"));
+			dbConf.fetchSize(innerConf.getInt(spelling(config, "fetch_size")));
 		}
 
-		dbConf.idleTimeout = millis(innerConf, config, "idle_timeout", dbConf.idleTimeout);
-		dbConf.maxLifetime = millis(innerConf, config, "max_lifetime", dbConf.maxLifetime);
-		dbConf.connectionTimeout = millis(innerConf, config, "connection_timeout", dbConf.connectionTimeout);
-		dbConf.keepaliveTime = millis(innerConf, config, "keepalive_time", dbConf.keepaliveTime);
-		dbConf.longConnectionTime = millis(innerConf, config, "long_connection_time", dbConf.longConnectionTime);
+		dbConf.idleTimeout(millis(innerConf, config, "idle_timeout", dbConf.idleTimeout()));
+		dbConf.maxLifetime(millis(innerConf, config, "max_lifetime", dbConf.maxLifetime()));
+		dbConf.connectionTimeout(millis(innerConf, config, "connection_timeout", dbConf.connectionTimeout()));
+		dbConf.keepaliveTime(millis(innerConf, config, "keepalive_time", dbConf.keepaliveTime()));
+		dbConf.longConnectionTime(millis(innerConf, config, "long_connection_time", dbConf.longConnectionTime()));
 
-		dbConf.connectionInitSql = string(innerConf, config, "connection_init_sql", dbConf.connectionInitSql);
-		dbConf.connectionTestQuery = string(innerConf, config, "connection_test_query", dbConf.connectionTestQuery);
-		dbConf.schema = string(innerConf, config, "schema", dbConf.schema);
+		dbConf.connectionInitSql(string(innerConf, config, "connection_init_sql", dbConf.connectionInitSql()));
+		dbConf.connectionTestQuery(string(innerConf, config, "connection_test_query", dbConf.connectionTestQuery()));
+		dbConf.schema(string(innerConf, config, "schema", dbConf.schema()));
 
 		// DB 製品（要件 F-D-30）。書かなければ mysql
-		dbConf.product = string(innerConf, config, io.jimble.db.dialect.Dialects.KEY_PRODUCT, dbConf.product);
+		dbConf.product(string(innerConf, config, io.jimble.db.dialect.Dialects.KEY_PRODUCT, dbConf.product()));
 
-		dbConf.createDatabaseSql = string(innerConf, config, "create_database_sql", dbConf.createDatabaseSql);
-		dbConf.connectionPoolType = string(innerConf, config, "connection_pool_type", dbConf.connectionPoolType);
-		dbConf.transactionIsolation = string(innerConf, config, "transaction_isolation", dbConf.transactionIsolation);
+		dbConf.createDatabaseSql(string(innerConf, config, "create_database_sql", dbConf.createDatabaseSql()));
+		dbConf.connectionPoolType(string(innerConf, config, "connection_pool_type", dbConf.connectionPoolType()));
+		dbConf.transactionIsolation(string(innerConf, config, "transaction_isolation", dbConf.transactionIsolation()));
 
 		if (has(config, "long_connection_log")) {
-			dbConf.longConnectionLog = innerConf.getBoolean(spelling(config, "long_connection_log"));
+			dbConf.longConnectionLog(innerConf.getBoolean(spelling(config, "long_connection_log")));
 		}
 
 	}

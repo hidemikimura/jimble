@@ -118,7 +118,7 @@ public class JsonArrayWriter implements Closeable, AutoCloseable {
 	 */
 	private Configration configration () {
 		Configration configration = new Configration();
-		configration.isAutoClose = false;
+		configration.isAutoClose(false);
 		return configration;
 	}
 

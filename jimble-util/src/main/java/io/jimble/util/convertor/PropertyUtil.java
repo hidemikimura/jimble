@@ -1093,12 +1093,12 @@ public final class PropertyUtil {
 		/**
 		 * コンストラクタ.
 		 */
-		public Constructor<?> constructor;
+		public final Constructor<?> constructor;
 
 		/**
 		 * パラメータ.
 		 */
-		public Object params;
+		public final Object params;
 
 	}
 

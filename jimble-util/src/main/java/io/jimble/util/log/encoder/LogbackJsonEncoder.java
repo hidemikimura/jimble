@@ -73,8 +73,8 @@ public class LogbackJsonEncoder extends EncoderBase<ILoggingEvent> {
 		) {
 
 			Configration configration = new Configration();
-			configration.isOutputUnknown = false;
-			configration.MaxHierarchy = 3;
+			configration.isOutputUnknown(false);
+			configration.maxHierarchy(3);
 
 			Dson.encodes(logData, bos, "UTF-8");
 			bos.write("\n".getBytes(StandardCharsets.UTF_8));

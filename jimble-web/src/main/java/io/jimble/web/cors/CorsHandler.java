@@ -129,8 +129,14 @@ public final class CorsHandler implements Handler {
 		context.response().setResponseHeader("Access-Control-Allow-Headers",
 			StringUtil.concat(", ", cors.anyHeader() ? requestHeaders : cors.allowedHeaders()));
 
-		context.response().setResponseHeader("Access-Control-Allow-Credentials",
-			String.valueOf(cors.allowCredentials()));
+		/*
+		 * <b>false のときは出さない（D-173）。</b>
+		 * 仕様上 {@code false} は「無い」と同じ扱いなので、出す意味が無い。
+		 * 出さないほうが、<b>付いていること自体が「Cookie を許した」印</b>になる。
+		 */
+		if (cors.allowCredentials()) {
+			context.response().setResponseHeader("Access-Control-Allow-Credentials", "true");
+		}
 
 		if (!cors.exposeHeaders().isEmpty()) {
 			context.response().setResponseHeader("Access-Control-Expose-Headers",

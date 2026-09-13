@@ -96,8 +96,8 @@ public class LogbackErrorEncoder extends EncoderBase<ILoggingEvent> {
 			) {
 
 				Configration configration = new Configration();
-				configration.isOutputUnknown = false;
-				configration.MaxHierarchy = 3;
+				configration.isOutputUnknown(false);
+				configration.maxHierarchy(3);
 
 				bos.write(ANSI_RED);
 				Dson.encodes(logData, bos, "UTF-8");

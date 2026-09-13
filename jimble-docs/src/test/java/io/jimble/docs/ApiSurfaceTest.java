@@ -12,8 +12,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -203,6 +206,148 @@ class ApiSurfaceTest {
 			, "1.0 の約束の対象外のはずが [preview] にありません: " + misfiled);
 
 		assertTrue(preview.size() >= 5, "[preview] が読めていない: " + preview.size());
+
+	}
+
+	/**
+	 * 公開パッケージのクラスに、public な可変フィールドが無いこと（D-173）
+	 *
+	 * <p>
+	 * <b>フィールドはアクセサに置き換えられない。</b>{@code @Deprecated} を付けても
+	 * 代替を同名で置けないので、<b>1.0 のあとは検証も、遅延計算も、不変化も、
+	 * 防御的コピーも入れられなくなる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * ここは 9 つの公開型が該当していた（{@code DBConf} 20 本ほか）。
+	 * <b>1つ直すだけでは、次に足された1本で元に戻る</b>ので、数えて見張る。
+	 * </p>
+	 *
+	 * <p>ここで固定していないこと：内部パッケージと preview は見ていない。</p>
+	 */
+	@Test
+	@DisplayName("D-173 公開パッケージに public な可変フィールドが無い")
+	void noPublicMutableFields () throws IOException {
+
+		List<String> found = publicSourceFiles().stream()
+			.flatMap(file -> matchesIn(file, MUTABLE_FIELD).stream())
+			.toList();
+
+		assertTrue(found.isEmpty()
+			, "public な可変フィールドは 1.0 のあと直せません:\n  " + String.join("\n  ", found));
+
+	}
+
+	/**
+	 * 公開パッケージの {@code public static final} が、書き換えられる入れ物でないこと（D-173）
+	 *
+	 * <p>
+	 * <b>{@code final} なのは参照だけである。</b>
+	 * {@code public static final ArrayList} は<b>アプリから {@code clear()} できて、
+	 * 消えるのはプロセス全体で1つの一覧</b>になる（{@code UserAgentInfo.DEVICE_LIST} がそうだった）。
+	 * </p>
+	 */
+	@Test
+	@DisplayName("D-173 公開パッケージの定数が、書き換えられる入れ物でない")
+	void noPublicMutableConstants () throws IOException {
+
+		List<String> found = publicSourceFiles().stream()
+			.flatMap(file -> matchesIn(file, MUTABLE_CONSTANT).stream())
+			.toList();
+
+		assertTrue(found.isEmpty()
+			, "外から書き換えられる定数です（List.of / Map.of / Set.of にしてください）:\n  "
+				+ String.join("\n  ", found));
+
+	}
+
+	/**
+	 * {@code public 型 名前;}（static でも final でもないもの）
+	 *
+	 * <p>メソッドと区別するため、名前のあとが {@code ;} か {@code =} のものだけを見る。</p>
+	 */
+	private static final Pattern MUTABLE_FIELD = Pattern.compile(
+		"^\\s*public\\s+(?!static\\b)(?!final\\b)(?!abstract\\b)(?!class\\b)(?!interface\\b)"
+			+ "(?!enum\\b)(?!record\\b)(?!sealed\\b)(?!non-sealed\\b)(?!default\\b)(?!synchronized\\b)"
+			+ "[\\w.$<>,\\[\\]?\\s]+?\\s+(\\w+)\\s*(=[^;]*)?;\\s*$"
+		, Pattern.MULTILINE);
+
+	/** {@code public static final} で、中身を書き換えられる入れ物 */
+	private static final Pattern MUTABLE_CONSTANT = Pattern.compile(
+		"^\\s*public\\s+static\\s+final\\s+[\\w.<>,\\s]*\\s+(\\w+)\\s*="
+			+ "\\s*new\\s+(?:[\\w]+\\.)*"
+			+ "(ArrayList|LinkedList|HashMap|LinkedHashMap|TreeMap|HashSet|LinkedHashSet|TreeSet|ArrayDeque"
+			+ "|StringBuilder|StringBuffer|AtomicReference|CopyOnWriteArrayList|ConcurrentHashMap)\\b"
+		, Pattern.MULTILINE);
+
+	/**
+	 * 公開パッケージにあるソースファイル
+	 *
+	 * @return	ファイル
+	 * @throws IOException	読めなかった場合
+	 */
+	private static List<Path> publicSourceFiles () throws IOException {
+
+		Path root = projectRoot();
+		Set<String> publics = sectionOf(root.resolve(LIST), "[public]");
+
+		List<Path> files = new ArrayList<>();
+
+		for (String module : MODULES) {
+
+			Path source = root.resolve(module).resolve("src/main/java");
+
+			if (!Files.isDirectory(source)) {
+				continue;
+			}
+
+			try (Stream<Path> paths = Files.walk(source)) {
+
+				paths.filter(Files::isRegularFile)
+					.filter(f -> f.toString().endsWith(".java"))
+					.filter(f -> publics.contains(
+						source.relativize(f).getParent().toString().replace('/', '.').replace('\\', '.')))
+					.forEach(files::add);
+
+			}
+
+		}
+
+		assertFalse(files.isEmpty(), "公開パッケージのソースが1つも読めていない");
+
+		return files;
+
+	}
+
+	/**
+	 * 1つのファイルの中の当たり
+	 *
+	 * @param file		ファイル
+	 * @param pattern	探すもの
+	 * @return	「ファイル:行 中身」の一覧
+	 */
+	private static List<String> matchesIn (Path file, Pattern pattern) {
+
+		List<String> found = new ArrayList<>();
+
+		String text;
+
+		try {
+			text = Files.readString(file, StandardCharsets.UTF_8);
+		} catch (IOException ex) {
+			throw new AssertionError("読めませんでした: " + file, ex);
+		}
+
+		Matcher matcher = pattern.matcher(text);
+
+		while (matcher.find()) {
+
+			int line = (int) text.substring(0, matcher.start()).chars().filter(c -> c == '\n').count() + 1;
+			found.add(file.getFileName() + ":" + line + "  " + matcher.group().trim());
+
+		}
+
+		return found;
 
 	}
 

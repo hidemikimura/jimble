@@ -46,10 +46,10 @@ public class BeanConvertor<E> implements IConvertor<E> {
 
 		int hash = System.identityHashCode(obj);
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			return null;
 		}
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		/** 変換処理. */
 
@@ -60,7 +60,7 @@ public class BeanConvertor<E> implements IConvertor<E> {
 			Map<?, ?> map = (Map<?, ?>) obj;
 			for (Object k : map.keySet()) {
 				Object v = map.get(k);
-				if (conf.isOutputNullValue || v != null) {
+				if (conf.isOutputNullValue() || v != null) {
 					PropertyUtil.setProperty(conf, res, PropertyUtil.createFieldName(PropertyUtil.toString(k), conf), v);
 				}
 			}
@@ -85,7 +85,7 @@ public class BeanConvertor<E> implements IConvertor<E> {
 
 				for (PropertyUtil.MethodFieldInfo info : names) {
 					Object v = info.getProperty(obj);
-					if (conf.isOutputNullValue || v != null) {
+					if (conf.isOutputNullValue() || v != null) {
 						PropertyUtil.setProperty(conf, res, info.getFieldName(), v);
 					}
 				}
@@ -95,8 +95,8 @@ public class BeanConvertor<E> implements IConvertor<E> {
 
 		/** 循環参照後処理. */
 
-		conf.Hierarchy--;
-		conf.hashSet.remove(hash);
+		conf.hierarchy(conf.hierarchy() - 1);
+		conf.hashSet().remove(hash);
 
 		return (E) res;
 	}

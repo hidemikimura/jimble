@@ -440,6 +440,16 @@ public final class Conf {
 	/**
 	 * 生の設定
 	 *
+	 * <p>
+	 * <b>{@code com.typesafe.config.Config} がここに出るのは決めごとである（D-173）。</b>
+	 * helidon は {@code RequestSource} / {@code ResponseSink} で完全に隠しているのに、
+	 * ここだけ依存の型が出ているのは、<b>設定の書式（HOCON）そのものが公開の約束</b>
+	 * だからである——{@code application.conf} の文法も、{@code include} も、
+	 * 置換（{@code ${...}}）も、typesafe-config のものをそのまま説明している。
+	 * だから {@code jimble-util} は typesafe-config を {@code api} で持っている。
+	 * <b>隠すなら書式ごと差し替えることになる</b>ので、1.0 ではこのままにする。
+	 * </p>
+	 *
 	 * @return	設定
 	 */
 	public Config config () {

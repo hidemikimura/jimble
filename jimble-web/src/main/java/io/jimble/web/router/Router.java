@@ -376,6 +376,27 @@ public final class Router {
 	}
 
 	/**
+	 * HEAD（Executor 版）
+	 *
+	 * <p>
+	 * <b>1.0 の前に足しておく（D-173）。</b>あとから足すと、
+	 * すでに書かれた {@code head(path, X::new)} が<b>どちらの版か決まらなくなる</b>
+	 * （曖昧参照でコンパイルが通らない）。
+	 * </p>
+	 *
+	 * @param path		パス
+	 * @param suppliers	Executor生成（登録順に実行される）
+	 * @return	ルート
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")	// 配列は List にコピーするだけで外に漏らさない
+	public final Route head (String path, Supplier<Executor<WebContext>>... suppliers) {
+
+		return route(HttpMethods.HEAD, path, List.of(suppliers));
+
+	}
+
+	/**
 	 * OPTIONS
 	 *
 	 * @param path		パス
@@ -389,6 +410,27 @@ public final class Router {
 	}
 
 	/**
+	 * OPTIONS（Executor 版）
+	 *
+	 * <p>
+	 * <b>1.0 の前に足しておく（D-173）。</b>あとから足すと、
+	 * すでに書かれた {@code options(path, X::new)} が<b>どちらの版か決まらなくなる</b>
+	 * （曖昧参照でコンパイルが通らない）。
+	 * </p>
+	 *
+	 * @param path		パス
+	 * @param suppliers	Executor生成（登録順に実行される）
+	 * @return	ルート
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")	// 配列は List にコピーするだけで外に漏らさない
+	public final Route options (String path, Supplier<Executor<WebContext>>... suppliers) {
+
+		return route(HttpMethods.OPTIONS, path, List.of(suppliers));
+
+	}
+
+	/**
 	 * TRACE
 	 *
 	 * @param path		パス
@@ -398,6 +440,27 @@ public final class Router {
 	public Route trace (String path, Handler handler) {
 
 		return route(HttpMethods.TRACE, path, handler);
+
+	}
+
+	/**
+	 * TRACE（Executor 版）
+	 *
+	 * <p>
+	 * <b>1.0 の前に足しておく（D-173）。</b>あとから足すと、
+	 * すでに書かれた {@code trace(path, X::new)} が<b>どちらの版か決まらなくなる</b>
+	 * （曖昧参照でコンパイルが通らない）。
+	 * </p>
+	 *
+	 * @param path		パス
+	 * @param suppliers	Executor生成（登録順に実行される）
+	 * @return	ルート
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")	// 配列は List にコピーするだけで外に漏らさない
+	public final Route trace (String path, Supplier<Executor<WebContext>>... suppliers) {
+
+		return route(HttpMethods.TRACE, path, List.of(suppliers));
 
 	}
 
@@ -416,6 +479,33 @@ public final class Router {
 
 		for (String method : HttpMethods.ALL) {
 			result.add(route(method, path, handler));
+		}
+
+		return result;
+
+	}
+
+	/**
+	 * 全メソッドに一括登録する（Executor 版）
+	 *
+	 * <p>
+	 * <b>1.0 の前に足しておく（D-173）。</b>あとから足すと、
+	 * すでに書かれた {@code any(path, X::new)} が<b>どちらの版か決まらなくなる</b>
+	 * （曖昧参照でコンパイルが通らない）。
+	 * </p>
+	 *
+	 * @param path		パス
+	 * @param suppliers	Executor生成（登録順に実行される）
+	 * @return	登録されたルート
+	 */
+	@SafeVarargs
+	@SuppressWarnings("varargs")	// 配列は List にコピーするだけで外に漏らさない
+	public final List<Route> any (String path, Supplier<Executor<WebContext>>... suppliers) {
+
+		List<Route> result = new ArrayList<>();
+
+		for (String method : HttpMethods.ALL) {
+			result.add(route(method, path, List.of(suppliers)));
 		}
 
 		return result;
@@ -508,6 +598,8 @@ public final class Router {
 
 		checkDuplicateAttributeNames();
 
+		checkWebSocketBefore();
+
 		/*
 		 * 引くための表を作る（要件 D-168）。
 		 *
@@ -529,6 +621,63 @@ public final class Router {
 		if (RouterConf.ignoreCase()) {
 			rootTree.indexIgnoreCase("");
 		}
+
+	}
+
+	/**
+	 * WebSocket のルートが {@code before} の中に居ないかを見る（D-173）
+	 *
+	 * <p>
+	 * <b>{@code before} は WebSocket には効かない。</b>
+	 * アップグレードは helidon が先に横取りするので、{@code Dispatcher} を通らない——
+	 * つまり {@code before(App::requireAuth)} で囲っても、
+	 * <b>その中の {@code ws()} は無認証で繋がる</b>。例外も警告も出ない。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>効かないものを黙って置かせない。</b>起動のときに1行出して、
+	 * 認証は {@code WsHandler.onUpgrade} に書くよう案内する——
+	 * あそこは Cookie が読める唯一の場所で、断れば 403 になる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>落としはしない。</b>CORS のようにアプリ全体へ掛けた {@code before} は、
+	 * WebSocket に効かなくても正しい構成である。
+	 * </p>
+	 */
+	private void checkWebSocketBefore () {
+
+		List<String> guarded = new ArrayList<>();
+
+		rootTree.forEachRoute(route -> {
+
+			if (!io.jimble.web.ws.WsRoutes.METHOD.equals(route.method())) {
+				return;
+			}
+
+			if (!route.beforeHooks().isEmpty()) {
+				guarded.add(route.pattern());
+			}
+
+		});
+
+		if (guarded.isEmpty()) {
+			return;
+		}
+
+		/*
+		 * <b>落とさずに言う。</b>CORS のようにアプリ全体へ掛けた before は、
+		 * WebSocket に効かなくても正しい構成である——
+		 * <b>落とすと、まっとうなアプリが起動しなくなる</b>。
+		 * 危ないのは「効くと思って書いた認証」のほうなので、
+		 * <b>名指しで1行出して、判断は書いた人に返す</b>。
+		 */
+		Log.warn("""
+			before の中に WebSocket のルートがあります: %s
+			before は WebSocket には効きません（アップグレードは helidon が先に受け取るので Dispatcher を通りません）。
+			認証を掛けたつもりなら、WsHandler.onUpgrade に書いてください——\
+			Cookie が読めるのはそこだけで、false を返すと 403 になります。"""
+			.formatted(String.join(", ", guarded)));
 
 	}
 

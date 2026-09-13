@@ -50,8 +50,17 @@ public class Log {
 	 * <b>上位モジュールが登録する。</b>操作情報など、Web 固有の項目はこれで足す。
 	 * これにより jimble-util が Web を知らずに済む。
 	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code @FunctionalInterface} ではない（D-173）。</b>
+	 * かつては {@link #value()} に既定（{@code null}）があったので
+	 * <b>SAM は {@code name()} のほうだった</b>——つまり
+	 * {@code Log.addFieldProvider(() -> "user_id")} がそのまま通り、
+	 * <b>値が永久に付かない項目</b>が登録できた。
+	 * コンパイルも通るし、例外も出ない。出ないのは項目のほうである。
+	 * 両方を実装させることで、この書き方はコンパイルエラーになる。
+	 * </p>
 	 */
-	@FunctionalInterface
 	public interface FieldProvider {
 
 		/**
@@ -66,11 +75,7 @@ public class Log {
 		 *
 		 * @return	値。null なら出力しない
 		 */
-		default Object value () {
-
-			return null;
-
-		}
+		Object value ();
 
 	}
 

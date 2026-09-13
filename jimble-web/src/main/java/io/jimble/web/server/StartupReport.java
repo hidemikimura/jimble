@@ -8,6 +8,8 @@ import io.jimble.db.redis.RedisClient;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.hash.PasswordUtil;
 import io.jimble.util.data.Data;
+import io.jimble.web.auth.mfa.Mfa;
+import io.jimble.web.auth.mfa.MfaConf;
 import io.jimble.util.log.Log;
 import io.jimble.web.cookie.CookieConf;
 import io.jimble.web.session.SessionConf;
@@ -164,7 +166,7 @@ public final class StartupReport {
 
 		try {
 			for (DBSource dbSource : DBUtil.getDataSourceList()) {
-				names.add(dbSource.name);
+				names.add(dbSource.name());
 			}
 		} catch (Exception ignore) {
 			// DB 未設定。それ自体は異常ではない
@@ -186,6 +188,8 @@ public final class StartupReport {
 
 		warnMissingSecrets();
 
+		warnMfaDisabledWithEnrollments();
+
 		if (RedisClient.isConfigured()) {
 			return;
 		}
@@ -201,6 +205,35 @@ public final class StartupReport {
 		if ("redis".equalsIgnoreCase(SessionConf.store())) {
 			Log.warn("session.store = redis ですが Redis が設定されていません。セッションを使うと失敗します");
 		}
+
+	}
+
+	/**
+	 * 二要素認証を切ったのに、登録済みの人が残っていることを言う（D-173）
+	 *
+	 * <p>
+	 * <b>{@code auth.mfa.enabled = false} は、登録済みの人も含めて全員を素通しにする。</b>
+	 * 推奨の書き方は {@code if (Mfa.isActive(id)) { ... } Auth.login(...);} なので、
+	 * {@code isActive} が false を返すと<b>アプリはそのままログインさせる</b>——
+	 * 「一時的に止める」つもりの1行で、<b>二要素を登録した全員がパスワードだけで入れる</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>起動を止めはしない。</b>本当に止めたい場面はあるし、
+	 * 止めると「戻せない」ほうが困る。<b>人数を出して、知らずに落ちないようにする</b>。
+	 * </p>
+	 */
+	private static void warnMfaDisabledWithEnrollments () {
+
+		long enrolled = Mfa.disabledWithEnrollments();
+
+		if (enrolled <= 0) {
+			return;
+		}
+
+		Log.warn(("%s = false ですが、二要素認証を登録している利用者が %d 人います。"
+			+ "この設定のあいだ、その %d 人はパスワードだけでログインできます")
+			.formatted(MfaConf.KEY_ENABLED, enrolled, enrolled));
 
 	}
 

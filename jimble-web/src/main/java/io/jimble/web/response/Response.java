@@ -30,7 +30,7 @@ import java.util.Map;
 /**
  * レスポンス情報
  */
-public class Response extends Data {
+public final class Response extends Data {
 
 	/* Context */
 	private final WebContext context;
@@ -870,23 +870,32 @@ public class Response extends Data {
 	public static final String ERROR_KEY = "error";
 
 	/**
-	 * 何も組み立てられていないか
+	 * 本文が1つでも組み立てられているか
 	 *
-	 * <p>ハンドラが本文を1つも用意していないときだけ true。</p>
+	 * <p>ハンドラが本文を1つでも用意していれば true。</p>
 	 *
-	 * @return	空なら true
+	 * <p>
+	 * <b>{@code isEmpty()} という名前にしないこと（D-173）。</b>
+	 * {@code Response} は {@link Data}（→ {@code LinkedHashMap}）を継いでいるので、
+	 * その名前は {@code Map#isEmpty()} を<b>意図せず上書きする</b>。
+	 * 上書きすると {@link Data#summary()} が早期 return して、
+	 * <b>{@code put(...)} で積んだ中身がログから丸ごと消える</b>——
+	 * 「本文がまだ無い」と「マップが空」は別のことである。
+	 * </p>
+	 *
+	 * @return	本文があれば true
 	 */
-	public boolean isEmpty () {
+	public boolean hasBody () {
 
-		return !isResponseJson
-			&& !isResponseJsonL
-			&& responseText == null
-			&& modelAndViewResponse == null
-			&& redirectResponse == null
-			&& downloadFileResponse == null
-			&& fileResponse == null
-			&& streamResponse == null
-			&& cacheResponse == null;
+		return isResponseJson
+			|| isResponseJsonL
+			|| responseText != null
+			|| modelAndViewResponse != null
+			|| redirectResponse != null
+			|| downloadFileResponse != null
+			|| fileResponse != null
+			|| streamResponse != null
+			|| cacheResponse != null;
 
 	}
 
@@ -916,7 +925,7 @@ public class Response extends Data {
 	 */
 	public void errorBody (int statusCode, String reason) {
 
-		if (!isEmpty()) {
+		if (hasBody()) {
 			return;
 		}
 
@@ -951,12 +960,19 @@ public class Response extends Data {
 	/**
 	 * レスポンス送信
 	 *
-	 * @return  レスポンスに応じたオブジェクト
+	 * <p>
+	 * <b>戻り値は自分自身である（D-173）。</b>引数ありの {@code send(...)} 13 個が
+	 * すべて {@code Response} を返すのに、ここだけ {@code Object} の {@code null} を返していた——
+	 * <b>引数無しのときだけ連鎖が切れる</b>形だった。戻り値の型はメソッド記述子の一部なので、
+	 * <b>1.0 のあとは 2.0 まで直せない</b>。
+	 * </p>
+	 *
+	 * @return  自分自身
 	 */
-	public Object send () {
+	public Response send () {
 
 		if (sink.isSent()) {
-			return null;
+			return this;
 		}
 
 		flushCookies();
@@ -968,19 +984,19 @@ public class Response extends Data {
 		// JSONレスポンス
 		if (isResponseJson) {
 			send(this);
-			return null;
+			return this;
 		}
 
 		// JSONLレスポンス
 		if (isResponseJsonL) {
 			send(responseJsonL);
-			return null;
+			return this;
 		}
 
 		// 文字列レスポンス
 		if (responseText != null) {
 			send(responseText);
-			return null;
+			return this;
 		}
 
 		// キャッシュレスポンス
@@ -1000,7 +1016,7 @@ public class Response extends Data {
 			} else {
 				send(500);
 			}
-			return null;
+			return this;
 		}
 
 		// ModelAndViewレスポンス
@@ -1008,10 +1024,10 @@ public class Response extends Data {
 			// JSONレスポンスを要求されている場合はデータだけ返す（移送元と同じ）
 			if (request.acceptJson()) {
 				send(this);
-				return null;
+				return this;
 			}
 			sendView(modelAndViewResponse);
-			return null;
+			return this;
 		}
 
 		// リダイレクトレスポンス
@@ -1019,7 +1035,7 @@ public class Response extends Data {
 			flushCookies();
 			sink.redirect(redirectResponse);
 			afterResponse();
-			return null;
+			return this;
 		}
 
 		// ダウンロードFileレスポンス
@@ -1028,13 +1044,13 @@ public class Response extends Data {
 				flushCookies();
 				sink.sendFile(downloadFileResponse.toPath(), downloadFileName);
 				afterResponse();
-				return null;
+				return this;
 			} catch (Exception ex) {
 				Log.error(ex, request, this);
 				this.responseCode = 500;
 				sink.status(500); sink.send();
 				afterResponse();
-				return null;
+				return this;
 			}
 		}
 
@@ -1044,13 +1060,13 @@ public class Response extends Data {
 				fileContentType = FileUtil.getFileContentType(fileResponse);
 			}
 			send(fileResponse, fileContentType);
-			return null;
+			return this;
 		}
 
 		// ストリームレスポンス
 		if (streamResponse != null) {
 			send(streamResponse, streamContentType, streamContentLength);
-			return null;
+			return this;
 		}
 
 		// レスポンスなし
@@ -1067,7 +1083,7 @@ public class Response extends Data {
 			sink.status(204); sink.send();
 			afterResponse();
 		}
-		return null;
+		return this;
 
 	}
 
@@ -1395,8 +1411,8 @@ public class Response extends Data {
 			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
 		) {
 			Configration configration = new Configration();
-			configration.isAutoClose = true;
-			configration.tableNest = tableNest;
+			configration.isAutoClose(true);
+			configration.tableNest(tableNest);
 			json.outputJsonString(bos, configration);
 		} catch (Exception ex) {
 			Log.error(ex, request, this);
@@ -1448,8 +1464,8 @@ public class Response extends Data {
 				 * <b>使い回すと2行目以降で組み立てが変わりうる</b>。
 				 */
 				Configration configration = new Configration();
-				configration.isAutoClose = false;
-				configration.tableNest = tableNest;
+				configration.isAutoClose(false);
+				configration.tableNest(tableNest);
 
 				json.outputJsonString(bos, configration);
 			}

@@ -268,7 +268,7 @@ class ChunkBatchIntegrationTest {
 		db.execute("TRUNCATE TABLE chunk_src");
 		db.execute("TRUNCATE TABLE chunk_dst");
 
-		BatchExecutor.allReleaseNotStart();
+		BatchExecutor.releaseAll();
 		BatchRegistry.clear();
 
 		failAtChunk = 0;

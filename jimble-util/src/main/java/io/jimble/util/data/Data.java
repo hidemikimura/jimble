@@ -1934,20 +1934,23 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * String型で値を取得する
+	 * String 型で値を取得する（無ければ空文字）
+	 *
+	 * <p>
+	 * <b>読むだけである（D-173）。</b>かつては無かったときに {@code put(key, "")} していた——
+	 * <b>1回読んだだけで、その {@code Data} の JSON に空のキーが増える</b>。
+	 * リクエストのボディをログに出す、レスポンスをそのまま返す、
+	 * ハッシュを取って比べる——<b>どれも「読んだかどうか」で結果が変わっていた</b>。
+	 * </p>
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（無ければ空文字）
 	 */
 	public String getStringOptional (String key) {
 
 		String res = getString(key);
-		if (res == null) {
-			put(key, "");
-			return "";
-		}
 
-		return res;
+		return res == null ? "" : res;
 
 	}
 
@@ -2258,8 +2261,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	public String getJsonString (boolean isPrettyPrint, TableNest tableNest) {
 
 		Configration configration = new Configration();
-		configration.isOutputIndent = isPrettyPrint;
-		configration.tableNest = tableNest == null ? TableNest.AS_IS : tableNest;
+		configration.isOutputIndent(isPrettyPrint);
+		configration.tableNest(tableNest == null ? TableNest.AS_IS : tableNest);
 
 		String res = Dson.encodes(configration, this);
 		if (res == null || res.isEmpty()) {
@@ -2290,7 +2293,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public void outputJsonString (OutputStream outputStream, boolean isAutoClose) {
 
 		Configration configration = new Configration();
-		configration.isAutoClose = isAutoClose;
+		configration.isAutoClose(isAutoClose);
 		Dson.encodes(configration, this, outputStream, "UTF-8");
 
 	}
@@ -2327,7 +2330,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public void outputJsonString (Writer outputStream, boolean isAutoClose) {
 
 		Configration configration = new Configration();
-		configration.isAutoClose = isAutoClose;
+		configration.isAutoClose(isAutoClose);
 		Dson.encodes(configration, this, outputStream);
 
 	}

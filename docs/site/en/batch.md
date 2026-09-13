@@ -71,7 +71,7 @@ for (Data row : rows) {
 > [!TRAP]
 > **Up to 0.6.0 `BatchContext.isCancelOrdered()` was always false.** The cancel decision
 > lived on `AbstractBatch` and nothing was wired to the context. No exception, no warning —
-> **you find out when you press cancel in production** (wired up in 0.6.1).
+> **you find out when you press cancel in production** (wired up in 1.0).
 
 ## Reading a batch of rows at a time
 

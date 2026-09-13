@@ -7,26 +7,31 @@ order: 5
 
 # Versions and compatibility
 
-## We are on 0.x
+## We are on 1.0
 
-**While we are on 0.x, a minor release can break things.**
-[Semantic Versioning](https://semver.org/) says so itself — below 1.0 nothing is promised —
-and jimble takes it at its word.
+**Breaking a public API is preceded by a deprecation period of at least one minor.**
+jimble follows [Semantic Versioning](https://semver.org/) at its word.
 
-**From 1.0, breaking a public API is preceded by a deprecation period of at least one minor.**
-
-| | 0.x (now) | 1.0 onwards |
+| | 0.x (up to 0.6) | 1.0 onwards (now) |
 | --- | --- | --- |
-| Breaking a public API | **Can happen in a minor** | Deprecated for at least one minor, then removed in the next major |
+| Breaking a public API | Could happen in a minor | **Deprecated for at least one minor, then removed in the next major** |
 | Changing internals | Any time | Any time |
-| Writing it in the CHANGELOG | **Always** | Always |
+| Writing it in the CHANGELOG | Always | Always |
 
 > [!NOTE]
-> **Even on 0.x, nothing breaks silently.**
-> What is not promised is that things will not break — not that you will not be told.
-> Anything that can break you goes in the **"変わったこと（挙動）" (behaviour changes)**
-> section of the [CHANGELOG](https://github.com/hidemikimura/jimble/blob/main/CHANGELOG.md).
-> Reading that section alone is enough before you upgrade.
+> **Nothing breaks silently.**
+> Anything that can break you goes in the **"上げる前に見るところ" (read before upgrading)**
+> and **"変わったこと（挙動）" (behaviour changes)** sections of the
+> [CHANGELOG](https://github.com/hidemikimura/jimble/blob/main/CHANGELOG.md).
+> Reading those alone is enough before you upgrade.
+
+> [!TRAP]
+> **A promise starting also means some things can no longer be fixed.**
+> Return types, record components, public fields, abstract methods on an `interface`, `final` —
+> **a deprecation period saves none of them** (you cannot keep the old one and add the new one
+> under the same name).
+> Before 1.0 we read through all 103 public packages and 4,514 signatures and dealt with them
+> ([docs/design-1.0.md](https://github.com/hidemikimura/jimble/blob/main/docs/design-1.0.md)).
 
 ## What counts as public API
 

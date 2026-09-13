@@ -41,7 +41,7 @@ public class MapFormatter implements IFormatter {
 			hash = System.identityHashCode(obj);
 		}
 
-		if (!conf.hashSet.add(hash)) {
+		if (!conf.hashSet().add(hash)) {
 			writer.write("{}", 0, 2);
 			return;
 		}
@@ -49,7 +49,7 @@ public class MapFormatter implements IFormatter {
 		/** 出力処理. */
 
 		boolean isOutput = false;
-		conf.Hierarchy++;
+		conf.hierarchy(conf.hierarchy() + 1);
 
 		writer.write('{');
 
@@ -62,8 +62,8 @@ public class MapFormatter implements IFormatter {
 		 * 組み直した Data は呼ばれるたびに別のインスタンスになるので、
 		 * ここで取り直すと同じノードを2度書き出してしまう。
 		 */
-		if (obj instanceof AsyncData asyncData && conf.tableNest != TableNest.AS_IS) {
-			map = asyncData.reshape(conf.tableNest);
+		if (obj instanceof AsyncData asyncData && conf.tableNest() != TableNest.AS_IS) {
+			map = asyncData.reshape(conf.tableNest());
 		}
 
 		IFormatter lastFormatter = null;
@@ -77,7 +77,7 @@ public class MapFormatter implements IFormatter {
 			}
 			Object v = entry.getValue();
 
-			if (conf.isOutputNullValue || v != null) {
+			if (conf.isOutputNullValue() || v != null) {
 
 				if (isOutput) {
 					writer.write(',');
@@ -106,7 +106,7 @@ public class MapFormatter implements IFormatter {
 
 		}
 
-		conf.Hierarchy--;
+		conf.hierarchy(conf.hierarchy() - 1);
 
 		if (isOutput) {
 			writer.writeln(conf);
@@ -116,7 +116,7 @@ public class MapFormatter implements IFormatter {
 
 		/** 循環参照後処理. */
 
-		conf.hashSet.remove(hash);
+		conf.hashSet().remove(hash);
 
 	}
 

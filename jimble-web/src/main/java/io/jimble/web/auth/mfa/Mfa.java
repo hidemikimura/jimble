@@ -212,7 +212,62 @@ public final class Mfa {
 	}
 
 	/**
+	 * 設定で切っているのに、登録済みの人が残っている数（D-173）
+	 *
+	 * <p>
+	 * <b>{@code auth.mfa.enabled = false} にすると、登録済みの二要素認証が黙って外れる。</b>
+	 * 運用が「一時的に止める」つもりで書くと、
+	 * <b>登録済みの全員がパスワードだけで入れる状態</b>になる——警告も出ない。
+	 * </p>
+	 *
+	 * <p>起動のときに1度だけ数えて、人数を出すために在る。</p>
+	 *
+	 * @return	人数。切っていない・DB が無い・数えられないときは 0
+	 */
+	public static long disabledWithEnrollments () {
+
+		if (MfaConf.enabled() || !DBUtil.isUseDB()) {
+			return 0;
+		}
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			/*
+			 * <b>表を作りには行かない。</b>切っている設定で {@code install()} を走らせると、
+			 * 使わない表が生える。無ければ 0 でよい（select が落ちる）。
+			 */
+			Data row = db.select("SELECT COUNT(*) AS cnt FROM %s WHERE activated_at > 0"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)));
+
+			return row == null ? 0 : row.getLong("cnt");
+
+		} catch (Exception ex) {
+
+			// 数えられないだけなので、起動は止めない
+			Log.debug("二要素認証の登録数を数えられませんでした: " + ex.getMessage());
+			return 0;
+
+		}
+
+	}
+
+	/**
 	 * 有効になっているか
+	 *
+	 * <p>
+	 * <b>設定で切っていれば false を返す。</b>推奨の書き方
+	 * （{@code if (Mfa.isActive(id)) { Mfa.pending(...); return; } Auth.login(...);}）は、
+	 * false なら<b>そのままログインさせる</b>——つまり
+	 * <b>{@code auth.mfa.enabled = false} は、登録済みの人も含めて全員を素通しにする</b>。
+	 * それが分かるように、起動のときに人数を出す（{@link #disabledWithEnrollments()}）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code verify} / {@code enroll} は同じ設定で例外に倒れる。</b>
+	 * 「使えない」を2つの違う形で表しているが、
+	 * <b>ここで例外にすると「2要素を使っていないアプリ」が動かなくなる</b>ので、
+	 * 1.0 ではこの形のままにする（D-173）。
+	 * </p>
 	 *
 	 * @param userId	利用者 ID
 	 * @return	有効な場合 = true

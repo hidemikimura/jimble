@@ -9,7 +9,7 @@ import io.jimble.util.conf.Conf;
 import io.helidon.webserver.WebServerConfig;
 import io.helidon.webserver.websocket.WsRouting;
 import io.jimble.util.log.Log;
-import io.jimble.web.ws.WsBridge;
+import io.jimble.web.internal.ws.WsBridge;
 import io.jimble.web.cookie.CookieConf;
 import io.jimble.web.upload.UploadConf;
 import io.jimble.web.context.WebContext;

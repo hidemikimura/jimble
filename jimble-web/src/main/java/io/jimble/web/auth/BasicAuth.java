@@ -48,7 +48,15 @@ public final class BasicAuth implements Handler {
 	/** ヘッダの接頭辞 */
 	public static final String PREFIX = "Basic ";
 
-	/** セッションに覚えるキー */
+	/**
+	 * セッションに覚えるキーの接頭辞
+	 *
+	 * <p>
+	 * <b>実際のキーは realm ごとに分かれる（D-173）。</b>
+	 * かつては全部この1本だったので、<b>{@code /ops} を通ると {@code /metrics} も素通り</b>した——
+	 * 別の利用者・別の realm で守っているつもりのところが、1回の認証で開く。
+	 * </p>
+	 */
 	public static final String SESSION_KEY = "__basic_auth";
 
 	/** 既定の realm */
@@ -59,6 +67,9 @@ public final class BasicAuth implements Handler {
 
 	/* realm */
 	private final String realm;
+
+	/* セッションに覚えるキー（realm ごとに分ける。D-173） */
+	private final String sessionKey;
 
 	/**
 	 * 照合
@@ -86,8 +97,22 @@ public final class BasicAuth implements Handler {
 	 */
 	private BasicAuth (Verifier verifier, String realm) {
 
+		if (realm == null || realm.isBlank()) {
+			throw new IllegalArgumentException("realm が空です");
+		}
+
+		/*
+		 * <b>realm はヘッダにそのまま入る。</b>引用符が混ざると
+		 * {@code WWW-Authenticate} の値が途中で切れて、
+		 * ブラウザが別の realm として扱う。
+		 */
+		if (realm.indexOf('"') >= 0 || realm.indexOf('\\') >= 0) {
+			throw new IllegalArgumentException("realm に \" と \\ は使えません: " + realm);
+		}
+
 		this.verifier = verifier;
 		this.realm = realm;
+		this.sessionKey = SESSION_KEY + ":" + realm;
 
 	}
 
@@ -144,8 +169,13 @@ public final class BasicAuth implements Handler {
 	@Override
 	public void handle (WebContext context) {
 
-		// 認証済みならそのまま通す（セッションを使っていない構成では毎回照合する）
-		if (!context.session().get(SESSION_KEY).isEmpty()) {
+		/*
+		 * 認証済みならそのまま通す（セッションを使っていない構成では毎回照合する）。
+		 *
+		 * <b>キーは realm ごとである（D-173）。</b>1本にすると、
+		 * <b>片方を通ったらもう片方も開く</b>。
+		 */
+		if (!context.session().get(sessionKey).isEmpty()) {
 			return;
 		}
 
@@ -156,7 +186,7 @@ public final class BasicAuth implements Handler {
 			String[] credentials = decode(header.substring(PREFIX.length()).trim());
 
 			if (credentials != null && verifier.verify(context, credentials[0], credentials[1])) {
-				context.session().put(SESSION_KEY, "1");
+				context.session().put(sessionKey, "1");
 				context.session().save();
 				return;
 			}

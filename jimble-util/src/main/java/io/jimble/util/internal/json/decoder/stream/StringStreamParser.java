@@ -107,11 +107,11 @@ public class StringStreamParser implements IStreamParser {
 
 		String s = sb.toString();
 
-		if (conf != null && conf.isOutputDateType && s.startsWith("date::")) {
+		if (conf != null && conf.isOutputDateType() && s.startsWith("date::")) {
 			s = s.substring(6);
-			if (conf.outputDateTypeFormat != null) {
+			if (conf.outputDateTypeFormat() != null) {
 				try {
-					LocalDateTime d = LocalDateTime.parse(s, conf.outputDateTypeFormat);
+					LocalDateTime d = LocalDateTime.parse(s, conf.outputDateTypeFormat());
 					Calendar calendar = Calendar.getInstance();
 					calendar.set(Calendar.YEAR, d.getYear());
 					calendar.set(Calendar.MONTH, d.getMonth().ordinal());

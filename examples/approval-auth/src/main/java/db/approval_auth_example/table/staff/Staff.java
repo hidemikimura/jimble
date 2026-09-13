@@ -17,23 +17,26 @@ import java.util.List;
  */
 public class Staff extends Table {
 
+	/* このテーブルの実体（1つだけ作る） */
+	private static final Staff INSTANCE = new Staff(new ApprovalAuthExample(), "staff");
+
 	/* 社員ID */
-	public static final Column id = new Column(instance(), "id", long.class, false, null, true);
+	public static final Column id = new Column(INSTANCE, "id", long.class, false, null, true);
 
 	/* ログインID */
-	public static final Column login_id = new Column(instance(), "login_id", java.lang.String.class, false, null, false);
+	public static final Column login_id = new Column(INSTANCE, "login_id", java.lang.String.class, false, null, false);
 
 	/* パスワード（ハッシュ済み） */
-	public static final Column password_hash = new Column(instance(), "password_hash", java.lang.String.class, false, null, false);
+	public static final Column password_hash = new Column(INSTANCE, "password_hash", java.lang.String.class, false, null, false);
 
 	/* 氏名 */
-	public static final Column name = new Column(instance(), "name", java.lang.String.class, false, null, false);
+	public static final Column name = new Column(INSTANCE, "name", java.lang.String.class, false, null, false);
 
 	/* 役割（member / approver） */
-	public static final Column role = new Column(instance(), "role", java.lang.String.class, false, null, false);
+	public static final Column role = new Column(INSTANCE, "role", java.lang.String.class, false, null, false);
 
 	/* 作成日時 */
-	public static final Column created_at = new Column(instance(), "created_at", java.util.Date.class, false, null, false);
+	public static final Column created_at = new Column(INSTANCE, "created_at", java.util.Date.class, false, null, false);
 
 
 	/* 列一覧（生成時に確定。実行時のリフレクションはしない） */
@@ -60,6 +63,6 @@ public class Staff extends Table {
 
 	public Staff (ISchema schema, String name) { super(schema, name); }
 
-	public static Staff instance () { return new Staff(new ApprovalAuthExample(), "staff"); }
+	public static Staff instance () { return INSTANCE; }
 
 }

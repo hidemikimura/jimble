@@ -96,10 +96,10 @@ public class OutputStreamWriterWrapper implements Closeable {
 	 */
 	public void writelt (Configration conf) throws Exception {
 
-		if (!conf.isOutputIndent) {
+		if (!conf.isOutputIndent()) {
 			return;
 		}
-		int h = conf.Hierarchy;
+		int h = conf.hierarchy();
 		if (h < 0) {
 			h = 0;
 		} else if (h >= TABS.length) {
@@ -117,7 +117,7 @@ public class OutputStreamWriterWrapper implements Closeable {
 	 */
 	public void writelt (Configration conf, int h) throws Exception {
 
-		if (!conf.isOutputIndent) {
+		if (!conf.isOutputIndent()) {
 			return;
 		}
 		if (h < 0) {
@@ -136,7 +136,7 @@ public class OutputStreamWriterWrapper implements Closeable {
 	 */
 	public void writeln (Configration conf) throws Exception {
 
-		if (!conf.isOutputIndent) {
+		if (!conf.isOutputIndent()) {
 			return;
 		}
 		write('\n');

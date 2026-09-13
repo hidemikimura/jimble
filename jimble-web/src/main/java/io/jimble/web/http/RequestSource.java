@@ -94,12 +94,31 @@ public interface RequestSource {
 	/**
 	 * ヘッダ
 	 *
-	 * @return	ヘッダ（キーは小文字。複数値は ";" で連結）
+	 * <p>
+	 * <b>キーは小文字。同じ名前が2行で来たら {@code ", "} で繋ぐ</b>（RFC 9110。D-173）。
+	 * {@code Cookie} だけは中身の区切りに合わせて {@code "; "} で繋ぐ。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code Map<String, String>} である。</b>{@link #queryParams()} が
+	 * {@code Map<String, List<String>>} なのと揃っていないが、
+	 * <b>1.0 では型を変えられない</b>（この interface を実装しているアプリがあれば全部壊れる）。
+	 * 多値をそのまま扱いたい場合は 2.0 で揃える。
+	 * </p>
+	 *
+	 * @return	ヘッダ
 	 */
 	Map<String, String> headers ();
 
 	/**
 	 * Cookie
+	 *
+	 * <p>
+	 * <b>同じ名前が2つ来たら、先頭だけを採る。</b>Cookie の名前は1つであるべきなので
+	 * それでよいが、<b>2つ来ること自体は起こりうる</b>——
+	 * 別のパスやドメインに同じ名前で置かれた場合である。
+	 * <b>セッション ID でこれが起きると、どちらが自分のものか分からない。</b>
+	 * </p>
 	 *
 	 * @return	Cookie（生の値）
 	 */

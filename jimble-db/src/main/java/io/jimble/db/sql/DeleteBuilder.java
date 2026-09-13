@@ -38,6 +38,31 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 	/* WHERE句 */
 	private final List<IWhere> whereList = new ArrayList<>();
 
+	/* WHERE 無しを承知で組むか（D-173） */
+	private boolean allRows = false;
+
+	/**
+	 * WHERE 無しで組むことを承知する（D-173）
+	 *
+	 * <p>
+	 * <b>これを呼ばずに条件が1つも無いと、その場で落ちる。</b>
+	 * 表を丸ごと 消す のは、たいてい書き間違いのほうである——
+	 * {@code where(Data)} に知らない演算子を書いた、値が {@code null} で条件を足さなかった、
+	 * 変数が空だった。<b>SQL は通るし、例外も出ない。</b>気づくのは、消えたあとである。
+	 * </p>
+	 *
+	 * <p>本当に全行が対象なら、ここでそう言うこと。</p>
+	 *
+	 * @return	DeleteBuilder
+	 */
+	public DeleteBuilder allRows () {
+
+		this.allRows = true;
+		return this;
+
+	}
+
+
 	/**
 	 * WHERE句
 	 *
@@ -81,6 +106,16 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 	 */
 	@Override
 	public String sql (io.jimble.db.dialect.Dialect dialect) {
+
+		/*
+		 * <b>条件が1つも無いなら落とす（D-173）。</b>
+		 * {@link #allRows()} を呼んでいれば通す。
+		 */
+		if (whereList.isEmpty() && !allRows) {
+			throw new SqlBuildException(
+				"WHERE が1つもありません: %s（本当に全行なら allRows() を呼んでください）"
+					.formatted(from.name()));
+		}
 
 		SqlWriter sb = new SqlWriter(dialect);
 

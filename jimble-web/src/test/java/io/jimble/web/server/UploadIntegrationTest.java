@@ -69,9 +69,9 @@ class UploadIntegrationTest {
 							for (Object item : list) {
 								UploadFile uploadFile = (UploadFile) item;
 								received.add("%s:%s:%d".formatted(
-									uploadFile.name, uploadFile.fileName, uploadFile.fileSize));
-								received.add("content=" + read(uploadFile.file.toPath()));
-								tempFiles.add(uploadFile.file.toPath());
+									uploadFile.name(), uploadFile.fileName(), uploadFile.fileSize()));
+								received.add("content=" + read(uploadFile.file().toPath()));
+								tempFiles.add(uploadFile.file().toPath());
 							}
 						}
 					}

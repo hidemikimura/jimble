@@ -131,11 +131,34 @@ public abstract class MqExecutor {
 	 *
 	 * @param db	DB（トランザクションの中で呼べば、ロールバックでキューも消える）
 	 * @param data	内容
-	 * @return	キューID（失敗したら -1）
+	 * @return	キューID
+	 * @throws MqException	積めなかった場合
 	 */
 	public long put (DB db, Data data) {
 
-		return put(db, data, null);
+		return put(db, data, (Date) null);
+
+	}
+
+	/**
+	 * キューに積む（時刻を指定する）
+	 *
+	 * <p>
+	 * <b>{@code Instant} で受ける版（D-173）。</b>jimble の公開 API は
+	 * {@code Instant} / {@code Duration} / {@code ZonedDateTime} で揃えてあり、
+	 * <b>{@code java.util.Date} が出てくるのはここだけ</b>だった。
+	 * {@code Date} 版は残してあるが、新しく書くならこちらを使うこと。
+	 * </p>
+	 *
+	 * @param db			DB
+	 * @param data			内容
+	 * @param scheduledAt	処理してよい時刻（null なら即時）
+	 * @return	キューID
+	 * @throws MqException	積めなかった場合
+	 */
+	public long put (DB db, Data data, java.time.Instant scheduledAt) {
+
+		return put(db, data, scheduledAt == null ? null : Date.from(scheduledAt));
 
 	}
 
@@ -145,7 +168,8 @@ public abstract class MqExecutor {
 	 * @param db			DB
 	 * @param data			内容
 	 * @param scheduledAt	処理してよい時刻（null なら即時）
-	 * @return	キューID（失敗したら -1）
+	 * @return	キューID
+	 * @throws MqException	積めなかった場合
 	 */
 	public long put (DB db, Data data, Date scheduledAt) {
 
@@ -177,8 +201,15 @@ public abstract class MqExecutor {
 				, data == null ? new Data() : data
 				, span.traceparent());
 
+			/*
+			 * <b>積めなかったら投げる（D-173）。</b>
+			 * かつては {@code -1} を返していたが、<b>戻り値を見ている呼び出しは1つも無かった</b>——
+			 * 「注文は入ったが、メールのキューだけ無い」が黙って起きる。
+			 * トランザクションの中なら、投げればそのまま巻き戻る。
+			 */
 			if (db.isError()) {
-				return -1;
+				throw new MqException("キューに積めませんでした: %s（%s）"
+					.formatted(queueName(), db.getError() == null ? "理由不明" : db.getError().getMessage()));
 			}
 
 			span.attribute("messaging.message.id", id);

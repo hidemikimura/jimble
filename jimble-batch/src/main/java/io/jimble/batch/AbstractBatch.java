@@ -237,13 +237,13 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * @param parentNotify	親からの中断通知（無ければ null）
 	 * @return	結果
 	 */
-	public BatchResult run (BatchArgs args, CancelOrderNotify parentNotify) {
+	public final BatchResult run (BatchArgs args, CancelOrderNotify parentNotify) {
 
 		this.parentNotify = parentNotify;
 
-		executeInfo.putData("args", args.cliArgs);
-		executeInfo.putData("uid", args.uid);
-		executeInfo.putData("scheduler_id", args.schedulerId);
+		executeInfo.putData("args", args.cliArgs());
+		executeInfo.putData("uid", args.uid());
+		executeInfo.putData("scheduler_id", args.schedulerId());
 		executeInfo.putData("is_scheduler", isScheduler());
 		executeInfo.putData("is_enable_scheduler", isEnableScheduler());
 
@@ -264,13 +264,19 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 		this.settings = mergeSettings(
 			master.getDataOptional("default_settings"), master.getDataOptional("settings"));
 
-		if (args.settings != null) {
-			this.settings = args.settings;
+		/*
+		 * <b>空かどうかで見る（D-173）。</b>ここは {@code != null} だった——
+		 * {@code BatchArgs.settings} が「未設定 = null」だったころの形である。
+		 * いまは入れ物が必ずあるので、{@code != null} のままだと
+		 * <b>いつでも空の設定で上書きしてしまう</b>。
+		 */
+		if (!args.settings().isEmpty()) {
+			this.settings = args.settings();
 		}
 
 		executeInfo.putData("settings", settings);
 
-		if (!args.forceExecute
+		if (!args.forceExecute()
 			&& !BatchMasterStatus.enable.name().equalsIgnoreCase(master.getStringOptional("status"))) {
 
 			Log.warn("バッチが無効です: %s / status=%s"
@@ -280,7 +286,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 		}
 
-		int allowCount = args.forceExecute ? 0 : master.getInt("allow_concurrent_execution");
+		int allowCount = args.forceExecute() ? 0 : master.getInt("allow_concurrent_execution");
 
 		if (!registerExecuteInfo(db, args, allowCount)) {
 			Log.warn("同時実行数の上限に達しています: %s / allow=%d".formatted(className(), allowCount));
@@ -291,13 +297,13 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 			startHeartbeat(args);
 
-			return executeWithHistory(db, args, !args.fromScheduler);
+			return executeWithHistory(db, args, !args.fromScheduler());
 
 		} finally {
 
 			stopHeartbeat();
 
-			db.delete("DELETE FROM batch_execute_info WHERE uid = ?", args.uid);
+			db.delete("DELETE FROM batch_execute_info WHERE uid = ?", args.uid());
 
 		}
 
@@ -469,7 +475,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 			minCount = Math.min(minCount, row.getInt("cnt"));
 
-			if (row.getStringOptional("scheduler_id").equals(args.schedulerId)) {
+			if (row.getStringOptional("scheduler_id").equals(args.schedulerId())) {
 				found = true;
 			}
 
@@ -483,7 +489,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 		for (Data row : rows) {
 
 			if (row.getInt("cnt") == minCount
-				&& row.getStringOptional("scheduler_id").equals(args.schedulerId)) {
+				&& row.getStringOptional("scheduler_id").equals(args.schedulerId())) {
 				return true;
 			}
 
@@ -509,8 +515,8 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					?, ?, ?, NOW(), NOW()
 				)
 			"""
-			, args.uid
-			, args.schedulerId
+			, args.uid()
+			, args.schedulerId()
 			, className());
 
 		return !db.isError();
@@ -547,7 +553,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			while (!heartbeatStopped) {
 
 				DBUtil.getMainDB().update(
-					"UPDATE batch_execute_info SET updated_at = NOW() WHERE uid = ?", args.uid);
+					"UPDATE batch_execute_info SET updated_at = NOW() WHERE uid = ?", args.uid());
 
 				try {
 					// 止められたらここが解ける

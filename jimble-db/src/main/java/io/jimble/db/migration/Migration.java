@@ -149,7 +149,7 @@ public final class Migration {
 		List<MigrationInfo> sorted = forProduct(dbSource, all);
 
 		// 複数インスタンスが同時に起動しても一度しか適用しない（要件 F-G-15。D-1 ロックテーブル方式）
-		DB lockDB = DBUtil.getDB(dbSource.name);
+		DB lockDB = DBUtil.getDB(dbSource.name());
 		DBLock.create(lockDB, LOCK_KEY);
 
 		try (lockDB) {
@@ -177,7 +177,7 @@ public final class Migration {
 		} catch (Exception ex) {
 
 			rollbackQuietly(lockDB);
-			throw new MigrationException("マイグレーションに失敗しました: " + dbSource.name, ex);
+			throw new MigrationException("マイグレーションに失敗しました: " + dbSource.name(), ex);
 
 		}
 
@@ -223,7 +223,7 @@ public final class Migration {
 	 */
 	private static void apply (DBSource dbSource, List<MigrationInfo> fileList, List<MigrationInfo> allFiles) {
 
-		DB db = DBUtil.getDB(dbSource.name);
+		DB db = DBUtil.getDB(dbSource.name());
 
 		List<Data> appliedList = sortedApplied(db);
 
@@ -244,7 +244,7 @@ public final class Migration {
 
 		// 2. SQL ファイルを名前順に適用する
 		for (MigrationInfo info : fileList) {
-			applyOne(db, info, findApplied(appliedList, info.sqlFileName));
+			applyOne(db, info, findApplied(appliedList, info.sqlFileName()));
 		}
 
 	}
@@ -309,12 +309,12 @@ public final class Migration {
 
 			for (MigrationInfo info : allFiles) {
 
-				if (!base.equals(baseName(info.sqlFileName))
-					|| findApplied(appliedList, info.sqlFileName) != null) {
+				if (!base.equals(baseName(info.sqlFileName()))
+					|| findApplied(appliedList, info.sqlFileName()) != null) {
 					continue;
 				}
 
-				String suffix = productSuffix(info.sqlFileName);
+				String suffix = productSuffix(info.sqlFileName());
 
 				if (suffix == null || suffix.equals(product)) {
 					hit = info;
@@ -327,7 +327,7 @@ public final class Migration {
 
 			if (hit != null) {
 
-				renamed.add("%s → %s".formatted(oldName, hit.sqlFileName));
+				renamed.add("%s → %s".formatted(oldName, hit.sqlFileName()));
 
 				/*
 				 * 中身まで変わっているなら hash も一緒に入れ替える。
@@ -338,12 +338,12 @@ public final class Migration {
 
 				sqls.add(hash.equals(applied.getString("hash"))
 					? "  UPDATE migration SET name = '%s' WHERE name = '%s';"
-						.formatted(hit.sqlFileName, oldName)
+						.formatted(hit.sqlFileName(), oldName)
 					: "  UPDATE migration SET name = '%s', hash = '%s' WHERE name = '%s';"
-						.formatted(hit.sqlFileName, hash, oldName));
+						.formatted(hit.sqlFileName(), hash, oldName));
 
 				sqls.add("  UPDATE migration_history SET name = '%s' WHERE name = '%s';"
-					.formatted(hit.sqlFileName, oldName));
+					.formatted(hit.sqlFileName(), oldName));
 
 			} else if (forOtherProduct) {
 				others.add(oldName);
@@ -428,7 +428,7 @@ public final class Migration {
 	 */
 	private static void applyOne (DB db, MigrationInfo info, Data applied) {
 
-		String name = info.sqlFileName;
+		String name = info.sqlFileName();
 		String sqlText = readSqlText(info);
 		String hash = Hash.md5(hashText(sqlText));
 		String[] upDown = MigrationSql.toUpDown(sqlText);
@@ -662,7 +662,7 @@ public final class Migration {
 	 */
 	private static List<MigrationInfo> list (DBSource dbSource, Class<?> appClass) {
 
-		String dir = MigrationConf.resourceDir() + "/" + dbSource.conf.schema;
+		String dir = MigrationConf.resourceDir() + "/" + dbSource.conf().schema();
 
 		URL url = appClass.getClassLoader().getResource(dir);
 		if (url == null) {
@@ -701,9 +701,9 @@ public final class Migration {
 			@Override
 			public int compare (MigrationInfo o1, MigrationInfo o2) {
 				try {
-					return FileNameComparator.strCmpLogical(o1.sqlFileName, o2.sqlFileName);
+					return FileNameComparator.strCmpLogical(o1.sqlFileName(), o2.sqlFileName());
 				} catch (Exception ex) {
-					return o1.sqlFileName.compareTo(o2.sqlFileName);
+					return o1.sqlFileName().compareTo(o2.sqlFileName());
 				}
 			}
 		});
@@ -746,12 +746,12 @@ public final class Migration {
 
 		for (MigrationInfo info : fileList) {
 
-			String suffix = productSuffix(info.sqlFileName);
+			String suffix = productSuffix(info.sqlFileName());
 
 			if (suffix == null || suffix.equals(product)) {
 				list.add(info);
 			} else {
-				skipped.add(info.sqlFileName);
+				skipped.add(info.sqlFileName());
 			}
 
 		}
@@ -787,12 +787,12 @@ public final class Migration {
 
 		for (MigrationInfo info : list) {
 
-			String before = seen.put(baseName(info.sqlFileName), info.sqlFileName);
+			String before = seen.put(baseName(info.sqlFileName()), info.sqlFileName());
 
 			if (before != null) {
 				throw new MigrationException(
 					"同じ版のマイグレーション SQL が、いまの製品（%s）で2つとも流れます: %s / %s（どちらかにしてください）"
-						.formatted(product, before, info.sqlFileName));
+						.formatted(product, before, info.sqlFileName()));
 			}
 
 		}
@@ -889,10 +889,7 @@ public final class Migration {
 			if (!file.isFile() || !file.getName().endsWith(".sql")) {
 				continue;
 			}
-			MigrationInfo info = new MigrationInfo();
-			info.sqlFile = file;
-			info.sqlFileName = file.getName();
-			list.add(info);
+			list.add(MigrationInfo.ofFile(file.getName(), file));
 		}
 
 		return list;
@@ -922,11 +919,10 @@ public final class Migration {
 					if (!entry.getName().startsWith(prefix) || !entry.getName().endsWith(".sql")) {
 						continue;
 					}
-					MigrationInfo info = new MigrationInfo();
-					info.sqlFilePathInJar = entry.getName();
-					info.sqlFileName = entry.getName().substring(prefix.length());
-					info.classLoader = appClass.getClassLoader();
-					list.add(info);
+					list.add(MigrationInfo.ofJar(
+						entry.getName().substring(prefix.length())
+						, entry.getName()
+						, appClass.getClassLoader()));
 				}
 			}
 		} catch (Exception ex) {
@@ -951,12 +947,12 @@ public final class Migration {
 	 */
 	private static String readSqlText (MigrationInfo info) {
 
-		String text = info.sqlFilePathInJar == null
-			? FileUtil.readAll(info.sqlFile)
-			: IOUtil.read(info.classLoader.getResourceAsStream(info.sqlFilePathInJar));
+		String text = info.sqlFilePathInJar() == null
+			? FileUtil.readAll(info.sqlFile())
+			: IOUtil.read(info.classLoader().getResourceAsStream(info.sqlFilePathInJar()));
 
 		if (text == null) {
-			throw new MigrationException("マイグレーション SQL を読めませんでした: " + info.sqlFileName);
+			throw new MigrationException("マイグレーション SQL を読めませんでした: " + info.sqlFileName());
 		}
 
 		return text;
@@ -1020,7 +1016,7 @@ public final class Migration {
 	private static boolean containsFile (List<MigrationInfo> list, String name) {
 
 		for (MigrationInfo info : list) {
-			if (info.sqlFileName.equals(name)) {
+			if (info.sqlFileName().equals(name)) {
 				return true;
 			}
 		}
@@ -1059,7 +1055,7 @@ public final class Migration {
 	 */
 	private static void createTables (DBSource dbSource) {
 
-		DB db = DBUtil.getDB(dbSource.name);
+		DB db = DBUtil.getDB(dbSource.name());
 
 		DBVersion migration = new DBVersion(FrameworkTables.MIGRATION, "マイグレーション情報");
 		migration.add(1)
@@ -1084,7 +1080,7 @@ public final class Migration {
 				)
 			""");
 		if (!migration.apply(db)) {
-			throw new MigrationException("migration テーブルを作成できませんでした: " + dbSource.name);
+			throw new MigrationException("migration テーブルを作成できませんでした: " + dbSource.name());
 		}
 
 		DBVersion history = new DBVersion(FrameworkTables.MIGRATION_HISTORY, "マイグレーション履歴");
@@ -1112,7 +1108,7 @@ public final class Migration {
 				)
 			""");
 		if (!history.apply(db)) {
-			throw new MigrationException("migration_history テーブルを作成できませんでした: " + dbSource.name);
+			throw new MigrationException("migration_history テーブルを作成できませんでした: " + dbSource.name());
 		}
 
 	}

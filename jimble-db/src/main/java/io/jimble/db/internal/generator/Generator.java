@@ -12,6 +12,7 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.internal.generator.info.ColumnInfo;
 import io.jimble.db.internal.generator.info.IndexInfo;
 import io.jimble.db.internal.generator.info.TableInfo;
+import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.sql.SQL;
 import io.jimble.util.log.Log;
 
@@ -77,6 +78,49 @@ public class Generator {
 	}
 
 	/**
+	 * 区切り文字がテーブル名や列名に紛れていないか確かめる（D-173）
+	 *
+	 * <p>
+	 * SQL の結果は <b>{@code テーブル名__列名}</b> という名前で1枚に並ぶ
+	 * （{@code Column.SPLITTER}）。だから<b>名前そのものに {@code __} が入っていると、
+	 * どこが区切りなのかが決まらない</b>——テーブル {@code a} の列 {@code b__c} と、
+	 * テーブル {@code a__b} の列 {@code c} は、どちらも {@code a__b__c} になる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>黙って混ざる。</b>例外も出ないし SQL も通る。おかしいのは読み出した値だけである。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code Column.SPLITTER} は {@code public static final String} なので、
+	 * アプリのバイトコードに焼き付く。</b>あとから別の区切りに変えても、
+	 * すでにコンパイルされたアプリは古い区切りを持ち続ける——
+	 * だから<b>直せるのは「見つけて止める」ことだけ</b>である。
+	 * </p>
+	 *
+	 * @param tableInfo	テーブル
+	 */
+	private static void checkSplitterCollision (TableInfo tableInfo) {
+
+		if (tableInfo.name.contains(Column.SPLITTER)) {
+			throw new GeneratorException(
+				"テーブル名に \"%s\" が入っています: %s（SQL 結果の列名 %s列名 と見分けが付きません）"
+					.formatted(Column.SPLITTER, tableInfo.name, "テーブル名" + Column.SPLITTER));
+		}
+
+		for (ColumnInfo columnInfo : tableInfo.columnList) {
+
+			if (columnInfo.name.contains(Column.SPLITTER)) {
+				throw new GeneratorException(
+					"列名に \"%s\" が入っています: %s.%s（SQL 結果の列名の区切りと見分けが付きません）"
+						.formatted(Column.SPLITTER, tableInfo.name, columnInfo.name));
+			}
+
+		}
+
+	}
+
+	/**
 	 * ソースコード生成
 	 *
 	 * @param outputDir     出力ディレクトリ
@@ -113,20 +157,20 @@ public class Generator {
 	public static void generate (File outputDir, String packageName, DBSource dbSource) {
 
 		// ルートディレクトリ(db/{スキーマ名})
-		File rootDir = new File(outputDir, dbSource.name.toLowerCase());
+		File rootDir = new File(outputDir, dbSource.name().toLowerCase());
 
 		// 消えたテーブルのクラスが残らないよう、生成前に掃除する
 		FileUtil.delete(rootDir);
 		rootDir.mkdirs();
 
 		// スキーマクラス名
-		String schemeClassName = upperCamel(dbSource.name);
+		String schemeClassName = upperCamel(dbSource.name());
 
 		// テーブル定義一覧を取得する
 		List<TableInfo> tableInfoList = getTableInfoList(dbSource);
 
 		// スキーマクラス（SchemaSQL は製品ごとの DDL で書く。要件 F-D-30）
-		outputScheme(rootDir, packageName, dbSource, dbSource.name, schemeClassName, tableInfoList
+		outputScheme(rootDir, packageName, dbSource, dbSource.name(), schemeClassName, tableInfoList
 			, TableMetaReader.of(dbSource.dialect()));
 
 		// テーブルクラス
@@ -160,11 +204,11 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name));
+			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name()));
 			textOutput.writeLine("");
 
 			for (TableInfo tableInfo : tableInfoList) {
-				textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name, tableInfo.name, tableInfo.className));
+				textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name(), tableInfo.name, tableInfo.className));
 			}
 			textOutput.writeLine("import io.jimble.db.DB;");
 			textOutput.writeLine("import io.jimble.db.DBUtil;");
@@ -204,7 +248,7 @@ public class Generator {
 			textOutput.writeLine("\t * {@inheritDoc}");
 			textOutput.writeLine("\t */");
 			textOutput.writeLine("\t@Override");
-			textOutput.writeLine("\tpublic String name () { return \"%s\"; }".formatted(dbSource.name));
+			textOutput.writeLine("\tpublic String name () { return \"%s\"; }".formatted(dbSource.name()));
 			textOutput.writeLine("");
 
 			textOutput.writeLine("\t/**");
@@ -212,17 +256,17 @@ public class Generator {
 			textOutput.writeLine("\t *");
 			textOutput.writeLine("\t * @return DB");
 			textOutput.writeLine("\t */");
-			textOutput.writeLine("\tpublic static DB db () { return DBUtil.getDB(\"%s\"); }".formatted(dbSource.name));
+			textOutput.writeLine("\tpublic static DB db () { return DBUtil.getDB(\"%s\"); }".formatted(dbSource.name()));
 			textOutput.writeLine("");
 
-			if (!dbSource.subsDbSourceMap.isEmpty()) {
-				for (String subDbName : dbSource.subsDbSourceMap.keySet()) {
+			if (!dbSource.subDbSourceNames().isEmpty()) {
+				for (String subDbName : dbSource.subDbSourceNames()) {
 					textOutput.writeLine("\t/**");
 					textOutput.writeLine("\t * get sub DB instance");
 					textOutput.writeLine("\t *");
 					textOutput.writeLine("\t * @return sub DB");
 					textOutput.writeLine("\t */");
-					textOutput.writeLine("\tpublic static DB %sDB () { return DBUtil.getDB(\"%s\").newSubDB(\"%s\"); }".formatted(subDbName, dbSource.name, subDbName));
+					textOutput.writeLine("\tpublic static DB %sDB () { return DBUtil.getDB(\"%s\").newSubDB(\"%s\"); }".formatted(subDbName, dbSource.name(), subDbName));
 					textOutput.writeLine("");
 				}
 			}
@@ -372,6 +416,8 @@ public class Generator {
 		File tableDir = new File(tableRootDir, tableInfo.name);
 		tableDir.mkdirs();
 
+		checkSplitterCollision(tableInfo);
+
 		File sourceFile = new File(tableDir, tableInfo.className + ".java");
 		try (
 			TextOutput textOutput = new TextOutput(sourceFile)
@@ -379,10 +425,10 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, dbSource.name, tableInfo.name));
+			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, dbSource.name(), tableInfo.name));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, dbSource.name, schemeClassName));
+			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, dbSource.name(), schemeClassName));
 			textOutput.writeLine("import io.jimble.db.sql.definition.column.Column;");
 			textOutput.writeLine("import io.jimble.util.data.definition.ISchema;");
 			textOutput.writeLine("import io.jimble.db.sql.definition.table.Table;");
@@ -395,9 +441,26 @@ public class Generator {
 			textOutput.writeLine(" */");
 			textOutput.writeLine("public class %s extends Table {".formatted(tableInfo.className));
 			textOutput.writeLine("");
+
+			/*
+			 * <b>実体は1つだけ作る（D-173）。</b>
+			 *
+			 * かつては列ごとに {@code instance()} を呼んでいて、
+			 * <b>その中身が毎回 new</b> だった——列4本のテーブルなら、
+			 * クラス初期化だけで同じテーブルが4個できる。
+			 * しかも {@code Table} に {@code equals} が無いので
+			 * <b>{@code Staff.id.table()} と {@code Staff.instance()} が等しくならなかった</b>。
+			 *
+			 * <b>列より先に書くこと。</b>静的初期化は上から順に走るので、
+			 * 列の定義より下に置くと {@code null} を掴む。
+			 */
+			textOutput.writeLine("\t/* このテーブルの実体（1つだけ作る） */");
+			textOutput.writeLine("\tprivate static final %s INSTANCE = new %s(new %s(), \"%s\");".formatted(tableInfo.className, tableInfo.className, schemeClassName, tableInfo.name));
+			textOutput.writeLine("");
+
 			for (ColumnInfo columnInfo : tableInfo.columnList) {
 				textOutput.writeLine("\t/* %s */".formatted(columnInfo.comment));
-				textOutput.writeLine("\tpublic static final Column %s = new Column(instance(), \"%s\", %s.class, %s, %s, %s);".formatted(columnInfo.name, columnInfo.name, columnInfo.typeClass.getTypeName(), String.valueOf(columnInfo.nullable), getColumnDefaultValueString(columnInfo), String.valueOf(columnInfo.primaryKey)));
+				textOutput.writeLine("\tpublic static final Column %s = new Column(INSTANCE, \"%s\", %s.class, %s, %s, %s);".formatted(columnInfo.name, columnInfo.name, columnInfo.typeClass.getTypeName(), String.valueOf(columnInfo.nullable), getColumnDefaultValueString(columnInfo), String.valueOf(columnInfo.primaryKey)));
 				textOutput.writeLine("");
 			}
 			textOutput.writeLine("");
@@ -467,7 +530,7 @@ public class Generator {
 			textOutput.writeLine("\tpublic %s (ISchema schema, String name) { super(schema, name); }".formatted(tableInfo.className));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("\tpublic static %s instance () { return new %s(new %s(), \"%s\"); }".formatted(tableInfo.className, tableInfo.className, schemeClassName, tableInfo.name));
+			textOutput.writeLine("\tpublic static %s instance () { return INSTANCE; }".formatted(tableInfo.className));
 			textOutput.writeLine("");
 
 			textOutput.writeLine("}");
@@ -506,10 +569,10 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s.table_data.%s;".formatted(packageName, dbSource.name, tableInfo.name));
+			textOutput.writeLine("package %s.%s.table_data.%s;".formatted(packageName, dbSource.name(), tableInfo.name));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name, tableInfo.name, tableInfo.className));
+			textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name(), tableInfo.name, tableInfo.className));
 			textOutput.writeLine("import io.jimble.db.generator.data.AbstractTableData;");
 			textOutput.writeLine("import io.jimble.util.data.Data;");
 			textOutput.writeLine("import io.jimble.db.sql.InsertBuilder;");
@@ -730,7 +793,7 @@ public class Generator {
 
 		} catch (Exception ex) {
 
-			throw new GeneratorException("テーブル定義を取得できませんでした: " + dbSource.name, ex);
+			throw new GeneratorException("テーブル定義を取得できませんでした: " + dbSource.name(), ex);
 
 		}
 

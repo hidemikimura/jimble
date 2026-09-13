@@ -792,10 +792,7 @@ class MigrationIntegrationTest {
 		File[] files = sqlDir.toFile().listFiles();
 		if (files != null) {
 			for (File file : files) {
-				MigrationInfo info = new MigrationInfo();
-				info.sqlFile = file;
-				info.sqlFileName = file.getName();
-				list.add(info);
+				list.add(MigrationInfo.ofFile(file.getName(), file));
 			}
 		}
 
