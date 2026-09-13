@@ -395,6 +395,60 @@ public class Table implements ITable, IFrom {
 
 
 	/**
+	 * 同じテーブルか（D-175）
+	 *
+	 * <p>
+	 * <b>スキーマ名とテーブル名が同じなら同じテーブルである。</b>
+	 * インスタンスが同じかどうかは見ない——生成物の {@code instance()} は
+	 * <b>呼ぶたびに新しいものを返す</b>ので（D-174）、
+	 * 同一性で比べると <b>{@code Staff.id.table()} と {@code Staff.instance()} が
+	 * 別物になる</b>。「同じテーブルか」を見ているところが、静かに外れる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>仮テーブル（{@code TemporaryTable}）とは等しくならない。</b>
+	 * あちらのスキーマは {@code empty} なので、名前が同じでもスキーマ名で分かれる——
+	 * <b>名前だけで作ったものと、定義から来たものを混ぜない</b>ためである。
+	 * </p>
+	 *
+	 * @param other	比べる相手
+	 * @return	同じテーブルなら true
+	 */
+	@Override
+	public boolean equals (Object other) {
+
+		if (this == other) {
+			return true;
+		}
+
+		if (!(other instanceof Table that)) {
+			return false;
+		}
+
+		return java.util.Objects.equals(schemaName(), that.schemaName())
+			&& java.util.Objects.equals(name(), that.name());
+
+	}
+
+	@Override
+	public int hashCode () {
+
+		return java.util.Objects.hash(schemaName(), name());
+
+	}
+
+	/**
+	 * スキーマ名（無ければ null）
+	 *
+	 * @return	スキーマ名
+	 */
+	private String schemaName () {
+
+		return schema() == null ? null : schema().name();
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override

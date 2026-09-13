@@ -548,6 +548,44 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 
 
 	/**
+	 * 同じ列か（D-175）
+	 *
+	 * <p>
+	 * <b>テーブルと列名が同じなら同じ列である。</b>型も null 許容も PK かどうかも見ない——
+	 * それらは<b>同じ列の性質</b>であって、どの列かを決めるものではない。
+	 * </p>
+	 *
+	 * <p>
+	 * インスタンスが同じかどうかを見ないのは {@link io.jimble.db.sql.definition.table.Table} と同じ理由である（D-174）。
+	 * </p>
+	 *
+	 * @param other	比べる相手
+	 * @return	同じ列なら true
+	 */
+	@Override
+	public boolean equals (Object other) {
+
+		if (this == other) {
+			return true;
+		}
+
+		if (!(other instanceof Column that)) {
+			return false;
+		}
+
+		return java.util.Objects.equals(table(), that.table())
+			&& java.util.Objects.equals(name(), that.name());
+
+	}
+
+	@Override
+	public int hashCode () {
+
+		return java.util.Objects.hash(table(), name());
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override
