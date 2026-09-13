@@ -41,9 +41,8 @@ crawler-user-agents
 主なものと、そのライセンス：
 
   Helidon WebServer      Apache-2.0
-  jte（ランタイム）       Apache-2.0
+  jte（ランタイム）        Apache-2.0
   logback                EPL-1.0 / LGPL-2.1
   HikariCP               Apache-2.0
   Redisson               Apache-2.0
-  ICU4J                  Unicode License
   commonmark-java        BSD-2-Clause（jimble-docs のビルドのみ。配布物には入らない）
