@@ -16,6 +16,9 @@ import io.jimble.util.conf.Conf;
  *   trust_proxy          = false      # X-Forwarded-* を信じるか
  *   compression          = true       # 応答を gzip で返すか
  *   bot_access_log       = true       # ボットのアクセスログを分けるか
+ *   backlog              = 1024       # OS が持ってくれる接続待ちの数
+ *   write_queue_length   = 0          # 応答を書き出す列の長さ。0/1 は「列を作らない」
+ *   smart_async_writes   = false      # 列があるとき、混み具合で書き方を切り替えるか
  * }
  * </pre>
  *
@@ -61,6 +64,15 @@ public final class ServerConf {
 	/** 設定の鍵：到達不能ルートを例外にするか */
 	public static final String KEY_STRICT_ROUTES = "server.strict_routes";
 
+	/** 設定キー：接続待ちの数（listen backlog） */
+	public static final String KEY_BACKLOG = "server.backlog";
+
+	/** 設定キー：応答を書き出す列の長さ */
+	public static final String KEY_WRITE_QUEUE_LENGTH = "server.write_queue_length";
+
+	/** 設定キー：混み具合で書き方を切り替えるか */
+	public static final String KEY_SMART_ASYNC_WRITES = "server.smart_async_writes";
+
 	/** 設定キー：止め始めてから新規を断つまでの猶予 */
 	public static final String KEY_SHUTDOWN_GRACE = "server.shutdown_grace";
 
@@ -87,6 +99,22 @@ public final class ServerConf {
 
 	/** 既定のアイドルタイムアウト */
 	public static final Duration DEFAULT_IDLE_TIMEOUT = Duration.ofSeconds(60);
+
+	/** 既定の接続待ちの数（helidon 4.5.4 と同じ） */
+	public static final int DEFAULT_BACKLOG = 1024;
+
+	/** 既定の書き出し列の長さ（helidon 4.5.4 と同じ。0 = 列を作らない） */
+	public static final int DEFAULT_WRITE_QUEUE_LENGTH = 0;
+
+	/**
+	 * 列を作るとみなす最小の長さ
+	 *
+	 * <p>
+	 * <b>helidon は {@code writeQueueLength <= 1} のとき列を作らない</b>
+	 * （{@code SocketWriterDirect} になる）。<b>1 は「列がある」ではない。</b>
+	 * </p>
+	 */
+	public static final int MIN_WRITE_QUEUE_LENGTH = 2;
 
 	private ServerConf () {}
 
@@ -188,6 +216,84 @@ public final class ServerConf {
 	public static Duration idleTimeout () {
 
 		return Conf.conf().getDuration(KEY_IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT);
+
+	}
+
+	/**
+	 * 接続待ちの数（要件 F-H-01 / D-165）
+	 *
+	 * <p>
+	 * <b>受け付けが追いつかないあいだ、OS が代わりに持ってくれる接続の数である。</b>
+	 * ここを超えると、OS は<b>繋ぎに来た相手を断る</b>（接続拒否）——
+	 * <b>アプリまで届かないので、ログには1行も出ない。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * 上げるのは<b>短時間にどっと来る</b>使い方（起動直後・キャンペーン・再接続の集中）で、
+	 * <b>捌く速さは変わらない</b>。詰まりを待たせるだけである。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>OS 側の上限にも頭を押さえられる</b>（Linux の {@code somaxconn}）。
+	 * ここを大きくしても、そちらが小さければそちらで切られる。
+	 * </p>
+	 *
+	 * @return	接続待ちの数
+	 */
+	public static int backlog () {
+
+		return (int) Conf.conf().getLong(KEY_BACKLOG, DEFAULT_BACKLOG);
+
+	}
+
+	/**
+	 * 応答を書き出す列の長さ（要件 F-H-01 / D-165）
+	 *
+	 * <p>
+	 * <b>0 か 1 なら列を作らない</b>——応答はその場で書き切る（既定）。
+	 * 2 以上にすると<b>別のスレッドが書き出す</b>ようになり、
+	 * 遅い相手に書いているあいだ、処理のほうが先に進める。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>ただし列に積んだ分はメモリに載る。</b>
+	 * 相手が受け取らないと積み上がるので、<b>大きくすれば速くなるものではない</b>。
+	 * </p>
+	 *
+	 * @return	列の長さ（0 なら列を作らない）
+	 */
+	public static int writeQueueLength () {
+
+		return (int) Conf.conf().getLong(KEY_WRITE_QUEUE_LENGTH, DEFAULT_WRITE_QUEUE_LENGTH);
+
+	}
+
+	/**
+	 * 混み具合で書き方を切り替えるか（要件 F-H-01 / D-165）
+	 *
+	 * <p>
+	 * 列があるとき、helidon は<b>いつも列に積む</b>（既定）か、
+	 * <b>空いていればその場で書き、混んできたら列に積む</b>かを選べる。
+	 * 後者が「賢い」ほうで、<b>空いているときの往復が1つ減る</b>。
+	 * </p>
+	 *
+	 * <h4>これは単独では効かない</h4>
+	 * <p>
+	 * <b>{@link #writeQueueLength()} が 2 以上でなければ、helidon はこの値を読まない。</b>
+	 * 列が無いときは、そもそも「その場で書く」しかないからである。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>書いても効かない設定にはしない</b>ので、
+	 * 列が無いのに {@code true} と書いてあったら<b>起動時に落とす</b>
+	 * （{@code JimbleServer} が見ている）。
+	 * </p>
+	 *
+	 * @return	切り替える場合 = true
+	 */
+	public static boolean smartAsyncWrites () {
+
+		return Conf.conf().getBoolean(KEY_SMART_ASYNC_WRITES, false);
 
 	}
 

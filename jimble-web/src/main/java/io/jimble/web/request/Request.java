@@ -1,5 +1,6 @@
 package io.jimble.web.request;
 
+import io.jimble.web.router.PathSegments;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.bot.BotUtil;
 import io.jimble.util.convertor.UploadFile;
@@ -78,7 +79,14 @@ public class Request extends Data {
 				data.put("scheme", source.scheme());
 				data.put("host", source.host());
 				data.put("port", source.port());
-				data.put("path", source.path());
+				/*
+				 * <b>スラッシュを正規の形にして入れる（要件 D-166）。</b>
+				 * ルーターは末尾と連続のスラッシュを前から無視している（要件 F-R-24）ので、
+				 * ここで生のまま渡すと<b>ルーターが見たパスとアプリが見るパスが食い違う</b>——
+				 * {@code before} フックがパス文字列で判定していると、
+				 * <b>{@code //admin} だけがすり抜ける</b>。
+				 */
+				data.put("path", PathSegments.canonicalRawPath(source.path()));
 			}
 		}
 
@@ -179,7 +187,24 @@ public class Request extends Data {
 	}
 
 	/**
-	 * パス
+	 * パス（デコード済み・スラッシュは正規の形）
+	 *
+	 * <p>
+	 * <b>ルーターが見たのと同じ形である（要件 D-166）。</b>
+	 * 末尾のスラッシュは落ち、連続したスラッシュは1つになる——
+	 * {@code //admin/} は {@code /admin} として返る。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>大文字小文字はそのままである。</b>
+	 * {@code router.ignore_case} を有効にすると {@code /ADMIN} が
+	 * {@code /admin} のルートに当たるが、<b>ここに返るのは打たれたとおりの綴り</b>である
+	 * （小文字に寄せると、パスパラメータの値まで変わってしまう）。
+	 * <b>綴りまで揃えたいときは {@code router.redirect_to_canonical} を入れること</b>——
+	 * ルートに書いた綴りへ 301 で寄せるので、アプリには1つの綴りしか来なくなる。
+	 * </p>
+	 *
+	 * <p>受け取ったままのパスが要るときは {@link #rawPath()} を使う。</p>
 	 *
 	 * @return	パス
 	 */

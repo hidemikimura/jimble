@@ -93,6 +93,23 @@ public final class JimbleServer {
 	private final State state;
 
 	/**
+	 * helidon が実際に持っている設定（要件 D-165）
+	 *
+	 * <p>
+	 * <b>公開しない。</b>ここを見たいのは<b>「設定が helidon まで届いているか」</b>を
+	 * 確かめるときだけで、アプリから触るものではない
+	 * （触れるようにすると、<b>helidon の型が jimble の公開 API に混ざる</b>）。
+	 * </p>
+	 *
+	 * @return	設定
+	 */
+	WebServerConfig effectiveConfig () {
+
+		return server.prototype();
+
+	}
+
+	/**
 	 * コンストラクタ
 	 *
 	 * @param server	helidon サーバー
@@ -147,6 +164,15 @@ public final class JimbleServer {
 		 */
 		Shutdown.reset();
 
+		/*
+		 * <b>ポートを掴む前に見る（要件 D-165）。</b>
+		 *
+		 * 掴んでから落ちると、<b>ホットリロードで前のアプリが残ったまま</b>
+		 * 立て直せなくなる。設定だけで判る間違いは、<b>触る前に落とす</b>。
+		 */
+		checkBacklog();
+		checkWriteQueue();
+
 		State state = new State();
 
 		// ルートツリーの構築は起動時に1回だけ（要件 F-R-10）
@@ -164,6 +190,19 @@ public final class JimbleServer {
 			.maxPayloadSize(ServerConf.maxRequestSize())
 			// アイドルタイムアウト（要件 F-H-01）
 			.idleConnectionTimeout(ServerConf.idleTimeout())
+			/*
+			 * 受け付けと書き出しの調整（要件 F-H-01 / D-165）。
+			 *
+			 * backlog は「受け付けが追いつかないあいだ OS が持ってくれる接続の数」で、
+			 * 超えた分は OS が断つ——<b>アプリまで届かないのでログに1行も出ない</b>。
+			 *
+			 * write_queue_length は応答を書き出す列の長さ。0 か 1 なら列を作らない。
+			 * smart_async_writes は「列があるとき、空いていればその場で書く」の切り替えで、
+			 * <b>列が無ければ helidon はこの値を読まない</b>（下の checkWriteQueue が見張っている）。
+			 */
+			.backlog(ServerConf.backlog())
+			.writeQueueLength(ServerConf.writeQueueLength())
+			.smartAsyncWrites(ServerConf.smartAsyncWrites())
 			// 応答の圧縮（要件 F-H-03）
 			.contentEncoding(encoding -> encoding.contentEncodingsDiscoverServices(ServerConf.compression()))
 			/*
@@ -233,6 +272,25 @@ public final class JimbleServer {
 			, ServerConf.idleTimeout().toSeconds()
 			, ServerConf.compression()
 			, ServerConf.trustProxy()));
+
+		/*
+		 * <b>効いている値をそのまま出す（要件 D-165）。</b>
+		 * 書き出しは<b>列があるかどうかで道が変わる</b>ので、
+		 * 「賢く書く」が実際に選ばれたのかを<b>ログで見分けられる</b>ようにしておく。
+		 */
+		/*
+		 * <b>設定ではなく、helidon が実際に持っている値を出す（要件 D-165）。</b>
+		 * 設定のほうを出すと、<b>渡し忘れても正しく見える</b>——
+		 * D-86 で見つけた {@code server.max_header_size} が、まさにその形だった。
+		 */
+		WebServerConfig effective = server.prototype();
+
+		Log.info("サーバー設定（接続）: 接続待ち=%d / 書き出し列=%s".formatted(
+			effective.backlog()
+			, effective.writeQueueLength() < ServerConf.MIN_WRITE_QUEUE_LENGTH
+				? "作らない（その場で書く）"
+				: "%d（%s）".formatted(effective.writeQueueLength()
+					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")));
 
 		warnSecureCookieInLocal();
 		checkUploadLimits();
@@ -467,6 +525,71 @@ public final class JimbleServer {
 		STARTED.clear();
 
 		return count;
+
+	}
+
+	/**
+	 * 列が無いのに「賢く書く」と書いていないか（要件 D-165）
+	 *
+	 * <p>
+	 * <b>helidon は {@code writeQueueLength <= 1} のとき
+	 * {@code smartAsyncWrites} を読まない。</b>
+	 * 列を作らない道（{@code SocketWriterDirect}）に入るので、
+	 * <b>その場で書くしかない</b>ためである。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>黙って無視しない。</b>「書いたのに効かない設定」は、
+	 * 書いた側から見ると<b>効いているのに速くならない</b>としか見えず、
+	 * <b>原因を設定ファイルの外に探しに行く</b>ことになる（要件 D-86 と同じ形）。
+	 * </p>
+	 */
+	private static void checkWriteQueue () {
+
+		if (!ServerConf.smartAsyncWrites()) {
+			return;
+		}
+
+		int length = ServerConf.writeQueueLength();
+
+		if (length >= ServerConf.MIN_WRITE_QUEUE_LENGTH) {
+			return;
+		}
+
+		/*
+		 * <b>黙って列を作らない。</b>作ると、
+		 * 今度は<b>書いていない長さで動く</b>ことになる。
+		 */
+		throw new IllegalStateException(
+			("server.smart_async_writes = true ですが、server.write_queue_length が %d です。"
+				+ "列が無いと（%d 以下）helidon はこの設定を読まないので、何も変わりません。"
+				+ "server.write_queue_length を %d 以上にするか、"
+				+ "server.smart_async_writes を外してください")
+				.formatted(length, ServerConf.MIN_WRITE_QUEUE_LENGTH - 1
+					, ServerConf.MIN_WRITE_QUEUE_LENGTH));
+
+	}
+
+	/**
+	 * 接続待ちの数が正気か（要件 D-165）
+	 *
+	 * <p>
+	 * <b>0 以下は helidon が受け取らない</b>（{@code IllegalArgumentException}）。
+	 * そちらでも落ちるが、<b>出るのは helidon の言葉</b>で、
+	 * どの設定キーのことか書いていない。
+	 * </p>
+	 */
+	private static void checkBacklog () {
+
+		int backlog = ServerConf.backlog();
+
+		if (backlog > 0) {
+			return;
+		}
+
+		throw new IllegalStateException(
+			("server.backlog は 1 以上にしてください（いまは %d）。"
+				+ "既定は %d です").formatted(backlog, ServerConf.DEFAULT_BACKLOG));
 
 	}
 

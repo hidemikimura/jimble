@@ -13,10 +13,12 @@ import io.jimble.web.ratelimit.RateLimit;
 import io.jimble.web.ratelimit.RateLimits;
 import io.jimble.web.router.ErrorHandler;
 import io.jimble.web.router.Handler;
+import io.jimble.web.router.PathSegments;
 import io.jimble.web.router.HttpMethods;
 import io.jimble.web.router.Route;
 import io.jimble.web.router.RouteMatch;
 import io.jimble.web.router.Router;
+import io.jimble.web.router.RouterConf;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -156,6 +158,14 @@ public final class Dispatcher {
 
 			stage.run(app::onRequest);
 
+			/*
+			 * 正規の URL へ寄せる（要件 D-166）。
+			 *
+			 * <b>onRequest のあとに置く。</b>アプリが自分で応答を返したなら、
+			 * そちらが勝つ（Stage が done を見る）。
+			 */
+			stage.run(current -> redirectToCanonical(current, method, rawPath, match));
+
 			if (!stage.isDone() && !match.matched()) {
 
 				/*
@@ -208,6 +218,74 @@ public final class Dispatcher {
 			}
 
 		}
+
+	}
+
+	/**
+	 * 正規の URL へ 301 で寄せる（要件 D-166）
+	 *
+	 * <p>
+	 * <b>スラッシュは前から無視している</b>（要件 F-R-24）ので、
+	 * {@code /a} も {@code /a/} も {@code //a} も 200 を返していた——
+	 * <b>同じ内容が複数の URL にある</b>状態で、
+	 * キャッシュも検索エンジンも前段の ACL も<b>別の URL として数える</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code router.ignore_case} が有効なら<b>綴りも寄せる</b>——
+	 * {@code /ADMIN} を {@code /admin} のルートに当てておきながら
+	 * <b>アプリには {@code /ADMIN} を見せる</b>と、
+	 * パス文字列で判定している {@code before} フックだけがすり抜ける。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>寄せるのは {@code GET} と {@code HEAD} だけである。</b>
+	 * {@code POST} を 301 で返すと<b>ブラウザが本文を落として {@code GET} に化ける</b>。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param method	メソッド
+	 * @param rawPath	生のパス
+	 * @param match		マッチ結果
+	 */
+	private static void redirectToCanonical (WebContext context, String method
+		, String rawPath, RouteMatch match) {
+
+		if (!RouterConf.redirectToCanonical()) {
+			return;
+		}
+
+		if (!HttpMethods.GET.equals(method) && !HttpMethods.HEAD.equals(method)) {
+			return;
+		}
+
+		/*
+		 * <b>綴りを寄せるのは、当たったルートがあるときだけ。</b>
+		 * 当たっていなければ寄せ先が分からないので、スラッシュだけ直す。
+		 */
+		String pattern = RouterConf.ignoreCase() && match.matched() && match.route() != null
+			? match.route().pattern()
+			: null;
+
+		String canonical = PathSegments.canonicalRawPath(rawPath, pattern);
+
+		if (canonical.equals(rawPath)) {
+			return;
+		}
+
+		String query = context.request().query();
+
+		String location = query == null || query.isEmpty()
+			? canonical
+			: canonical + "?" + query;
+
+		/*
+		 * <b>301（恒久）である。</b>ブラウザは強く覚えるので、
+		 * <b>寄せ先を間違えたまま出すと取り返しが付きにくい</b>——
+		 * だからこそ、寄せるのは<b>スラッシュ</b>と
+		 * <b>ルートに書いてある綴り</b>だけに限っている。
+		 */
+		context.response().code(301).setResponseHeader("Location", location).send("");
 
 	}
 

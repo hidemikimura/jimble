@@ -22,7 +22,45 @@ server {
 
 	shutdown_grace   = 0s      # From "start stopping" to refusing new requests (seconds)
 	shutdown_timeout = 15s     # How long to wait for in-flight work (seconds)
+
+	backlog            = 1024  # Connections the OS holds while accept catches up
+	write_queue_length = 0     # Length of the response write queue; 0/1 means "no queue"
+	smart_async_writes = false # With a queue, write inline while it is not busy
 }
+```
+
+## Accepting connections and writing responses
+
+**`backlog`** is the number of connections **the OS holds for you** while accept catches up.
+Past that, **the OS turns callers away** — it never reaches the application, so
+**not a single line appears in your log**.
+Raise it for bursty traffic (just after a restart, a campaign, a wave of reconnects);
+**it does not make anything faster**. It only lets the backlog wait instead of being refused.
+
+> [!NOTE]
+> **The OS has its own ceiling** (`somaxconn` on Linux).
+> Raising this does nothing if that one is lower.
+
+**`write_queue_length`** is the length of the queue responses are written through.
+**At 0 or 1 there is no queue** and the response is written inline (the default).
+At 2 or more, another thread does the writing, so **your handler can move on while a slow
+client is still being written to**. What is queued **sits in memory**, though — a bigger
+queue is not a faster server.
+
+**`smart_async_writes`** chooses, when there is a queue, between "always queue" and
+"**write inline while the queue is idle, switch to queueing when it gets busy**".
+
+> [!WARN]
+> **`smart_async_writes` does nothing on its own.**
+> Helidon does not read it unless `write_queue_length` is **2 or more** (there is no queue otherwise).
+> **Leaving `write_queue_length` at 0 or 1 while setting `smart_async_writes = true` fails at startup** —
+> silently ignoring it would leave you with a setting that "is on but changes nothing".
+
+The startup log says which one was chosen.
+
+```
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=作らない（その場で書く）
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=32（空いていればその場で書く）
 ```
 
 **Write nothing and you get the defaults above.** What is actually in effect is printed in the startup log.

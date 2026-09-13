@@ -139,6 +139,14 @@ server {
 	strict_routes        = false    # 一生呼ばれないルートを例外にする（CI では true に）
 	shutdown_grace       = 0s       # 止め始めてから新規を断つまで
 	shutdown_timeout     = 15s      # 処理中を待つ上限
+	backlog              = 1024     # 受け付け待ちの接続を OS に持たせる数
+	write_queue_length   = 0        # 応答を書き出す列の長さ。0/1 は「列を作らない」
+	smart_async_writes   = false    # 列があるとき、空いていればその場で書く
+}
+
+router {
+	ignore_case           = false   # パスの大文字小文字を区別しないか
+	redirect_to_canonical = false   # 正規の URL へ 301 で寄せるか
 }
 
 cookie {

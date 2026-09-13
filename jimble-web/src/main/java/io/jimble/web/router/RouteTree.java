@@ -3,6 +3,7 @@ package io.jimble.web.router;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -51,6 +52,14 @@ final class RouteTree {
 	/* ワイルドカード（メソッド → ルート） */
 	private final Map<String, Route> wildcards = new LinkedHashMap<>();
 
+	/*
+	 * 小文字にした固定セグメントの索引（要件 D-166）。
+	 *
+	 * <b>null なら大文字小文字を区別する</b>（既定）。
+	 * seal() のときに1度だけ作るので、<b>リクエストごとに走査しない</b>。
+	 */
+	private Map<String, RouteTree> staticsIgnoreCase = null;
+
 	/**
 	 * コンストラクタ（ルートノード）
 	 */
@@ -73,6 +82,56 @@ final class RouteTree {
 
 
 	// region 登録
+
+	/**
+	 * 大文字小文字を見ない索引を作る（要件 D-166）
+	 *
+	 * <p>
+	 * <b>登録のしかたは変えない。</b>木はそのままで、
+	 * <b>小文字で引ける索引を1本だけ横に置く</b>——
+	 * こうしておくと、<b>設定を切ったときの振る舞いが1バイトも変わらない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>綴りだけ違う兄弟があったら落とす。</b>
+	 * {@code /Admin} と {@code /admin} の両方を書いてあると、
+	 * <b>どちらに当たるかを読み手が決められない</b>——
+	 * しかも<b>片方にだけ認証を書いていたら、緩いほうに当たりうる</b>。
+	 * </p>
+	 *
+	 * @param path	ここまでのパス（メッセージ用）
+	 */
+	void indexIgnoreCase (String path) {
+
+		Map<String, RouteTree> index = new LinkedHashMap<>();
+
+		for (Map.Entry<String, RouteTree> entry : statics.entrySet()) {
+
+			String lower = entry.getKey().toLowerCase(Locale.ROOT);
+
+			RouteTree already = index.put(lower, entry.getValue());
+
+			if (already != null) {
+				throw new IllegalStateException(
+					("router.ignore_case を有効にしていますが、"
+						+ "%s の下に綴りだけ違うパスが2つあります: \"%s\" と \"%s\"。"
+						+ "どちらに当たるか決められないので、どちらかに寄せてください")
+						.formatted(path.isEmpty() ? "/" : path, already.segment, entry.getKey()));
+			}
+
+		}
+
+		staticsIgnoreCase = index;
+
+		for (Map.Entry<String, RouteTree> entry : statics.entrySet()) {
+			entry.getValue().indexIgnoreCase(path + "/" + entry.getKey());
+		}
+
+		for (Map.Entry<String, RouteTree> entry : variables.entrySet()) {
+			entry.getValue().indexIgnoreCase(path + "/{" + entry.getKey() + "}");
+		}
+
+	}
 
 	/**
 	 * パスの子ノードを取得する（無ければ作る）
@@ -403,6 +462,24 @@ final class RouteTree {
 		RouteTree staticChild = statics.get(segment);
 		if (staticChild != null && staticChild.find(state, method, segments, index + 1)) {
 			return true;
+		}
+
+		/*
+		 * 1'. 綴りだけ違う固定セグメント（要件 D-166）
+		 *
+		 * <b>そのままの綴りを先に試したあとで見る。</b>
+		 * 逆にすると、<b>大文字小文字だけ違う2本を書いたときに
+		 * 意図しないほうへ当たる</b>——もっとも、その2本は seal() で落としている。
+		 */
+		if (staticsIgnoreCase != null) {
+
+			RouteTree lowerChild = staticsIgnoreCase.get(segment.toLowerCase(Locale.ROOT));
+
+			if (lowerChild != null && lowerChild != staticChild
+				&& lowerChild.find(state, method, segments, index + 1)) {
+				return true;
+			}
+
 		}
 
 		// 2. パスパラメータ（登録順）

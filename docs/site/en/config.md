@@ -146,6 +146,14 @@ server {
 	strict_routes        = false    # make unreachable routes an error (true in CI)
 	shutdown_grace       = 0s       # from "start stopping" to refusing new requests
 	shutdown_timeout     = 15s      # how long in-flight requests are waited for
+	backlog              = 1024     # connections the OS holds while accept catches up
+	write_queue_length   = 0        # length of the response write queue; 0/1 means "no queue"
+	smart_async_writes   = false    # with a queue, write inline while it is not busy
+}
+
+router {
+	ignore_case           = false   # whether to match paths case-insensitively
+	redirect_to_canonical = false   # whether to 301 to the canonical URL
 }
 
 cookie {

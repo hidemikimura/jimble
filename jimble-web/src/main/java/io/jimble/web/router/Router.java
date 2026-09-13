@@ -509,6 +509,17 @@ public final class Router {
 		checkDuplicateAttributeNames();
 		checkUnreachable();
 
+		/*
+		 * 大文字小文字を見ない索引（要件 D-166）。
+		 *
+		 * <b>ここで1度だけ作る。</b>リクエストごとに走査すると、
+		 * <b>階層の深さぶんだけ毎回なめる</b>ことになる。
+		 * 綴りだけ違う兄弟があれば、ここで落ちる。
+		 */
+		if (RouterConf.ignoreCase()) {
+			rootTree.indexIgnoreCase("");
+		}
+
 	}
 
 	/**

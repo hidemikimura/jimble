@@ -79,6 +79,106 @@ public final class PathSegments {
 	}
 
 	/**
+	 * 生のパスを正規の形にする（要件 D-166）
+	 *
+	 * <p>
+	 * <b>末尾のスラッシュを落とし、連続したスラッシュを1つにする。</b>
+	 * {@code /a//b/} は {@code /a/b}、{@code //} は {@code /} になる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>デコードしない。</b>ここで作った文字列は
+	 * {@code Location} ヘッダにそのまま載るので、
+	 * <b>デコードすると {@code %20} が空白になって壊れる</b>。
+	 * </p>
+	 *
+	 * @param rawPath	生のパス
+	 * @return	正規の形（必ず {@code /} で始まる）
+	 */
+	public static String canonicalRawPath (String rawPath) {
+
+		List<String> segments = split(rawPath, false);
+
+		return segments.isEmpty() ? "/" : "/" + String.join("/", segments);
+
+	}
+
+	/**
+	 * 生のパスを、当たったルートの綴りに寄せる（要件 D-166）
+	 *
+	 * <p>
+	 * スラッシュを正規の形にしたうえで、<b>ルートに書いてある固定の部分だけ</b>を
+	 * そちらの綴りに差し替える。{@code /Users/{id}} に {@code /USERS/AbC} が当たったら
+	 * <b>{@code /Users/AbC}</b> になる——<b>{@code {id}} の値は1文字も変えない</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>デコードしない。</b>{@code Location} ヘッダにそのまま載るためで、
+	 * <b>パスパラメータの部分は受け取ったバイトのまま使い回す</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * ワイルドカード（{@code *}）から先はパターンが無いので、<b>そのまま残す</b>。
+	 * </p>
+	 *
+	 * @param rawPath	生のパス
+	 * @param pattern	当たったルートのパターン（{@code null} ならスラッシュだけ直す）
+	 * @return	正規の形（必ず {@code /} で始まる）
+	 */
+	public static String canonicalRawPath (String rawPath, String pattern) {
+
+		if (pattern == null) {
+			return canonicalRawPath(rawPath);
+		}
+
+		List<String> raw = split(rawPath, false);
+		List<String> patternSegments = split(pattern, false);
+
+		List<String> result = new ArrayList<>(raw.size());
+
+		for (int index = 0; index < raw.size(); index++) {
+
+			if (index >= patternSegments.size()) {
+				// ワイルドカードで受けた残り
+				result.add(raw.get(index));
+				continue;
+			}
+
+			String patternSegment = patternSegments.get(index);
+
+			/*
+			 * <b>差し替えるのは固定の部分だけ。</b>
+			 * {@code {id}} と {@code *} は、書いてある字面がパスに出るものではない。
+			 */
+			if (patternSegment.startsWith("{") || "*".equals(patternSegment)) {
+				result.add(raw.get(index));
+			} else {
+				result.add(patternSegment);
+			}
+
+		}
+
+		return result.isEmpty() ? "/" : "/" + String.join("/", result);
+
+	}
+
+	/**
+	 * 生のパスをデコードせずに割る（要件 D-166）
+	 *
+	 * <p>
+	 * 正規の形へ寄せるとき、<b>パスパラメータの部分は1文字も変えずに使い回す</b>ために要る。
+	 * </p>
+	 *
+	 * @param rawPath	生のパス
+	 * @return	セグメント（エンコードされたまま）
+	 */
+	static List<String> rawSegments (String rawPath) {
+
+		return split(rawPath, false);
+
+	}
+
+	/**
 	 * 分割する
 	 *
 	 * @param path		パス
