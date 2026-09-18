@@ -16,6 +16,7 @@ import io.jimble.web.context.WebContext;
 import io.jimble.web.router.RouteInfo;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -91,6 +92,13 @@ public final class JimbleServer {
 
 	/* このサーバーの状態（要件 D-91） */
 	private final State state;
+
+	/*
+	 * 動いている印（RUNNING_PID_{ポート}）。
+	 * 待ち受けを始めてから置くので、start() が返る前は null。
+	 * jar から動いていないときも null（RunningPid 参照）。
+	 */
+	private volatile Path runningPid;
 
 	/**
 	 * helidon が実際に持っている設定（要件 D-165）
@@ -263,6 +271,16 @@ public final class JimbleServer {
 
 		server.start();
 
+		/*
+		 * 動いている印を置く（RUNNING_PID_{ポート}）。
+		 *
+		 * <b>待ち受けを始めてから置く。</b>ポート 0 のときは
+		 * 番号が決まるのが start() のあとで、名前に入れられない。
+		 * 掴めずに落ちたときに印だけ残るのも避けられる。
+		 * 場所はアプリの jar のディレクトリ（app のクラスで決める）。
+		 */
+		started.runningPid = RunningPid.create(app.getClass(), server.port());
+
 		Log.info("jimble を起動しました: http://%s:%d".formatted(
 			ServerConf.host().isEmpty() ? "localhost" : ServerConf.host(), server.port()));
 		Log.info("サーバー設定: 待受=%s / 本文上限=%dbyte / ヘッダ上限=%dbyte / アイドル=%d秒 / 圧縮=%s / プロキシ信頼=%s".formatted(
@@ -383,6 +401,17 @@ public final class JimbleServer {
 	}
 
 	/**
+	 * 動いている印のファイル（テスト用）
+	 *
+	 * @return	{@code RUNNING_PID_{ポート}}。置いていなければ null
+	 */
+	Path runningPid () {
+
+		return runningPid;
+
+	}
+
+	/**
 	 * 停止する（要件 D-91）
 	 *
 	 * <p>順番がある。<b>いきなり止めない。</b></p>
@@ -423,6 +452,11 @@ public final class JimbleServer {
 		drain(state);
 
 		server.stop();
+
+		// 待ち受けをやめてから印を消す。消えていれば「もう受けていない」と読める
+		RunningPid.delete(runningPid);
+		runningPid = null;
+
 		Log.info("jimble を停止しました");
 
 	}

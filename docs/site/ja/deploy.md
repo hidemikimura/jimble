@@ -144,6 +144,12 @@ java -Djimble.env=prod -cp app.jar my_blog.batch.Batch \
 `SIGTERM` で終了処理が走ります（サーバー・スケジューラ・DB のプール）。
 `kill -9` はトランザクションが中途半端に残るので避けてください。
 
+プロセス ID は jar のディレクトリの `RUNNING_PID_{ポート}` に入っています（[サーバー設定](./server)）。
+
+```bash
+kill $(cat /opt/app/RUNNING_PID_8080)
+```
+
 ## 起動したら確認すること
 
 起動ログの1行目あたりに構成が出ます。**思っていたものと合っているか**を見てください。

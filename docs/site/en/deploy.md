@@ -149,6 +149,12 @@ put several machines side by side, settle how `batch.scheduler_id` is handled fi
 `SIGTERM` runs the shutdown path (server, scheduler, DB pool).
 Avoid `kill -9` — it leaves transactions half finished.
 
+The process ID is in `RUNNING_PID_{port}` in the jar's directory ([Server settings](./server)).
+
+```bash
+kill $(cat /opt/app/RUNNING_PID_8080)
+```
+
 ## Check this once it is up
 
 The configuration is printed around the first line of the startup log.

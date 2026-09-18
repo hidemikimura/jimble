@@ -213,6 +213,22 @@ get("/health_check", context ->
 > To have threads you started yourself stop along with it, hand them to `Shutdown.add(...)`
 > ([Execution model](./execution)).
 
+### The running marker (`RUNNING_PID_{port}`)
+
+Once it is listening, jimble puts a file named like `RUNNING_PID_8080` in
+**the directory that holds the application jar**. Its content is the process ID.
+It is removed when `stop()` completes (SIGTERM included).
+
+```bash
+kill $(cat /opt/app/RUNNING_PID_8080)   # stop it
+test -f /opt/app/RUNNING_PID_8080       # is it running?
+```
+
+- The port number is part of the name, so several servers started from the same directory do not erase each other's marker
+- **When not running from a jar (`jimbleRun`, tests) nothing is written.** The place is "the jar's directory", and there is no jar to sit next to
+- If a marker from the previous run is still there (`kill -9`, power loss), it warns and overwrites. **Startup is not blocked**
+- If it cannot be written (read-only directory, for instance) it warns and keeps listening
+
 ## Making jimble the proxy
 
 The other way round: jimble can forward on to another server.
