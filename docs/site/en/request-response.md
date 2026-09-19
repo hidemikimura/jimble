@@ -116,6 +116,14 @@ body** (`code(204).send()`), or when you are returning text directly.
 ```java snippet=json-route
 ```
 
+**If the target of `redirect()` is the same URL as the request being handled, a
+`RedirectLoopException` (500) is thrown.** Sent as-is, the browser would fetch the same URL
+again and the same handler would answer with the same target — it never stops. The exception
+goes to `error(...)` like any other, so whether to show a page or return JSON is decided there.
+Only GET / HEAD are checked; sending `POST /login` back to `/login` (PRG) is not stopped.
+Only a one-hop loop back to itself is detected — `/a → /b → /a` across separate requests cannot
+be seen from inside one request.
+
 ## Streaming something large
 
 When you do not want the whole thing in memory, use `outputStream()` directly.

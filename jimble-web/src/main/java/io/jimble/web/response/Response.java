@@ -1,6 +1,7 @@
 package io.jimble.web.response;
 
 import io.jimble.web.context.WebContext;
+import io.jimble.web.http.RedirectLoopException;
 import io.jimble.web.http.ResponseSink;
 import io.jimble.web.template.ModelAndView;
 import io.jimble.web.template.Templates;
@@ -538,10 +539,30 @@ public final class Response extends Data {
 	/**
 	 * リダイレクトレスポンスを設定する
 	 *
+	 * <p>
+	 * <b>飛び先がいま処理しているリクエストと同じ URL なら {@link RedirectLoopException} を投げる。</b>
+	 * ブラウザはまた同じ URL を取りに来て、同じ処理が同じ飛び先を返す——止めなければ回り続ける。
+	 * 例外は他と同じく<b>アプリの {@code error(...)} に 500 で渡る</b>ので、
+	 * 画面へ飛ばすか JSON を返すかはそちらで決める。
+	 * </p>
+	 *
+	 * <p>
+	 * 見るのは GET / HEAD のときだけ。{@code POST /login} から {@code /login} へ戻すのは
+	 * 普通の形（PRG）で、次は GET で来るので回らない。
+	 * 見つけられるのは<b>自分自身へ戻る1段のループ</b>だけで、
+	 * {@code /a → /b → /a} のように別のリクエストをまたぐものは分からない
+	 * （{@code RedirectLoop} 参照）。
+	 * </p>
+	 *
 	 * @param redirectResponse  リダイレクトレスポンス
 	 * @return  Response
+	 * @throws RedirectLoopException	飛び先がいまのリクエストと同じ URL のとき
 	 */
 	public Response redirect (String redirectResponse) {
+
+		if (RedirectLoop.isLoop(request, redirectResponse)) {
+			throw new RedirectLoopException(redirectResponse, request.url());
+		}
 
 		code(302);
 		this.isResponseStarted = true;
