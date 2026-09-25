@@ -93,6 +93,10 @@ tasks.register<Test>("dbTest") {
 `conf/application.dbtest.conf` を置いて、繋ぎ先を書きます。
 **共通の設定を読むのは1行目の `include` です**（[設定](./config)）。
 
+`dbtest` は自分で付ける名前です（[デプロイ](./deploy)の表にはありません）。
+**`application.dbtest.conf` があれば「知らない環境です」の警告は出ません。**
+`isLocal()` / `isStaging()` / `isProduction()` はどれも false になります。
+
 ```conf
 include "application.conf"
 

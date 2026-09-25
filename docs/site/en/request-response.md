@@ -116,6 +116,12 @@ body** (`code(204).send()`), or when you are returning text directly.
 ```java snippet=json-route
 ```
 
+**204 / 205 / 304 cannot carry a body** (that is how HTTP defines them).
+If you `code(204).send()` with something already built by `json(...)` or similar, **the body is
+dropped and only the status and headers go out** (Set-Cookie still arrives, so answering a logout
+with 204 works). A WARN is logged when something is dropped — a body built for nobody is usually a
+mistake. The body itself is not written to the log.
+
 **If the target of `redirect()` is the same URL as the request being handled, a
 `RedirectLoopException` (500) is thrown.** Sent as-is, the browser would fetch the same URL
 again and the same handler would answer with the same target — it never stops. The exception

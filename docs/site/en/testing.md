@@ -96,6 +96,10 @@ Put `conf/application.dbtest.conf` in place and write the connection there.
 **The `include` on the first line is what reads the shared configuration**
 ([Configuration](./config)).
 
+`dbtest` is a name you make up (it is not in the table in [Deploying](./deploy)).
+**As long as `application.dbtest.conf` exists, the "unknown environment" warning is not logged.**
+`isLocal()` / `isStaging()` / `isProduction()` are all false.
+
 ```conf
 include "application.conf"
 

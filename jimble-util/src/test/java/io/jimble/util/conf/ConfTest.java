@@ -5,8 +5,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import io.jimble.util.log.Log;
+
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,7 +25,27 @@ class ConfTest {
 	@AfterEach
 	void reload () {
 
+		Log.resetSink();
 		Conf.reload();
+
+	}
+
+	/**
+	 * 警告を拾いはじめる
+	 *
+	 * @return	拾った警告（あとから増える）
+	 */
+	private static List<String> captureWarnings () {
+
+		List<String> warns = new CopyOnWriteArrayList<>();
+
+		Log.sink((loggerName, level, message, data, throwable) -> {
+			if (level.toInt() >= org.slf4j.event.Level.WARN.toInt()) {
+				warns.add(message);
+			}
+		});
+
+		return warns;
 
 	}
 
@@ -194,6 +218,49 @@ class ConfTest {
 			assertFalse(Conf.conf().isLocal(), "打ち間違いがローカルに倒れています");
 			assertFalse(Conf.conf().isStaging());
 		});
+
+	}
+
+	@Test
+	@DisplayName("D-180 打ち間違い（環境別ファイルも無い）は警告する。1度だけ")
+	void typoIsWarnedOnce () {
+
+		List<String> warns = captureWarnings();
+
+		withEnv("producton", () -> {
+			Conf.conf().isProduction();
+			Conf.conf().isLocal();
+		});
+
+		List<String> unknown = warns.stream().filter(w -> w.contains("知らない環境")).toList();
+
+		assertEquals(1, unknown.size(), "1度だけのはずが: " + warns);
+		assertTrue(unknown.getFirst().contains("producton"), unknown.getFirst());
+		assertTrue(unknown.getFirst().contains("application.producton.conf")
+			, "探したファイルの名前が出ていない（どう直せば黙るのかが分からない）: " + unknown.getFirst());
+
+	}
+
+	@Test
+	@DisplayName("D-180 自分で付けた名前（環境別ファイルがある）は警告しない。判定はどれにも当たらない")
+	void ownEnvWithItsFileIsNotWarned () {
+
+		/*
+		 * <b>ドキュメントが勧めている書き方で警告が出ていた</b>（報告）。
+		 * testing.md は dbTest に `-Djimble.env=dbtest` と `application.dbtest.conf` を勧めているのに、
+		 * 表に無いというだけで「知らない環境です」と出していた。
+		 * jimble-util のテストにある application.unittest.conf で同じ形を作る。
+		 */
+		List<String> warns = captureWarnings();
+
+		withEnv("unittest", () -> {
+			assertFalse(Conf.conf().isProduction());
+			assertFalse(Conf.conf().isStaging());
+			assertFalse(Conf.conf().isLocal(), "自分で付けた名前がローカルに倒れています");
+		});
+
+		assertTrue(warns.stream().noneMatch(w -> w.contains("知らない環境"))
+			, "ファイルを置いたのに警告が出ています: " + warns);
 
 	}
 

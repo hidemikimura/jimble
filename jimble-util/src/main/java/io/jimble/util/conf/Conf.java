@@ -244,8 +244,8 @@ public final class Conf {
 
 		env = resolveEnv();
 
-		// 環境が変わったら、知らない環境の警告はもう一度出してよい
-		unknownEnvWarned.set(false);
+		// 環境が変わったら、知らない環境かどうかはもう一度確かめてよい
+		unknownEnvChecked.set(false);
 		instance = null;
 
 	}
@@ -865,16 +865,33 @@ public final class Conf {
 	/** 知っている環境（正式名） */
 	private static final Set<String> KNOWN_ENVS = Set.of(ENV_LOCAL, ENV_STAGING, ENV_PRODUCTION);
 
-	/* 知らない環境を1度だけ言う */
-	private static final AtomicBoolean unknownEnvWarned = new AtomicBoolean(false);
+	/* 知らない環境かどうかを1度だけ確かめる */
+	private static final AtomicBoolean unknownEnvChecked = new AtomicBoolean(false);
 
 	/**
 	 * 判定に使う環境名
 	 *
 	 * <p>
 	 * 大小と前後の空白をそろえ、別名を正式名に直したもの。
-	 * <b>表に無ければ、そのまま返して1度だけ警告する</b>——
+	 * <b>表に無ければ、そのまま返す</b>——
 	 * {@code producton} のような打ち間違いは、黙って local に倒すと本番で気づけない。
+	 * </p>
+	 *
+	 * <h4>警告を出すのは、環境別ファイルも無いときだけ（D-180）</h4>
+	 * <p>
+	 * 表に無い名前は2種類ある。<b>打ち間違い</b>（{@code producton}）と、
+	 * <b>自分で付けた名前</b>（{@code dbtest} / {@code pgtest} / {@code unittest}）である。
+	 * 後者は jimble 自身も使っていて、ドキュメントもテスト用に {@code dbtest} を勧めている。
+	 * それなのに<b>表に無いというだけで毎回「知らない環境です」と出していた</b>——
+	 * 勧めたとおりに書いた人に、間違いだと言っていた。
+	 * </p>
+	 *
+	 * <p>
+	 * 見分けは <b>{@code application.<名前>.conf} があるかどうか</b>で付ける。
+	 * 自分で名前を付けた人は、その名前のファイルを置いている（置かなければ付ける意味が無い）。
+	 * 打ち間違いのほうは、その綴りのファイルが無い——本物は {@code application.prod.conf} なので。
+	 * <b>ファイルがあれば黙って通し、無ければ警告する。</b>
+	 * どちらの場合も判定（{@code isLocal()} など）はどれにも当たらない。
 	 * </p>
 	 *
 	 * @return	正式名
@@ -885,18 +902,46 @@ public final class Conf {
 
 		String resolved = ENV_ALIASES.getOrDefault(value, value);
 
-		if (!KNOWN_ENVS.contains(resolved) && unknownEnvWarned.compareAndSet(false, true)) {
+		if (!KNOWN_ENVS.contains(resolved)
+			&& unknownEnvChecked.compareAndSet(false, true)
+			&& !hasEnvFile(env)) {
 			Log.warn("""
 				知らない環境です: %s
+				  application.%s.conf も見つかりません（打ち間違いではありませんか）。
 				  isLocal() / isStaging() / isProduction() は、どれも false になります。
 				  使えるのは local / staging / production です
 				  （略記 dev・development / stg・stage / prod・prd も同じものとして扱います）。
-				  環境別ファイルは application.%s.conf を探しています。
+				  テスト用など自分で名前を付けた環境なら、application.%s.conf を置いてください。
+				  置けばこの警告は出なくなります。
 				"""
-				.formatted(env, env));
+				.formatted(env, env, env));
 		}
 
 		return resolved;
+
+	}
+
+	/**
+	 * 環境別ファイルがクラスパスにあるか
+	 *
+	 * <p>
+	 * 読み込みと同じ探し方（{@link #collectSources}）で探す。
+	 * 中身が空でも「ある」とみなす——置いたこと自体が、その名前を意図して付けた印である。
+	 * </p>
+	 *
+	 * @param rawEnv	書いたとおりの環境名
+	 * @return	あれば true
+	 */
+	private static boolean hasEnvFile (String rawEnv) {
+
+		if (rawEnv == null || rawEnv.isBlank()) {
+			return false;
+		}
+
+		List<String> found = new ArrayList<>();
+		collectSources(BASE_NAME + "." + rawEnv, found);
+
+		return !found.isEmpty();
 
 	}
 

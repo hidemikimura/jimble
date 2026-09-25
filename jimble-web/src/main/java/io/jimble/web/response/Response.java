@@ -291,6 +291,71 @@ public final class Response extends Data {
 
 	}
 
+	/**
+	 * 本文を持てないステータスか（D-179）
+	 *
+	 * <p>
+	 * <b>204 / 205 / 304 は本文を持てない</b>（RFC 9110）。helidon はこの3つに本文を書こうとすると
+	 * 例外を投げるか、黙って 500 に差し替える。
+	 * </p>
+	 *
+	 * <p>
+	 * 1xx も本文を持たないが、ハンドラが返す最終応答ではないのでここでは扱わない。
+	 * </p>
+	 *
+	 * @param code	ステータスコード
+	 * @return	本文を持てなければ true
+	 */
+	static boolean isBodilessStatus (int code) {
+
+		return code == 204 || code == 205 || code == 304;
+
+	}
+
+	/**
+	 * 本文を持てないステータスなら、本文を付けずに送る（D-179）
+	 *
+	 * <p>
+	 * <b>本文を捨てて、ステータスとヘッダだけを返す。</b>
+	 * {@code json(...)} を積んだあとで {@code code(204).send()} と書くと、
+	 * これまでは helidon が本文を書けずに<b>500</b> を返していた。
+	 * 204 と書いた以上、呼んだ側がほしいのは 204 である。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>ただし黙っては捨てない。</b>組み立てた本文が誰にも届かないのは、
+	 * たいてい書き間違いである（204 のつもりか、本文を返すつもりか、どちらかが違う）。
+	 * 捨てたことをログに出す。<b>中身は出さない</b>——本文には個人情報が入りうる。
+	 * </p>
+	 *
+	 * <p>
+	 * Cookie と Cache-Control は呼ぶ前に済ませておくこと（204 でも Set-Cookie は効く。
+	 * ログアウトを 204 で返すのはよくある形である）。
+	 * </p>
+	 *
+	 * @param what	捨てる本文の種類（ログ用）。本文が空なら null——捨てるものが無いのでログも出さない
+	 * @return	送った = true
+	 */
+	private boolean sendWithoutBodyIfBodiless (String what) {
+
+		if (!isBodilessStatus(responseCode)) {
+			return false;
+		}
+
+		if (what != null) {
+			Log.warn("ステータス %d は本文を持てないので、%s を捨てて送りました: %s %s"
+				.formatted(responseCode, what, request.method(), request.path()));
+		}
+
+		sink.status(responseCode);
+		sink.send();
+
+		afterResponse();
+
+		return true;
+
+	}
+
 	// endregion
 
 	// region テーブルネスト（要件 F-A-11）
@@ -1042,6 +1107,10 @@ public final class Response extends Data {
 
 		// ModelAndViewレスポンス
 		if (modelAndViewResponse != null) {
+			// 捨てるだけのテンプレートを描かない（描いて落ちると、204 のはずが 500 になる）
+			if (sendWithoutBodyIfBodiless("テンプレート")) {
+				return this;
+			}
 			// JSONレスポンスを要求されている場合はデータだけ返す（移送元と同じ）
 			if (request.acceptJson()) {
 				send(this);
@@ -1061,6 +1130,9 @@ public final class Response extends Data {
 
 		// ダウンロードFileレスポンス
 		if (downloadFileResponse != null) {
+			if (sendWithoutBodyIfBodiless("ダウンロード")) {
+				return this;
+			}
 			try {
 				flushCookies();
 				sink.sendFile(downloadFileResponse.toPath(), downloadFileName);
@@ -1091,7 +1163,15 @@ public final class Response extends Data {
 		}
 
 		// レスポンスなし
-		if (request.acceptJson()) {
+		if (isSettedResponseCode && isBodilessStatus(responseCode)) {
+			/*
+			 * <b>何も積んでいないのに、Accept: application/json だけで 500 になっていた。</b>
+			 * 下の分岐は「JSON を求められたら、何も無くても {} を返す」なので、
+			 * fetch() のように Accept を付けてくる相手に code(204).send() を返すと
+			 * 204 に {} を書こうとして落ちる。アプリは何も積んでいないので、捨てたログも出さない。
+			 */
+			sendWithoutBodyIfBodiless(null);
+		} else if (request.acceptJson()) {
 			// JSONレスポンスを要求されている場合はデータを返す
 			send(this);
 		} else if (isSettedResponseCode) {
@@ -1216,6 +1296,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless("ストリーム")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.send(is);
 
@@ -1254,6 +1339,20 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		/*
+		 * 送っていたら閉じていたもの（下の try-with-resources）なので、捨てるときも閉じる。
+		 * <b>送る前に閉じる</b>——送ってから閉じると、応答を受け取った側が
+		 * まだ開いているファイルを見ることになる。
+		 */
+		if (isBodilessStatus(responseCode)) {
+			try { is.close(); } catch (IOException ignore) { /* 捨てるだけなので構わない */ }
+		}
+
+		if (sendWithoutBodyIfBodiless("ストリーム")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.header(HEADER_CONTENT_TYPE, contentType);
 		if (contentLength > 0) {
@@ -1316,6 +1415,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(text == null || text.isEmpty() ? null : "文字列")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.send(text);
 
@@ -1340,6 +1444,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(text == null || text.isEmpty() ? null : "文字列")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.header(HEADER_CONTENT_TYPE, contentType);
 		sink.send(text);
@@ -1365,6 +1474,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(text == null || text.isEmpty() ? null : "文字列")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.send(text, charset);
 
@@ -1390,6 +1504,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(text == null || text.isEmpty() ? null : "文字列")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.header("Content-Type", withCharset(contentType, charset));
 		sink.send(text, charset);
@@ -1414,6 +1533,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless("JSON")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 
 		/*
@@ -1461,6 +1585,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(jsonL == null || jsonL.isEmpty() ? null : "JSONL")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 
 		if (!contentTypeSet) {
@@ -1531,6 +1660,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless("ファイル")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.header(HEADER_CONTENT_TYPE, contentType);
 		if (contentEncoding != null) {
@@ -1564,6 +1698,11 @@ public final class Response extends Data {
 
 		flushCookies();
 		applyDefaultCacheControl();
+
+		if (sendWithoutBodyIfBodiless(buff == null || buff.length == 0 ? null : "バイト列")) {
+			return this;
+		}
+
 		sink.status(responseCode);
 		sink.header("Content-Length", buff.length);
 		sink.send(buff);

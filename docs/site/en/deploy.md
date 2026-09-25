@@ -66,6 +66,11 @@ Case does not matter.
 > **A warning is logged once at startup** — silently falling back to `local` would let
 > **a production machine call itself local** and keep running.
 >
+> **Names you make up yourself (such as `dbtest` for tests) are fine.**
+> **If `application.<that name>.conf` exists, no warning is logged** — putting the file there is
+> itself the sign that the name was chosen on purpose. A typo has no file with that spelling.
+> Either way, none of the checks match.
+>
 > For the record, **`-Djimble.env=prod` used to leave `isProduction()` false** (fixed in 1.0):
 > the check only matched the literal `production`.
 
