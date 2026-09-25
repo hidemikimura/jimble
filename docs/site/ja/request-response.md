@@ -137,8 +137,25 @@ context.response().code(201).send();               // 本文なし
 context.response().setResponseHeader("Content-Type", "text/csv; charset=UTF-8");
 
 try (OutputStream out = context.response().outputStream()) {
-	// 1行ずつ書く。書いたそばから流れていく
+	// 1行ずつ書く
 }
+```
+
+**`outputStream()` を呼んだ時点でステータスとヘッダが決まります。**
+`code(...)`・`cookies()` に積んだ Cookie・既定の `Cache-Control: no-store`（自分で決めていれば上書きしません）は、
+その前に済ませてください。あとから変えても届きません。
+204 / 205 / 304 のときは、書いたものは捨てられて WARN が出ます。
+
+**書いたものは `flush()` するまで溜まります。**CSV のように最後まで書き切るものはそのままで構いませんが、
+届いたそばから相手に見せたいとき（途中経過・ほかのサーバーの応答の中継）は、書くたびに `flush()` してください。
+
+`InputStream` を渡すときは `send(in, "型")`（または `stream(...)`）です。
+**続きがまだ届いていなければ（`available()` が 0 なら）、そこまでを送り出します。**
+ファイルのように手元にそろっているものはまとめて書き、別のサーバーのストリーミング応答のように少しずつ届くものは、届いたそばから流れます。
+
+```java
+HttpResponse<InputStream> upstream = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+context.response().code(upstream.statusCode()).send(upstream.body(), "text/event-stream");
 ```
 
 進捗を送りたいだけなら [SSE](./sse) のほうが簡単です。

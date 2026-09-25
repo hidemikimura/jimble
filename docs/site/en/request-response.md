@@ -138,8 +138,25 @@ When you do not want the whole thing in memory, use `outputStream()` directly.
 context.response().setResponseHeader("Content-Type", "text/csv; charset=UTF-8");
 
 try (OutputStream out = context.response().outputStream()) {
-	// write it row by row; it flows out as you write
+	// write it row by row
 }
+```
+
+**Calling `outputStream()` fixes the status and headers.**
+`code(...)`, cookies put in `cookies()` and the default `Cache-Control: no-store` (not overwritten if you set your own)
+are applied at that moment, so settle them first; changes made afterwards do not arrive.
+For 204 / 205 / 304, whatever you write is dropped and a WARN is logged.
+
+**What you write stays buffered until you `flush()`.** For something written to the end, like a CSV, that is fine as is;
+when the other side should see each piece as soon as it is ready (progress, relaying another server's response), `flush()` after each write.
+
+To hand over an `InputStream`, use `send(in, "type")` (or `stream(...)`).
+**Whenever nothing more is available yet (`available()` is 0), what has been read so far is sent out.**
+Things already at hand, like files, are written in large chunks; things that trickle in, like another server's streaming response, flow out as they arrive.
+
+```java
+HttpResponse<InputStream> upstream = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+context.response().code(upstream.statusCode()).send(upstream.body(), "text/event-stream");
 ```
 
 If all you want is to report progress, [SSE](./sse) is easier.

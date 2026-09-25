@@ -114,9 +114,65 @@ final class HelidonResponseSink implements ResponseSink {
 		streamed = true;
 
 		try (OutputStream out = response.outputStream()) {
-			stream.transferTo(out);
+			copy(stream, out);
 		} catch (Exception ex) {
 			throw new IllegalStateException("ストリームの送信に失敗しました", ex);
+		}
+
+	}
+
+	/**
+	 * 読んだものを書く。<b>続きがまだ届いていなければ、そこまでを送り出す</b>（D-181）
+	 *
+	 * <p>
+	 * 1.2.0 までは {@code transferTo} で写すだけで、一度も flush しなかった。helidon の出力は
+	 * バッファが一杯になるか閉じるまで出ていかないので、<b>別のサーバーのストリーミング応答を中継すると、
+	 * 最後の1バイトが来るまで相手に何も届かなかった</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>毎回は flush しない。</b>ファイルのように手元にそろっているもの（{@code available() > 0}）は
+	 * まとめて書いたほうが速い。flush するのは「読めるものが尽きた＝次は待つことになる」ときだけ。
+	 * </p>
+	 *
+	 * @param in	入力
+	 * @param out	出力
+	 * @throws IOException	読み書きの失敗
+	 */
+	static void copy (InputStream in, OutputStream out) throws java.io.IOException {
+
+		byte[] buffer = new byte[BUFFER_SIZE];
+		int read;
+
+		while ((read = in.read(buffer)) >= 0) {
+
+			if (read > 0) {
+				out.write(buffer, 0, read);
+			}
+
+			if (nothingMoreYet(in)) {
+				out.flush();
+			}
+
+		}
+
+	}
+
+	/** 写すときのバッファ（transferTo と同じ大きさ） */
+	private static final int BUFFER_SIZE = 16 * 1024;
+
+	/**
+	 * いま読めるものが無いか（読めるかどうか分からない入力も「無い」とみなして送り出す）
+	 *
+	 * @param in	入力
+	 * @return	無ければ true
+	 */
+	private static boolean nothingMoreYet (InputStream in) {
+
+		try {
+			return in.available() <= 0;
+		} catch (java.io.IOException ex) {
+			return true;
 		}
 
 	}

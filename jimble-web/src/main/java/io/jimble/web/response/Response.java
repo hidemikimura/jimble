@@ -850,12 +850,88 @@ public final class Response extends Data {
 	/**
 	 * 出力ストリームを取得する
 	 *
+	 * <p>
+	 * <b>ここを呼んだ時点でステータスとヘッダが確定する</b>（D-181）。
+	 * {@code code(...)} の状態コード、{@code cookies()} に積んだ Cookie、既定の Cache-Control（no-store。
+	 * 自分で決めていれば上書きしない）を、ほかの送り方と同じくここで付ける。
+	 * あとから {@code code(...)} やヘッダを変えても届かない。
+	 * </p>
+	 *
+	 * <p>
+	 * 1.2.0 までは何も付けずに書き始めていたので、<b>状態コードはいつも 200</b> になり、
+	 * Cookie も届かなかった（{@link #sse()} もここを通るので、SSE の前に積んだ Cookie も届かなかった）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>書いたものは flush するまで出ていかない</b>（helidon が溜める）。
+	 * 届いたそばから返したいときは、書くたびに {@code flush()} する。
+	 * </p>
+	 *
+	 * <p>
+	 * 本文を持てない状態コード（204 / 205 / 304）なら、ステータスとヘッダだけを送り、
+	 * 書かれたものは捨てて WARN を出す（D-179 と同じ扱い。中身は出さない）。
+	 * </p>
+	 *
 	 * @return  出力ストリーム
 	 */
 	public OutputStream outputStream () {
 
 		isResponseStarted = true;
+
+		if (!sink.isSent()) {
+
+			flushCookies();
+			applyDefaultCacheControl();
+
+			if (sendWithoutBodyIfBodiless(null)) {
+				return new DiscardingOutputStream(responseCode, request.method(), request.path());
+			}
+
+			sink.status(responseCode);
+
+		}
+
 		return new ResponseOutputStream(this, sink.outputStream());
+
+	}
+
+	/**
+	 * 本文を持てない応答に書かれたものを捨てる出力（D-181）
+	 *
+	 * <p>最初に書かれたときに1回だけ WARN を出す。中身は出さない——本文には個人情報が入りうる。</p>
+	 */
+	private static final class DiscardingOutputStream extends OutputStream {
+
+		private final int code;
+		private final String method;
+		private final String path;
+		private boolean warned;
+
+		DiscardingOutputStream (int code, String method, String path) {
+			this.code = code;
+			this.method = method;
+			this.path = path;
+		}
+
+		@Override
+		public void write (int b) {
+			warnOnce();
+		}
+
+		@Override
+		public void write (byte[] b, int off, int len) {
+			if (len > 0) {
+				warnOnce();
+			}
+		}
+
+		private void warnOnce () {
+			if (!warned) {
+				warned = true;
+				Log.warn("ステータス %d は本文を持てないので、outputStream() に書かれたものを捨てました: %s %s"
+					.formatted(code, method, path));
+			}
+		}
 
 	}
 

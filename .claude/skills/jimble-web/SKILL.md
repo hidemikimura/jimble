@@ -133,6 +133,9 @@ context.response().code(201).send();
 明示するのは**本文なしで終わらせたいとき**だけ（`code(204).send()`）。
 
 大きいものは `context.response().outputStream()` に直接書く。
+**呼んだ時点でステータス・Cookie・Cache-Control が決まる**ので、`code(...)` やヘッダはその前に。
+書いたものは `flush()` するまで溜まる——届いたそばから見せたいなら書くたびに `flush()`。
+`InputStream` は `send(in, "型")` に渡せば、続きが来ていないところで送り出す（中継に使える）。
 
 ## セッション・CSRF・Flash
 
