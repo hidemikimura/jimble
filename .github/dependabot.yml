@@ -20,6 +20,26 @@ updates:
       helidon:
         patterns:
           - "io.helidon*"
+    ignore:
+      # helidon は LTS の系列に留める（D-177）。
+      #
+      # 27.0.0（2026-09）から版番号が JDK に揃った（tip and tail モデル）。
+      # <b>Helidon N は JDK N を要る</b>——27 は Java 27 が無いと動かない。
+      # jimble の最低線は Java 25 LTS なので、27 を入れると
+      # <b>Java 25 で動かしているアプリが全部起動しなくなる</b>。
+      #
+      # いまの 4.5 は LTS の tail（JDK 21 が最低線、JDK 25 推奨）で、修正はここに来る。
+      # 4.x の中の更新（4.5.x / 4.6 …）はこれまでどおり PR になる。
+      #
+      # 版の範囲（">=5"）ではなく semver-major で止めているのは、
+      # <b>次の LTS に移ったあともそのまま効く</b>からである——
+      # 29 に上げれば 29.x は通り、30 / 31 は止まる。
+      #
+      # 次の LTS は Helidon 29（JDK 29）。上げるのは jimble の最低 Java を
+      # 29 に上げるときで、それは<b>アプリ全員の実行環境を変える</b>話である。
+      # PR が来たから merge する、で通す話ではない。
+      - dependency-name: "io.helidon*"
+        update-types: [ "version-update:semver-major" ]
 
   # ワークフローで使う action も古くなる
   #
