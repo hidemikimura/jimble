@@ -683,11 +683,11 @@ public final class Mfa {
 		 */
 		context.session().regenerateId();
 
-		context.session().put(KEY_PENDING_ID, principal.id());
-		context.session().put(KEY_PENDING_NAME, principal.name());
-		context.session().put(KEY_PENDING_ROLE, principal.role());
-		context.session().put(KEY_PENDING_AT, nowSeconds());
-		context.session().put(KEY_PENDING_REALM, realm);
+		context.session().put(slot(context, KEY_PENDING_ID), principal.id());
+		context.session().put(slot(context, KEY_PENDING_NAME), principal.name());
+		context.session().put(slot(context, KEY_PENDING_ROLE), principal.role());
+		context.session().put(slot(context, KEY_PENDING_AT), nowSeconds());
+		context.session().put(slot(context, KEY_PENDING_REALM), realm);
 
 		context.session().save();
 
@@ -715,7 +715,7 @@ public final class Mfa {
 	 */
 	public static Principal pendingPrincipal (WebContext context) {
 
-		long id = context.session().getLong(KEY_PENDING_ID);
+		long id = context.session().getLong(slot(context, KEY_PENDING_ID));
 
 		if (id <= 0) {
 			return Principal.ANONYMOUS;
@@ -725,12 +725,12 @@ public final class Mfa {
 		 * <b>猶予を過ぎたら無かったことにする。</b>
 		 * 「パスワードだけ通った状態」を長く残さない。
 		 */
-		if (nowSeconds() - context.session().getLong(KEY_PENDING_AT) > MfaConf.pending().toSeconds()) {
+		if (nowSeconds() - context.session().getLong(slot(context, KEY_PENDING_AT)) > MfaConf.pending().toSeconds()) {
 			return Principal.ANONYMOUS;
 		}
 
 		return Principal.of(id
-			, context.session().get(KEY_PENDING_NAME), context.session().get(KEY_PENDING_ROLE));
+			, context.session().get(slot(context, KEY_PENDING_NAME)), context.session().get(slot(context, KEY_PENDING_ROLE)));
 
 	}
 
@@ -753,7 +753,7 @@ public final class Mfa {
 		 * <b>種別は pending のときに覚えたものを使う</b>（D-182）。
 		 * 種別を入れる前に始めた途中の人（セッションに無い）は、種別なしで確かめる。
 		 */
-		String realm = context.session().get(KEY_PENDING_REALM);   // 無ければ空文字（種別なし）
+		String realm = context.session().get(slot(context, KEY_PENDING_REALM));   // 無ければ空文字（種別なし）
 
 		if (!verify(realm, principal.id(), code)) {
 			return false;
@@ -766,15 +766,44 @@ public final class Mfa {
 		 * <b>ここで save は呼ばない</b>——保存は1リクエストに1回で、
 		 * 呼ぶと<b>そのあとの Auth.login の保存が黙って捨てられる</b>。
 		 */
-		context.session().remove(KEY_PENDING_ID);
-		context.session().remove(KEY_PENDING_NAME);
-		context.session().remove(KEY_PENDING_ROLE);
-		context.session().remove(KEY_PENDING_AT);
-		context.session().remove(KEY_PENDING_REALM);
+		context.session().remove(slot(context, KEY_PENDING_ID));
+		context.session().remove(slot(context, KEY_PENDING_NAME));
+		context.session().remove(slot(context, KEY_PENDING_ROLE));
+		context.session().remove(slot(context, KEY_PENDING_AT));
+		context.session().remove(slot(context, KEY_PENDING_REALM));
 
-		Auth.login(context, principal);
+		// 途中の人を預けたのと同じ種別（いまのルートの Auth.REALM）でログインする（D-185）
+		Auth.login(context, principal, Auth.realmOf(context));
 
 		return true;
+
+	}
+
+	/**
+	 * 途中の状態を預ける置き場所の鍵（いまのルートの {@link Auth#REALM} ごとに分かれる。D-185）
+	 *
+	 * <p>
+	 * 種別を付けたルートの途中の人は、<b>同じ種別のルートでしか読めない</b>。
+	 * 同じブラウザで運用者と利用者が同時にログインの途中でも、互いを上書きしない。
+	 * 二要素認証の種別（ID の名前空間。{@code pending} の {@code realm}）とは別のもので、
+	 * そちらは置き場所の中に覚えておく。
+	 * </p>
+	 */
+	private static String slot (WebContext context, String key) {
+		return Auth.sessionKey(key, Auth.realmOf(context));
+	}
+
+	/**
+	 * 種別を決めて、途中の状態を消す（保存はしない。{@link Auth#logout} から呼ぶ）
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		ログインの種別（{@link Auth#REALM}）
+	 */
+	public static void clearPending (WebContext context, String realm) {
+
+		for (String key : new String[] { KEY_PENDING_ID, KEY_PENDING_NAME, KEY_PENDING_ROLE, KEY_PENDING_AT, KEY_PENDING_REALM }) {
+			context.session().remove(Auth.sessionKey(key, realm));
+		}
 
 	}
 
@@ -785,11 +814,11 @@ public final class Mfa {
 	 */
 	public static void cancel (WebContext context) {
 
-		context.session().remove(KEY_PENDING_ID);
-		context.session().remove(KEY_PENDING_NAME);
-		context.session().remove(KEY_PENDING_ROLE);
-		context.session().remove(KEY_PENDING_AT);
-		context.session().remove(KEY_PENDING_REALM);
+		context.session().remove(slot(context, KEY_PENDING_ID));
+		context.session().remove(slot(context, KEY_PENDING_NAME));
+		context.session().remove(slot(context, KEY_PENDING_ROLE));
+		context.session().remove(slot(context, KEY_PENDING_AT));
+		context.session().remove(slot(context, KEY_PENDING_REALM));
 
 		context.session().save();
 

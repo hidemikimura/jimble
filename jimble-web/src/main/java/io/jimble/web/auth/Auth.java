@@ -119,6 +119,43 @@ public final class Auth {
 	 */
 	public static final AttributeKey<Boolean> FULL_AUTH = new AttributeKey<>("auth_full", false);
 
+	/**
+	 * ログインの種別（realm。D-185）
+	 *
+	 * <p>
+	 * <b>既定は空文字（種別なし）。</b>これまでどおり、セッションにログインは 1 つだけ。
+	 * </p>
+	 *
+	 * <p>
+	 * 運用者の画面と利用者の管理画面のように、<b>同じブラウザで別々にログインさせたい</b>ときに、
+	 * それぞれのブロックに付ける。種別ごとにセッションの中の置き場所が分かれるので、
+	 * <b>片方にログインしても、もう片方のログインは消えない</b>。
+	 * {@link #guard}・{@link #principal}・{@link #login}・{@link #logout}・{@link #fullyAuthenticated} と
+	 * 二要素認証の途中の状態（{@code Mfa.pending}）は、<b>いまのルートの種別で読み書きする</b>。
+	 * </p>
+	 *
+	 * <pre>
+	 * path("/ops", () -> {
+	 *     attribute(Auth.REALM, "operator");
+	 *     attribute(Auth.ROLE, "ops");
+	 *     post("/login", Ops::login).attribute(Auth.PUBLIC, true);   // ログインの入口も同じブロックに置く
+	 *     get("/me", Ops::me);
+	 * });
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>ログインの入口・コードを入れる口・ログアウトも、同じ種別のブロックに置くこと。</b>
+	 * 別のブロックに置くと、ログインした先と読みに行く先が食い違い、入ったはずなのに 401 になる
+	 * （閉じる側に倒れるので、漏れはしない）。
+	 * </p>
+	 *
+	 * <p>
+	 * 種別に使えるのは英数字・{@code _}・{@code -} の 64 文字まで。二要素認証と remember-me の種別
+	 * （ID の名前空間）とは別の設定だが、ふつうは同じ名前にそろえる。
+	 * </p>
+	 */
+	public static final AttributeKey<String> REALM = new AttributeKey<>("auth_realm", "");
+
 	// endregion
 
 	// region 見張り
@@ -134,6 +171,59 @@ public final class Auth {
 
 	/** セッションに入れる鍵：パスワードを入れて入ったか */
 	private static final String KEY_FULL = "__auth_full";
+
+	/** 種別の書式（英数字・_・- の 64 文字まで） */
+	private static final java.util.regex.Pattern REALM_PATTERN = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
+	/**
+	 * いまのルートのログインの種別（{@link #REALM}）
+	 *
+	 * <p>ルートが決まっていなければ空文字（種別なし）。</p>
+	 *
+	 * @param context	コンテキスト
+	 * @return	種別。種別なしなら空文字
+	 */
+	public static String realmOf (WebContext context) {
+
+		if (context == null || context.route() == null || !context.route().matched()) {
+			return "";
+		}
+
+		String realm = context.route().route().attribute(REALM);
+
+		checkRealm(realm);
+
+		return realm;
+
+	}
+
+	/**
+	 * 種別つきのセッションの鍵（種別なしなら鍵そのまま。これまでのセッションがそのまま読める）
+	 *
+	 * @param key	鍵
+	 * @param realm	種別
+	 * @return	セッションの鍵
+	 */
+	public static String sessionKey (String key, String realm) {
+		return realm.isEmpty() ? key : key + "@" + realm;
+	}
+
+	/**
+	 * 種別の書式を確かめる
+	 *
+	 * @param realm	種別
+	 */
+	static void checkRealm (String realm) {
+
+		if (realm == null) {
+			throw new IllegalArgumentException("ログインの種別が null です（種別なしなら空文字にしてください）");
+		}
+
+		if (!realm.isEmpty() && !REALM_PATTERN.matcher(realm).matches()) {
+			throw new IllegalArgumentException("ログインの種別に使えない文字があります（英数字・_・- の 64 文字まで）: " + realm);
+		}
+
+	}
 
 	/**
 	 * ログインと役割を見る
@@ -227,7 +317,27 @@ public final class Auth {
 	 */
 	public static void login (WebContext context, Principal principal) {
 
-		store(context, principal, true);
+		store(context, principal, true, realmOf(context));
+
+	}
+
+	/**
+	 * 種別を決めてログインさせる（D-185）
+	 *
+	 * <p>
+	 * ふつうは {@link #login(WebContext, Principal)} でよい（いまのルートの {@link #REALM} に入る）。
+	 * 種別を決めたルートの外からログインさせるときだけ使う。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	ログインする人
+	 * @param realm		種別。空文字なら種別なし
+	 */
+	public static void login (WebContext context, Principal principal, String realm) {
+
+		checkRealm(realm);
+
+		store(context, principal, true, realm);
 
 	}
 
@@ -245,7 +355,7 @@ public final class Auth {
 	 */
 	static void loginWithoutPassword (WebContext context, Principal principal) {
 
-		store(context, principal, false);
+		store(context, principal, false, realmOf(context));
 
 	}
 
@@ -255,19 +365,24 @@ public final class Auth {
 	 * @param context	コンテキスト
 	 * @param principal	ログインする人
 	 * @param fullAuth	パスワードを入れて入ったか
+	 * @param realm		種別
 	 */
-	private static void store (WebContext context, Principal principal, boolean fullAuth) {
+	private static void store (WebContext context, Principal principal, boolean fullAuth, String realm) {
 
 		if (principal == null || !principal.isAuthenticated()) {
 			throw new IllegalArgumentException("ログインさせる相手がいません（id が 0 です）");
 		}
 
+		/*
+		 * <b>振り直しは中身を持ち越す</b>ので、ほかの種別のログインはそのまま残る（D-185）。
+		 * 仕込まれた ID は、どの種別でログインしても切れる。
+		 */
 		context.session().regenerateId();
 
-		context.session().put(KEY_ID, principal.id());
-		context.session().put(KEY_NAME, principal.name());
-		context.session().put(KEY_ROLE, principal.role());
-		context.session().put(KEY_FULL, fullAuth);
+		context.session().put(sessionKey(KEY_ID, realm), principal.id());
+		context.session().put(sessionKey(KEY_NAME, realm), principal.name());
+		context.session().put(sessionKey(KEY_ROLE, realm), principal.role());
+		context.session().put(sessionKey(KEY_FULL, realm), fullAuth);
 
 		context.session().save();
 
@@ -286,7 +401,22 @@ public final class Auth {
 	 */
 	public static boolean fullyAuthenticated (WebContext context) {
 
-		return context.session().getBoolean(KEY_FULL);
+		return fullyAuthenticated(context, realmOf(context));
+
+	}
+
+	/**
+	 * 種別を決めて、パスワードを入れて入った人か（D-185）
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別。空文字なら種別なし
+	 * @return	パスワードを入れて入った場合 = true
+	 */
+	public static boolean fullyAuthenticated (WebContext context, String realm) {
+
+		checkRealm(realm);
+
+		return context.session().getBoolean(sessionKey(KEY_FULL, realm));
 
 	}
 
@@ -294,13 +424,73 @@ public final class Auth {
 	 * ログアウトさせる
 	 *
 	 * <p>
-	 * <b>セッションを丸ごと捨てる。</b>ログインの鍵だけ消すと、
-	 * <b>買い物かごや下書きが次の利用者に見える</b>（共用の端末で効く）。
+	 * <b>種別なしのルートでは、セッションを丸ごと捨てる</b>（{@link #logoutAll}。これまでどおり）。
+	 * ログインの鍵だけ消すと、<b>買い物かごや下書きが次の利用者に見える</b>（共用の端末で効く）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>種別（{@link #REALM}）を付けたルートでは、その種別のログインだけを終える</b>（D-185）。
+	 * ほかの種別にログインが残っていなければ、セッションを丸ごと捨てる。
 	 * </p>
 	 *
 	 * @param context	コンテキスト
 	 */
 	public static void logout (WebContext context) {
+
+		logout(context, realmOf(context));
+
+	}
+
+	/**
+	 * 種別を決めてログアウトさせる（D-185）
+	 *
+	 * <ul>
+	 *   <li>その種別の remember-me・ログイン・二要素認証の途中の状態を消す</li>
+	 *   <li>ほかの種別にログインが残っていれば、セッション ID を振り直して残りを保つ</li>
+	 *   <li>残っていなければ、セッションを丸ごと捨てる</li>
+	 * </ul>
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別。空文字なら {@link #logoutAll} と同じ
+	 */
+	public static void logout (WebContext context, String realm) {
+
+		checkRealm(realm);
+
+		if (realm.isEmpty()) {
+			logoutAll(context);
+			return;
+		}
+
+		// セッションより先に remember を消す（logoutAll と同じ理由）
+		Remember.forget(context, realm);
+
+		for (String key : new String[] { KEY_ID, KEY_NAME, KEY_ROLE, KEY_FULL }) {
+			context.session().remove(sessionKey(key, realm));
+		}
+
+		io.jimble.web.auth.mfa.Mfa.clearPending(context, realm);
+
+		if (!anyoneLoggedIn(context)) {
+			context.session().destroy();
+			return;
+		}
+
+		/*
+		 * <b>残りを保つときも振り直す。</b>ログアウトした人の ID を、
+		 * 残ったログインのセッションとして使い回させない。
+		 */
+		context.session().regenerateId();
+		context.session().save();
+
+	}
+
+	/**
+	 * すべての種別からログアウトさせる（セッションを丸ごと捨てる）
+	 *
+	 * @param context	コンテキスト
+	 */
+	public static void logoutAll (WebContext context) {
 
 		/*
 		 * <b>セッションより先に remember を消す。</b>
@@ -314,6 +504,25 @@ public final class Auth {
 	}
 
 	/**
+	 * どれかの種別（種別なしを含む）にログインが残っているか
+	 */
+	private static boolean anyoneLoggedIn (WebContext context) {
+
+		for (Object key : context.session().data().keySet()) {
+
+			String name = String.valueOf(key);
+
+			if ((name.equals(KEY_ID) || name.startsWith(KEY_ID + "@")) && context.session().getLong(name) > 0) {
+				return true;
+			}
+
+		}
+
+		return false;
+
+	}
+
+	/**
 	 * いまログインしている人
 	 *
 	 * <p><b>{@code null} は返さない。</b>ログインしていなければ {@link Principal#ANONYMOUS}。</p>
@@ -323,13 +532,31 @@ public final class Auth {
 	 */
 	public static Principal principal (WebContext context) {
 
-		long id = context.session().getLong(KEY_ID);
+		return principal(context, realmOf(context));
+
+	}
+
+	/**
+	 * 種別を決めて、いまログインしている人（D-185）
+	 *
+	 * <p><b>{@code null} は返さない。</b>その種別でログインしていなければ {@link Principal#ANONYMOUS}。</p>
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別。空文字なら種別なし
+	 * @return	ログインしている人
+	 */
+	public static Principal principal (WebContext context, String realm) {
+
+		checkRealm(realm);
+
+		long id = context.session().getLong(sessionKey(KEY_ID, realm));
 
 		if (id <= 0) {
 			return Principal.ANONYMOUS;
 		}
 
-		return Principal.of(id, context.session().get(KEY_NAME), context.session().get(KEY_ROLE));
+		return Principal.of(id
+			, context.session().get(sessionKey(KEY_NAME, realm)), context.session().get(sessionKey(KEY_ROLE, realm)));
 
 	}
 

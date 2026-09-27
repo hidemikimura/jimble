@@ -15,6 +15,7 @@ import io.jimble.web.auth.Lockout;
 import io.jimble.web.auth.Principal;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
+import io.jimble.web.router.Router;
 import io.jimble.web.session.SessionStores;
 import io.jimble.web.support.Fakes;
 
@@ -266,6 +267,38 @@ class MfaRealmIntegrationTest {
 
 			assertTrue(Mfa.complete(context, codeFor(plain)));
 			assertTrue(Auth.principal(context).isAuthenticated());
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-185 ルートにログインの種別があれば、complete() はその種別にだけログインさせる")
+	void completeLogsIntoRouteRealm () {
+
+		Mfa.Enrollment operator = enrollAndActivate(OPERATOR);
+
+		Router router = new Router();
+		Router ops = router.path("/ops");
+		ops.attribute(Auth.REALM, OPERATOR);
+		ops.post("/login/code", context -> { });
+		router.seal();
+
+		try (WebContext context = Fakes.context("POST", "/ops/login/code")) {
+
+			context.route(router.match("POST", "/ops/login/code"));
+
+			Mfa.pending(context, Principal.of(USER_ID, "運用 太郎", "ops"), OPERATOR);
+
+			// 途中の状態は種別の置き場所にある（種別なしの置き場所は空）
+			assertEquals(USER_ID, context.session().getLong("__mfa_pending_id@" + OPERATOR));
+			assertEquals(0, context.session().getLong("__mfa_pending_id"));
+
+			assertTrue(Mfa.complete(context, codeFor(operator)));
+
+			assertEquals(USER_ID, Auth.principal(context, OPERATOR).id());
+			assertFalse(Auth.principal(context, "").isAuthenticated(), "種別なしの置き場所にログインしています");
+			assertFalse(Mfa.isPending(context));
 
 		}
 

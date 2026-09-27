@@ -51,6 +51,7 @@ public class App extends JimbleApp {
 | `Auth.ROLE` | `""` | 要る役割。空なら問わない |
 | `Auth.NO_SESSION` | `false` | セッションをまったく使わないか |
 | `Auth.FULL_AUTH` | `false` | **いまパスワードを入れた人**だけが通れるか（下記） |
+| `Auth.REALM` | `""` | ログインの種別。**同じブラウザで別々にログインさせる**とき（下記「ログインの種別でセッションを分ける」） |
 
 ブロックに書けば、その中のルート全部に付きます（[ルーティング](./routing)）。
 1本だけ違うなら、そのルートで上書きします。
@@ -164,6 +165,60 @@ Auth.logout(context);
 
 **セッションを丸ごと捨てます。**ログインの鍵だけ消すと、
 買い物かごや下書きが**次の利用者に見えます**（共用の端末で効きます）。
+
+`Auth.REALM` を付けたルートでは、**その種別のログインだけ**を終えます（下記）。
+
+## ログインの種別でセッションを分ける
+
+運用者の画面と利用者の管理画面のように、**同じブラウザで両方にログインしたい**ときは、
+ブロックに `Auth.REALM` を付けます。種別ごとにセッションの中の置き場所が分かれるので、
+**片方にログインしても、もう片方のログインは消えません。**
+
+```java
+path("/ops", () -> {
+	attribute(Auth.REALM, "operator");
+	attribute(Auth.ROLE, "ops");
+	post("/login", Ops::login).attribute(Auth.PUBLIC, true);
+	post("/login/code", Ops::code).attribute(Auth.PUBLIC, true);
+	post("/logout", Ops::logout);
+	get("/me", Ops::me);
+});
+
+path("/admin", () -> {
+	attribute(Auth.REALM, "member");
+	attribute(Auth.ROLE, "member");
+	// ...
+});
+```
+
+コードは変わりません。`Auth.login` / `Auth.principal` / `Auth.guard` / `Auth.fullyAuthenticated` / `Auth.logout`、
+二要素認証の途中の状態（`Mfa.pending` / `isPending` / `complete`）は、**いまのルートの種別で読み書きします。**
+
+| | 種別を付けたルートでは |
+| --- | --- |
+| `Auth.login` | その種別の置き場所に入れる。セッション ID は振り直す（**ほかの種別のログインは持ち越す**） |
+| `Auth.principal` / `guard` | その種別の置き場所だけを見る。別の種別にだけログインしていれば 401 |
+| `Auth.logout` | **その種別だけ**を終える（remember-me・二要素認証の途中の状態も）。ほかの種別が残っていればセッション ID を振り直して保ち、残っていなければ丸ごと捨てる |
+| `Auth.logoutAll` | すべての種別から出る（丸ごと捨てる） |
+
+種別を決めたルートの外から扱うときは、`Auth.principal(context, "operator")` のように種別を渡します。
+
+> [!TRAP]
+> **ログインの入口・コードを入れる口・ログアウトも、同じ種別のブロックに置いてください。**
+> 別のブロックに置くと、ログインした先と読みに行く先が食い違い、**入ったはずなのに 401** になります
+> （閉じる側に倒れるので、漏れはしません）。
+
+> [!TRAP]
+> **remember-me を使うなら、`Remember` の種別も同じ名前にしてください。**
+> `Auth.logout` は同じ名前の種別の記憶だけを消すので、名前が違うと記憶が残り、
+> **ログアウトした次のリクエストでまた入ってしまいます。**
+> 違っていたら `IllegalStateException` で止めます。
+
+> [!NOTE]
+> **種別を付けなければ、これまでどおりです。**置き場所の鍵（`__auth_id` など）も、
+> ログアウトで丸ごと捨てる動きも変わりません。上げる前のセッションも、そのまま読めます。
+> 二要素認証と remember-me の種別（D-182 / D-183。ID の名前空間）とは別の設定ですが、
+> ふつうは同じ名前にそろえます。
 
 ## 401 と 403 の返し方
 
