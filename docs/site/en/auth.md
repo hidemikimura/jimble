@@ -50,6 +50,7 @@ it falls.**
 | `Auth.ROLE` | `""` | The role required. Empty means any |
 | `Auth.NO_SESSION` | `false` | Whether to skip sessions entirely |
 | `Auth.FULL_AUTH` | `false` | Whether **only someone who just typed their password** may pass (below) |
+| `Auth.REALM` | `""` | The kind of login. Use it to **let one browser log in to two areas separately** (see "Separate sessions per kind of login") |
 
 Write it on a block and it applies to every route in it ([Routing](./routing)).
 Override it on the one route that differs.
@@ -162,6 +163,60 @@ Auth.logout(context);
 
 **The whole session goes.** Clear only the login keys and the shopping cart or the draft
 is **still there for the next person** (which matters on a shared machine).
+
+On a route with `Auth.REALM`, only **that kind of login** ends (below).
+
+## Separate sessions per kind of login
+
+When one browser should be able to log in to both, say, an operator console and a member admin
+screen, put `Auth.REALM` on each block. Each kind gets its own place inside the session, so
+**logging in to one does not wipe out the other.**
+
+```java
+path("/ops", () -> {
+	attribute(Auth.REALM, "operator");
+	attribute(Auth.ROLE, "ops");
+	post("/login", Ops::login).attribute(Auth.PUBLIC, true);
+	post("/login/code", Ops::code).attribute(Auth.PUBLIC, true);
+	post("/logout", Ops::logout);
+	get("/me", Ops::me);
+});
+
+path("/admin", () -> {
+	attribute(Auth.REALM, "member");
+	attribute(Auth.ROLE, "member");
+	// ...
+});
+```
+
+Your code does not change. `Auth.login` / `Auth.principal` / `Auth.guard` / `Auth.fullyAuthenticated` /
+`Auth.logout`, and the half-finished two-factor state (`Mfa.pending` / `isPending` / `complete`), **read and
+write the current route's kind.**
+
+| | On a route with a kind |
+| --- | --- |
+| `Auth.login` | Writes to that kind's place and regenerates the session ID (**other kinds' logins carry over**) |
+| `Auth.principal` / `guard` | Look only at that kind. Logged in only as another kind means 401 |
+| `Auth.logout` | Ends **only that kind** (its remember-me and half-finished two-factor state too). If another kind is still logged in, the session ID is regenerated and the rest is kept; otherwise the whole session goes |
+| `Auth.logoutAll` | Logs out of every kind (the whole session goes) |
+
+Outside a route with a kind, pass it explicitly: `Auth.principal(context, "operator")`.
+
+> [!TRAP]
+> **Put the login, code-entry and logout routes in the same kind's block.** Put them elsewhere and
+> the login lands in one place while reads go to another — **you log in and still get a 401**
+> (it fails closed, so nothing leaks).
+
+> [!TRAP]
+> **If you use remember-me, give `Remember` the same kind name.** `Auth.logout` only forgets the
+> remember-me of the same-named kind; with a different name the cookie survives and **the next
+> request logs you straight back in.** A mismatch throws `IllegalStateException`.
+
+> [!NOTE]
+> **Without a kind, nothing changes.** The session keys (`__auth_id` and so on) and the
+> "throw the whole session away" logout stay as they were, and sessions from before the upgrade
+> still read. This is a separate setting from the two-factor and remember-me kinds (D-182 / D-183,
+> the ID namespace), but you normally use the same name for both.
 
 ## Returning 401 and 403
 

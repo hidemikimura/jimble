@@ -242,6 +242,8 @@ public final class Remember {
 			return;
 		}
 
+		requireSameRealm(context, realm);
+
 		String cookie = context.cookies().get(cookieName(realm));
 
 		if (cookie == null || cookie.isEmpty()) {
@@ -266,6 +268,26 @@ public final class Remember {
 		}
 
 		cleanupIfDue();
+
+	}
+
+	/**
+	 * ルートにログインの種別（{@link Auth#REALM}）が付いていれば、記憶の種別も同じであること（D-185）
+	 *
+	 * <p>
+	 * 種別を付けたルートのログアウト（{@link Auth#logout}）は、<b>同じ名前の種別の記憶だけ</b>を消す。
+	 * 名前が違うと記憶が消えずに残り、<b>ログアウトした次のリクエストでまた入ってしまう</b>。
+	 * 黙ってそうなるくらいなら、ここで止める。
+	 * </p>
+	 */
+	private static void requireSameRealm (WebContext context, String realm) {
+
+		String sessionRealm = Auth.realmOf(context);
+
+		if (!sessionRealm.isEmpty() && !sessionRealm.equals(realm)) {
+			throw new IllegalStateException(("remember-me の種別（%s）が、ルートのログインの種別 Auth.REALM（%s）と違います。"
+				+ "ログアウトで記憶を消せなくなるので、同じ名前にしてください").formatted(realmLabel(realm), sessionRealm));
+		}
 
 	}
 
@@ -296,6 +318,8 @@ public final class Remember {
 	public static void issue (WebContext context, Principal principal, String realm) {
 
 		checkRealm(realm);
+
+		requireSameRealm(context, realm);
 
 		register(realm);
 
