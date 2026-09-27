@@ -58,8 +58,8 @@ The default for dynamic responses is `no-store` (requirement F-X-07). **Static s
 
 ```conf
 assets {
-	max_age            = 0        # ordinary files
-	immutable_max_age  = 31536000 # for files with a content hash in the name (one year)
+	max_age            = 0s       # ordinary files (write the unit; a bare number fails at startup)
+	immutable_max_age  = 365d     # for files with a content hash in the name (one year)
 	etag               = true
 	if_modified_since  = true
 }

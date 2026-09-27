@@ -1,6 +1,6 @@
 ---
 name: jimble-db
-description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること、エラーが戻り値で返ること、トランザクション、マイグレーションとコード生成の決まりを含む。
+description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること（文字列の SQL は平ら）、エラーが戻り値で返ること、トランザクションと検査例外、マイグレーションとコード生成の決まりを含む。
 ---
 
 # jimble の DB
@@ -67,6 +67,28 @@ row.getData("comment");                       // 結合した側
 > （これは実際に踏んだ）。
 
 `selectList` は**エラーなら `null`、行が無ければ空のリスト**。ここは分かれている。
+
+### 文字列の SQL の結果はネストしない
+
+ネストするのは**ビルダーが列に `post__title` の別名を付けるから**。
+`db.select("SELECT ...", ...)` / `selectList(String, ...)` に自分で書いた SQL を渡すと、**平らな Data が返る。**
+
+```java
+Data row = db.select("SELECT * FROM post WHERE id = ?", id);
+// {"id":1,"title":"..."}                  ← post の下に入っていない
+
+row.getString("title");                   // 取れる
+row.getString(Post.title);                // 取れる（テーブルのキーが無ければ平らなほうを見る）
+row.getData(Post.instance());             // null。ビルダーの結果と同じつもりで .getString() を続けると NPE
+```
+
+- **結合すると同じ名前の列が黙って上書きされる。**`SELECT * FROM post p JOIN comment c ...` は
+  `id` が1つだけ残る（**あとの列の値**。PostgreSQL で確かめた）。例外もログも出ない。
+  列を並べて別名を付ける（`c.id AS comment_id`）
+- **ビルダーと同じ形にしたいなら、別名を `テーブル__列` にする**（`p.id AS "post__id"`）。区切りは `__`
+- **ビルダーの結果を扱うコードに、文字列の SQL の結果を渡さない。**`getData(テーブル)` が `null`、
+  JSON にすると入れ子が1段少ない、`putData(列, 値)` は**ネストを作る**ので平らな行の中に `post: {...}` が生える
+  （平らな行には `putData("title", 値)` か `putDataTakeCare(列, 値)`）
 
 ## エラーは戻り値。例外ではない
 
@@ -136,6 +158,16 @@ DBTransaction.transaction(db, transaction -> {
 });
 ```
 
+**`DBTransaction` は検査例外を投げる。**`beginTransaction()` / `commit()` / `commitEndTransaction()` /
+`rollback()` / `rollbackEndTransaction()` は `CodeException`（`Exception` の子）、`close()` は `IOException`、
+`DBTransaction.transaction(...)` は `Exception`。書いたメソッドに **`throws Exception`** が無いとコンパイルが通らない。
+
+- ハンドラ（`Handler.handle`）は `throws Exception` なので、**そこから呼ぶメソッドにも `throws Exception` を付ける**
+  （サンプルの `SaveUseCase.save(...) throws Exception` の形）
+- `Runnable` / `forEach` / `Supplier` などのラムダの中では投げられない。**トランザクションはラムダの外で張る**
+- **`catch (Exception e) {}` で黙らせない。**`commitEndTransaction()` の `CodeException`（`DB_004`）は
+  「中でエラーが出たのでロールバックした」という知らせで、捨てると**保存できていないのに成功を返す**
+
 **中で1度でもエラーが出ていたら、コミットしない。**
 ロールバックして `CodeException`（`DB_004`）を投げる——
 エラーが戻り値で返る作りなので、<b>そのままだと部分的にコミットされていた</b>。
@@ -196,6 +228,21 @@ conf/migration/<スキーマ名>/001_xxx.sql      # --- !Ups / # --- !Downs
 ```
 
 生成物は**リポジトリに入れる**（入れないと DB の無い環境でビルドできない）。
+
+起動時に流すなら `Migration.install()` を **`DBUtil.load(...)` より前**に呼ぶ。
+
+```java
+Migration.install();                                  // 登録するだけ。ここでは流れない
+if (!DBUtil.load(Conf.conf().config(), App.class)) { // 流れるのはこの中
+	throw new IllegalStateException("DB を読み込めませんでした");
+}
+```
+
+- **`install()` の戻り値は「登録したか」。流れたかではない。**`false` は `migration.on_startup = false` で
+  **わざと切ってある**ときだけ。`if (!Migration.install()) throw ...` と書くと、切ってある環境で起動しなくなる。
+  **`true` でもまだ1行も流れていない**
+- **`DBUtil.load(...)` のあとに呼ぶと何も起きない。**登録した処理はもう走り終わっているので、黙って流れない
+- 流すのに失敗したら **`DBUtil.load(...)` が例外で落ちる**（戻り値の `false` ではない）。捕まえずに起動を止める
 
 **クラス名はテーブル名をそのまま UpperCamel にしたもの。**`orders` → `Orders`、
 `audit_log` → `AuditLog`。<b>単数形にはしない。</b>

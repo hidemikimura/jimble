@@ -26,6 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NewCommandTest {
 
+	/** 置き換えの印（{@code __NAME__} / {@code __PACKAGE_PATH__} など） */
+	private static final java.util.regex.Pattern PLACEHOLDER = java.util.regex.Pattern.compile("__[A-Z][A-Z_]*__");
+
+
 	@Test
 	@DisplayName("そのまま動くプロジェクトの中身が全部出る")
 	void generates (@TempDir Path dir) throws IOException {
@@ -70,8 +74,12 @@ class NewCommandTest {
 				/*
 				 * 置き換え漏れは「生成したプロジェクトがコンパイルできない」形で出る。
 				 * 出たものを全部見て、印が1つも残っていないことを確かめる。
+				 *
+				 * <b>印の形（__NAME__ のような、大文字を __ で挟んだもの）で探す。</b>
+				 * 以前は「__」をどこかに含むだけで落としていたので、skill に
+				 * ビルダーの列の別名（テーブル名と列名を __ でつなぐ）を書けなかった。
 				 */
-				assertFalse(text.contains("__"), "置き換え漏れ: " + path + "\n" + text);
+				assertFalse(PLACEHOLDER.matcher(text).find(), "置き換え漏れ: " + path + "\n" + text);
 
 			});
 

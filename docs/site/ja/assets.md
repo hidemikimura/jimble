@@ -58,8 +58,8 @@ install(() -> assets);
 
 ```conf
 assets {
-	max_age            = 0        # 通常のファイル
-	immutable_max_age  = 31536000 # 内容ハッシュ付きのファイル向け（1年）
+	max_age            = 0s       # 通常のファイル（単位を書く。素の数値は起動時に落ちる）
+	immutable_max_age  = 365d     # 内容ハッシュ付きのファイル向け（1年）
 	etag               = true
 	if_modified_since  = true
 }

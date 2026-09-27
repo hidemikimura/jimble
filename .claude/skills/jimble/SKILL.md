@@ -74,7 +74,7 @@ Web だけでなくバッチや MQ も含めた「一つの実行」のほう。
 | --- | --- |
 | `@RestController` / `@GetMapping` | `get("/path", Controller::method)` を初期化ブロックに書く |
 | `@Autowired` / コンストラクタ注入 | `new` する。`install(AdminController::new)` |
-| `@Transactional` | `try (DBTransaction transaction = new DBTransaction()) { ... }` |
+| `@Transactional` | `try (DBTransaction transaction = new DBTransaction(db)) { ... }`（メソッドに `throws Exception`） |
 | `@Value("${x}")` | `Conf.conf().getString("x", "既定")` |
 | `@PreAuthorize("hasRole('X')")` | `.attribute(Auth.ROLE, "X")` をルートに付ける |
 | `JpaRepository` / エンティティ | `SQL.select().from(Post.instance())`。テーブルクラスは codegen が作る |
@@ -140,9 +140,32 @@ try (DBTransaction transaction = new DBTransaction(db)) {
 
 - **`request()` から直接は読めない。** 送られてきた値は `context.request().bodyAll()`
   の中にある。`request().getString("x")` は**黙って null を返す**
-- **SELECT の結果はテーブル名でネストされている。**
-  文字列のキーで引くと空が返る。**列オブジェクトを渡せばそのまま引ける** →
-  `row.getString(Staff.name)`（`row.getString("name")` は空）
+- **ビルダーで組んだ SELECT の結果はテーブル名でネストされている。**
+  文字列のキーで引くと何も取れない（`null`）。**列オブジェクトを渡せばそのまま引ける** →
+  `row.getString(Staff.name)`（`row.getString("name")` は `null`）
+- **文字列の SQL（`db.select("SELECT ...")`）の結果はネストしない。**平らな Data が返り、
+  `row.getData(Staff.instance())` は `null`。結合すると同じ名前の列（`id` など）は**黙ってあとの値で上書き**される。
+  別名を付けるか、`テーブル__列` の別名でネストさせる（`jimble-db` の skill）
+- **`DBTransaction` は検査例外を投げる**（`CodeException` / `IOException`）。
+  トランザクションを書くメソッドには `throws Exception` を付ける。`catch` で黙らせない
+- **`Data.put` は `Data` を返さない。**`Map.put` なので戻り値は**前の値**（`Object`）。
+  `new Data().put("a", 1).put("b", 2)` はコンパイルが通らず、`return data.put("x", v);` は Data ではなく前の値（初めて入れたなら `null`）を返す。
+  続けて書くなら **`putData("a", 1).putData("b", 2)`**（こちらは自身を返す）
+- **`Migration.install()` の戻り値は「登録したか」で、流れたかではない。**`DBUtil.load(...)` より前に呼び、
+  実際に流れるのは `load` の中。`false` は `migration.on_startup = false` のときだけなので、落とす判定に使わない
+- **秘密の設定は2行で書く。**既定の行を先に、`${?環境変数}` の行をあとに置く。
+
+  ```conf
+  password = ""
+  password = ${?DB_PASSWORD}      # 環境変数があれば上書き、無ければ前の行のまま
+  ```
+
+  - **`${?X}` の1行だけ**だと、環境変数が無いときに**キーごと消える**。
+    `Conf.conf().getString("x")`（既定なし）は呼んだところで落ち、既定つきなら黙って既定になる
+  - **`?` を書き忘れる**（`${DB_PASSWORD}`）と、環境変数が無い環境（手元・テスト）で**起動時に落ちる**
+  - **順番を逆にする**と、**あとの `""` が必ず勝って環境変数が効かない**（エラーは出ない）
+  - `application.prod.conf` などの環境別ファイルで `include "application.conf"` のあとに**同じキーを値つきで書き直すと、
+    そちらが勝って環境変数が効かない**。書き直すなら2行組ごと書く
 - **セッションは自動保存されない。** `context.session().save()` を明示的に呼ぶ。
   1リクエストにつき1回だけ効く
 - **`Auth::guard` はいちばん最初に登録する。** セッションを使うかどうかをここで決めるので、

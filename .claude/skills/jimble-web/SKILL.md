@@ -277,6 +277,12 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
   セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）
 - **同じブラウザで別々にログインさせたいなら、ブロックに `Auth.REALM` を付ける**（1.4.0。D-185）。
   ログイン・コード・ログアウトの口も同じブロックに置く。remember-me の種別も同じ名前にする（`issue` は違うと例外、`restore` は違うと何もしない。ブロックには同じ名前の `restore` と `Auth::guard` をブロックの中に置く。アプリ全体の guard はブロックの restore より先に走る）
+- **`AssetHandler` は `.js` / `.css` / `.woff` / `.woff2` を1年キャッシュさせる**（`public,max-age=31536000,immutable`）。
+  ファイル名にハッシュが入っているかは見ず、**拡張子だけ**で決める。`app.js` の中身を変えて置き直しても、
+  一度読んだブラウザは**1年取りに来ない**（`immutable` なので、ふつうのリロードでは確かめにも来ない）。
+  ファイル名にハッシュを入れる（`app.9f3a1c.js`）か、`<script src="/assets/app.js?v=2">` のように参照を変える。
+  開発中は `application.local.conf` などで `assets.immutable_max_age = 0s`（**単位を書く。素の `0` は起動時に落ちる**）。
+  そのほかの拡張子は `assets.max_age`（既定 `0s`）＋ `must-revalidate` で、毎回確かめに来る
 - **OIDC のコールバックで `session().save()` を自分で呼ばない。**保存は1リクエストに1回で、
   先に呼ぶと**そのあとの `Auth.login` の保存が黙って捨てられる**（「入れたのに次で 401」）
 
