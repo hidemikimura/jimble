@@ -52,7 +52,8 @@ val centralRepoDir = layout.buildDirectory.dir("central")
  *   ./gradlew centralBundle  -Pjimble.version=0.2.0     材料を作って zip にする
  *   ./gradlew centralUpload  -Pjimble.version=0.2.0     Portal へ送る（公開はまだ）
  *   ./gradlew centralStatus                              検証の結果を見る
- *   ./gradlew centralRelease                             公開する（取り消せない）
+ *   ./gradlew centralRelease                             公開する（取り消せない）。続けてタグを打って push する
+ *   ./gradlew centralTag                                 タグだけ打ち直す（push に失敗したときなど）
  *   ./gradlew centralDrop                                やめる
  *
  * 手順の全体は docs/publishing.md にある。
@@ -63,6 +64,183 @@ val CENTRAL_API = "https://central.sonatype.com/api/v1/publisher"
 
 /** アップロードした deployment の id を控えておく先 */
 val centralDeploymentIdFile = layout.buildDirectory.file("central-deployment-id.txt")
+
+/**
+ * 送ったものの控え（要件 D-185）
+ *
+ * <p>
+ * <b>centralUpload が「どの版を・どのコミットから」送ったかを書き、centralRelease がそれを見てタグを打つ。</b>
+ * centralRelease は -Pjimble.version を渡さずに叩くので、版もここから読む。
+ * タグを打つ先は<b>送ったときのコミット</b>であって、公開するときの HEAD ではない
+ * （送ってから公開するまでのあいだにコミットが進んでいても、公開したのは送った木である）。
+ * </p>
+ */
+val centralReleaseFile = layout.buildDirectory.file("central-release.properties")
+
+/** git を叩いた結果 */
+data class GitResult (val code: Int, val out: String)
+
+/**
+ * git を叩く（ルートで）
+ *
+ * @return	終了コードと出力（標準エラーも混ぜる）。git が無ければ null
+ */
+fun git (vararg args: String): GitResult? {
+
+	return try {
+		val process = ProcessBuilder(listOf("git") + args)
+			.directory(rootDir)
+			.redirectErrorStream(true)
+			.start()
+		val out = process.inputStream.bufferedReader().readText().trimEnd()
+		GitResult(process.waitFor(), out)
+	} catch (ex: java.io.IOException) {
+		null
+	}
+
+}
+
+/** git を叩く。失敗したら止める */
+fun gitOrFail (vararg args: String): String {
+
+	val result = git(*args)
+		?: throw GradleException("git がありません。公開した木にタグを打つために使います（D-185）")
+
+	if (result.code != 0) {
+		throw GradleException("git ${args.joinToString(" ")} が失敗しました:\n${result.out}")
+	}
+
+	return result.out.trim()
+
+}
+
+/** タグが指しているコミット。タグが無ければ null */
+fun tagCommit (tag: String): String? {
+
+	val result = git("rev-parse", "-q", "--verify", "refs/tags/$tag^{commit}") ?: return null
+
+	return if (result.code == 0) result.out.trim() else null
+
+}
+
+/**
+ * 送る前に、木が公開してよい形かを見る（要件 D-142 / D-185）
+ *
+ * <p>
+ * <b>コミットしていない変更がある・HEAD が push されていない、のどちらかなら送らない。</b>
+ * 0.3.0 では版上げのコミットより先に公開した（D-142）。
+ * <b>手順に書いてあっても抜けた</b>ので、抜けられない形にする。
+ * 見るのは centralUpload だけで、centralBundle は見ない
+ * （作業中の木から中身を確かめるためにバンドルを作ることはある）。
+ * </p>
+ *
+ * @param version	送る版
+ * @return	送る木のコミットと、それを持っているリモート
+ */
+fun centralCheckTree (version: String): Pair<String, String> {
+
+	val inside = git("rev-parse", "--is-inside-work-tree")
+
+	if (inside == null || inside.code != 0 || inside.out.trim() != "true") {
+		throw GradleException("git の作業ツリーの中で動かしてください。"
+			+ "公開した木にタグを打つために、どのコミットから送ったかを控えます（D-185）")
+	}
+
+	val dirty = gitOrFail("status", "--porcelain")
+
+	if (dirty.isNotEmpty()) {
+		throw GradleException("コミットしていない変更があります。公開はコミットして push した木から作ります（D-142）。\n"
+			+ dirty.lines().take(20).joinToString("\n") { "  $it" })
+	}
+
+	val commit = gitOrFail("rev-parse", "HEAD")
+
+	// 「origin/main」のような行が返る。1行も無ければ、どのリモートにも無い
+	val remoteBranch = gitOrFail("branch", "-r", "--contains", commit)
+		.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() && !it.contains(" -> ") }
+		?: throw GradleException("HEAD（${commit.take(7)}）がまだ push されていません。"
+			+ "push してから送ってください（D-142）\n  git push")
+
+	val tag = "v$version"
+	val tagged = tagCommit(tag)
+
+	if (tagged != null && tagged != commit) {
+		throw GradleException("$tag はすでに別のコミット（${tagged.take(7)}）に打ってあります。"
+			+ "その版は公開済みではありませんか。版番号を確かめてください")
+	}
+
+	return commit to remoteBranch.substringBefore('/')
+
+}
+
+/**
+ * 公開した木にタグを打って push する（要件 D-185）
+ *
+ * <p>
+ * <b>タグは3度抜けた</b>（0.6.0・1.2.0・1.3.0）。centralRelease のあとは「終わった」感が強く、
+ * 手順の最後の2行が目に入らない。サイトはタグで出るので、抜けると<b>サイトが古い版のまま残る</b>。
+ * </p>
+ *
+ * <p>
+ * <b>ここで失敗しても、公開は取り消せないので済んでいる。</b>
+ * そのうえでビルドを落とす——落とさないと、流れていくログの中で失敗を見落とす。
+ * 直すコマンドを必ず添える。
+ * </p>
+ *
+ * @param version	版
+ * @param commit	タグを打つコミット
+ * @param remote	push する先
+ */
+fun centralTagAndPush (version: String, commit: String, remote: String) {
+
+	val tag = "v$version"
+	val fix = "  git tag -a $tag $commit -m \"$version\" && git push $remote $tag"
+
+	val tagged = tagCommit(tag)
+
+	if (tagged == null) {
+
+		val made = git("tag", "-a", tag, commit, "-m", version)
+			?: throw GradleException("公開は済んでいます。git が無いのでタグを打てませんでした。\n$fix")
+
+		if (made.code != 0) {
+			throw GradleException("公開は済んでいます。タグを打てませんでした:\n${made.out}\n\n$fix")
+		}
+
+	} else if (tagged != commit) {
+
+		// 動かさない。公開したものを指している古いタグかもしれない
+		throw GradleException("公開は済んでいます。ただし $tag はすでに別のコミット（${tagged.take(7)}）に打ってあるので、"
+			+ "動かしていません。公開したのは ${commit.take(7)} です。確かめてから直してください")
+
+	}
+
+	val pushed = git("push", remote, "refs/tags/$tag")
+		?: throw GradleException("公開は済んでいます。git が無いので push できませんでした。\n  git push $remote $tag")
+
+	if (pushed.code != 0) {
+		throw GradleException("公開は済んでいます。タグ $tag は手元に打ちましたが、push に失敗しました:\n${pushed.out}\n\n"
+			+ "  git push $remote $tag\n\nあるいは ./gradlew centralTag")
+	}
+
+	logger.lifecycle("")
+	logger.lifecycle("タグ $tag を ${commit.take(7)} に打って $remote へ push しました（サイトはこのタグで出ます）")
+
+}
+
+/** 控えを読む */
+fun centralReleaseRecord (): java.util.Properties {
+
+	val properties = java.util.Properties()
+	val file = centralReleaseFile.get().asFile
+
+	if (file.exists()) {
+		file.reader(Charsets.UTF_8).use { properties.load(it) }
+	}
+
+	return properties
+
+}
 
 /**
  * publish するモジュール
@@ -270,6 +448,9 @@ tasks.register("centralUpload") {
 			throw GradleException("Maven Central は -SNAPSHOT を受け付けません。-Pjimble.version=0.2.0 のように渡してください")
 		}
 
+		// 送る前に見る。送ったあとで気づいても、公開するかやめるかしか無い
+		val (commit, remote) = centralCheckTree(jimbleVersion)
+
 		val zip = centralBundle.get().archiveFile.get().asFile
 
 		/*
@@ -297,8 +478,15 @@ tasks.register("centralUpload") {
 
 		centralDeploymentIdFile.get().asFile.writeText(deploymentId)
 
+		val record = java.util.Properties()
+		record.setProperty("id", deploymentId)
+		record.setProperty("version", jimbleVersion)
+		record.setProperty("commit", commit)
+		record.setProperty("remote", remote)
+		centralReleaseFile.get().asFile.writer(Charsets.UTF_8).use { record.store(it, "written by centralUpload (D-185)") }
+
 		logger.lifecycle("")
-		logger.lifecycle("送りました: $deploymentId")
+		logger.lifecycle("送りました: $deploymentId（$jimbleVersion / ${commit.take(7)}）")
 		logger.lifecycle("  ./gradlew centralStatus     検証の結果を見る")
 		logger.lifecycle("  ./gradlew centralRelease    公開する（取り消せない）")
 		logger.lifecycle("  https://central.sonatype.com/publishing/deployments でも見られます")
@@ -329,12 +517,15 @@ tasks.register("centralStatus") {
 tasks.register("centralRelease") {
 
 	group = "publishing"
-	description = "検証を通ったバンドルを公開する（取り消せない）"
+	description = "検証を通ったバンドルを公開し、送った木にタグを打って push する（取り消せない）"
 
 	doLast {
 
+		val deploymentId = centralDeploymentId()
+		val record = centralReleaseRecord()
+
 		val request = java.net.http.HttpRequest.newBuilder()
-			.uri(java.net.URI.create("$CENTRAL_API/deployment/${centralDeploymentId()}"))
+			.uri(java.net.URI.create("$CENTRAL_API/deployment/$deploymentId"))
 			.header("Authorization", centralAuthorization())
 			.POST(java.net.http.HttpRequest.BodyPublishers.noBody())
 			.build()
@@ -342,6 +533,44 @@ tasks.register("centralRelease") {
 		centralCall(request)
 
 		logger.lifecycle("公開しました。Maven Central に出るまで数分〜数十分かかります")
+
+		/*
+		 * <b>控えが「いま公開したもの」のときだけ打つ。</b>
+		 * -Pid= で別の deployment を公開した場合、控えの版とコミットはそれのものではない。
+		 * 違うものにタグを打つくらいなら、打たずに言う
+		 */
+		if (record.getProperty("id") != deploymentId) {
+			throw GradleException("公開は済んでいます。ただし、どのコミットから送ったかの控えがこの deployment（$deploymentId）の"
+				+ "ものではないので、タグは打っていません。\n"
+				+ "  ./gradlew centralTag -Pjimble.version=<版> -Pcommit=<送ったコミット>")
+		}
+
+		centralTagAndPush(record.getProperty("version"), record.getProperty("commit"), record.getProperty("remote"))
+
+	}
+
+}
+
+tasks.register("centralTag") {
+
+	group = "publishing"
+	description = "公開した木にタグを打って push する（centralRelease が続けてやる。やり直し用）"
+
+	doLast {
+
+		val record = centralReleaseRecord()
+
+		val version = providers.gradleProperty("jimble.version").orNull ?: record.getProperty("version")
+			?: throw GradleException("版が分かりません。-Pjimble.version=<版> を渡してください")
+		val commit = providers.gradleProperty("commit").orNull ?: record.getProperty("commit")
+			?: throw GradleException("コミットが分かりません。-Pcommit=<送ったコミット> を渡してください")
+		val remote = record.getProperty("remote") ?: "origin"
+
+		if (version.endsWith("-SNAPSHOT")) {
+			throw GradleException("$version にはタグを打ちません。-Pjimble.version=<公開した版> を渡してください")
+		}
+
+		centralTagAndPush(version, gitOrFail("rev-parse", "--verify", "$commit^{commit}"), remote)
 
 	}
 
@@ -363,6 +592,7 @@ tasks.register("centralDrop") {
 		centralCall(request)
 
 		centralDeploymentIdFile.get().asFile.delete()
+		centralReleaseFile.get().asFile.delete()
 
 	}
 

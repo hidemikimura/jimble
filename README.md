@@ -769,9 +769,13 @@ export JIMBLE_CENTRAL_PASSWORD='...'
 ./gradlew centralBundle  -Pjimble.version=0.3.0   # 署名つきの zip を作る
 ./gradlew centralUpload  -Pjimble.version=0.3.0   # Portal へ送る（公開はまだ）
 ./gradlew centralStatus                           # 検証の結果を見る
-./gradlew centralRelease                          # 公開する（取り消せない）
+./gradlew centralRelease                          # 公開する（取り消せない）。続けて v0.3.0 のタグを打って push する
+./gradlew centralTag                              # タグだけ打ち直す（push に失敗したときなど）
 ./gradlew centralDrop                             # やめる
 ```
+
+- **コミットして push した木からしか送れない**（`centralUpload` が止まる。要件 D-142）。
+  タグは**送ったときのコミット**に打つ（要件 D-185）
 
 - 公開先は **Central Portal**。Sonatype に公式の Gradle プラグインが無いので、
   **REST API を直に叩いている**（外部プラグインを足さない。要件 D-60）
