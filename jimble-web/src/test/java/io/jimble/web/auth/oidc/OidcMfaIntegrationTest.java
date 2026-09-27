@@ -87,6 +87,7 @@ class OidcMfaIntegrationTest {
 
 		Mfa.disable(MFA_USER_ID);
 		Mfa.disable(PLAIN_USER_ID);
+		Mfa.disable("operator", MFA_USER_ID);
 
 		DBUtil.stop();
 
@@ -103,6 +104,7 @@ class OidcMfaIntegrationTest {
 
 		Mfa.disable(MFA_USER_ID);
 		Mfa.disable(PLAIN_USER_ID);
+		Mfa.disable("operator", MFA_USER_ID);
 
 	}
 
@@ -206,6 +208,39 @@ class OidcMfaIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("D-182 種別を渡した入口は、その種別の二要素認証を見る（pending にも同じ種別を預ける）")
+	void callbackLooksAtTheGivenRealm () {
+
+		Mfa.Enrollment operator = enrollAndActivate("operator");
+
+		// operator の入口：コードを聞かれる
+		try (WebContext context = Fakes.context("GET", "/ops/auth/google/callback")) {
+
+			Oidc.finishLogin(context, principal(MFA_USER_ID), "google:1234", MFA_PATH, "operator");
+
+			assertFalse(Auth.principal(context).isAuthenticated(), "operator で二要素が飛んでいます");
+			assertTrue(Mfa.isPending(context));
+
+			// complete は pending で預けた種別（operator）で確かめる
+			assertTrue(Mfa.complete(context, Totp.at(Totp.fromBase32(operator.secret())
+				, Instant.now().getEpochSecond(), MfaConf.period(), MfaConf.digits()))
+				, "operator のコードで入れません（預けた種別で確かめていません）");
+
+		}
+
+		// 種別なしの入口：同じ ID でも、種別なしでは登録していないのでそのまま入る
+		try (WebContext context = Fakes.context("GET", "/auth/google/callback")) {
+
+			Oidc.finishLogin(context, principal(MFA_USER_ID), "google:1234", MFA_PATH);
+
+			assertTrue(Auth.principal(context).isAuthenticated()
+				, "operator の登録を、種別なしの入口でも見ています");
+
+		}
+
+	}
+
 	// region ここで固定していないこと
 
 	/*
@@ -224,14 +259,28 @@ class OidcMfaIntegrationTest {
 	 */
 	private static void enrollAndActivate () {
 
-		Mfa.Enrollment enrollment = Mfa.enroll(MFA_USER_ID, "member1@example.com");
+		enrollAndActivate("");
+
+	}
+
+	/**
+	 * 二要素を有効にする（種別つき）
+	 *
+	 * @param realm	種別
+	 * @return	登録したもの
+	 */
+	private static Mfa.Enrollment enrollAndActivate (String realm) {
+
+		Mfa.Enrollment enrollment = Mfa.enroll(realm, MFA_USER_ID, "member1@example.com");
 
 		// 1つ前の窓のコードで有効にする（いまのコードは使い回しとして弾かれる）
 		String code = Totp.at(Totp.fromBase32(enrollment.secret())
 			, Instant.now().getEpochSecond() - MfaConf.period()
 			, MfaConf.period(), MfaConf.digits());
 
-		assertTrue(Mfa.activate(MFA_USER_ID, code), "有効にできていません");
+		assertTrue(Mfa.activate(realm, MFA_USER_ID, code), "有効にできていません");
+
+		return enrollment;
 
 	}
 

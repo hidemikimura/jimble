@@ -118,6 +118,15 @@ public final class McpProtocol {
 	/** 結果の種別（完了） */
 	public static final String RESULT_TYPE_COMPLETE = "complete";
 
+	/** 結果のキー：新しいとみなしてよい長さ（ミリ秒。仕様 CacheableResult） */
+	public static final String RESULT_TTL_MS = "ttlMs";
+
+	/** 結果のキー：誰がキャッシュしてよいか（仕様 CacheableResult） */
+	public static final String RESULT_CACHE_SCOPE = "cacheScope";
+
+	/** キャッシュの範囲：頼んだ本人のクライアントだけ */
+	public static final String CACHE_SCOPE_PRIVATE = "private";
+
 	private McpProtocol () {}
 
 	/**

@@ -1,5 +1,6 @@
 package io.jimble.mcp;
 
+import io.jimble.mcp.resource.McpResource;
 import io.jimble.mcp.schema.JsonSchema;
 import io.jimble.mcp.tool.McpTool;
 import io.jimble.mcp.tool.RouteTool;
@@ -256,6 +257,103 @@ class McpStdioTest {
 		assertFalse(result.getData("capabilities").containsKey("prompts"));
 
 		assertNotNull(result.getData("_meta").getData(McpProtocol.META_SERVER_INFO).getString("name"));
+
+	}
+
+	@Test
+	@DisplayName("stdio でも一覧と読み取りに ttlMs と cacheScope が付く（要件 D-184）")
+	void cacheHints () throws Exception {
+
+		McpRegistry registry = new McpRegistry();
+		registry.tool("hello", HelloTool::new);
+		registry.resource("note://plain", PlainResource::new);
+
+		List<Data> out = run(registry, null
+			, request(1, McpProtocol.METHOD_TOOLS_LIST, new Data())
+			, request(2, McpProtocol.METHOD_RESOURCES_LIST, new Data())
+			, request(3, McpProtocol.METHOD_RESOURCES_READ, new Data().putData("uri", "note://plain"))
+			// 1つも登録していない一覧でも、必須項目は必須
+			, request(4, McpProtocol.METHOD_PROMPTS_LIST, new Data()));
+
+		assertEquals(4, out.size());
+
+		for (Data response : out) {
+
+			Data result = response.getData("result");
+
+			// getLong は無いと 0 を返すので、あることを先に見る
+			assertTrue(result.containsKey("ttlMs"), response.getJsonString());
+			assertEquals(0L, result.getLong("ttlMs"), response.getJsonString());
+			assertEquals("private"
+				, result.getString("cacheScope"), response.getJsonString());
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("toContents を差し替えて自分で入れた目安は、そのまま返す")
+	void cacheHintsFromResource () throws Exception {
+
+		McpRegistry registry = new McpRegistry();
+		registry.resource("note://fixed", FixedResource::new);
+
+		Data result = run(registry, null
+			, request(1, McpProtocol.METHOD_RESOURCES_READ, new Data().putData("uri", "note://fixed")))
+			.get(0).getData("result");
+
+		assertEquals(60_000L, result.getLong("ttlMs"), result.getJsonString());
+		assertEquals("public", result.getString("cacheScope"), result.getJsonString());
+		assertEquals("変わらない中身", result.getDataList("contents").get(0).getString("text"));
+
+	}
+
+	/** ふつうのリソース */
+	public static final class PlainResource implements McpResource {
+
+		@Override
+		public String description () {
+
+			return "ふつうのリソース";
+
+		}
+
+		@Override
+		public String read (WebContext context, String uri) {
+
+			return "中身";
+
+		}
+
+	}
+
+	/** 中身が変わらないので、自分でキャッシュの目安を入れるリソース */
+	public static final class FixedResource implements McpResource {
+
+		@Override
+		public String description () {
+
+			return "変わらないリソース";
+
+		}
+
+		@Override
+		public String read (WebContext context, String uri) {
+
+			return "変わらない中身";
+
+		}
+
+		@Override
+		public Data toContents (String uri, String text) {
+
+			Data data = McpResource.super.toContents(uri, text);
+			data.put("ttlMs", 60_000L);
+			data.put("cacheScope", "public");
+
+			return data;
+
+		}
 
 	}
 

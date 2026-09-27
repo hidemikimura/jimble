@@ -262,6 +262,32 @@ mcp {
 }
 ```
 
+## キャッシュの目安
+
+2026-07-28 では、`tools/list` / `prompts/list` / `resources/list` / `resources/read` の結果に
+**`ttlMs`（新しいとみなしてよい長さ）と `cacheScope`（誰がキャッシュしてよいか）が必須**です。
+jimble はいつも次の値を付けます。
+
+```json
+{"resultType":"complete","tools":[...],"ttlMs":0,"cacheScope":"private"}
+```
+
+- **`ttlMs` は 0**（要るたびに取り直してよい）。付けなかったときにクライアントが仮定する値と同じなので、
+  動きは変わりません。ツールとプロンプトの一覧は配備し直すと変わるのに `list_changed` を出さないので、
+  正の値にするとクライアントが古い一覧を持ち続けます
+- **`cacheScope` は `private`**（頼んだ本人のクライアントだけ）。`resources/read` の中身はログイン中の人次第で変わりえますし、
+  一覧をアプリが認証の奥に置いているかを jimble は知りません。`public` にすると、共有の中継が別の人にそのまま返せてしまいます
+- **中身が変わらないリソースは、自分で長くできます。**`toContents` を差し替えて入れたものはそのまま返します
+
+```java
+@Override
+public Data toContents (String uri, String text) {
+	Data data = McpResource.super.toContents(uri, text);
+	data.put("ttlMs", 3_600_000L);	// 1時間
+	return data;
+}
+```
+
 ## 口は1本
 
 HTTP で公開されるのは `POST /mcp` の1本だけです。

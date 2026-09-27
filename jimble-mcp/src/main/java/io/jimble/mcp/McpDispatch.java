@@ -421,7 +421,10 @@ public final class McpDispatch {
 
 		McpResource resource = supplier.get();
 
-		return McpResponse.of(result(id, resource.toContents(uri, resource.read(context, uri))), 200);
+		Data contents = resource.toContents(uri, resource.read(context, uri));
+		cacheable(contents);
+
+		return McpResponse.of(result(id, contents), 200);
 
 	}
 
@@ -514,7 +517,51 @@ public final class McpDispatch {
 			result.put("nextCursor", page.nextCursor());
 		}
 
+		cacheable(result);
+
 		return result;
+
+	}
+
+	/**
+	 * キャッシュの目安を付ける（要件 D-184 / 仕様 CacheableResult）
+	 *
+	 * <p>
+	 * <b>2026-07-28 では、{@code tools/list} / {@code prompts/list} / {@code resources/list} /
+	 * {@code resources/read} の結果に {@code ttlMs} と {@code cacheScope} が必須である。</b>
+	 * 欠けていると、クライアントによっては<b>一覧そのものを捨てる</b>
+	 * （Claude Code は「tools fetch failed」でツールが1つも使えなくなる）。
+	 * </p>
+	 *
+	 * <h4>値の決め方</h4>
+	 * <ul>
+	 *   <li>{@code ttlMs} は <b>0</b>（すぐ古くなる = 要るたびに取り直してよい）。
+	 *       付けなかったときにクライアントが仮定する値と同じなので、<b>今までの動きが変わらない</b>。
+	 *       ツールとプロンプトの一覧は動いているあいだ変わらないが、
+	 *       <b>配備し直せば変わるのに {@code list_changed} を出さない</b>（{@link McpNotify}）ので、
+	 *       正の値を出すとクライアントは古い一覧を持ち続ける</li>
+	 *   <li>{@code cacheScope} は <b>{@code private}</b>。{@code resources/read} の中身は
+	 *       {@link WebContext}（ログイン中の人）次第で変わりうるし、一覧も
+	 *       <b>アプリが認証の奥に置いているかを jimble は知らない</b>。
+	 *       {@code public} にすると、共有の中継が<b>別の人にそのまま返してよい</b>ことになる。
+	 *       {@code ttlMs} が 0 なので、{@code private} にして失うものは無い</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * <b>既に入っていれば触らない。</b>{@link McpResource#toContents} を差し替えて
+	 * 自分で入れたもの（中身が変わらないリソースに正の {@code ttlMs} など）を尊重する。
+	 * </p>
+	 *
+	 * @param result	結果
+	 */
+	static void cacheable (Data result) {
+
+		if (result == null) {
+			return;
+		}
+
+		result.putIfAbsent(McpProtocol.RESULT_TTL_MS, 0L);
+		result.putIfAbsent(McpProtocol.RESULT_CACHE_SCOPE, McpProtocol.CACHE_SCOPE_PRIVATE);
 
 	}
 

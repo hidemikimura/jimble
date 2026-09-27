@@ -16,8 +16,11 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
+import java.util.regex.Pattern;
 
 /**
  * ログインしたままにする（remember-me。要件 F-W-30）
@@ -76,6 +79,37 @@ import java.util.function.LongFunction;
  * 片方だけ消すと<b>本人だけが締め出されて盗んだ側が生き残る</b>ことがある。
  * </p>
  *
+ * <h2>ログインの種別が複数あるとき（D-183）</h2>
+ * <p>
+ * 運用者の画面と利用者の管理画面のように<b>別々の表から引く ID</b> があると、
+ * 記憶は<b>利用者 ID だけ</b>で持っていて Cookie の名前も1つなので、
+ * <b>運用者として覚えた Cookie が、利用者の画面で「同じ ID の利用者」として思い出される</b>。
+ * {@link #forgetAll} も、同じ ID の別の種別の人の記憶まで消す。
+ * </p>
+ *
+ * <p>
+ * <b>種別（realm）を渡すと、ID の数字が同じでも別の人として扱う。</b>
+ * Cookie の名前も種別ごとに分かれる（{@code remember_operator} のように、設定の名前 + {@code _} + 種別）ので、
+ * 同じホストで両方にログインしていても互いの Cookie を上書きしない。
+ * 思い出すときは<b>記憶の行の種別も見る</b>——Cookie の名前を取り違えても、別の種別の人としては入れない。
+ * </p>
+ *
+ * <pre>
+ * path("/ops", () -&gt; {
+ *     before(Remember.restore("operator", Ops::findStaff));
+ *     before(Auth::guard);
+ * });
+ *
+ * Remember.issue(context, principal, "operator");   // ログインのとき
+ * Remember.forgetAll("operator", staffId);          // パスワードを変えたとき
+ * </pre>
+ *
+ * <p>
+ * 渡さなければ、これまでどおりの1つの種別として動く（Cookie の名前も既存の記憶もそのまま）。
+ * {@link Auth#logout} は、種別なしと、このアプリが使っている種別の Cookie をすべて消す
+ * （セッションごと捨てるので、どの種別のログインも終わる——記憶だけ残すと次のリクエストでまた入る）。
+ * </p>
+ *
  * <h2>やらないこと</h2>
  * <p>
  * <b>これで戻ってきた人は「full auth」ではない。</b>
@@ -112,6 +146,21 @@ public final class Remember {
 	/** Cookie の中の区切り */
 	private static final String SEPARATOR = ":";
 
+	/** 種別なし（D-183） */
+	private static final String NO_REALM = "";
+
+	/** 種別に使える形（二要素認証の種別と同じ） */
+	private static final Pattern REALM_PATTERN = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
+	/*
+	 * このアプリが使っている種別（D-183）。
+	 *
+	 * <b>ログアウトで消す Cookie を知るため</b>に、restore / issue で渡された種別を覚えておく。
+	 * 知らない名前の Cookie を「remember_ で始まるから」と消しに行くと、
+	 * アプリが自分で置いた同じ頭の Cookie まで消してしまう。
+	 */
+	private static final Set<String> REALMS = ConcurrentHashMap.newKeySet();
+
 	// region 使う
 
 	/**
@@ -134,11 +183,33 @@ public final class Remember {
 	 */
 	public static Handler restore (LongFunction<Principal> lookup) {
 
+		return restore(NO_REALM, lookup);
+
+	}
+
+	/**
+	 * 思い出す（種別つき。{@code before} に置く。D-183）
+	 *
+	 * <p>
+	 * <b>この種別の Cookie だけを見て、この種別の記憶だけを受け付ける。</b>
+	 * {@code lookup} は、この種別の表から引くものを渡す。
+	 * </p>
+	 *
+	 * @param realm		種別（{@code "operator"} など）。空文字なら種別なし
+	 * @param lookup	id から利用者を引き直す。見つからなければ null を返すこと
+	 * @return	{@code before} に渡すもの
+	 */
+	public static Handler restore (String realm, LongFunction<Principal> lookup) {
+
+		checkRealm(realm);
+
 		if (lookup == null) {
 			throw new IllegalArgumentException("id から利用者を引く方法がありません");
 		}
 
-		return context -> restore(context, lookup);
+		register(realm);
+
+		return context -> restore(context, realm, lookup);
 
 	}
 
@@ -150,6 +221,19 @@ public final class Remember {
 	 */
 	static void restore (WebContext context, LongFunction<Principal> lookup) {
 
+		restore(context, NO_REALM, lookup);
+
+	}
+
+	/**
+	 * 思い出す（種別つき）
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別
+	 * @param lookup	id から利用者を引き直す
+	 */
+	static void restore (WebContext context, String realm, LongFunction<Principal> lookup) {
+
 		if (context.route() == null || !context.route().matched()) {
 			return;
 		}
@@ -158,7 +242,7 @@ public final class Remember {
 			return;
 		}
 
-		String cookie = context.cookies().get(cookieName());
+		String cookie = context.cookies().get(cookieName(realm));
 
 		if (cookie == null || cookie.isEmpty()) {
 			// 覚えていない。<b>ここで DB は触らない</b>（ほとんどのリクエストはここで返る）
@@ -175,7 +259,7 @@ public final class Remember {
 		}
 
 		try {
-			restoreFromCookie(context, cookie, lookup);
+			restoreFromCookie(context, realm, cookie, lookup);
 		} catch (Exception ex) {
 			// <b>思い出せなくてもリクエストは通す</b>（ログインしていない扱いになるだけ）
 			Log.error(ex, "ログインを思い出せませんでした");
@@ -198,6 +282,23 @@ public final class Remember {
 	 */
 	public static void issue (WebContext context, Principal principal) {
 
+		issue(context, principal, NO_REALM);
+
+	}
+
+	/**
+	 * 覚える（種別つき。ログインしたときに呼ぶ。D-183）
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	覚える相手
+	 * @param realm		種別。空文字なら種別なし
+	 */
+	public static void issue (WebContext context, Principal principal, String realm) {
+
+		checkRealm(realm);
+
+		register(realm);
+
 		if (principal == null || !principal.isAuthenticated()) {
 			throw new IllegalArgumentException("覚える相手がいません（id が 0 です）");
 		}
@@ -213,18 +314,18 @@ public final class Remember {
 		try (DB db = DBUtil.getMainDB()) {
 
 			db.insert("""
-				INSERT INTO %s (selector, validator, previous_validator, rotated_at
+				INSERT INTO %s (selector, realm, validator, previous_validator, rotated_at
 					, user_id, created_at, last_used_at)
-				VALUES (?, ?, '', ?, ?, ?, ?)
+				VALUES (?, ?, ?, '', ?, ?, ?, ?)
 				""".formatted(table(db))
-				, selector, hash(validator), now, principal.id(), now, now);
+				, selector, realm, hash(validator), now, principal.id(), now, now);
 
 		} catch (Exception ex) {
 			Log.error(ex, "ログインを覚えられませんでした");
 			return;
 		}
 
-		writeCookie(context, selector, validator);
+		writeCookie(context, realm, selector, validator);
 
 	}
 
@@ -236,17 +337,42 @@ public final class Remember {
 	 * ログアウトで消し忘れると、<b>次のリクエストでまた入ってしまう</b>。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>種別なしと、このアプリが使っている種別（{@link #restore(String, LongFunction)} /
+	 * {@link #issue(WebContext, Principal, String)} に渡した種別）の Cookie をすべて消す</b>（D-183）。
+	 * ログアウトはセッションごと捨てるので、どの種別のログインも終わる——
+	 * 記憶だけ残すと、<b>その種別の画面を開いた次のリクエストでまた入る</b>。
+	 * </p>
+	 *
 	 * @param context	コンテキスト
 	 */
 	public static void forget (WebContext context) {
 
-		String cookie = context.cookies().get(cookieName());
+		forget(context, NO_REALM);
+
+		for (String realm : REALMS) {
+			forget(context, realm);
+		}
+
+	}
+
+	/**
+	 * この端末のこの種別のぶんだけ忘れる（D-183）
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別。空文字なら種別なし
+	 */
+	public static void forget (WebContext context, String realm) {
+
+		checkRealm(realm);
+
+		String cookie = context.cookies().get(cookieName(realm));
 
 		if (cookie == null || cookie.isEmpty()) {
 			return;
 		}
 
-		context.cookies().remove(cookieName());
+		context.cookies().remove(cookieName(realm));
 
 		if (!isUsable()) {
 			return;
@@ -259,7 +385,7 @@ public final class Remember {
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
-			db.delete("DELETE FROM %s WHERE selector = ?".formatted(table(db)), selector);
+			db.delete("DELETE FROM %s WHERE selector = ? AND realm = ?".formatted(table(db)), selector, realm);
 		} catch (Exception ex) {
 			Log.error(ex, "ログインの記憶を消せませんでした");
 		}
@@ -283,36 +409,70 @@ public final class Remember {
 	 * ここで消え損なうと、<b>盗まれた Cookie がそのまま生き残る</b>。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>消えるのは種別なしの記憶だけ</b>（D-183）。種別を渡して覚えたものは
+	 * {@link #forgetAll(String, long)} で消す——同じ ID の別の種別の人は、別の人である。
+	 * </p>
+	 *
 	 * @param userId	利用者 ID
 	 * @return	消した件数
 	 * @throws IllegalStateException	消せなかった場合
 	 */
 	public static int forgetAll (long userId) {
 
-		if (!isUsable()) {
+		return forgetAll(NO_REALM, userId);
+
+	}
+
+	/**
+	 * その人のぶんを全部忘れる（種別つき。D-183）
+	 *
+	 * <p><b>パスワードを変えたら必ず呼ぶこと。</b>消えるのはこの種別のこの人の記憶だけ。</p>
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @return	消した件数
+	 * @throws IllegalStateException	消せなかった場合
+	 */
+	public static int forgetAll (String realm, long userId) {
+
+		checkRealm(realm);
+
+		String who = who(realm, userId);
+
+		/*
+		 * <b>「使っていない」と「使えない」を分ける。</b>
+		 * 切っている・DB が無いなら消すものは無いので 0。表を作れなかったなら<b>投げる</b>——
+		 * 0 を返すと、パスワードを変えた側は消えたつもりで先へ進み、盗まれた Cookie が生き残る（D-173）。
+		 */
+		if (!RememberConf.enabled() || !DBUtil.isUseDB()) {
 			return 0;
+		}
+
+		if (!install()) {
+			throw new IllegalStateException("ログインの記憶を消せませんでした（表を作れません）: " + who);
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			int deleted = db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db)), userId);
+			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?".formatted(table(db)), realm, userId);
 
 			if (db.isError()) {
-				throw new IllegalStateException("ログインの記憶を消せませんでした: %d（%s）"
-					.formatted(userId, db.getError() == null ? "理由不明" : db.getError().getMessage()));
+				throw new IllegalStateException("ログインの記憶を消せませんでした: %s（%s）"
+					.formatted(who, db.getError() == null ? "理由不明" : db.getError().getMessage()));
 			}
 
 			return deleted;
 
 		} catch (IllegalStateException ex) {
 
-			Log.error(ex, "ログインの記憶を消せませんでした: %d".formatted(userId));
+			Log.error(ex, "ログインの記憶を消せませんでした: " + who);
 			throw ex;
 
 		} catch (Exception ex) {
 
-			Log.error(ex, "ログインの記憶を消せませんでした: %d".formatted(userId));
-			throw new IllegalStateException("ログインの記憶を消せませんでした: %d".formatted(userId), ex);
+			Log.error(ex, "ログインの記憶を消せませんでした: " + who);
+			throw new IllegalStateException("ログインの記憶を消せませんでした: " + who, ex);
 
 		}
 
@@ -355,16 +515,18 @@ public final class Remember {
 	 * Cookie から思い出す
 	 *
 	 * @param context	コンテキスト
+	 * @param realm		種別
 	 * @param cookie	Cookie の値
 	 * @param lookup	id から利用者を引き直す
 	 */
-	private static void restoreFromCookie (WebContext context, String cookie, LongFunction<Principal> lookup) {
+	private static void restoreFromCookie (WebContext context, String realm, String cookie
+		, LongFunction<Principal> lookup) {
 
 		String selector = selectorOf(cookie);
 		String validator = validatorOf(cookie);
 
 		if (selector == null || validator == null) {
-			context.cookies().remove(cookieName());
+			context.cookies().remove(cookieName(realm));
 			return;
 		}
 
@@ -375,7 +537,20 @@ public final class Remember {
 			 * <b>これは盗用ではない。</b>掃除で消えたあとや、
 			 * 別の端末で「全部忘れる」をしたあとに来ると、ふつうにここへ来る。
 			 */
-			context.cookies().remove(cookieName());
+			context.cookies().remove(cookieName(realm));
+			return;
+		}
+
+		/*
+		 * <b>別の種別の記憶では入れない</b>（D-183）。
+		 * Cookie の名前は種別ごとに分けてあるのでふつうはここへ来ない——来たのは、
+		 * 名前を取り違えたか、別の種別の Cookie をこの名前で送ってきたときである。
+		 * 相手の種別の記憶は<b>消さない</b>（持ち主の Cookie かもしれない）。この Cookie だけ捨てる。
+		 */
+		if (!realm.equals(row.getStringOptional("realm"))) {
+			Log.warn("別の種別のログインの記憶が送られてきました。受け付けません: この入口=%s 記憶=%s"
+				.formatted(realmLabel(realm), realmLabel(row.getStringOptional("realm"))));
+			context.cookies().remove(cookieName(realm));
 			return;
 		}
 
@@ -383,7 +558,7 @@ public final class Remember {
 
 		if (isExpired(row)) {
 			delete(selector);
-			context.cookies().remove(cookieName());
+			context.cookies().remove(cookieName(realm));
 			return;
 		}
 
@@ -397,7 +572,7 @@ public final class Remember {
 			 * <b>selector は当たっているのに validator が合わない。</b>
 			 * 引くための鍵を持っているということは、<b>Cookie が漏れている</b>。
 			 */
-			stolen(context, userId, "照合できない validator");
+			stolen(context, realm, userId, "照合できない validator");
 			return;
 		}
 
@@ -407,7 +582,7 @@ public final class Remember {
 			 * 本物はもう新しいほうを持っているので、これは<b>盗まれたほう</b>である
 			 * （どちらが盗んだ側かは分からないので、両方消す）。
 			 */
-			stolen(context, userId, "回転前の validator");
+			stolen(context, realm, userId, "回転前の validator");
 			return;
 		}
 
@@ -418,13 +593,13 @@ public final class Remember {
 			 * 利用者が消えている（退会など）。<b>記憶も消す</b>——
 			 * 残すと、id を作り直したときに<b>別人が入る</b>。
 			 */
-			forgetAll(userId);
-			context.cookies().remove(cookieName());
+			forgetAll(realm, userId);
+			context.cookies().remove(cookieName(realm));
 			return;
 		}
 
 		if (matched) {
-			rotate(context, selector, row);
+			rotate(context, realm, selector, row);
 		} else {
 			/*
 			 * 猶予の中。<b>回さない</b>（回すと、遅れて届いた通信のぶんだけ回り続ける）。
@@ -441,10 +616,11 @@ public final class Remember {
 	 * validator を回して、Cookie を出し直す
 	 *
 	 * @param context	コンテキスト
+	 * @param realm		種別
 	 * @param selector	selector
 	 * @param row		いまの行
 	 */
-	private static void rotate (WebContext context, String selector, Data row) {
+	private static void rotate (WebContext context, String realm, String selector, Data row) {
 
 		String next = token();
 		long now = nowMillis();
@@ -473,7 +649,7 @@ public final class Remember {
 			return;
 		}
 
-		writeCookie(context, selector, next);
+		writeCookie(context, realm, selector, next);
 
 	}
 
@@ -497,21 +673,23 @@ public final class Remember {
 	 * 盗まれた合図。その人のぶんを全部消す
 	 *
 	 * @param context	コンテキスト
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @param reason	理由（ログ用）
 	 */
-	private static void stolen (WebContext context, long userId, String reason) {
+	private static void stolen (WebContext context, String realm, long userId, String reason) {
 
 		/*
 		 * <b>黙って消さない。</b>「たまにログアウトする」と言われたときに、
 		 * これが盗用なのか作りの問題なのかを<b>ログでしか区別できない</b>。
 		 */
-		Log.warn("ログインの記憶が盗まれた可能性があります。全部消します: user_id=%d（%s）"
-			.formatted(userId, reason));
+		Log.warn("ログインの記憶が盗まれた可能性があります。全部消します: %s（%s）"
+			.formatted(who(realm, userId), reason));
 
-		forgetAll(userId);
+		// <b>消すのはこの種別のこの人だけ</b>（同じ ID の別の種別の人は、盗まれていない）
+		forgetAll(realm, userId);
 
-		context.cookies().remove(cookieName());
+		context.cookies().remove(cookieName(realm));
 
 	}
 
@@ -554,17 +732,18 @@ public final class Remember {
 	 * Cookie を書く
 	 *
 	 * @param context	コンテキスト
+	 * @param realm		種別
 	 * @param selector	selector
 	 * @param validator	validator
 	 */
-	private static void writeCookie (WebContext context, String selector, String validator) {
+	private static void writeCookie (WebContext context, String realm, String selector, String validator) {
 
 		/*
 		 * 有効秒数は<b>滑るほうの期限に合わせる</b>。
 		 * 絶対の上限に合わせると、<b>DB ではもう切れている Cookie が</b>
 		 * ブラウザに残り続ける（毎回1往復むだになる）。
 		 */
-		context.cookies().put(cookieName(), selector + SEPARATOR + validator
+		context.cookies().put(cookieName(realm), selector + SEPARATOR + validator
 			, RememberConf.sliding().toSeconds());
 
 	}
@@ -579,7 +758,7 @@ public final class Remember {
 
 		try (DB db = DBUtil.getMainDB()) {
 			return db.select("""
-				SELECT validator, previous_validator, rotated_at, user_id, created_at, last_used_at
+				SELECT realm, validator, previous_validator, rotated_at, user_id, created_at, last_used_at
 				FROM %s WHERE selector = ?
 				""".formatted(table(db)), selector);
 		} catch (Exception ex) {
@@ -692,11 +871,75 @@ public final class Remember {
 	/**
 	 * Cookie の名前
 	 *
+	 * <p>
+	 * <b>種別なしは、これまでと同じ名前</b>（{@code auth.remember.cookie_name}。既定 {@code remember}）。
+	 * 変えると、上げた瞬間に全員の記憶が効かなくなる。種別つきは {@code <名前>_<種別>}。
+	 * </p>
+	 *
+	 * @param realm	種別
 	 * @return	名前
 	 */
-	private static String cookieName () {
+	static String cookieName (String realm) {
 
-		return RememberConf.cookieName();
+		String base = RememberConf.cookieName();
+
+		return realm.isEmpty() ? base : base + "_" + realm;
+
+	}
+
+	/**
+	 * 使っている種別として覚える
+	 *
+	 * @param realm	種別
+	 */
+	private static void register (String realm) {
+
+		if (!realm.isEmpty()) {
+			REALMS.add(realm);
+		}
+
+	}
+
+	/**
+	 * ログに出す相手
+	 *
+	 * @param realm		種別
+	 * @param userId	利用者 ID
+	 * @return	{@code user_id=1} か {@code realm=operator user_id=1}
+	 */
+	private static String who (String realm, long userId) {
+
+		return realm.isEmpty() ? "user_id=" + userId : "realm=" + realm + " user_id=" + userId;
+
+	}
+
+	/**
+	 * ログに出す種別
+	 *
+	 * @param realm	種別
+	 * @return	種別。空なら「（種別なし）」
+	 */
+	private static String realmLabel (String realm) {
+
+		return realm == null || realm.isEmpty() ? "（種別なし）" : realm;
+
+	}
+
+	/**
+	 * 種別の形を確かめる（二要素認証の種別と同じ形。D-183）
+	 *
+	 * @param realm	種別
+	 */
+	private static void checkRealm (String realm) {
+
+		if (realm == null) {
+			throw new IllegalArgumentException("ログインの記憶の種別が null です（種別なしなら、種別を渡さない形を使ってください）");
+		}
+
+		if (!realm.isEmpty() && !REALM_PATTERN.matcher(realm).matches()) {
+			throw new IllegalArgumentException(
+				"ログインの記憶の種別に使えない文字があります（英数字・_・- の 64 文字まで）: " + realm);
+		}
 
 	}
 
@@ -752,25 +995,25 @@ public final class Remember {
 
 		}
 
-		install();
-
-		return true;
+		return install();
 
 	}
 
 	/**
 	 * テーブルを作る
+	 *
+	 * @return	使える状態なら true
 	 */
-	private static void install () {
+	private static boolean install () {
 
 		if (initialized) {
-			return;
+			return true;
 		}
 
 		synchronized (Remember.class) {
 
 			if (initialized) {
-				return;
+				return true;
 			}
 
 			String name = FrameworkTables.AUTH_REMEMBER;
@@ -805,9 +1048,28 @@ public final class Remember {
 					""".formatted(name)
 					, "create index %s__index_1 on \"%s\" (user_id)".formatted(name, name));
 
-			dbVersion.apply(DBUtil.getMainDB());
+			/*
+			 * 版2：種別（D-183）。<b>既存の行は空文字＝種別なしになる</b>ので、
+			 * 種別を渡さないアプリはこれまでどおり思い出せる。
+			 */
+			dbVersion.add(2)
+				.mysql("alter table `%s` add column realm varchar(64) not null default '' after selector".formatted(name))
+				.postgresql("alter table \"%s\" add column realm varchar(64) not null default ''".formatted(name));
+
+			/*
+			 * <b>作れなかったら、このリクエストでは使わない</b>（次のリクエストでもう一度試す）。
+			 * apply は失敗しても false を返すだけなので、見ずに進むと
+			 * 種別の列が無い表に {@code realm = ?} を投げ、「思い出せませんでした」としか出ない。
+			 * 落とさないのは、<b>ログインしたままにする</b>が無くてもログインそのものは通すため（ここの作りの方針）。
+			 */
+			if (!dbVersion.apply(DBUtil.getMainDB())) {
+				Log.error("ログインの記憶の表を作れませんでした。ログインを覚えません（直前のエラーログを見てください）");
+				return false;
+			}
 
 			initialized = true;
+
+			return true;
 
 		}
 

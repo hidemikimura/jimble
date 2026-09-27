@@ -180,6 +180,39 @@ public final class Oidc {
 	 */
 	public static Handler callback (String provider, Function<OidcUser, Principal> lookup, String mfaPath) {
 
+		return callback(provider, lookup, mfaPath, "");
+
+	}
+
+	/**
+	 * 戻ってきたところ（二要素認証の種別つき。D-182）
+	 *
+	 * <p>
+	 * ログインの種別が複数あるアプリ（運用者と利用者など）で、
+	 * <b>この入口がどの種別の二要素認証を見るか</b>を渡す。
+	 * {@code lookup} が返す利用者と同じ種別を渡すこと——違う種別を渡すと、
+	 * <b>同じ ID の別の人の登録を見に行く</b>。
+	 * </p>
+	 *
+	 * <pre>
+	 * get("/ops/auth/google/callback"
+	 *     , Oidc.callback("google", Ops::findStaff, "/ops/login/code", "operator"))
+	 *     .attribute(Auth.PUBLIC, true);
+	 * </pre>
+	 *
+	 * @param provider	設定に書いた名前
+	 * @param lookup	名乗ってきた相手を、アプリの利用者に結び付ける。<b>入れないなら null を返す</b>
+	 * @param mfaPath	コードを入れる画面のパス。{@code null} なら二要素の人を断る
+	 * @param mfaRealm	二要素認証の種別。空文字なら種別なし
+	 * @return	{@code get(...)} に渡すもの
+	 */
+	public static Handler callback (String provider, Function<OidcUser, Principal> lookup
+		, String mfaPath, String mfaRealm) {
+
+		if (mfaRealm == null) {
+			throw new IllegalArgumentException("二要素認証の種別が null です（種別なしなら空文字か、種別を渡さない形を使ってください）");
+		}
+
 		if (lookup == null) {
 			throw new IllegalArgumentException("利用者に結び付ける方法がありません");
 		}
@@ -215,7 +248,7 @@ public final class Oidc {
 					throw new HttpException(401, "ログインできませんでした");
 				}
 
-				finishLogin(context, principal, user.key(), mfaPath);
+				finishLogin(context, principal, user.key(), mfaPath, mfaRealm);
 
 			} catch (OidcException cause) {
 
@@ -264,7 +297,23 @@ public final class Oidc {
 	 */
 	static void finishLogin (WebContext context, Principal principal, String userKey, String mfaPath) {
 
-		if (Mfa.isActive(principal.id())) {
+		finishLogin(context, principal, userKey, mfaPath, "");
+
+	}
+
+	/**
+	 * ログインまで進める（二要素認証の種別つき。D-182）
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	アプリが結び付けた利用者
+	 * @param userKey	ログに出す相手（{@code provider:sub}）
+	 * @param mfaPath	コードを入れる画面のパス。{@code null} なら断る
+	 * @param mfaRealm	二要素認証の種別。空文字なら種別なし
+	 */
+	static void finishLogin (WebContext context, Principal principal, String userKey
+		, String mfaPath, String mfaRealm) {
+
+		if (Mfa.isActive(mfaRealm, principal.id())) {
 
 			if (mfaPath == null || mfaPath.isEmpty()) {
 
@@ -279,7 +328,7 @@ public final class Oidc {
 			}
 
 			// pending がセッション ID を振り直して保存まで済ませる
-			Mfa.pending(context, principal);
+			Mfa.pending(context, principal, mfaRealm);
 
 			context.response().redirect(mfaPath);
 

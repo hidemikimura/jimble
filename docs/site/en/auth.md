@@ -254,6 +254,33 @@ leave **the real user locked out and the thief still in.**
 > cookie still works** — which is the whole point of changing the password. It is also
 > what "log out everywhere" is.
 
+### More than one kind of login
+
+If your IDs come from **separate tables** — an operator console and a member admin screen,
+say — **pass a realm.** Without one, the memory is kept by user ID alone, so **a cookie
+remembered for an operator is restored on the member screen as "the member with the same ID"**
+— someone gets in as a different person without typing a password.
+
+```java
+path("/ops", () -> {
+	before(Remember.restore("operator", Ops::findStaff));
+	before(Auth::guard);
+});
+
+Remember.issue(context, principal, "operator");   // at login
+Remember.forgetAll("operator", staffId);          // when the password changes
+```
+
+- **The cookie name is split per realm** (`remember_operator`: the configured name + `_` + realm),
+  so being logged in to both on the same host does not overwrite either cookie
+- **Restoring also checks the realm stored with the memory.** A cookie sent under the wrong name
+  still cannot get in as someone from another realm
+- `forgetAll` and theft detection only remove **that realm's memories for that person**
+- **`Auth.logout` forgets "no realm" and every realm the application uses** (the whole session is
+  dropped, so every kind of login ends)
+- **Without a realm, nothing changes.** The cookie name stays the same, and memories from before
+  the upgrade keep working
+
 ## "Sign in with Google" (OpenID Connect)
 
 ```java
@@ -345,6 +372,15 @@ is parked with `Mfa.pending` and sent to that screen — exactly as on the passw
 > **Without it, that person cannot get in** (they get a 401).
 > In 0.6.0 they were **silently logged in**, so **choosing "Sign in with Google" skipped
 > the second factor entirely.** Refusing beats waving them through (fixed in 1.0).
+
+If you have more than one kind of login (see "More than one kind of login" below), pass the
+**realm as the fourth argument**.
+
+```java
+get("/ops/auth/google/callback"
+	, Oidc.callback("google", Ops::findStaff, "/ops/login/code", "operator"))
+	.attribute(Auth.PUBLIC, true);
+```
 
 ### What this does not do
 
@@ -461,6 +497,38 @@ post("/mfa/disable", Mfa2::disable).attribute(Auth.FULL_AUTH, true);
 > stole the cookie remove the second factor** — which is the whole of it. Put
 > `attribute(Auth.FULL_AUTH, true)` on the route so only someone who **just typed the
 > password** can get there.
+
+### More than one kind of login
+
+If your IDs come from **separate tables** — an operator console and a member admin screen,
+say — **pass a realm.** Without one, `staff.id = 1` and `member.id = 1` are treated as
+**the same "user 1"**: one enrolling **overwrites the other's secret**, and one's code opens
+the other's login.
+
+```java
+// operator login
+if (Mfa.isActive("operator", staff.id())) {
+	Mfa.pending(context, principal, "operator");   // the realm is kept in the session
+	context.response().redirect("/ops/login/code");
+	return;
+}
+
+// POST /ops/login/code — complete() checks against the realm given to pending
+Mfa.complete(context, code);
+
+// enrol, activate, turn off, count recovery codes
+Mfa.enroll("operator", staff.id(), staff.email());
+Mfa.activate("operator", staff.id(), code);
+Mfa.disable("operator", staff.id());
+Mfa.remainingRecoveryCodes("operator", staff.id());
+```
+
+- **`complete()` takes no realm.** It checks against the realm given to `pending` — if the
+  side receiving the code could choose, it would open **a way to check against another realm's secret**
+- A realm is **letters, digits, `_` and `-`, up to 64 characters**. An empty string means "no realm"
+- **Calls without a realm behave exactly as before.** Anyone enrolled before realms existed ends up
+  in "no realm" and keeps using the same code (the framework adds the column the first time it is used)
+- Brute-force counting (`Lockout`) is per realm too
 
 ### What it is, and what it is not
 

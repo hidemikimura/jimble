@@ -262,6 +262,33 @@ mcp {
 }
 ```
 
+## Cache hints
+
+In 2026-07-28, the results of `tools/list` / `prompts/list` / `resources/list` / `resources/read`
+**must carry `ttlMs` (how long the result stays fresh) and `cacheScope` (who may cache it)**.
+jimble always sends these values:
+
+```json
+{"resultType":"complete","tools":[...],"ttlMs":0,"cacheScope":"private"}
+```
+
+- **`ttlMs` is 0** (re-fetch whenever needed). That is what a client assumes when the field is missing,
+  so nothing changes in behaviour. The tool and prompt lists change when you redeploy, yet no `list_changed` is sent,
+  so a positive value would leave clients holding a stale list
+- **`cacheScope` is `private`** (only the requesting user's client). What `resources/read` returns may depend on who is logged in,
+  and jimble cannot tell whether the application keeps the lists behind authentication. `public` would let a shared gateway
+  hand the result to someone else
+- **A resource whose content never changes can ask for longer.** Whatever an overridden `toContents` puts in is returned as is
+
+```java
+@Override
+public Data toContents (String uri, String text) {
+	Data data = McpResource.super.toContents(uri, text);
+	data.put("ttlMs", 3_600_000L);	// one hour
+	return data;
+}
+```
+
 ## One way in
 
 Over HTTP, the only thing exposed is `POST /mcp`.

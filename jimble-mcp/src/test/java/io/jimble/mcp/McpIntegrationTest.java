@@ -264,6 +264,61 @@ class McpIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("一覧と読み取りの結果に ttlMs と cacheScope が付く（要件 D-184）")
+	void cacheHints () throws Exception {
+
+		/*
+		 * <b>2026-07-28 の必須項目。</b>欠けると Claude Code は一覧ごと捨てて
+		 * 「tools fetch failed」になり、ツールが1つも使えない。
+		 * <b>キー名は定数でなく文字列で書く。</b>定数を綴り間違えても、定数で比べるテストは通ってしまう
+		 */
+		Data resources = call("resources/list", null, "{}").getData("result");
+
+		List<Data> results = List.of(
+			call("tools/list", null, "{}").getData("result")
+			, call("prompts/list", null, "{}").getData("result")
+			, resources
+			// ページを切った2枚目にも付く（ページごとに独立してキャッシュされる。仕様）
+			, call("resources/list", null
+				, "{\"cursor\":\"%s\"}".formatted(resources.getString("nextCursor"))).getData("result")
+			, call("resources/read", "config://app", "{\"uri\":\"config://app\"}").getData("result"));
+
+		for (Data result : results) {
+
+			// 0 = 要るたびに取り直してよい（付けなかったときにクライアントが仮定する値と同じ）
+			assertTrue(result.containsKey("ttlMs"), result.getJsonString());
+			assertEquals(0L, result.getLong("ttlMs"), result.getJsonString());
+
+			// 共有の中継が別の人に返してはいけない
+			assertEquals("private"
+				, result.getString("cacheScope"), result.getJsonString());
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("キャッシュできないものには ttlMs を付けない")
+	void noCacheHintsOnCalls () throws Exception {
+
+		/*
+		 * tools/call と prompts/get は仕様の CacheableResult ではない。
+		 * 実行結果に「5分使い回してよい」が付くと、同じ引数の呼び出しを
+		 * クライアントが実行せずに済ませかねない
+		 */
+		Data call = call("tools/call", "get_weather"
+			, "{\"name\":\"get_weather\",\"arguments\":{\"city\":\"東京\"}}").getData("result");
+		Data prompt = call("prompts/get", "summarize"
+			, "{\"name\":\"summarize\",\"arguments\":{\"text\":\"あああ\"}}").getData("result");
+
+		for (Data result : List.of(call, prompt)) {
+			assertFalse(result.containsKey("ttlMs"), result.getJsonString());
+			assertFalse(result.containsKey("cacheScope"), result.getJsonString());
+		}
+
+	}
+
 	// endregion
 
 	// region 実行

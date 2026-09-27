@@ -59,6 +59,29 @@ import java.util.List;
  * Mfa.activate(staffId, code);
  * </pre>
  *
+ * <h2>ログインの種別が複数あるとき（D-182）</h2>
+ * <p>
+ * 運用者の画面と利用者の管理画面のように<b>別々の表から引く ID</b> があると、
+ * {@code staff.id = 1} と {@code member.id = 1} が<b>同じ「利用者 1」として扱われる</b>——
+ * 片方が登録すると<b>もう片方の秘密鍵を上書きし</b>、片方のコードでもう片方のログインが通る。
+ * </p>
+ *
+ * <p>
+ * <b>種別（realm）を渡すと、ID の数字が同じでも別の人として扱う。</b>
+ * 渡さなければ、これまでどおりの1つの種別として動く（既存の登録もそのまま使える）。
+ * </p>
+ *
+ * <pre>
+ * Mfa.isActive("operator", staffId);
+ * Mfa.pending(context, principal, "operator");  // complete() は、ここで渡した種別で確かめる
+ * Mfa.enroll("operator", staffId, "ops@example.com");
+ * </pre>
+ *
+ * <p>
+ * 種別に使えるのは<b>英数字・{@code _}・{@code -} の 64 文字まで</b>。
+ * 空文字は「種別なし」（渡さないのと同じ）。
+ * </p>
+ *
  * <h2>秘密鍵は暗号化して持つ</h2>
  * <p>
  * <b>{@code auth.mfa.secret_key} が無ければ有効化を断る。</b>
@@ -87,6 +110,23 @@ public final class Mfa {
 
 	/** セッションに入れる鍵：いつ始めたか */
 	private static final String KEY_PENDING_AT = "__mfa_pending_at";
+
+	/** セッションに入れる鍵：途中の人の種別（D-182） */
+	private static final String KEY_PENDING_REALM = "__mfa_pending_realm";
+
+	/**
+	 * 種別なし（D-182）
+	 *
+	 * <p>
+	 * 種別を渡さない呼び方はこれを使う。<b>種別を入れる前の登録は、すべてこの種別になる</b>
+	 * （表に列を足したとき、既定値を空文字にしてある）。
+	 * </p>
+	 */
+	private static final String NO_REALM = "";
+
+	/** 種別に使える形 */
+	private static final java.util.regex.Pattern REALM_PATTERN =
+		java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
 	/** 乱数 */
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -127,6 +167,22 @@ public final class Mfa {
 	 */
 	public static Enrollment enroll (long userId, String accountName) {
 
+		return enroll(NO_REALM, userId, accountName);
+
+	}
+
+	/**
+	 * 有効にする準備をする（種別つき。D-182）
+	 *
+	 * @param realm			種別（{@code "operator"} など）。空文字なら種別なし
+	 * @param userId		利用者 ID
+	 * @param accountName	認証アプリに出る名前（ログイン ID やメール）
+	 * @return	出すもの
+	 */
+	public static Enrollment enroll (String realm, long userId, String accountName) {
+
+		checkRealm(realm);
+
 		requireUsable();
 
 		/*
@@ -156,16 +212,18 @@ public final class Mfa {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			// 途中でやめた人の残りを消してから入れ直す
-			db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db, FrameworkTables.AUTH_MFA)), userId);
-			db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId);
+			// 途中でやめた人の残りを消してから入れ直す（同じ種別の同じ人だけ）
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId);
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
 
-			db.insert("INSERT INTO %s (user_id, secret, activated_at, last_counter) VALUES (?, ?, 0, 0)"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), userId, Aead.encrypt(base32, key));
+			db.insert("INSERT INTO %s (realm, user_id, secret, activated_at, last_counter) VALUES (?, ?, ?, 0, 0)"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId, Aead.encrypt(base32, key));
 
 			for (String code : codes) {
-				db.insert("INSERT INTO %s (user_id, code_hash, created_at) VALUES (?, ?, ?)"
-					.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId, Hash.sha256(code), now);
+				db.insert("INSERT INTO %s (realm, user_id, code_hash, created_at) VALUES (?, ?, ?, ?)"
+					.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, Hash.sha256(code), now);
 			}
 
 		} catch (Exception cause) {
@@ -185,9 +243,25 @@ public final class Mfa {
 	 */
 	public static boolean activate (long userId, String code) {
 
+		return activate(NO_REALM, userId, code);
+
+	}
+
+	/**
+	 * コードが合ったら有効にする（種別つき。D-182）
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @param code		認証アプリのコード
+	 * @return	有効になった場合 = true
+	 */
+	public static boolean activate (String realm, long userId, String code) {
+
+		checkRealm(realm);
+
 		requireUsable();
 
-		Data row = row(userId);
+		Data row = row(realm, userId);
 
 		if (row == null) {
 			return false;
@@ -201,8 +275,8 @@ public final class Mfa {
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
-			db.update("UPDATE %s SET activated_at = ?, last_counter = ? WHERE user_id = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), nowSeconds(), counter, userId);
+			db.update("UPDATE %s SET activated_at = ?, last_counter = ? WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), nowSeconds(), counter, realm, userId);
 		} catch (Exception cause) {
 			throw new IllegalStateException("二要素認証を有効にできませんでした", cause);
 		}
@@ -274,13 +348,28 @@ public final class Mfa {
 	 */
 	public static boolean isActive (long userId) {
 
+		return isActive(NO_REALM, userId);
+
+	}
+
+	/**
+	 * 有効になっているか（種別つき。D-182）
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @return	有効な場合 = true
+	 */
+	public static boolean isActive (String realm, long userId) {
+
+		checkRealm(realm);
+
 		if (!MfaConf.enabled() || !DBUtil.isUseDB()) {
 			return false;
 		}
 
 		install();
 
-		Data row = row(userId);
+		Data row = row(realm, userId);
 
 		return row != null && row.getLong("activated_at") > 0;
 
@@ -299,6 +388,22 @@ public final class Mfa {
 	 */
 	public static void disable (long userId) {
 
+		disable(NO_REALM, userId);
+
+	}
+
+	/**
+	 * やめる（種別つき。D-182）
+	 *
+	 * <p><b>消えるのはこの種別のこの人だけ</b>——同じ ID の別の種別の人は残る。</p>
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 */
+	public static void disable (String realm, long userId) {
+
+		checkRealm(realm);
+
 		if (!DBUtil.isUseDB()) {
 			return;
 		}
@@ -306,13 +411,15 @@ public final class Mfa {
 		install();
 
 		try (DB db = DBUtil.getMainDB()) {
-			db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db, FrameworkTables.AUTH_MFA)), userId);
-			db.delete("DELETE FROM %s WHERE user_id = ?".formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId);
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId);
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
 		} catch (Exception cause) {
 			throw new IllegalStateException("二要素認証をやめられませんでした", cause);
 		}
 
-		Lockout.clear(lockoutKey(userId));
+		Lockout.clear(lockoutKey(realm, userId));
 
 	}
 
@@ -334,22 +441,40 @@ public final class Mfa {
 	 */
 	public static boolean verify (long userId, String code) {
 
+		return verify(NO_REALM, userId, code);
+
+	}
+
+	/**
+	 * コードを確かめる（種別つき。D-182）
+	 *
+	 * <p><b>総当たりの数えも種別ごと</b>——片方の種別で打ち間違えても、もう片方は止まらない。</p>
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @param code		入力されたもの
+	 * @return	合っていた場合 = true
+	 */
+	public static boolean verify (String realm, long userId, String code) {
+
+		checkRealm(realm);
+
 		requireUsable();
 
-		String lockoutKey = lockoutKey(userId);
+		String lockoutKey = lockoutKey(realm, userId);
 
 		if (Lockout.waitSeconds(lockoutKey) > 0) {
 			throw new HttpException(429, "しばらく待ってからやり直してください");
 		}
 
-		Data row = row(userId);
+		Data row = row(realm, userId);
 
 		if (row == null || row.getLong("activated_at") <= 0) {
 			Lockout.fail(lockoutKey);
 			return false;
 		}
 
-		if (verifyTotp(userId, row, code) || verifyRecovery(userId, code)) {
+		if (verifyTotp(realm, userId, row, code) || verifyRecovery(realm, userId, code)) {
 			Lockout.clear(lockoutKey);
 			return true;
 		}
@@ -363,12 +488,13 @@ public final class Mfa {
 	/**
 	 * 認証アプリのコードを見る
 	 *
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @param row		行
 	 * @param code		入力されたもの
 	 * @return	合っていた場合 = true
 	 */
-	private static boolean verifyTotp (long userId, Data row, String code) {
+	private static boolean verifyTotp (String realm, long userId, Data row, String code) {
 
 		long counter = Totp.verify(secretOf(row), code, nowSeconds()
 			, MfaConf.period(), MfaConf.digits(), MfaConf.window());
@@ -384,7 +510,7 @@ public final class Mfa {
 		 * 進んだ窓だけを通す（＝一度使った窓とそれ以前は通らない）。
 		 */
 		if (counter <= row.getLong("last_counter")) {
-			Log.warn("二要素のコードが使い回されました: user_id=%d".formatted(userId));
+			Log.warn("二要素のコードが使い回されました: " + who(realm, userId));
 			return false;
 		}
 
@@ -395,8 +521,8 @@ public final class Mfa {
 			 * 後から来た古いほうが上書きしない（＝戻さない）。
 			 */
 			int updated = db.update(
-				"UPDATE %s SET last_counter = ? WHERE user_id = ? AND last_counter < ?"
-					.formatted(table(db, FrameworkTables.AUTH_MFA)), counter, userId, counter);
+				"UPDATE %s SET last_counter = ? WHERE realm = ? AND user_id = ? AND last_counter < ?"
+					.formatted(table(db, FrameworkTables.AUTH_MFA)), counter, realm, userId, counter);
 
 			if (updated == 0) {
 				// 同時に来たもう1本が先に使った
@@ -414,11 +540,12 @@ public final class Mfa {
 	/**
 	 * 回復コードを見る
 	 *
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @param code		入力されたもの
 	 * @return	合っていた場合 = true
 	 */
-	private static boolean verifyRecovery (long userId, String code) {
+	private static boolean verifyRecovery (String realm, long userId, String code) {
 
 		if (code == null) {
 			return false;
@@ -436,15 +563,15 @@ public final class Mfa {
 			 * <b>消せた1件だけを「使えた」とする。</b>
 			 * 「引いてから消す」にすると、<b>同時に2回使える</b>。
 			 */
-			int deleted = db.delete("DELETE FROM %s WHERE user_id = ? AND code_hash = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId, Hash.sha256(normalized));
+			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND code_hash = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, Hash.sha256(normalized));
 
 			if (deleted <= 0) {
 				return false;
 			}
 
-			Log.warn("回復コードで入りました: user_id=%d（残り %d 個）"
-				.formatted(userId, remainingRecoveryCodes(db, userId)));
+			Log.warn("回復コードで入りました: %s（残り %d 個）"
+				.formatted(who(realm, userId), remainingRecoveryCodes(db, realm, userId)));
 
 			return true;
 
@@ -462,6 +589,21 @@ public final class Mfa {
 	 */
 	public static int remainingRecoveryCodes (long userId) {
 
+		return remainingRecoveryCodes(NO_REALM, userId);
+
+	}
+
+	/**
+	 * 残っている回復コードの数（種別つき。D-182）
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @return	数
+	 */
+	public static int remainingRecoveryCodes (String realm, long userId) {
+
+		checkRealm(realm);
+
 		if (!DBUtil.isUseDB()) {
 			return 0;
 		}
@@ -469,7 +611,7 @@ public final class Mfa {
 		install();
 
 		try (DB db = DBUtil.getMainDB()) {
-			return remainingRecoveryCodes(db, userId);
+			return remainingRecoveryCodes(db, realm, userId);
 		} catch (Exception cause) {
 			throw new IllegalStateException("回復コードを数えられませんでした", cause);
 		}
@@ -480,13 +622,14 @@ public final class Mfa {
 	 * 残っている回復コードの数
 	 *
 	 * @param db		DB
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @return	数
 	 */
-	private static int remainingRecoveryCodes (DB db, long userId) {
+	private static int remainingRecoveryCodes (DB db, String realm, long userId) {
 
-		Data row = db.select("SELECT count(*) as cnt FROM %s WHERE user_id = ?"
-			.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), userId);
+		Data row = db.select("SELECT count(*) as cnt FROM %s WHERE realm = ? AND user_id = ?"
+			.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -509,6 +652,27 @@ public final class Mfa {
 	 */
 	public static void pending (WebContext context, Principal principal) {
 
+		pending(context, principal, NO_REALM);
+
+	}
+
+	/**
+	 * パスワードは合ったが、コードがまだ、という状態にする（種別つき。D-182）
+	 *
+	 * <p>
+	 * <b>種別はセッションに覚えておく。</b>{@link #complete} はここで渡した種別で確かめるので、
+	 * コードを入れる画面の側は種別を知らなくてよい——
+	 * <b>コードを受け取る側が種別を選べると、別の種別の秘密鍵で確かめさせる道ができる</b>。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param principal	パスワードが合った人
+	 * @param realm		種別。空文字なら種別なし
+	 */
+	public static void pending (WebContext context, Principal principal, String realm) {
+
+		checkRealm(realm);
+
 		if (principal == null || !principal.isAuthenticated()) {
 			throw new IllegalArgumentException("待たせる相手がいません（id が 0 です）");
 		}
@@ -523,6 +687,7 @@ public final class Mfa {
 		context.session().put(KEY_PENDING_NAME, principal.name());
 		context.session().put(KEY_PENDING_ROLE, principal.role());
 		context.session().put(KEY_PENDING_AT, nowSeconds());
+		context.session().put(KEY_PENDING_REALM, realm);
 
 		context.session().save();
 
@@ -584,7 +749,13 @@ public final class Mfa {
 			throw new HttpException(401, "はじめからやり直してください");
 		}
 
-		if (!verify(principal.id(), code)) {
+		/*
+		 * <b>種別は pending のときに覚えたものを使う</b>（D-182）。
+		 * 種別を入れる前に始めた途中の人（セッションに無い）は、種別なしで確かめる。
+		 */
+		String realm = context.session().get(KEY_PENDING_REALM);   // 無ければ空文字（種別なし）
+
+		if (!verify(realm, principal.id(), code)) {
 			return false;
 		}
 
@@ -599,6 +770,7 @@ public final class Mfa {
 		context.session().remove(KEY_PENDING_NAME);
 		context.session().remove(KEY_PENDING_ROLE);
 		context.session().remove(KEY_PENDING_AT);
+		context.session().remove(KEY_PENDING_REALM);
 
 		Auth.login(context, principal);
 
@@ -617,6 +789,7 @@ public final class Mfa {
 		context.session().remove(KEY_PENDING_NAME);
 		context.session().remove(KEY_PENDING_ROLE);
 		context.session().remove(KEY_PENDING_AT);
+		context.session().remove(KEY_PENDING_REALM);
 
 		context.session().save();
 
@@ -684,14 +857,15 @@ public final class Mfa {
 	/**
 	 * 1件読む
 	 *
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @return	行。無ければ null
 	 */
-	private static Data row (long userId) {
+	private static Data row (String realm, long userId) {
 
 		try (DB db = DBUtil.getMainDB()) {
-			return db.select("SELECT secret, activated_at, last_counter FROM %s WHERE user_id = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), userId);
+			return db.select("SELECT secret, activated_at, last_counter FROM %s WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId);
 		} catch (Exception cause) {
 			/*
 			 * <b>ここで false を返して「コードが違います」にしない。</b>
@@ -731,12 +905,55 @@ public final class Mfa {
 	/**
 	 * 総当たりを数える単位
 	 *
+	 * <p>
+	 * <b>種別なしは、これまでと同じ形にする</b>（{@code mfa:<ID>}）。
+	 * 変えると、上げた瞬間にロックアウトの数えが途切れる。
+	 * </p>
+	 *
+	 * @param realm		種別
 	 * @param userId	利用者 ID
 	 * @return	単位
 	 */
-	private static String lockoutKey (long userId) {
+	private static String lockoutKey (String realm, long userId) {
 
-		return "mfa:" + userId;
+		return realm.isEmpty() ? "mfa:" + userId : "mfa:" + realm + ":" + userId;
+
+	}
+
+	/**
+	 * ログに出す相手
+	 *
+	 * @param realm		種別
+	 * @param userId	利用者 ID
+	 * @return	{@code user_id=1} か {@code realm=operator user_id=1}
+	 */
+	private static String who (String realm, long userId) {
+
+		return realm.isEmpty() ? "user_id=" + userId : "realm=" + realm + " user_id=" + userId;
+
+	}
+
+	/**
+	 * 種別の形を確かめる（D-182）
+	 *
+	 * <p>
+	 * <b>null は書き間違いとして落とす</b>——「種別なし」にしたいなら渡さない形を使う。
+	 * 空文字は種別なし。それ以外は英数字・{@code _}・{@code -} の 64 文字まで
+	 * （ロックアウトの単位とログに入るので、区切り文字や改行を入れさせない）。
+	 * </p>
+	 *
+	 * @param realm	種別
+	 */
+	private static void checkRealm (String realm) {
+
+		if (realm == null) {
+			throw new IllegalArgumentException("二要素認証の種別が null です（種別なしなら、種別を渡さない形を使ってください）");
+		}
+
+		if (!realm.isEmpty() && !REALM_PATTERN.matcher(realm).matches()) {
+			throw new IllegalArgumentException(
+				"二要素認証の種別に使えない文字があります（英数字・_・- の 64 文字まで）: " + realm);
+		}
 
 	}
 
@@ -818,7 +1035,24 @@ public final class Mfa {
 					)
 					""".formatted(FrameworkTables.AUTH_MFA));
 
-			secret.apply(DBUtil.getMainDB());
+			/*
+			 * 版2：種別（D-182）。<b>既存の行は空文字＝種別なしになる</b>ので、
+			 * 種別を渡さないアプリはこれまでどおり動く。主キーも種別つきに張り直す——
+			 * 張り直さないと、同じ ID の別の種別の人を入れられない。
+			 */
+			secret.add(2)
+				.mysql("""
+					alter table `%s`
+						add column realm varchar(64) not null default '' first
+						, drop primary key
+						, add primary key (realm, user_id)
+					""".formatted(FrameworkTables.AUTH_MFA))
+				.postgresql(
+					"alter table \"%s\" add column realm varchar(64) not null default ''".formatted(FrameworkTables.AUTH_MFA)
+					, "alter table \"%s\" drop constraint \"%s_pkey\"".formatted(FrameworkTables.AUTH_MFA, FrameworkTables.AUTH_MFA)
+					, "alter table \"%s\" add primary key (realm, user_id)".formatted(FrameworkTables.AUTH_MFA));
+
+			applyOrFail(secret);
 
 			DBVersion recovery = new DBVersion(FrameworkTables.AUTH_MFA_RECOVERY, "二要素認証の回復コード");
 
@@ -842,10 +1076,41 @@ public final class Mfa {
 					)
 					""".formatted(FrameworkTables.AUTH_MFA_RECOVERY));
 
-			recovery.apply(DBUtil.getMainDB());
+			recovery.add(2)
+				.mysql("""
+					alter table `%s`
+						add column realm varchar(64) not null default '' first
+						, drop primary key
+						, add primary key (realm, user_id, code_hash)
+					""".formatted(FrameworkTables.AUTH_MFA_RECOVERY))
+				.postgresql(
+					"alter table \"%s\" add column realm varchar(64) not null default ''".formatted(FrameworkTables.AUTH_MFA_RECOVERY)
+					, "alter table \"%s\" drop constraint \"%s_pkey\"".formatted(FrameworkTables.AUTH_MFA_RECOVERY, FrameworkTables.AUTH_MFA_RECOVERY)
+					, "alter table \"%s\" add primary key (realm, user_id, code_hash)".formatted(FrameworkTables.AUTH_MFA_RECOVERY));
+
+			applyOrFail(recovery);
 
 			initialized = true;
 
+		}
+
+	}
+
+	/**
+	 * 表を作る・直す。できなければ落とす
+	 *
+	 * <p>
+	 * <b>{@code apply} は失敗すると false を返すだけ</b>で、例外にならない。
+	 * 見ずに進むと、<b>種別の列が無い表に {@code realm = ?} を投げて</b>、
+	 * 「二要素認証の設定を読めませんでした」とだけ出る——表を直せなかったことが分からない。
+	 * </p>
+	 *
+	 * @param version	表の版
+	 */
+	private static void applyOrFail (DBVersion version) {
+
+		if (!version.apply(DBUtil.getMainDB())) {
+			throw new IllegalStateException("二要素認証の表を作れませんでした（直前のエラーログを見てください）");
 		}
 
 	}

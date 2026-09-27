@@ -257,6 +257,31 @@ Cookie には **`selector:validator`** の2つが入っていて、
 > 呼ばないと、**盗まれた Cookie はそのまま使えます**——変えた意味がありません。
 > 「全端末からログアウト」も同じものです。
 
+### ログインの種別が複数あるとき
+
+運用者の画面と利用者の管理画面のように、**別々の表から引く ID** があるなら、
+**種別（realm）を渡してください。**渡さないと記憶は利用者 ID だけで持つので、
+**運用者として覚えた Cookie が、利用者の画面で「同じ ID の利用者」として思い出されます**——
+パスワードを入れずに、別の人として入れてしまいます。
+
+```java
+path("/ops", () -> {
+	before(Remember.restore("operator", Ops::findStaff));
+	before(Auth::guard);
+});
+
+Remember.issue(context, principal, "operator");   // ログインのとき
+Remember.forgetAll("operator", staffId);          // パスワードを変えたとき
+```
+
+- **Cookie の名前が種別ごとに分かれます**（`remember_operator` のように、設定の名前 + `_` + 種別）。
+  同じホストで両方にログインしていても、互いの Cookie を上書きしません
+- **思い出すときは、記憶の種別も見ます。**Cookie の名前を取り違えても、別の種別の人としては入れません
+- `forgetAll` と盗用の検知で消えるのは、**その種別のその人の記憶だけ**です
+- **`Auth.logout` は、種別なしと、このアプリが使っている種別の記憶をすべて消します**
+  （セッションごと捨てるので、どの種別のログインも終わります）
+- **種別を渡さなければ、これまでどおりです。**Cookie の名前も変わらず、上げる前の記憶で上げたあとも入れます
+
 ## 「Google でログイン」（OpenID Connect）
 
 ```java
@@ -348,6 +373,14 @@ JDK の `KeyFactory` で公開鍵に戻せて、署名の検証も `java.securit
 > 0.6.0 では**黙ってログインさせていた**ので、
 > **「Google でログイン」を選ぶだけで二要素が飛んでいました**。
 > 素通りさせるくらいなら入れないほうがよい、という判断です（1.0）。
+
+ログインの種別が複数あるなら（下の「ログインの種別が複数あるとき」）、**第4引数に種別**を渡します。
+
+```java
+get("/ops/auth/google/callback"
+	, Oidc.callback("google", Ops::findStaff, "/ops/login/code", "operator"))
+	.attribute(Auth.PUBLIC, true);
+```
 
 ### やらないこと
 
@@ -464,6 +497,38 @@ post("/mfa/disable", Mfa2::disable).attribute(Auth.FULL_AUTH, true);
 > **`Mfa.disable` を呼ぶ前に、本人であることを確かめてください。**
 > ここが緩いと、**Cookie を盗んだ側が2要素を外せます**——入れた意味がなくなります。
 > `attribute(Auth.FULL_AUTH, true)` を付けて、**いまパスワードを入れた人だけ**にしてください。
+
+### ログインの種別が複数あるとき
+
+運用者の画面と利用者の管理画面のように、**別々の表から引く ID** があるなら、
+**種別（realm）を渡してください。**渡さないと、`staff.id = 1` と `member.id = 1` が
+**同じ「利用者 1」として扱われます**——片方が登録すると**もう片方の秘密鍵を上書きし**、
+片方のコードでもう片方のログインが通ります。
+
+```java
+// 運用者のログイン
+if (Mfa.isActive("operator", staff.id())) {
+	Mfa.pending(context, principal, "operator");   // 種別はセッションに預かる
+	context.response().redirect("/ops/login/code");
+	return;
+}
+
+// POST /ops/login/code — complete() は pending で預けた種別で確かめる
+Mfa.complete(context, code);
+
+// 登録・有効化・やめる・回復コードの数
+Mfa.enroll("operator", staff.id(), staff.email());
+Mfa.activate("operator", staff.id(), code);
+Mfa.disable("operator", staff.id());
+Mfa.remainingRecoveryCodes("operator", staff.id());
+```
+
+- **`complete()` に種別を渡す口はありません。**`pending` で預けた種別で確かめます——
+  コードを受け取る側が種別を選べると、**別の種別の秘密鍵で確かめさせる道**ができるからです
+- 種別に使えるのは**英数字・`_`・`-` の 64 文字まで**です。空文字は「種別なし」です
+- **種別を渡さない呼び方は、これまでどおり動きます。**種別を入れる前に登録した人は「種別なし」になり、
+  同じコードで入れます（表に列を足すのは、最初に使ったときに枠組みがやります）
+- 総当たりの数え（`Lockout`）も種別ごとです
 
 ### 仕様と、やらないこと
 
