@@ -210,9 +210,28 @@ path("/admin", () -> {
 
 > [!TRAP]
 > **remember-me を使うなら、`Remember` の種別も同じ名前にしてください。**
-> `Auth.logout` は同じ名前の種別の記憶だけを消すので、名前が違うと記憶が残り、
-> **ログアウトした次のリクエストでまた入ってしまいます。**
-> 違っていたら `IllegalStateException` で止めます。
+> `Auth.logout` は同じ名前の種別の記憶だけを消すので、名前が違うと記憶が残ります。
+> そこで、**`Remember.issue` の種別がルートの種別と違えば `IllegalStateException` で止めます**（ログインのときに気づきます）。
+> **`Remember.restore` は、種別が違えば何もしません。**アプリ全体に置いた `before(Remember.restore(...))`（種別なし）は
+> 種別を付けたブロックには効かないので、そのブロックには同じ名前の `restore` を別に置いてください。
+>
+> **そのとき `before(Auth::guard)` もブロックの中に置いてください。**アプリ全体の `before` はブロックの `before` より先に走るので、
+> アプリ全体に guard があると、**ブロックの `restore` が思い出す前に 401 になります**（覚えていても毎回ログインを求められます）。
+
+```java
+path("/ops", () -> {
+	attribute(Auth.REALM, "operator");
+	before(Remember.restore("operator", Ops::findStaff));    // guard より先に
+	before(Auth::guard);
+	// ...
+});
+
+path("", () -> {                                              // 種別なしの画面もブロックにまとめる
+	before(Remember.restore(App::findMember));
+	before(Auth::guard);
+	// ...
+});
+```
 
 > [!NOTE]
 > **種別を付けなければ、これまでどおりです。**置き場所の鍵（`__auth_id` など）も、

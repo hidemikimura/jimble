@@ -66,7 +66,7 @@ val CENTRAL_API = "https://central.sonatype.com/api/v1/publisher"
 val centralDeploymentIdFile = layout.buildDirectory.file("central-deployment-id.txt")
 
 /**
- * 送ったものの控え（要件 D-185）
+ * 送ったものの控え（要件 D-186）
  *
  * <p>
  * <b>centralUpload が「どの版を・どのコミットから」送ったかを書き、centralRelease がそれを見てタグを打つ。</b>
@@ -104,7 +104,7 @@ fun git (vararg args: String): GitResult? {
 fun gitOrFail (vararg args: String): String {
 
 	val result = git(*args)
-		?: throw GradleException("git がありません。公開した木にタグを打つために使います（D-185）")
+		?: throw GradleException("git がありません。公開した木にタグを打つために使います（D-186）")
 
 	if (result.code != 0) {
 		throw GradleException("git ${args.joinToString(" ")} が失敗しました:\n${result.out}")
@@ -124,7 +124,7 @@ fun tagCommit (tag: String): String? {
 }
 
 /**
- * 送る前に、木が公開してよい形かを見る（要件 D-142 / D-185）
+ * 送る前に、木が公開してよい形かを見る（要件 D-142 / D-186）
  *
  * <p>
  * <b>コミットしていない変更がある・HEAD が push されていない、のどちらかなら送らない。</b>
@@ -143,7 +143,7 @@ fun centralCheckTree (version: String): Pair<String, String> {
 
 	if (inside == null || inside.code != 0 || inside.out.trim() != "true") {
 		throw GradleException("git の作業ツリーの中で動かしてください。"
-			+ "公開した木にタグを打つために、どのコミットから送ったかを控えます（D-185）")
+			+ "公開した木にタグを打つために、どのコミットから送ったかを控えます（D-186）")
 	}
 
 	val dirty = gitOrFail("status", "--porcelain")
@@ -174,7 +174,7 @@ fun centralCheckTree (version: String): Pair<String, String> {
 }
 
 /**
- * 公開した木にタグを打って push する（要件 D-185）
+ * 公開した木にタグを打って push する（要件 D-186）
  *
  * <p>
  * <b>タグは3度抜けた</b>（0.6.0・1.2.0・1.3.0）。centralRelease のあとは「終わった」感が強く、
@@ -483,7 +483,7 @@ tasks.register("centralUpload") {
 		record.setProperty("version", jimbleVersion)
 		record.setProperty("commit", commit)
 		record.setProperty("remote", remote)
-		centralReleaseFile.get().asFile.writer(Charsets.UTF_8).use { record.store(it, "written by centralUpload (D-185)") }
+		centralReleaseFile.get().asFile.writer(Charsets.UTF_8).use { record.store(it, "written by centralUpload (D-186)") }
 
 		logger.lifecycle("")
 		logger.lifecycle("送りました: $deploymentId（$jimbleVersion / ${commit.take(7)}）")

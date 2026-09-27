@@ -98,6 +98,8 @@ class RememberRealmIntegrationTest {
 
 		router = new Router();
 		router.get("/me", context -> { });
+		// ログインの種別（Auth.REALM）を付けたブロック（D-185）
+		router.get("/ops/me", context -> { }).attribute(Auth.REALM, OPERATOR);
 		router.seal();
 
 	}
@@ -357,6 +359,38 @@ class RememberRealmIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-185 種別を付けたブロックでは、種別の違う記憶で思い出さない（アプリ全体の restore でも 500 にしない）")
+	void restoreWithOtherRealmDoesNothingInRealmBlock () {
+
+		Browser browser = new Browser();
+
+		// 種別なしで覚えた（アプリ全体の remember-me）
+		browser.visit(context -> Remember.issue(context, MEMBER_USER));
+		browser.forgetSession();
+
+		/*
+		 * アプリ全体に置いた restore（種別なし）は、Auth.REALM = operator のブロックにも掛かる。
+		 * <b>投げない。しかも思い出さない</b>——思い出すと operator の置き場所にログインし、
+		 * operator のログアウトでは消えない記憶で、次のリクエストでまた入ってしまう
+		 */
+		Principal inOps = browser.get("/ops/me", context -> {
+			Remember.restore(context, MEMBER_LOOKUP);
+			return Auth.principal(context);
+		});
+
+		assertFalse(inOps.isAuthenticated(), "種別なしの記憶で、運用者のブロックに入っています");
+
+		// 種別なしのルートでは、これまでどおり思い出す
+		Principal plain = browser.get(context -> {
+			Remember.restore(context, MEMBER_LOOKUP);
+			return Auth.principal(context);
+		});
+
+		assertEquals("会員 有栖", plain.name(), "種別なしのルートで思い出せていません");
+
+	}
+
+	@Test
 	@DisplayName("D-183 使えない種別は落とす")
 	void invalidRealmIsRejected () {
 
@@ -461,7 +495,21 @@ class RememberRealmIntegrationTest {
 		 */
 		<T> T get (Function<WebContext, T> action) {
 
-			Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/me");
+			return get("/me", action);
+
+		}
+
+		/**
+		 * 1リクエスト（パスを決める）
+		 *
+		 * @param path		パス
+		 * @param action	中でやること
+		 * @param <T>		戻り値
+		 * @return	action の戻り値
+		 */
+		<T> T get (String path, Function<WebContext, T> action) {
+
+			Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", path);
 			cookies.forEach(source::cookie);
 
 			Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
@@ -469,7 +517,7 @@ class RememberRealmIntegrationTest {
 			T result;
 
 			try (WebContext context = new WebContext(source, sink)) {
-				context.route(router.match("GET", "/me"));
+				context.route(router.match("GET", path));
 				result = action.apply(context);
 				context.response().send("ok");
 			}

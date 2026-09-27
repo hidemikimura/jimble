@@ -2,6 +2,7 @@ package io.jimble.web.auth;
 
 import io.jimble.util.hash.PasswordUtil;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.internal.AuthSlots;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.router.AttributeKey;
 import io.jimble.web.session.SessionStores;
@@ -198,14 +199,14 @@ public final class Auth {
 	}
 
 	/**
-	 * 種別つきのセッションの鍵（種別なしなら鍵そのまま。これまでのセッションがそのまま読める）
+	 * 種別つきのセッションの鍵（{@link AuthSlots#key}。公開しない：鍵の形を 2.0 まで固めないため）
 	 *
 	 * @param key	鍵
 	 * @param realm	種別
 	 * @return	セッションの鍵
 	 */
-	public static String sessionKey (String key, String realm) {
-		return realm.isEmpty() ? key : key + "@" + realm;
+	private static String sessionKey (String key, String realm) {
+		return AuthSlots.key(key, realm);
 	}
 
 	/**
@@ -469,7 +470,7 @@ public final class Auth {
 			context.session().remove(sessionKey(key, realm));
 		}
 
-		io.jimble.web.auth.mfa.Mfa.clearPending(context, realm);
+		AuthSlots.clearMfaPending(context, realm);
 
 		if (!anyoneLoggedIn(context)) {
 			context.session().destroy();

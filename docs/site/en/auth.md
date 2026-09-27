@@ -209,8 +209,28 @@ Outside a route with a kind, pass it explicitly: `Auth.principal(context, "opera
 
 > [!TRAP]
 > **If you use remember-me, give `Remember` the same kind name.** `Auth.logout` only forgets the
-> remember-me of the same-named kind; with a different name the cookie survives and **the next
-> request logs you straight back in.** A mismatch throws `IllegalStateException`.
+> remember-me of the same-named kind; with a different name the cookie would survive the logout.
+> So **`Remember.issue` throws `IllegalStateException` when its kind differs from the route's** (you find out at login).
+> **`Remember.restore` does nothing when the kinds differ.** An application-wide `before(Remember.restore(...))`
+> (no kind) does not reach blocks that carry a kind, so give such a block its own `restore` with the same name.
+>
+> **Put `before(Auth::guard)` inside the block too.** Application-wide `before` filters run before a block's own,
+> so an application-wide guard **answers 401 before the block's `restore` gets a chance** (a remembered user is asked to log in every time).
+
+```java
+path("/ops", () -> {
+	attribute(Auth.REALM, "operator");
+	before(Remember.restore("operator", Ops::findStaff));    // before the guard
+	before(Auth::guard);
+	// ...
+});
+
+path("", () -> {                                              // group the no-kind pages into a block as well
+	before(Remember.restore(App::findMember));
+	before(Auth::guard);
+	// ...
+});
+```
 
 > [!NOTE]
 > **Without a kind, nothing changes.** The session keys (`__auth_id` and so on) and the

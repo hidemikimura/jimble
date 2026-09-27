@@ -195,6 +195,12 @@ public final class Remember {
 	 * {@code lookup} は、この種別の表から引くものを渡す。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>ルートにログインの種別（{@link Auth#REALM}）が付いていて、それがこの種別と違えば、何もしない</b>（D-185）。
+	 * アプリ全体に置いた種別なしの {@code restore} は、種別を付けたブロックでは効かない。
+	 * そのブロックには、同じ名前の種別で {@code restore} を置く。
+	 * </p>
+	 *
 	 * @param realm		種別（{@code "operator"} など）。空文字なら種別なし
 	 * @param lookup	id から利用者を引き直す。見つからなければ null を返すこと
 	 * @return	{@code before} に渡すもの
@@ -242,7 +248,16 @@ public final class Remember {
 			return;
 		}
 
-		requireSameRealm(context, realm);
+		/*
+		 * <b>ルートの種別（Auth.REALM）と違う記憶では、思い出さない（何もしない）。</b>
+		 * アプリ全体に置いた before(Remember.restore(...)) は、種別を付けたブロックにも掛かる。
+		 * ここで投げると、<b>Cookie が無くてもそのブロックの全リクエストが 500</b> になる。
+		 * 思い出さなければログインもしないので、ログアウトで記憶が消えずに残る穴も開かない。
+		 * 取り違えは issue のほうで止める（ログインのときに気づく）
+		 */
+		if (!sameRealm(context, realm)) {
+			return;
+		}
 
 		String cookie = context.cookies().get(cookieName(realm));
 
@@ -272,11 +287,28 @@ public final class Remember {
 	}
 
 	/**
-	 * ルートにログインの種別（{@link Auth#REALM}）が付いていれば、記憶の種別も同じであること（D-185）
+	 * 記憶の種別が、ルートのログインの種別（{@link Auth#REALM}）に合っているか（D-185）
+	 *
+	 * <p>ルートに種別が無ければ、どの記憶でも合っている（これまでどおり）。</p>
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		記憶の種別
+	 * @return	合っている場合 = true
+	 */
+	private static boolean sameRealm (WebContext context, String realm) {
+
+		String sessionRealm = Auth.realmOf(context);
+
+		return sessionRealm.isEmpty() || sessionRealm.equals(realm);
+
+	}
+
+	/**
+	 * ルートにログインの種別（{@link Auth#REALM}）が付いていれば、覚える記憶の種別も同じであること（D-185）
 	 *
 	 * <p>
 	 * 種別を付けたルートのログアウト（{@link Auth#logout}）は、<b>同じ名前の種別の記憶だけ</b>を消す。
-	 * 名前が違うと記憶が消えずに残り、<b>ログアウトした次のリクエストでまた入ってしまう</b>。
+	 * 名前が違うと記憶が消えずに残り、<b>ログアウトしても記憶が生き残る</b>。
 	 * 黙ってそうなるくらいなら、ここで止める。
 	 * </p>
 	 */
@@ -284,7 +316,7 @@ public final class Remember {
 
 		String sessionRealm = Auth.realmOf(context);
 
-		if (!sessionRealm.isEmpty() && !sessionRealm.equals(realm)) {
+		if (!sameRealm(context, realm)) {
 			throw new IllegalStateException(("remember-me の種別（%s）が、ルートのログインの種別 Auth.REALM（%s）と違います。"
 				+ "ログアウトで記憶を消せなくなるので、同じ名前にしてください").formatted(realmLabel(realm), sessionRealm));
 		}

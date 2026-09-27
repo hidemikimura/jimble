@@ -232,6 +232,45 @@ class AuthRealmTest {
 	}
 
 	@Test
+	@DisplayName("D-185 アプリ全体の Remember.restore（種別なし）は、種別を付けたブロックでは何もしない（500 にしない）")
+	void appWideRestoreSkipsRealmBlocks () {
+
+		/*
+		 * ドキュメントとサンプルは before(Remember.restore(...)) をアプリ全体に置く。
+		 * そのまま Auth.REALM のブロックを足しても、そのブロックが全部 500 になってはいけない。
+		 * <b>Cookie があっても思い出さない</b>（思い出すと、ログアウトで消えない記憶でログインしてしまう）
+		 */
+		boolean[] looked = { false };
+
+		for (String cookie : new String[] { null, "abc:def" }) {
+
+			Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/ops/me");
+
+			if (cookie != null) {
+				source.cookie("remember", cookie);
+			}
+
+			try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+
+				context.route(router.match("GET", "/ops/me"));
+				context.sessionStore(store);
+
+				assertDoesNotThrow(() -> Remember.restore(context, id -> {
+					looked[0] = true;
+					return Principal.of(id, "誰か", "");
+				}));
+
+				assertFalse(Auth.principal(context).isAuthenticated(), "種別なしの記憶で運用者として入っている");
+
+			}
+
+		}
+
+		assertFalse(looked[0], "種別の違う記憶で利用者を引いている");
+
+	}
+
+	@Test
 	@DisplayName("D-185 種別に使えない文字は断る")
 	void invalidRealm () {
 

@@ -4,9 +4,9 @@
 
 ---
 
-## 未リリース
+## 1.4.0（2026-09-27）
 
-**同じブラウザで、種別の違うログインを同時に持てるようにした。**既存の API は変えていません（足しただけです）。
+**同じブラウザで、種別の違うログインを同時に持てるようにした版。**既存の API は変えていません（足しただけです）。
 ルートに種別を付けなければ、これまでどおりに動きます。
 
 ### 足したこと（D-185）
@@ -14,7 +14,7 @@
 | | |
 |---|---|
 | **ログインの種別（`Auth.REALM`）でセッションの置き場所を分けられるようになりました** | 運用者の画面と利用者の管理画面を持つアプリで、<b>同じブラウザで両方にログインすると、後からログインしたほうが前のログインを上書きしていました</b>（セッションの中のログインの置き場所が 1 つだけ）。ログアウトもセッションを丸ごと捨てるので、<b>片方から出るともう片方も切れました</b>。いまはブロックに `attribute(Auth.REALM, "operator")` を付けると、`Auth.login` / `principal` / `guard` / `fullyAuthenticated` / `logout` と二要素認証の途中の状態（`Mfa.pending` / `isPending` / `complete`）が<b>いまのルートの種別で読み書きします</b>。種別を付けたルートの `Auth.logout` は<b>その種別だけ</b>を終え、ほかの種別が残っていればセッション ID を振り直して保ちます（残っていなければ丸ごと捨てます）。種別を渡す `Auth.login(context, principal, realm)` / `principal(context, realm)` / `fullyAuthenticated(context, realm)` / `logout(context, realm)` と、すべてから出る `Auth.logoutAll` も足しました |
-| **remember-me の種別がルートの種別と違えば止めます** | 種別を付けたルートの `Auth.logout` は同じ名前の種別の記憶だけを消すので、名前が違うと<b>ログアウトした次のリクエストでまた入ってしまいます</b>。`Remember.restore` / `issue` の種別がルートの `Auth.REALM` と違えば `IllegalStateException` を投げます |
+| **remember-me の種別がルートの種別と違えば、覚えずに止めます** | 種別を付けたルートの `Auth.logout` は同じ名前の種別の記憶だけを消すので、名前が違うと<b>ログアウトしても記憶が残ります</b>。`Remember.issue` の種別がルートの `Auth.REALM` と違えば `IllegalStateException` を投げます（ログインのときに気づきます）。**`Remember.restore` は、種別が違えば何もしません**——アプリ全体に置いた `before(Remember.restore(...))` がそのまま置いておけます（種別を付けたブロックには、同じ名前の `restore` と `Auth::guard` をブロックの中に置きます。アプリ全体の guard はブロックの `restore` より先に走ります） |
 
 ### 上げる前に見るところ
 

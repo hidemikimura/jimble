@@ -12,6 +12,7 @@ import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Lockout;
 import io.jimble.web.auth.Principal;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.internal.AuthSlots;
 import io.jimble.web.http.HttpException;
 
 import java.net.URLEncoder;
@@ -99,20 +100,12 @@ import java.util.List;
  */
 public final class Mfa {
 
-	/** セッションに入れる鍵：途中の利用者 ID */
-	private static final String KEY_PENDING_ID = "__mfa_pending_id";
-
-	/** セッションに入れる鍵：途中の表示名 */
-	private static final String KEY_PENDING_NAME = "__mfa_pending_name";
-
-	/** セッションに入れる鍵：途中の役割 */
-	private static final String KEY_PENDING_ROLE = "__mfa_pending_role";
-
-	/** セッションに入れる鍵：いつ始めたか */
-	private static final String KEY_PENDING_AT = "__mfa_pending_at";
-
-	/** セッションに入れる鍵：途中の人の種別（D-182） */
-	private static final String KEY_PENDING_REALM = "__mfa_pending_realm";
+	/* セッションに入れる鍵（Auth.logout もこれを消すので、鍵の名前は AuthSlots に置いてある。D-185） */
+	private static final String KEY_PENDING_ID = AuthSlots.MFA_PENDING_ID;
+	private static final String KEY_PENDING_NAME = AuthSlots.MFA_PENDING_NAME;
+	private static final String KEY_PENDING_ROLE = AuthSlots.MFA_PENDING_ROLE;
+	private static final String KEY_PENDING_AT = AuthSlots.MFA_PENDING_AT;
+	private static final String KEY_PENDING_REALM = AuthSlots.MFA_PENDING_REALM;
 
 	/**
 	 * 種別なし（D-182）
@@ -790,21 +783,7 @@ public final class Mfa {
 	 * </p>
 	 */
 	private static String slot (WebContext context, String key) {
-		return Auth.sessionKey(key, Auth.realmOf(context));
-	}
-
-	/**
-	 * 種別を決めて、途中の状態を消す（保存はしない。{@link Auth#logout} から呼ぶ）
-	 *
-	 * @param context	コンテキスト
-	 * @param realm		ログインの種別（{@link Auth#REALM}）
-	 */
-	public static void clearPending (WebContext context, String realm) {
-
-		for (String key : new String[] { KEY_PENDING_ID, KEY_PENDING_NAME, KEY_PENDING_ROLE, KEY_PENDING_AT, KEY_PENDING_REALM }) {
-			context.session().remove(Auth.sessionKey(key, realm));
-		}
-
+		return AuthSlots.key(key, Auth.realmOf(context));
 	}
 
 	/**
