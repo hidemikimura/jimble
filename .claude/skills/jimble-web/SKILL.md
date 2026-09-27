@@ -182,6 +182,10 @@ throw new HttpException(401, "ログインしてください");
 before(Remember.restore(App::findPrincipal));   // remember-me を使うなら先に
 before(Auth::guard);                            // これを「いちばん最初に近く」
 
+// ログインの種別が複数ある（別の表から ID を引く）なら、remember-me も種別を渡す（D-183）
+// before(Remember.restore("operator", Ops::findStaff));
+// Remember.issue(context, principal, "operator");  /  Remember.forgetAll("operator", id);
+
 get("/requests", RequestController::list);                              // 既定で要ログイン
 get("/approvals", Approval::list).attribute(Auth.ROLE, "approver");     // 役割つき
 post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要パスワード再入力
@@ -249,6 +253,10 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
 - `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
 - 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**
 - QR 画像は作らない（`enrollment.uri()` を画面側で描く）。SMS / メールは無い
+- **ログインの種別が複数ある（運用者と利用者など、別の表から ID を引く）なら種別を渡す**：
+  `Mfa.isActive("operator", id)` / `Mfa.pending(context, principal, "operator")` /
+  `Mfa.enroll("operator", id, 名前)` など。渡さないと**同じ数字の ID が同じ人として扱われ、秘密鍵を上書きし合う**。
+  `complete()` は pending で預けた種別で確かめる（種別は渡さない）。OIDC は `Oidc.callback(名前, 関数, 画面, 種別)`
 
 ## 落とし穴（実際に踏んだもの）
 
