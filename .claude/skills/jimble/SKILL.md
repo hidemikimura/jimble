@@ -148,6 +148,11 @@ try (DBTransaction transaction = new DBTransaction(db)) {
   別名を付けるか、`テーブル__列` の別名でネストさせる（`jimble-db` の skill）
 - **`DBTransaction` は検査例外を投げる**（`CodeException` / `IOException`）。
   トランザクションを書くメソッドには `throws Exception` を付ける。`catch` で黙らせない
+- **JSON の列（MySQL の `JSON` / PostgreSQL の `json`・`jsonb`）は読んだ時点で `Data` / `List` になっている。**
+  配列の列を `getString` すると**先頭の要素だけ**が返る（JSON の文字ではない）。配列は `getStringList` / `getDataList`、
+  文字のまま欲しいなら `CAST(列 AS CHAR)`（MySQL）/ `列::text`（PostgreSQL）で読む
+- **一番外が配列の JSON は `Dson.decodes(json, List.class)` で読む。**`Data.class`（や引数なし）だと
+  `{"0": ..., "1": ...}` になる。`List.class` で `null` が返るなら、渡した文字が JSON ではない
 - **`Data.put` は `Data` を返さない。**`Map.put` なので戻り値は**前の値**（`Object`）。
   `new Data().put("a", 1).put("b", 2)` はコンパイルが通らず、`return data.put("x", v);` は Data ではなく前の値（初めて入れたなら `null`）を返す。
   続けて書くなら **`putData("a", 1).putData("b", 2)`**（こちらは自身を返す）

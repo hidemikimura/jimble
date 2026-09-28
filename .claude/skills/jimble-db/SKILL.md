@@ -90,6 +90,29 @@ row.getData(Post.instance());             // null。ビルダーの結果と同�
   JSON にすると入れ子が1段少ない、`putData(列, 値)` は**ネストを作る**ので平らな行の中に `post: {...}` が生える
   （平らな行には `putData("title", 値)` か `putDataTakeCare(列, 値)`）
 
+### JSON の列は、読んだ時点で Data / List になっている
+
+MySQL の `JSON`、PostgreSQL の `json` / `jsonb` の列は、**枠組みが読んだところで解いてしまう**
+（オブジェクトは `Data`、配列は `List`）。ビルダーでも文字列の SQL でも同じ。
+
+```java
+Data row = db.select("SELECT * FROM setting WHERE id = ?", id);
+// tags 列の中身が ["a","b"] のとき
+
+row.getString("tags");                     // "a"  ← 配列の先頭の要素だけ。JSON の文字ではない
+row.getStringList("tags");                 // ["a", "b"]  ← 配列はこちらで取る
+row.getData("options");                    // オブジェクトの列は Data で取る
+```
+
+- **`getString` で JSON の文字を取ろうとしない。**オブジェクトの列は JSON の文字になるが
+  （キーの間の空白などは元のとおりではない）、**配列の列は先頭の要素しか返らない**。
+  それを `Dson.decodes(..., List.class)` に渡すと、JSON ではないので **`null`**
+- **元の文字のまま欲しいなら、SQL で文字に変えて読む**：MySQL は `CAST(列 AS CHAR)`、
+  PostgreSQL は `列::text`（または `CAST(列 AS text)`）
+- `Dson.decodes(文字列)` / `Dson.decodes(文字列, Data.class)` に**一番外が配列の JSON** を渡すと、
+  `{"0": ..., "1": ...}` の Data になる（添字がキー）。配列は **`Dson.decodes(文字列, List.class)`** で読む
+  （これは `null` にならない。`null` になるのは、渡した文字が JSON でないとき）
+
 ## エラーは戻り値。例外ではない
 
 ```java
@@ -243,6 +266,19 @@ if (!DBUtil.load(Conf.conf().config(), App.class)) { // 流れるのはこの中
   **`true` でもまだ1行も流れていない**
 - **`DBUtil.load(...)` のあとに呼ぶと何も起きない。**登録した処理はもう走り終わっているので、黙って流れない
 - 流すのに失敗したら **`DBUtil.load(...)` が例外で落ちる**（戻り値の `false` ではない）。捕まえずに起動を止める
+
+**jimble が自分で作るテーブル**（`migration` / `session` / `db_cache` / `batch_*` / `auth_*` など）は
+codegen が自動で外す。**MQ のキュー表は外れない**——名前をアプリが決めるので、jimble の管理テーブルに入っていない。
+`DbScheduler` が使う **`mq_scheduler`**（`scheduler.queue_name` の既定）も同じ。外すなら並べる。
+
+```conf
+codegen {
+	exclude_tables = ["mq_notice", "mq_scheduler"]   # ワイルドカード（mq_*）は使えない。完全一致で1つずつ
+}
+```
+
+外したテーブルは codegen のログに名前が出る。**アプリのテーブルが jimble の管理テーブルと同じ名前**
+（`session` など）だと黙って生成されないので、ログを見る。
 
 **クラス名はテーブル名をそのまま UpperCamel にしたもの。**`orders` → `Orders`、
 `audit_log` → `AuditLog`。<b>単数形にはしない。</b>

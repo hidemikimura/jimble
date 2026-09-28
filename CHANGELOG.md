@@ -4,6 +4,18 @@
 
 ---
 
+## 1.4.2（2026-09-28）
+
+**skill だけを直した版。**コードは変えていません（`jimble new` が置く skill と、CLI に入る skill が新しくなります）。
+
+### 直したこと（skill）
+
+| | |
+|---|---|
+| **skill に落とし穴を足しました**（`jimble new` が置く skill・CLI に入るもの） | JSON の列は読んだ時点で `Data` / `List` になっていて、配列の列を `getString` すると先頭の要素だけが返る（文字のまま欲しいなら `CAST(列 AS CHAR)` / `列::text`）／一番外が配列の JSON は `Dson.decodes(json, List.class)` で読む（`Data.class` だと添字がキーの Data になる）／`mq_scheduler` などの MQ の表は codegen が外さないので `codegen.exclude_tables` に完全一致で書く／バッチのテーブルはマイグレーションではなく `BatchTables.install(db)` が作る（呼び忘れても落ちない） |
+
+---
+
 ## 1.4.1（2026-09-27）
 
 **文書と skill だけを直した版。**コードは変えていません（`jimble new` が置く skill と、CLI に入る skill が新しくなります）。

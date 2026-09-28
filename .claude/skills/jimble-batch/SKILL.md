@@ -108,6 +108,24 @@ new DbScheduler().start(noticeQueue);      // アプリの MQ も一緒に回る
 
 Web・バッチ・スケジューラの**3つの入口が同じ `Bootstrap.load()` を呼ぶ**形にする。
 
+**バッチのテーブル（`batch_master` / `batch_history` / `batch_execute_info`）はマイグレーションでは作らない。**
+`BatchTables.install(db)` が作る（無ければ作り、版が古ければ上げる）。**`DBUtil.load(...)` のあと、
+`BatchRegistry.sync(...)` より前**に呼ぶ。サンプルは `Bootstrap.load()` の中で呼んでいる
+（バッチ管理画面を載せる Web でも要るため）。`Bootstrap` に入れないなら、バッチとスケジューラの入口で
+`Bootstrap.load()` のすぐあとに呼ぶ。
+
+```java
+Bootstrap.load();                                  // DBUtil.load まで
+BatchTables.install(DBUtil.getMainDB());          // バッチのテーブル
+BatchRegistry.add(PostCleanupBatch::new);
+BatchRegistry.sync(DBUtil.getMainDB());
+```
+
+呼び忘れても**落ちない**。`sync()` がエラーログを出して 0 を返すだけなので、ログを見ないと気づかない。
+
+`DbScheduler` の依頼を積む MQ の表（**`mq_scheduler`**）と、アプリの MQ の表は、codegen が自動では外さない。
+`codegen.exclude_tables` に完全一致で並べる（`jimble-db` の skill）。
+
 ## 中断できるようにする
 
 ```java
@@ -248,6 +266,9 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 ## 落とし穴（実際に踏んだもの）
 
 - **`BatchRegistry.sync()` は登録が全部済んでから。**先に呼ぶと全部 `nothing` になる
+- **`BatchTables.install(db)` を呼ばないとバッチのテーブルが無い**（マイグレーションでは作らない）。
+  呼び忘れても `sync()` がエラーログを出すだけで落ちない
+- **`mq_scheduler` などの MQ の表は codegen が外さない。**`codegen.exclude_tables` に1つずつ書く（ワイルドカード不可）
 - **`db.insert()` などは失敗しても例外を投げない。**`db.isError()` に入るのは
   **その直前の1文**の結果だけ。`write()` で複数文を流すなら1文ごとに見るか、自分で投げる
 - **`isCancelOrder()` を見ていないバッチは止められない**（チャンクは自動）
