@@ -1,5 +1,7 @@
 package io.jimble.db;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.internal.Docs;
 import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
@@ -92,6 +94,7 @@ public class DBUtil {
 	 *
 	 * @return	DBが一つでも利用できない場合 = false
 	 */
+	@CheckReturnValue
 	public static boolean healthCheck () {
 
 		if (!isUseDB()) {
@@ -246,6 +249,7 @@ public class DBUtil {
 	 * @param appCls	クラスパスの起点（マイグレーション SQL をここから探す）
 	 * @return	全部読み込めた場合 = true。設定に {@code db} が無いときも true
 	 */
+	@CheckReturnValue
 	public static boolean load (Config conf, Class<?> appCls) {
 
 		if (!conf.hasPath("db")) {

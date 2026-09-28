@@ -88,6 +88,36 @@ ERROR 閉じられていない DB が残っていました。閉じます: blog_
 > treat the line as something to fix rather than something to rely on. In a long-running
 > batch the connection stays held until the execution ends.
 
+## The 2.0 shape (since 1.5.0)
+
+**Prefer this for new code.** It throws no checked exceptions, and `commit()` commits **and ends** the transaction.
+
+```java
+db.transaction(tx -> {
+	db.insert(...);
+	db.update(...);
+});                                   // commits if the body returns normally; rolls back and rethrows otherwise
+
+long id = db.transactionResult(tx -> db.insertKey(...));   // returns a value
+
+try (Tx tx = db.begin()) {            // when you want to commit yourself
+	db.update(...);
+	tx.commit();                      // commits and ends; leaving without it rolls back
+}
+```
+
+| | `Tx` | `DBTransaction` |
+| --- | --- | --- |
+| Commit and end | `commit()` | `commitEndTransaction()` |
+| Commit and carry on | `checkpoint()` | `commit()` |
+| Roll back and end | `rollback()` | `rollbackEndTransaction()` |
+| Failure | `TransactionException` (unchecked; `getCode()` gives `DB_004` etc.) | `CodeException` (checked) |
+| A second `commit()` | Throws | Does nothing |
+
+If the body throws a checked exception, it rolls back and wraps it in a `TransactionException` (`DB_006`).
+Nesting behaves as in "Nesting" below (joining, rollback-only, `DB_005`).
+In 2.0, `DBTransaction`, `db.beginTransaction()` and friends go away and only this remains.
+
 ## The short form
 
 ```java

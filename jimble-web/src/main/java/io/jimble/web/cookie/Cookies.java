@@ -282,6 +282,41 @@ public final class Cookies {
 	}
 
 	/**
+	 * 署名して書き込む（属性を自分で決める形）
+	 *
+	 * <p>
+	 * {@link #put(String, String)} と同じく<b>設定に従って署名する</b>（{@code cookie.secret} が無ければそのまま）。
+	 * 渡した {@code Cookie} は書き換えない。次のリクエストで {@link #get(String)} すると署名を外した値が読める。
+	 * </p>
+	 *
+	 * @param cookie	Cookie（値は署名前のもの）
+	 * @since 1.5.0
+	 */
+	public void putSigned (Cookie cookie) {
+
+		put(cookie.withValue(sign(cookie.value())), cookie.value());
+
+	}
+
+	/**
+	 * 署名せずに書き込む（属性を自分で決める形）
+	 *
+	 * <p>
+	 * <b>署名を使っている（{@code cookie.secret} がある）と、次のリクエストの {@link #get(String)} は
+	 * この Cookie を読めない</b>（検証に落ちて {@code ""}）。JavaScript に読ませたいものなど、
+	 * 署名しないとはっきり決めたものに使う。読み返すなら {@link #raw(String)}。
+	 * </p>
+	 *
+	 * @param cookie	Cookie
+	 * @since 1.5.0
+	 */
+	public void putUnsigned (Cookie cookie) {
+
+		put(cookie, cookie.value());
+
+	}
+
+	/**
 	 * 書き込む
 	 *
 	 * <p>
@@ -289,8 +324,16 @@ public final class Cookies {
 	 * 署名が要るなら {@link #sign(String)} を通してから渡すこと。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>名前からは署名するかどうかが分からない</b>——{@code put(name, value)} は署名し、こちらはしない。
+	 * 署名を使っていると、書いた Cookie を次のリクエストの {@code get} が読めない。
+	 * {@link #putSigned(Cookie)} か {@link #putUnsigned(Cookie)} を使うこと（2.0 で消す。要件 D-191）。
+	 * </p>
+	 *
 	 * @param cookie	Cookie
+	 * @deprecated {@link #putSigned(Cookie)} か {@link #putUnsigned(Cookie)} を使う
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void put (Cookie cookie) {
 
 		put(cookie, cookie.value());

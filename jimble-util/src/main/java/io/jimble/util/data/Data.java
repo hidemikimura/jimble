@@ -1,5 +1,7 @@
 package io.jimble.util.data;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
@@ -845,6 +847,257 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Integer getIntObject (IColumn column) {
 
 		return getTableData(column).getIntObject(column.name());
+
+	}
+
+	// endregion
+
+	// region 既定値つきで取得する（2.0 の形。要件 D-191）
+
+	/*
+	 * 既定値を返すのは「無い」ときだけにする。
+	 *
+	 * getInt(key) は、無い・null・"abc"・本当に 0 が全部 0 になる——<b>0 が本当の 0 か毎回疑う</b>ことになる。
+	 * ここでは<b>無い（キーが無い・null・空文字）ときだけ既定値</b>で、読めない値は DataConversionException にする。
+	 * 小数を int で読む（"1.5"）のも、桁あふれも、黙って丸めずに止める。
+	 * 2.0 では getInt(key) も「無ければ例外」になる（design-2.0.md 6 章）。
+	 */
+
+	/**
+	 * int 型で取得する（無ければ既定値）
+	 *
+	 * @param key			キー
+	 * @param defaultValue	無いとき（キーが無い・null・空文字）の値
+	 * @return	値
+	 * @throws DataConversionException	あるのに int として読めない
+	 * @since 1.5.0
+	 */
+	public int getInt (String key, int defaultValue) {
+
+		Long value = readLong(key, Integer.class);
+		if (value == null) {
+			return defaultValue;
+		}
+		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+			throw new DataConversionException(key, get(key), Integer.class);
+		}
+		return value.intValue();
+
+	}
+
+	/**
+	 * int 型で取得する（無ければ既定値）
+	 *
+	 * @param column		列
+	 * @param defaultValue	無いときの値
+	 * @return	値
+	 * @throws DataConversionException	あるのに int として読めない
+	 * @since 1.5.0
+	 */
+	public int getInt (IColumn column, int defaultValue) {
+
+		return getTableData(column).getInt(column.name(), defaultValue);
+
+	}
+
+	/**
+	 * long 型で取得する（無ければ既定値）
+	 *
+	 * @param key			キー
+	 * @param defaultValue	無いとき（キーが無い・null・空文字）の値
+	 * @return	値
+	 * @throws DataConversionException	あるのに long として読めない
+	 * @since 1.5.0
+	 */
+	public long getLong (String key, long defaultValue) {
+
+		Long value = readLong(key, Long.class);
+		return value == null ? defaultValue : value;
+
+	}
+
+	/**
+	 * long 型で取得する（無ければ既定値）
+	 *
+	 * @param column		列
+	 * @param defaultValue	無いときの値
+	 * @return	値
+	 * @throws DataConversionException	あるのに long として読めない
+	 * @since 1.5.0
+	 */
+	public long getLong (IColumn column, long defaultValue) {
+
+		return getTableData(column).getLong(column.name(), defaultValue);
+
+	}
+
+	/**
+	 * double 型で取得する（無ければ既定値）
+	 *
+	 * @param key			キー
+	 * @param defaultValue	無いとき（キーが無い・null・空文字）の値
+	 * @return	値
+	 * @throws DataConversionException	あるのに数として読めない
+	 * @since 1.5.0
+	 */
+	public double getDouble (String key, double defaultValue) {
+
+		Object value = presentValue(key);
+		if (value == null) {
+			return defaultValue;
+		}
+		if (value instanceof Number number) {
+			return number.doubleValue();
+		}
+		try {
+			double parsed = Double.parseDouble(value.toString().trim());
+			if (Double.isNaN(parsed) || Double.isInfinite(parsed)) {
+				throw new NumberFormatException();
+			}
+			return parsed;
+		} catch (NumberFormatException ex) {
+			throw new DataConversionException(key, value, Double.class);
+		}
+
+	}
+
+	/**
+	 * double 型で取得する（無ければ既定値）
+	 *
+	 * @param column		列
+	 * @param defaultValue	無いときの値
+	 * @return	値
+	 * @throws DataConversionException	あるのに数として読めない
+	 * @since 1.5.0
+	 */
+	public double getDouble (IColumn column, double defaultValue) {
+
+		return getTableData(column).getDouble(column.name(), defaultValue);
+
+	}
+
+	/**
+	 * boolean 型で取得する（無ければ既定値）
+	 *
+	 * <p>
+	 * 読めるのは {@code true} / {@code false} / {@code 1} / {@code 0}（文字でも数でも。大文字小文字は問わない）。
+	 * {@link #getBoolean(String)} は {@code "yes"} も {@code 2} も黙って false にするが、こちらは止まる。
+	 * </p>
+	 *
+	 * @param key			キー
+	 * @param defaultValue	無いとき（キーが無い・null・空文字）の値
+	 * @return	値
+	 * @throws DataConversionException	あるのに真偽として読めない
+	 * @since 1.5.0
+	 */
+	public boolean getBoolean (String key, boolean defaultValue) {
+
+		Object value = presentValue(key);
+		if (value == null) {
+			return defaultValue;
+		}
+		if (value instanceof Boolean b) {
+			return b;
+		}
+		String text = value.toString().trim();
+		if ("true".equalsIgnoreCase(text) || "1".equals(text)) {
+			return true;
+		}
+		if ("false".equalsIgnoreCase(text) || "0".equals(text)) {
+			return false;
+		}
+		throw new DataConversionException(key, value, Boolean.class);
+
+	}
+
+	/**
+	 * boolean 型で取得する（無ければ既定値）
+	 *
+	 * @param column		列
+	 * @param defaultValue	無いときの値
+	 * @return	値
+	 * @throws DataConversionException	あるのに真偽として読めない
+	 * @since 1.5.0
+	 */
+	public boolean getBoolean (IColumn column, boolean defaultValue) {
+
+		return getTableData(column).getBoolean(column.name(), defaultValue);
+
+	}
+
+	/**
+	 * 文字列で取得する（無ければ既定値）
+	 *
+	 * <p>
+	 * {@link #getStringOptional(String)} と違って<b>書き込まない</b>。
+	 * 空文字は「無い」とみなして既定値を返す。
+	 * </p>
+	 *
+	 * @param key			キー
+	 * @param defaultValue	無いとき（キーが無い・null・空文字）の値
+	 * @return	値
+	 * @since 1.5.0
+	 */
+	public String getString (String key, String defaultValue) {
+
+		Object value = presentValue(key);
+		if (value == null) {
+			return defaultValue;
+		}
+		return value instanceof String text ? text : getString(key);
+
+	}
+
+	/**
+	 * 文字列で取得する（無ければ既定値）
+	 *
+	 * @param column		列
+	 * @param defaultValue	無いときの値
+	 * @return	値
+	 * @since 1.5.0
+	 */
+	public String getString (IColumn column, String defaultValue) {
+
+		return getTableData(column).getString(column.name(), defaultValue);
+
+	}
+
+	/*
+	 * 「ある」値を返す。キーが無い・null・空文字（前後の空白だけも）なら null。
+	 */
+	private Object presentValue (String key) {
+
+		if (isNull(key)) {
+			return null;
+		}
+		Object value = get(key);
+		if (value instanceof CharSequence text && text.toString().isBlank()) {
+			return null;
+		}
+		return value;
+
+	}
+
+	/*
+	 * 整数として読む。無ければ null、読めなければ例外。小数は丸めずに止める。
+	 */
+	private Long readLong (String key, Class<?> type) {
+
+		Object value = presentValue(key);
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof Long || value instanceof Integer || value instanceof Short || value instanceof Byte) {
+			return ((Number) value).longValue();
+		}
+		try {
+			if (value instanceof Number number) {
+				return new java.math.BigDecimal(number.toString()).longValueExact();
+			}
+			return new java.math.BigDecimal(value.toString().trim()).longValueExact();
+		} catch (ArithmeticException | NumberFormatException ex) {
+			throw new DataConversionException(key, value, type);
+		}
 
 	}
 
@@ -2381,6 +2634,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param jsonString	JSON文字列
 	 * @return	オブジェクト
 	 */
+	@CheckReturnValue
 	public static Data fromJsonString (String jsonString) {
 
 		return Dson.decodes(jsonString, Data.class);

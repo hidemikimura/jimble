@@ -29,6 +29,10 @@ You pull values out with `getString` `getInt` `getLong` `getBoolean` `getData` `
 `getBoolean`** — you cannot tell "missing" from "0". When you need to, use the Object
 versions (`getIntObject` and friends) or `isNull(key)`. See [Utilities](./util).
 
+**Prefer the form that takes a default (since 1.5.0).** `getInt("page", 1)` returns `1` only when the key
+is missing or blank; a value it cannot read, such as `"abc"`, stops with a `DataConversionException`
+instead of quietly becoming `0`.
+
 > [!TRAP]
 > **You cannot read straight off `context.request()`.**
 > `Request` is a `Data` too, so `context.request().getString("title")` **compiles** — and

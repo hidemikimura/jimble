@@ -166,6 +166,28 @@ ID が要らないなら `insertNoReturnKey` のほうが速い。
 
 ## トランザクション
 
+**1.5.0 からは `db.transaction(...)` / `db.begin()` を使う**（2.0 ではこれだけが残る）。検査例外を投げず、`commit()` は**終わらせる**。
+
+```java
+db.transaction(tx -> {
+	db.update(...);
+	db.insert(...);
+});                                    // 例外なく終われば確定。例外なら巻き戻して投げ直す
+
+long id = db.transactionResult(tx -> db.insertKey(...));   // 値を返す版（名前が違う）
+
+try (Tx tx = db.begin()) {
+	db.update(...);
+	tx.commit();                       // 確定して終わる。続けたいなら tx.checkpoint()
+}                                      // commit せずに抜けたら巻き戻す
+```
+
+- 中で1度でもエラー（-1 / null）が出ていたら確定しない：`TransactionException`（`getCode()` が `DB_004`）
+- 中身の検査例外は `TransactionException`（`DB_006`）に包まれる。非検査例外はそのまま
+- 一意制約は `DuplicateKeyException`（`insertKey` / `...OrThrow`）か `db.isDuplicateKeyError()` で分ける
+
+1.4 までの書き方（`DBTransaction`）は次のとおり。
+
 ```java
 try (DBTransaction transaction = new DBTransaction(db)) {
 

@@ -1,5 +1,7 @@
 package io.jimble.db.sql.definition.column;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 
@@ -15,6 +17,7 @@ import io.jimble.db.sql.query.where.WhereQuery;
 /**
  * 列定義
  */
+@CheckReturnValue
 public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 
 	/* 区切り文字(JSで扱い易いように変数で利用できる文字にする) */

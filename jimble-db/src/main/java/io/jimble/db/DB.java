@@ -1,5 +1,7 @@
 package io.jimble.db;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.internal.Docs;
 import io.jimble.util.io.IOUtil;
 import io.jimble.util.data.Data;
@@ -101,6 +103,70 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
+	 * SQL の失敗を DB_999 にする（元の例外を cause に残す。要件 D-191）
+	 *
+	 * @param ex	元の例外
+	 * @return	エラー
+	 */
+	private static CodeException sqlError (Exception ex) {
+
+		return new CodeException("DB_999", ex.getMessage(), ex);
+
+	}
+
+	/**
+	 * 直前の1文が一意制約に当たったか
+	 *
+	 * <p>
+	 * 戻り値でエラーを見る書き方のまま、<b>「もう使われている」だけを分岐する</b>ために使う。
+	 * </p>
+	 *
+	 * <pre>
+	 * if (db.insert(builder) &lt; 0) {
+	 *     if (db.isDuplicateKeyError()) { return 「使われています」; }
+	 *     throw ...;
+	 * }
+	 * </pre>
+	 *
+	 * @return	当たっていれば true
+	 * @since 1.5.0
+	 */
+	public boolean isDuplicateKeyError () {
+
+		return isDuplicateKey(this.error);
+
+	}
+
+	/**
+	 * 一意制約の違反か（PostgreSQL は SQLSTATE 23505、MySQL はエラーコード 1062）
+	 *
+	 * @param error	エラー
+	 * @return	違反なら true
+	 */
+	static boolean isDuplicateKey (CodeException error) {
+
+		if (error == null) {
+			return false;
+		}
+
+		for (Throwable t = error.getCause(); t != null; t = t.getCause()) {
+			if (t instanceof SQLException sql) {
+				for (SQLException e = sql; e != null; e = e.getNextException()) {
+					if ("23505".equals(e.getSQLState()) || e.getErrorCode() == 1062) {
+						return true;
+					}
+				}
+			}
+			if (t.getCause() == t) {
+				break;
+			}
+		}
+
+		return false;
+
+	}
+
+	/**
 	 * エラーを記録する
 	 *
 	 * <p>
@@ -196,6 +262,11 @@ public class DB implements Closeable, AutoCloseable {
 
 		if (cause == null) {
 			return;
+		}
+
+		if (isDuplicateKey(cause)) {
+			throw new DuplicateKeyException(
+				"%s が一意制約に当たりました: %s".formatted(what, cause.getMessage()), cause);
 		}
 
 		throw new SqlExecuteException(
@@ -652,6 +723,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder	SelectBuilder
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public Data selectCached (SelectBuilder builder) {
 
 		List<Data> rows = selectListCached(builder);
@@ -671,6 +743,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder	SelectBuilder
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public List<Data> selectListCached (SelectBuilder builder) {
 
 		/*
@@ -723,6 +796,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public Data select(SelectBuilder builder) {
 
 		return select(builder.sql(dialect()), builder.params());
@@ -760,6 +834,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果。1件も無いか、読めなければ null
 	 */
+	@CheckReturnValue
 	public Data select(String sql, Object...params) {
 
 		try (
@@ -783,7 +858,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			return null;
 
@@ -801,6 +876,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果。1件も無ければ null
 	 */
+	@CheckReturnValue
 	public Data selectOrThrow (SelectBuilder builder) {
 
 		Data row = select(builder);
@@ -840,6 +916,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @return  結果。<b>1件も無ければ null</b>
 	 * @throws SqlExecuteException  読めなかったとき
 	 */
+	@CheckReturnValue
 	public Data selectOrThrow (String sql, Object...params) {
 
 		Data row = select(sql, params);
@@ -860,6 +937,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public List<Data> selectList(SelectBuilder builder) {
 
 		return selectList(builder.sql(dialect()), builder.params());
@@ -880,6 +958,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果。0件なら空リスト。読めなければ null
 	 */
+	@CheckReturnValue
 	public List<Data> selectList(String sql, Object...params) {
 
 		try (
@@ -903,7 +982,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			return null;
 
@@ -921,6 +1000,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果。0件なら空リスト
 	 */
+	@CheckReturnValue
 	public List<Data> selectListOrThrow (SelectBuilder builder) {
 
 		return requireList(selectList(builder));
@@ -939,6 +1019,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @return  結果。<b>0件なら空リスト</b>
 	 * @throws SqlExecuteException  読めなかったとき
 	 */
+	@CheckReturnValue
 	public List<Data> selectListOrThrow (String sql, Object...params) {
 
 		return requireList(selectList(sql, params));
@@ -977,6 +1058,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public List<Data> selectListPerformance (SelectBuilder builder) {
 
 		// メインテーブルのPK列のみ取得する
@@ -1021,6 +1103,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public SelectListResponse selectListWithRowCount (SelectBuilder builder) {
 
 		List<Data> list = selectList(builder);
@@ -1054,6 +1137,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public SelectListResponse selectListWithRowCount (String sql, Object...params) {
 
 		List<Data> list = selectList(sql, params);
@@ -1182,6 +1266,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   SelectBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public SelectListResponse selectListWithRowCountPerformance (SelectBuilder builder) {
 
 		long rowCount = 0;
@@ -1315,7 +1400,7 @@ public class DB implements Closeable, AutoCloseable {
 			Log.error(ex);
 
 			fetcher.markError();
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1375,6 +1460,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   InsertBuilder
 	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
 	 */
+	@CheckReturnValue
 	public long insert (InsertBuilder builder) {
 
 		// 先に組み立てる。ここで例外が出ても「消す予定」を持ち越さない（要件 F-D-28）
@@ -1425,6 +1511,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
 	 */
+	@CheckReturnValue
 	public long insert (String sql, Object...params) {
 
 		this.error = null;
@@ -1494,7 +1581,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1583,6 +1670,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   InsertBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public long insertNoReturnKey (InsertBuilder builder) {
 
 		String sql = builder.sql(dialect());
@@ -1608,6 +1696,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public long insertNoReturnKey (String sql, Object...params) {
 
 		this.error = null;
@@ -1649,7 +1738,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1675,6 +1764,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   UpdateBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public int update (UpdateBuilder builder) {
 
 		String sql = builder.sql(dialect());
@@ -1700,6 +1790,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public int update (String sql, Object...params) {
 
 		this.error = null;
@@ -1741,7 +1832,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1767,6 +1858,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builder   DeleteBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public int delete (DeleteBuilder builder) {
 
 		String sql = builder.sql(dialect());
@@ -1792,6 +1884,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params    パラメータ
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public int delete (String sql, Object...params) {
 
 		this.error = null;
@@ -1833,7 +1926,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1879,6 +1972,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param params	パラメータ
 	 * @return	成功した場合 = true
 	 */
+	@CheckReturnValue
 	public boolean execute (String sql, Object...params) {
 
 		this.error = null;
@@ -1923,7 +2017,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -1950,6 +2044,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builderList   InsertBuilder
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public List<Integer> executeBatch (List<IBuilder> builderList) {
 
 		String sql = null;
@@ -1982,6 +2077,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param paramsList    パラメータ一覧
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public List<Integer> executeBatch (String sql, List<List<Object>> paramsList) {
 
 		this.error = null;
@@ -2062,7 +2158,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -2102,6 +2198,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param builderList   InsertBuilder
 	 * @return  結果（SQL が揃っていなければ null）
 	 */
+	@CheckReturnValue
 	public List<Long> insertBatch (List<InsertBuilder> builderList) {
 
 		String sql = null;
@@ -2134,6 +2231,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param paramsList    パラメータ一覧
 	 * @return  結果
 	 */
+	@CheckReturnValue
 	public List<Long> insertBatch (String sql, List<List<Object>> paramsList) {
 
 		this.error = null;
@@ -2219,7 +2317,7 @@ public class DB implements Closeable, AutoCloseable {
 
 			Log.error(ex);
 
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(sqlError(ex));
 
 			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
 			this.plannedTags = null;
@@ -2457,6 +2555,158 @@ public class DB implements Closeable, AutoCloseable {
 		registerCloseTask();
 
 	}
+
+	// region トランザクション（2.0 の形。要件 D-191）
+
+	/**
+	 * トランザクションを始める
+	 *
+	 * <pre>
+	 * try (Tx tx = db.begin()) {
+	 *     db.update(...);
+	 *     tx.commit();       // 確定して終わる。呼ばずに抜けたら巻き戻す
+	 * }
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>すでに始まっていれば、外に合流する</b>（{@link Tx} の「入れ子」）。
+	 * 検査例外を投げない。
+	 * </p>
+	 *
+	 * @return	トランザクション
+	 * @throws TransactionException	始められなかった
+	 * @since 1.5.0
+	 */
+	@CheckReturnValue
+	public Tx begin () {
+
+		if (isTransaction()) {
+			return new Tx(this, true);
+		}
+
+		try {
+			beginTransaction();
+		} catch (Exception ex) {
+			throw new TransactionException("トランザクションの開始に失敗しました: " + ex.getMessage(),
+				new CodeException("DB_001", ex.getMessage(), ex));
+		}
+
+		return new Tx(this, false);
+
+	}
+
+	/**
+	 * トランザクションの中で走らせる
+	 *
+	 * <pre>
+	 * db.transaction(tx -&gt; {
+	 *     db.update(...);
+	 *     db.insert(...);
+	 * });                    // 例外なく終われば確定、例外が出れば巻き戻して投げ直す
+	 * </pre>
+	 *
+	 * <p>
+	 * 中で {@code tx.rollback()} / {@code tx.commit()} を自分で呼んでもよい（そのときは何もしない）。
+	 * すでに始まっていれば外に合流する——中で例外が出たら外は巻き戻し専用になる。
+	 * </p>
+	 *
+	 * <p>
+	 * 中身は検査例外を投げてもよい。<b>非検査例外はそのまま、検査例外は {@link TransactionException} に包んで</b>投げ直す
+	 * （元の例外は {@code getCause().getCause()}）。
+	 * </p>
+	 *
+	 * @param body	中身
+	 * @throws TransactionException	確定できなかった（{@code DB_004} / {@code DB_005} など）、または中身の検査例外
+	 * @since 1.5.0
+	 */
+	public void transaction (TxBody body) {
+
+		transactionResult(tx -> {
+			body.run(tx);
+			return null;
+		});
+
+	}
+
+	/**
+	 * トランザクションの中で走らせ、値を返す
+	 *
+	 * <p>
+	 * 名前を {@code transaction} と分けているのは、{@code tx -> db.update(...)} のような式のラムダが
+	 * 「値を返す」とも「返さない」とも読めて、<b>同じ名前だと呼び分けられない</b>からである。
+	 * </p>
+	 *
+	 * @param body	中身
+	 * @param <T>	返す値の型
+	 * @return	中身が返した値
+	 * @throws TransactionException	確定できなかった、または中身の検査例外
+	 * @since 1.5.0
+	 */
+	public <T> T transactionResult (TxFunction<T> body) {
+
+		java.util.Objects.requireNonNull(body, "body");
+
+		try (Tx tx = begin()) {
+
+			T result;
+			try {
+				result = body.apply(tx);
+			} catch (RuntimeException | Error ex) {
+				throw ex;
+			} catch (Exception ex) {
+				throw new TransactionException("トランザクションの中で失敗しました: " + ex.getMessage(),
+					new CodeException("DB_006", ex.getMessage(), ex));
+			}
+
+			if (!tx.isFinished()) {
+				tx.commit();
+			}
+
+			return result;
+
+		}
+
+	}
+
+	/**
+	 * トランザクションの中身
+	 *
+	 * @since 1.5.0
+	 */
+	@FunctionalInterface
+	public interface TxBody {
+
+		/**
+		 * 走らせる
+		 *
+		 * @param tx	トランザクション
+		 * @throws Exception	中身の例外（巻き戻して投げ直す）
+		 */
+		void run (Tx tx) throws Exception;
+
+	}
+
+	/**
+	 * 値を返すトランザクションの中身
+	 *
+	 * @param <T>	返す値の型
+	 * @since 1.5.0
+	 */
+	@FunctionalInterface
+	public interface TxFunction<T> {
+
+		/**
+		 * 走らせる
+		 *
+		 * @param tx	トランザクション
+		 * @return	値
+		 * @throws Exception	中身の例外（巻き戻して投げ直す）
+		 */
+		T apply (Tx tx) throws Exception;
+
+	}
+
+	// endregion
 
 	/**
 	 * トランザクションをコミットする

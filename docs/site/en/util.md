@@ -40,6 +40,11 @@ DB values are **read and written by column (`Column`)**. The column versions **f
 > **You cannot tell "missing" from "0".** `getString` returns `null`,
 > `getInt` returns `0`, `getBoolean` returns `false`.
 > When you need to tell them apart, use the **Object versions** — `getIntObject` and friends — or `isNull(key)`.
+>
+> **Since 1.5.0 there is a form that takes a default** (`getInt(key, default)` / `getLong` / `getDouble` / `getBoolean` / `getString`).
+> It returns the default **only when the key is missing, `null` or blank**; a value it cannot read (`"abc"`, `"1.5"` as an int,
+> an overflow, `"yes"` as a boolean) throws a `DataConversionException`. **It does not write either** (unlike the Optional versions).
+> In 2.0, `getInt(key)` will also throw when the key is missing.
 
 > [!NOTE]
 > **`toString()` is a summary** (keys and types only).

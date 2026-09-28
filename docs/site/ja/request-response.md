@@ -29,6 +29,9 @@ order: 2
 （「無い」と「0」は区別できません。区別したいときは `getIntObject` などの Object 版か `isNull(key)`。
 詳しくは [ユーティリティ](./util)）。
 
+**既定値を渡す形（1.5.0 から）を勧めます。**`getInt("page", 1)` は、無い・空欄のときだけ `1` を返し、
+`"abc"` のように読めない値は `DataConversionException` で止まります（黙って `0` になりません）。
+
 > [!TRAP]
 > **`context.request()` から直接は読めません。**
 > `Request` も `Data` なので `context.request().getString("title")` は<b>コンパイルが通り</b>ますが、

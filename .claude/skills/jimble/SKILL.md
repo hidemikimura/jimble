@@ -213,6 +213,9 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
   誤検知なら、その行か前の行に `// jimble-check:ignore J101` と書く
 - **アプリ固有の決まりは skill を直さず、プロジェクトの根の `AGENTS.md` に書く。**skill を直すと `jimbleSkills` で揃えられなくなる
 - jimble が出す例外や警告の多くには **`詳しく: https://jimble.io/ja/〜.md`** が付いている。そのページを取って読む
+- **`@CheckReturnValue`（`io.jimble.util.annotation`）が付いたメソッドの戻り値は捨てない。**
+  値を返すだけ（`Column.as(...)`・`Router.path("/x")`）か、失敗を戻り値でしか言わない（`db.update(...)` の -1・`validate(...)` のエラー一覧）。
+  Error Prone と IntelliJ は捨てた行を指摘する
 
 ## 詳しいことは引く
 

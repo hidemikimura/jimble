@@ -7,7 +7,7 @@
 ## 未リリース
 
 **AI が jimble を正しく使えるようにした。**skill を古くしない、落とし穴を機械的に見つける、エラーから説明へ辿れる、の3つ。
-あわせて、**黙って間違った SQL や成功扱いになっていたところを直しました**（D-190。2.0 に向けた作り直しの第一段）。
+あわせて、**黙って間違った SQL や成功扱いになっていたところを直し**（D-190）、**2.0 で残す書き方を先に足しました**（D-191）。2.0 に向けた作り直しの第一段と第二段です。
 既存の API は消していません。**黙って間違っていた書き方のいくつかが、例外になります**（下の「上げる前に見るところ」）。
 
 ### 足したこと（D-187 / D-188 / D-189）
@@ -44,6 +44,20 @@
 | **`getObjectListOptional(key, 型)` が型を捨てていた** | 要素を変換します |
 | **包み直しで元の例外を捨てていた** | `CodeException(Exception)` と `DBTransaction` の包み直しが cause を持ちます。`CodeException(code, message, cause)` を足しました |
 
+### 足したこと：2.0 の形を先に（D-191）
+
+2.0 で残す書き方を、いまの書き方と並べて足しました。**いまの書き方は変えていません**（`put(Cookie)` だけ非推奨にしました）。
+
+| | |
+|---|---|
+| **`db.transaction(tx -> …)` / `db.transactionResult(tx -> …)` / `try (Tx tx = db.begin())`** | 検査例外を投げないトランザクション。**`tx.commit()` は確定して終わります**（続けたいときは `tx.checkpoint()`）。commit せずに抜けたら巻き戻します。失敗は `TransactionException`（非検査。`getCode()` で `DB_004` / `DB_005` など）、中身の検査例外は `DB_006` に包みます。入れ子は外に合流し、中の失敗は外を巻き戻し専用にします |
+| **`DuplicateKeyException` / `db.isDuplicateKeyError()`** | 一意制約に当たったことを型で分けます。`insertKey` と `...OrThrow` 系が投げます（`SqlExecuteException` の子）。戻り値で見る書き方でも `isDuplicateKeyError()` で見分けられます。あわせて、DB のエラー（`getError()`）が元の `SQLException` を cause に持つようになりました |
+| **`Data.getInt(key, 既定値)`**（`getLong` / `getDouble` / `getBoolean` / `getString` も） | 既定値を返すのは**無い・`null`・空文字のときだけ**。読めない値（`"abc"`、int に `"1.5"`、桁あふれ、真偽に `"yes"`）は `DataConversionException` です。書き込みもしません |
+| **`Router.path(パス, admin -> { … })`** | 配下のルーターを受け取って書く形。戻り値を受け取る `path(パス)` は、受け取り忘れると親に登録していました |
+| **`ValidationRules.errors(...)` / `Validator.errors(...)`** | `validate(...)` と同じで、名前が中身を言っています（2.0 で `validate` は「失敗したら 422」に変わる予定） |
+| **`Cookies.putSigned(cookie)` / `putUnsigned(cookie)`** | 属性を決めた `Cookie` を、署名するかどうかを名前で選んで書きます。**`put(Cookie)` は署名しないので非推奨にしました**（`put(名前, 値)` は署名するのに、名前から分からないため。2.0 で消します） |
+| **`@CheckReturnValue`（`io.jimble.util.annotation`）** | 戻り値を捨てると効かないメソッドに付けました（DB の読み書き・`DBUtil.load`・ロック・`Column` の式・`Dsl`・`Table.inner/left/on`・`Router.path(パス)`・`Auth.attemptLogin`・`Csrf.isValid`・`validate` など）。**Error Prone と IntelliJ は、捨てた行を指摘します**（Error Prone ではエラーになります） |
+
 ### 足したこと（D-190）
 
 | | |
@@ -58,6 +72,8 @@
 |---|---|
 | **例外になった書き方があります**（D-190） | 結合の無いところの `on()`、1つの条件の2つ目の比較、列に直接 `and/or`、`orderBy(Data)` の `asc/desc` 以外、`where(Data)` の `between` の数違い、`Dsl.and/or` に素の列。**どれも 1.4 までは違う SQL が黙って組み上がっていた書き方です** |
 | **`DBTransaction` の入れ子で `DB_005` が出るようになります**（D-190） | 中で `rollback()` しているのに外で `commitEndTransaction()` していたコードは、これまで中の分もコミットされていました。外で `rollback()` してから続けるか、中で戻さないようにしてください |
+| **Error Prone を使っているなら、戻り値を捨てた行がエラーになります**（D-191） | `@CheckReturnValue` を付けたためです。`db.update(...)` の戻り値を見ずに捨てているなら、`db.transaction(...)` の中に入れる（エラーがあれば確定しない）か、戻り値を見てください。本当に要らないなら `var unused = ...` |
+| **`put(Cookie)` が非推奨になりました**（D-191） | `putSigned` か `putUnsigned` に置き換えてください。これまでの動き（署名しない）と同じなのは `putUnsigned` です |
 | **四則演算を重ねた SQL の字面が変わります**（D-190） | 1つだけのときは変わりません（結果キャッシュの鍵もそのまま）。重ねていたものは、そもそも最初の1つしか効いていませんでした |
 | **既存のアプリの skill は、1度 `--overwrite` で入れ替えてください** | これまでの `jimble new` は控えを書いていないので、`./gradlew jimbleSkills` だけでは「直したかどうか分からない」として触りません。skill を直していなければ `./gradlew jimbleSkills --overwrite`。アプリ固有の書き足しは先に `AGENTS.md` へ移してください |
 | **JSON の配列の列の値の型が `JsonArrayList`（`ArrayList` の子）になります** | `List` / `ArrayList` として扱う分には何も変わりません。`getClass() == ArrayList.class` で比べていたら通らなくなります |

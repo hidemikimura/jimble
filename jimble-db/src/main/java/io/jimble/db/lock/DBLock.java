@@ -1,5 +1,7 @@
 package io.jimble.db.lock;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
@@ -23,6 +25,7 @@ public class DBLock {
 	 * @param lockKey   ロックキー
 	 * @return  正常に終了した場合 = true
 	 */
+	@CheckReturnValue
 	public static boolean create (DB db, String...lockKey) {
 
 		if (lockKey == null || lockKey.length == 0) {
@@ -85,6 +88,7 @@ public class DBLock {
 	 * @param lockKey   ロックキー
 	 * @return  正常にロックできた場合 = true
 	 */
+	@CheckReturnValue
 	public static boolean lock (DB db, String...lockKey) {
 
 		if (lockKey == null) {

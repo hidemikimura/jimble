@@ -1,5 +1,7 @@
 package io.jimble.db.sql;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
@@ -105,6 +107,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 * @return	写し
 	 * @since 1.5.0
 	 */
+	@CheckReturnValue
 	public SelectBuilder copy () {
 
 		SelectBuilder copy = new SelectBuilder();

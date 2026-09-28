@@ -87,6 +87,36 @@ ERROR 閉じられていない DB が残っていました。閉じます: blog_
 > <b>ログが出たら直す</b>ものだと思ってください。
 > 実行が長いバッチでは、実行の終わりまで1本が握られたままになります。
 
+## 2.0 の形（1.5.0 から）
+
+**新しく書くならこちらを勧めます。**検査例外を投げず、`commit()` は確定して**終わります**。
+
+```java
+db.transaction(tx -> {
+	db.insert(...);
+	db.update(...);
+});                                   // 例外なく終われば確定、例外が出れば巻き戻して投げ直す
+
+long id = db.transactionResult(tx -> db.insertKey(...));   // 値を返す版
+
+try (Tx tx = db.begin()) {            // 自分で確定したいとき
+	db.update(...);
+	tx.commit();                      // 確定して終わる。呼ばずに抜けたら巻き戻す
+}
+```
+
+| | `Tx` | `DBTransaction` |
+| --- | --- | --- |
+| 確定して終わる | `commit()` | `commitEndTransaction()` |
+| 確定して続ける | `checkpoint()` | `commit()` |
+| 巻き戻して終わる | `rollback()` | `rollbackEndTransaction()` |
+| 失敗 | `TransactionException`（非検査。`getCode()` で `DB_004` など） | `CodeException`（検査） |
+| 2度目の `commit()` | 例外 | 何もしない |
+
+中身が検査例外を投げたら、巻き戻して `TransactionException`（`DB_006`）に包みます。
+入れ子のときの動き（合流・巻き戻し専用・`DB_005`）は下の「入れ子」と同じです。
+2.0 では `DBTransaction` と `db.beginTransaction()` などを消し、こちらだけにします。
+
 ## 短く書く
 
 ```java

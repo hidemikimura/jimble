@@ -1,5 +1,7 @@
 package io.jimble.db.sql.definition.table;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.ITable;
 
@@ -72,6 +74,7 @@ public class Table implements ITable, IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@CheckReturnValue
 	public IFrom inner(IFrom from) {
 
 		return new FromQuery(this).inner(from);
@@ -82,6 +85,7 @@ public class Table implements ITable, IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@CheckReturnValue
 	public IFrom left(IFrom from) {
 
 		return new FromQuery(this).left(from);
@@ -92,6 +96,7 @@ public class Table implements ITable, IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@CheckReturnValue
 	public IFrom on(IWhere...where) {
 
 		return new FromQuery(this).on(where);

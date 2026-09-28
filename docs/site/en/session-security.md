@@ -155,7 +155,16 @@ String lastPost = context.cookies().get("last_post");
 were visible, every re-read of a CSRF token you had issued a moment ago would hand you
 a different one.
 
-To sign a value, sign it with `Cookies.sign(value)` and put it in with `put(Cookie, plaintext)`.
+When you write a `Cookie` whose attributes (`Path`, `Max-Age`) you set yourself, **pick signing by name** (since 1.5.0).
+
+```java
+context.cookies().putSigned(new Cookie("user", id).path("/app").maxAge(3600));    // signed (readable with get)
+context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));      // not signed (for JavaScript)
+```
+
+> [!TRAP]
+> **`put(Cookie)` does not sign** (while `put(name, value)` does). With `cookie.secret` set, the next request's
+> `get` cannot read what you wrote and returns `""`. Deprecated in 1.5.0, removed in 2.0.
 
 **Read it back with `context.cookies().get("a name")` or `context.request().cookie("a name")`.**
 A value whose signature did not check out never lands there — that is the point, so a tampered

@@ -1,5 +1,7 @@
 package io.jimble.util.conf;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.internal.Docs;
 import io.jimble.util.log.Log;
 
@@ -684,6 +686,7 @@ public final class Conf {
 	 * @param key	キー
 	 * @return	部分設定
 	 */
+	@CheckReturnValue
 	public Conf getConf (String key) {
 
 		return new Conf(config.getConfig(key));

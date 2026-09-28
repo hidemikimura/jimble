@@ -140,8 +140,13 @@ When it fails, this is what you get.
 You can also stack the result of `ValidationRules` directly.
 
 ```java
-addErrors(rules.validate(db, context.request().bodyAll()));
+addErrors(rules.errors(db, context.request().bodyAll()));
 ```
+
+> [!TRAP]
+> **`validate(...)` / `errors(...)` only return the list of errors; they do not stop anything.** Throw the return value away
+> and invalid input goes straight through. `errors(...)`, added in 1.5.0, is the same as `validate(...)` with a name that says
+> what it returns. In 2.0, `validate(...)` is planned to throw a 422 when validation fails.
 
 > [!NOTE]
 > `ValidationExecutor` **does not hold `WebContext` in a field.**

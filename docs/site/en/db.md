@@ -333,6 +333,18 @@ if (user == null) { return nobody; }   // null means "no rows", nothing else
 | `selectListOrThrow` | Rows. **Empty list for no rows**. `SqlExecuteException` if it cannot be read |
 | `insertKey` | **The generated key only**. `SqlExecuteException` if there is no generated column, or the insert failed |
 
+**A unique-constraint violation gets its own type** (since 1.5.0).
+The `...OrThrow` methods and `insertKey` throw `DuplicateKeyException` (a subclass of `SqlExecuteException`);
+with the return-value style, `db.isDuplicateKeyError()` tells it apart.
+
+```java
+try {
+	long id = db.insertKey(SQL.insert(User.instance()).value(User.email, email));
+} catch (DuplicateKeyException e) {
+	return "that email address is taken";
+}
+```
+
 > [!TRAP]
 > **The return value of `insert` also carries two meanings.**
 > It is the generated key when one comes back, and **the number of rows inserted** when one does not.

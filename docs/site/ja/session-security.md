@@ -152,7 +152,16 @@ String lastPost = context.cookies().get("last_post");
 **書いた値は同じリクエストの中で読み返せます。** 受信した Cookie しか見えないと、
 発行したばかりの CSRF トークンを読み直すたびに別のものが出てしまうためです。
 
-署名を付けたいときは `Cookies.sign(value)` で署名し、`put(Cookie, 平文)` で入れます。
+属性（`Path` や `Max-Age`）を自分で決めた `Cookie` を書くときは、**署名するかどうかを名前で選びます**（1.5.0 から）。
+
+```java
+context.cookies().putSigned(new Cookie("user", id).path("/app").maxAge(3600));    // 署名する（get で読める）
+context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));      // 署名しない（JavaScript に読ませる）
+```
+
+> [!TRAP]
+> **`put(Cookie)` は署名しません**（`put(名前, 値)` は署名するのに）。`cookie.secret` を設定していると、
+> 書いた Cookie を次のリクエストの `get` が読めず `""` になります。1.5.0 で非推奨にし、2.0 で消します。
 
 **読むときは `context.cookies().get("名前")` か `context.request().cookie("名前")` です。**
 署名が合わなかった値はここに入りません（改ざんされた値がアプリに渡らないようにするためです）。

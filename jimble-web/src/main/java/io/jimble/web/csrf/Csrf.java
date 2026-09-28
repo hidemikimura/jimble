@@ -1,5 +1,7 @@
 package io.jimble.web.csrf;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.conf.Conf;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
@@ -167,6 +169,7 @@ public final class Csrf {
 	 * @param context	コンテキスト
 	 * @return	正しい場合 = true
 	 */
+	@CheckReturnValue
 	public static boolean isValid (WebContext context) {
 
 		try {

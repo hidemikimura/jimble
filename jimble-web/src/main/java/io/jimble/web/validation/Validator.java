@@ -1,5 +1,7 @@
 package io.jimble.web.validation;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 
@@ -50,6 +52,24 @@ public class Validator {
 	}
 
 	/**
+	 * 複数の {@link ValidationRules} をまとめて走らせ、エラーの一覧を返す
+	 *
+	 * <p>{@link #validate(DB, Data, ValidationRules...)} と同じ（要件 D-191）。</p>
+	 *
+	 * @param db	DB
+	 * @param req	リクエスト
+	 * @param rules	規則の束
+	 * @return	エラー情報（無ければ空。<b>{@code null} は返らない</b>）
+	 * @since 1.5.0
+	 */
+	@CheckReturnValue
+	public static Data errors (DB db, Data req, ValidationRules...rules) {
+
+		return validate(db, req, rules);
+
+	}
+
+	/**
 	 * 複数の {@link ValidationRules} をまとめて走らせる
 	 *
 	 * @param db	DB
@@ -57,6 +77,7 @@ public class Validator {
 	 * @param rules	規則の束
 	 * @return	エラー情報（無ければ空。<b>{@code null} は返らない</b>）
 	 */
+	@CheckReturnValue
 	public static Data validate (DB db, Data req, ValidationRules...rules) {
 
 		Data result = new Data();

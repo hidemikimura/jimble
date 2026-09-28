@@ -28,7 +28,7 @@ io.jimble.db.sql.query
 io.jimble.util
 io.jimble.web
 
-[public] 公開 API（98）
+[public] 公開 API（99）
 io.jimble.batch
 io.jimble.batch.manager
 io.jimble.batch.scheduler
@@ -63,6 +63,7 @@ io.jimble.db.value
 io.jimble.mq
 io.jimble.mq.status
 io.jimble.otel
+io.jimble.util.annotation
 io.jimble.util.bot
 io.jimble.util.comparator
 io.jimble.util.conf

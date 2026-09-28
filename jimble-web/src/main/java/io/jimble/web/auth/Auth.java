@@ -1,5 +1,7 @@
 package io.jimble.web.auth;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.internal.Docs;
 import io.jimble.util.hash.PasswordUtil;
 import io.jimble.web.context.WebContext;
@@ -614,6 +616,7 @@ public final class Auth {
 	 * @param passwordHash	保存してあるハッシュ。利用者がいなければ null
 	 * @return	ログインしてよい場合 = true
 	 */
+	@CheckReturnValue
 	public static boolean attemptLogin (WebContext context, String key, String inputPassword, String passwordHash) {
 
 		long waitSeconds = Lockout.waitSeconds(key);

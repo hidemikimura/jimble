@@ -1,5 +1,7 @@
 package io.jimble.web.router;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.core.executor.Executor;
 import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
@@ -190,12 +192,46 @@ public final class Router {
 	/**
 	 * パスをネストする
 	 *
+	 * <p>
+	 * <b>配下のルーターを返すだけで、自分は変わらない。</b>
+	 * {@code router.path("/admin"); router.get("/x", h);} は {@code /x} をルートに登録する——
+	 * 戻り値を捨てると何も起きない。ブロックで書ける {@link #path(String, java.util.function.Consumer)} を勧める
+	 * （2.0 ではこちらだけが残る。要件 D-191）。
+	 * </p>
+	 *
 	 * @param path	パス
 	 * @return	配下のルーター
 	 */
+	@CheckReturnValue
 	public Router path (String path) {
 
 		return new Router(tree.node(PathSegments.ofPattern(path)), rootTree, scope.child());
+
+	}
+
+	/**
+	 * パスをネストして、その中で登録する
+	 *
+	 * <pre>
+	 * router.path("/admin", admin -&gt; {
+	 *     admin.before(App::requireAdmin);
+	 *     admin.get("/users", UserList::new);
+	 * });
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>配下のルーターを受け取って書く。</b>戻り値を受け取る形（{@link #path(String)}）と違って、
+	 * 受け取り忘れて親に登録してしまうことが無い。
+	 * </p>
+	 *
+	 * @param path	パス
+	 * @param body	配下のルーターを受け取って登録する
+	 * @since 1.5.0
+	 */
+	public void path (String path, java.util.function.Consumer<Router> body) {
+
+		Objects.requireNonNull(body, "body");
+		body.accept(path(path));
 
 	}
 

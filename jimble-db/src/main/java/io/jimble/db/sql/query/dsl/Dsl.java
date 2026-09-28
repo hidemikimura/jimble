@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.dsl;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.db.dialect.CastType;
 import io.jimble.db.dialect.DatePart;
 import io.jimble.db.dialect.DateUnit;
@@ -19,6 +21,7 @@ import io.jimble.db.sql.query.where.WhereQuery;
 /**
  * DSL
  */
+@CheckReturnValue
 public class Dsl {
 
 	// region value

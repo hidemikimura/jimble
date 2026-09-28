@@ -56,6 +56,25 @@ public final class Cookie {
 
 	}
 
+	/**
+	 * 値だけを替えた写し（{@link Cookies#putSigned(Cookie)} 用）
+	 *
+	 * @param newValue	値
+	 * @return	写し
+	 */
+	Cookie withValue (String newValue) {
+
+		Cookie copy = new Cookie(name, newValue);
+		copy.maxAge = maxAge;
+		copy.path = path;
+		copy.domain = domain;
+		copy.secure = secure;
+		copy.httpOnly = httpOnly;
+		copy.sameSite = sameSite;
+		return copy;
+
+	}
+
 	// region 設定
 
 	/**

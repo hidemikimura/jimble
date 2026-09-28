@@ -140,8 +140,13 @@ ValidationRule rule = new ValidationRule()
 `ValidationRules` の結果をそのまま積むこともできます。
 
 ```java
-addErrors(rules.validate(db, context.request().bodyAll()));
+addErrors(rules.errors(db, context.request().bodyAll()));
 ```
+
+> [!TRAP]
+> **`validate(...)` / `errors(...)` はエラーの一覧を返すだけで、止めません。**戻り値を捨てると、エラーがあっても素通りします。
+> 1.5.0 で足した `errors(...)` は `validate(...)` と同じもので、名前が中身を言っています。
+> 2.0 では `validate(...)` が「失敗したら 422 の例外」に変わる予定です。
 
 > [!NOTE]
 > `ValidationExecutor` は **`WebContext` をフィールドに持ちません。**

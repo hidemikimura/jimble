@@ -1,5 +1,7 @@
 package io.jimble.util.json;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
@@ -21,6 +23,7 @@ import java.util.Map;
  *
  * @author DN
  */
+@CheckReturnValue
 public final class Dson {
 
 	/* ***************************** コンストラクタ. ******************************/

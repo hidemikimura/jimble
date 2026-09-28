@@ -1,5 +1,7 @@
 package io.jimble.db.redis.lock;
 
+import io.jimble.util.annotation.CheckReturnValue;
+
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
 import io.jimble.util.data.Data;
@@ -23,6 +25,7 @@ public class RedisLock {
 	 * @param lockKey	ロックキー
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public static RedisLockResult lock (String lockKey) {
 
 		// Redis が無いのに「ロックできなかった」として返すと、
@@ -47,6 +50,7 @@ public class RedisLock {
 	 * @param lockKey	ロックキー
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public static RedisLockResult lock (DB db, String lockKey) {
 
 		RLock lock = RedisClient.client().getLock(lockKey);
@@ -105,6 +109,7 @@ public class RedisLock {
 	 * @param maintainMs	ロックを維持する時間(ms)
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public static RedisLockResult tryLock (String lockKey, int waitTimeMs, int maintainMs) {
 
 		RLock lock = RedisClient.client().getLock(lockKey);
@@ -131,6 +136,7 @@ public class RedisLock {
 	 * @param maintainMs	ロックを維持する時間(ms)
 	 * @return	結果
 	 */
+	@CheckReturnValue
 	public static RedisLockResult tryLock (DB db, String lockKey, int waitTimeMs, int maintainMs) {
 
 		RLock lock = RedisClient.client().getLock(lockKey);

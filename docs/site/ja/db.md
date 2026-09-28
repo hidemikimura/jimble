@@ -325,6 +325,18 @@ if (user == null) { return 誰でもない; }   // null は「1件も無かっ�
 | `selectListOrThrow` | 複数件。**0件は空リスト**。読めなければ `SqlExecuteException` |
 | `insertKey` | **採番された値だけ**。採番列が無いか、入らなければ `SqlExecuteException` |
 
+**一意制約に当たったときだけは、型で分かれます**（1.5.0 から）。
+`...OrThrow` 系と `insertKey` は `DuplicateKeyException`（`SqlExecuteException` の子）を投げ、
+戻り値で見る書き方なら `db.isDuplicateKeyError()` で見分けられます。
+
+```java
+try {
+	long id = db.insertKey(SQL.insert(User.instance()).value(User.email, email));
+} catch (DuplicateKeyException e) {
+	return 「そのメールアドレスは使われています」;
+}
+```
+
 > [!TRAP]
 > **`insert` の戻り値も2つの意味を持ちます。**
 > 採番された値が取れればその値、取れなければ**入った件数**です。

@@ -39,6 +39,11 @@ DB の値は**列（`Column`）で読み書き**します。列版は**テーブ
 > **「無い」と「0」が区別できません。**`getString` は `null`、
 > `getInt` は `0`、`getBoolean` は `false` を返します。
 > 区別したいときは `getIntObject` など **Object 版**か `isNull(key)` を使ってください。
+>
+> **1.5.0 からは既定値を渡す形があります**（`getInt(key, 既定値)` / `getLong` / `getDouble` / `getBoolean` / `getString`）。
+> 既定値を返すのは**無い・`null`・空文字のときだけ**で、読めない値（`"abc"`、int に `"1.5"`、桁あふれ、
+> 真偽に `"yes"`）は `DataConversionException` になります。**書き込みもしません**（Optional 版と違います）。
+> 2.0 では `getInt(key)` も「無ければ例外」になります。
 
 > [!NOTE]
 > **`toString()` は要約です**（キーと型だけ）。

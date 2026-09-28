@@ -115,6 +115,10 @@ String title = input.getString("title");
 
 無いキーは `getString` なら `null`、`getInt` なら `0`、`getBoolean` なら `false`。
 「無い」と「0」を分けたいなら `getIntObject` か `isNull(key)`。
+**1.5.0 からは `getInt("page", 1)` のように既定値を渡す**——無い・空欄だけが既定値で、`"abc"` は `DataConversionException`（黙って 0 にならない）。
+
+属性を決めた `Cookie` は `cookies().putSigned(cookie)` / `putUnsigned(cookie)` で書く。
+`put(Cookie)` は**署名しない**ので、`cookie.secret` があると次のリクエストの `get` が `""` になる（1.5.0 で非推奨）。
 
 ## 返す
 
