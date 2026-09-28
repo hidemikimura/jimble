@@ -4,21 +4,26 @@
 
 ---
 
-## 未リリース
+## 1.5.0（2026-09-28）
 
-**AI が jimble を正しく使えるようにした。**skill を古くしない、落とし穴を機械的に見つける、エラーから説明へ辿れる、の3つ。
+**AI が jimble を正しく使えるようにし、間違えやすい API を作り直し始めた版。**
+AI 向けには、skill を古くしない・落とし穴を機械的に見つける・エラーから説明へ辿れる、の3つ（D-187〜D-189）。
 あわせて、**黙って間違った SQL や成功扱いになっていたところを直し**（D-190）、**2.0 で残す書き方を先に足し**（D-191）、**2.0 へ移る道具（非推奨・jimbleCheck・移行の手引き・警告）を入れました**（D-192）。
 既存の API は消していません。**黙って間違っていた書き方のいくつかが、例外になります**（下の「上げる前に見るところ」）。
 
-### 足したこと（D-187 / D-188 / D-189）
+### 上げる前に見るところ
 
 | | |
 |---|---|
-| **`./gradlew jimbleSkills`：skill を、使っている jimble の版に揃えます**（D-187） | `jimble new` は skill を写して置くので、版を上げても**アプリの AI は古い説明を読み続けていました**。jimble のどのプラグインを当てても付くタスクで、`.claude/skills/` をそのプラグインの版（= アプリが使っている jimble の版）の skill に揃えます。**手で直した skill は上書きしません**（置いたときのハッシュを `.claude/jimble-skills.properties` に控え、同じものだけ入れ替えます）。控えの無いもの（これまでの `jimble new` で置いたもの）は `--overwrite` を付けたときだけ入れ替えます |
-| **`jimble new` と `jimbleSkills` が `AGENTS.md` / `CLAUDE.md` を置きます**（D-187） | ツールをまたいで読まれる `AGENTS.md` に「skill を読む・推測しない・`jimbleCheck` で確かめる・アプリの決まりはここに書く」を書き、`CLAUDE.md` はそれを読み込むだけにしました。**あれば触りません** |
-| **`./gradlew jimbleCheck`：既知の落とし穴を見つけます**（D-188） | **動かしても黙って間違えるもの**を、ソースと設定から見つけます（`request().getString`・`${?X}` のあとの書き直し・`DBUtil.load` のあとの `Migration.install`・`BatchTables.install` の呼び忘れ・`sync` と `add` の順番・種別のブロックと外側の guard・MQ の表の codegen・古い skill・トランザクションの空の catch）。見つけたものには**直し方と jimble.io の引き先**を付けます。誤検知は `// jimble-check:ignore J101` で消せます |
-| **例外と警告に引き先を付けました**（D-189） | 設定の単位・見つからないキー・知らない環境・DB が読めていない・知らない db のキー・コミットしなかった（`DB_004`）・閉じ忘れのトランザクション・`cookie.secure`・ルートの確定後・ログインの種別・マイグレーションの失敗・バッチマスタの更新の失敗に、`詳しく: https://jimble.io/ja/〜.md` を付けました（Markdown のまま取れるページです） |
-| **黙って間違えていた3つを、言うようにしました**（D-189） | (1) `Migration.install()` を `DBUtil.load(...)` のあとに呼ぶと WARN（そのままでは流れない）。(2) remember-me の Cookie が来ているのに `Remember.restore` より先に `Auth.guard` が走って 401 になったら、1度だけ WARN（`before` の順番の取り違え）。(3) JSON の**配列**の列を `getString` したら、1度だけ WARN（先頭の要素だけが返っている）。**どれも返り値・例外は変えていません** |
+| **例外になった書き方があります**（D-190） | 結合の無いところの `on()`、1つの条件の2つ目の比較、列に直接 `and/or`、`orderBy(Data)` の `asc/desc` 以外、`where(Data)` の `between` の数違い、`Dsl.and/or` に素の列。**どれも 1.4 までは違う SQL が黙って組み上がっていた書き方です** |
+| **`DBTransaction` の入れ子で `DB_005` が出るようになります**（D-190） | 中で `rollback()` しているのに外で `commitEndTransaction()` していたコードは、これまで中の分もコミットされていました。外で `rollback()` してから続けるか、中で戻さないようにしてください |
+| **Error Prone を使っているなら、戻り値を捨てた行がエラーになります**（D-191） | `@CheckReturnValue` を付けたためです。`db.update(...)` の戻り値を見ずに捨てているなら、`db.transaction(...)` の中に入れる（エラーがあれば確定しない）か、戻り値を見てください。本当に要らないなら `var unused = ...` |
+| **非推奨の警告（`[removal]`）が出るようになります**（D-192） | `-Werror` でビルドしているなら落ちます。`./gradlew jimbleCheck` が同じ行を直し方つきで出すので、書き換えてください（[2.0 への移行](https://jimble.io/ja/migrate-2)）。すぐに直せないなら、そのメソッドに `@SuppressWarnings("removal")` |
+| **ログに WARN が増えることがあります**（D-192） | 2.0 で例外になる書き方を、プロセスで1度だけ出します。どれも黙って効いていなかったものです |
+| **`put(Cookie)` が非推奨になりました**（D-191） | `putSigned` か `putUnsigned` に置き換えてください。これまでの動き（署名しない）と同じなのは `putUnsigned` です |
+| **四則演算を重ねた SQL の字面が変わります**（D-190） | 1つだけのときは変わりません（結果キャッシュの鍵もそのまま）。重ねていたものは、そもそも最初の1つしか効いていませんでした |
+| **既存のアプリの skill は、1度 `--overwrite` で入れ替えてください** | これまでの `jimble new` は控えを書いていないので、`./gradlew jimbleSkills` だけでは「直したかどうか分からない」として触りません。skill を直していなければ `./gradlew jimbleSkills --overwrite`。アプリ固有の書き足しは先に `AGENTS.md` へ移してください |
+| **JSON の配列の列の値の型が `JsonArrayList`（`ArrayList` の子）になります** | `List` / `ArrayList` として扱う分には何も変わりません。`getClass() == ArrayList.class` で比べていたら通らなくなります |
 
 ### 直したこと：黙って間違えていたところ（D-190）
 
@@ -44,21 +49,21 @@
 | **`getObjectListOptional(key, 型)` が型を捨てていた** | 要素を変換します |
 | **包み直しで元の例外を捨てていた** | `CodeException(Exception)` と `DBTransaction` の包み直しが cause を持ちます。`CodeException(code, message, cause)` を足しました |
 
-### 2.0 への移行の道具（D-192）
-
-| | |
-|---|---|
-| **2.0 で消すものを非推奨にしました**（`@Deprecated(forRemoval = true)`） | `DBTransaction`、`DB.beginTransaction` / `commit` / `commitEndTransaction` / `rollback` / `rollbackEndTransaction` / `endTransaction`、`Router.path(パス)`、`Dsl.or` / `Dsl.and`、`Column.and` / `or`、`request().getString` などの `Request` を `Data` として読む4つ（ほかに D-190 の `subtract`、D-191 の `Cookies.put(Cookie)`）。**置き換え先が 1.5 にあるものだけ**です——`selectOrThrow` や `insertNoReturnKey` は 1.5 ではいちばん正しい書き方なので、非推奨にするのは 2.0 です |
-| **`./gradlew jimbleCheck` が移行する行を出します** | 1.5 で置き換え先があるもの（J801〜J810）はいつも、2.0 で型や意味が変わるもの（J901〜J906）は `--target=2.0` のときだけ出します。どれも WARN で、直し方と `migrate-2.md` への引き先つきです |
-| **[2.0 への移行](https://jimble.io/ja/migrate-2)（日英）を足しました** | 旧→新の対応表・2.0 で変わるもの・1.5 で出るようになった警告 |
-| **`UpdateBuilder.setRow(Data)` / `InsertBuilder.valueRow(Data)`** | 平らな行（列名 → 値）で入れます。包む形も `"now()"` の変換も無く、入れ子の行（結果の Data）を渡すと例外です |
-| **2.0 で例外になる書き方を、1度だけ警告します**（呼び出し元の行つき） | `eq(null)` / `not(null)`（`where(Data)` の空の値も）・`set(Data)` / `value(Data)` に包まない行・文字列 `"now()"` の変換・返し方を2つ以上積んだ（`json` と `redirect` など）・送ったあとのヘッダと Cookie・壊れた JSON の本文・`paging()` のあとの `paging(50)`・`request().getString(...)`・キーが無い `required()`・`destroy()` のあとのセッションの変更 |
-
 ### 直したこと（D-192）
 
 | | |
 |---|---|
 | **`save()` のあとにセッションを変えると、黙って捨てていました** | `save()` は1リクエストに1回で、2度目は何もしなかったためです。**`Auth.login(...)` も中で `save()` するので、ログインの直後に入れた値が消えていました**。いまは変えたら「保存済み」を戻すので、もう一度 `save()` すれば保存され、呼ばなければ終わりに「save() が呼ばれていません」と警告が出ます |
+
+### 足したこと（D-187 / D-188 / D-189）
+
+| | |
+|---|---|
+| **`./gradlew jimbleSkills`：skill を、使っている jimble の版に揃えます**（D-187） | `jimble new` は skill を写して置くので、版を上げても**アプリの AI は古い説明を読み続けていました**。jimble のどのプラグインを当てても付くタスクで、`.claude/skills/` をそのプラグインの版（= アプリが使っている jimble の版）の skill に揃えます。**手で直した skill は上書きしません**（置いたときのハッシュを `.claude/jimble-skills.properties` に控え、同じものだけ入れ替えます）。控えの無いもの（これまでの `jimble new` で置いたもの）は `--overwrite` を付けたときだけ入れ替えます |
+| **`jimble new` と `jimbleSkills` が `AGENTS.md` / `CLAUDE.md` を置きます**（D-187） | ツールをまたいで読まれる `AGENTS.md` に「skill を読む・推測しない・`jimbleCheck` で確かめる・アプリの決まりはここに書く」を書き、`CLAUDE.md` はそれを読み込むだけにしました。**あれば触りません** |
+| **`./gradlew jimbleCheck`：既知の落とし穴を見つけます**（D-188） | **動かしても黙って間違えるもの**を、ソースと設定から見つけます（`request().getString`・`${?X}` のあとの書き直し・`DBUtil.load` のあとの `Migration.install`・`BatchTables.install` の呼び忘れ・`sync` と `add` の順番・種別のブロックと外側の guard・MQ の表の codegen・古い skill・トランザクションの空の catch）。見つけたものには**直し方と jimble.io の引き先**を付けます。誤検知は `// jimble-check:ignore J101` で消せます |
+| **例外と警告に引き先を付けました**（D-189） | 設定の単位・見つからないキー・知らない環境・DB が読めていない・知らない db のキー・コミットしなかった（`DB_004`）・閉じ忘れのトランザクション・`cookie.secure`・ルートの確定後・ログインの種別・マイグレーションの失敗・バッチマスタの更新の失敗に、`詳しく: https://jimble.io/ja/〜.md` を付けました（Markdown のまま取れるページです） |
+| **黙って間違えていた3つを、言うようにしました**（D-189） | (1) `Migration.install()` を `DBUtil.load(...)` のあとに呼ぶと WARN（そのままでは流れない）。(2) remember-me の Cookie が来ているのに `Remember.restore` より先に `Auth.guard` が走って 401 になったら、1度だけ WARN（`before` の順番の取り違え）。(3) JSON の**配列**の列を `getString` したら、1度だけ WARN（先頭の要素だけが返っている）。**どれも返り値・例外は変えていません** |
 
 ### 足したこと：2.0 の形を先に（D-191）
 
@@ -82,19 +87,15 @@
 | `ISelect.divide(...)` | 割り算。**`subtract(...)` は名前違い（割り算を出す）なので非推奨**にしました。振る舞いは変えていません。2.0 で消します |
 | `SelectBuilder.copy()` | 句の並びが別のリストになる写し |
 
-### 上げる前に見るところ
+### 2.0 への移行の道具（D-192）
 
 | | |
 |---|---|
-| **例外になった書き方があります**（D-190） | 結合の無いところの `on()`、1つの条件の2つ目の比較、列に直接 `and/or`、`orderBy(Data)` の `asc/desc` 以外、`where(Data)` の `between` の数違い、`Dsl.and/or` に素の列。**どれも 1.4 までは違う SQL が黙って組み上がっていた書き方です** |
-| **`DBTransaction` の入れ子で `DB_005` が出るようになります**（D-190） | 中で `rollback()` しているのに外で `commitEndTransaction()` していたコードは、これまで中の分もコミットされていました。外で `rollback()` してから続けるか、中で戻さないようにしてください |
-| **Error Prone を使っているなら、戻り値を捨てた行がエラーになります**（D-191） | `@CheckReturnValue` を付けたためです。`db.update(...)` の戻り値を見ずに捨てているなら、`db.transaction(...)` の中に入れる（エラーがあれば確定しない）か、戻り値を見てください。本当に要らないなら `var unused = ...` |
-| **非推奨の警告（`[removal]`）が出るようになります**（D-192） | `-Werror` でビルドしているなら落ちます。`./gradlew jimbleCheck` が同じ行を直し方つきで出すので、書き換えてください（[2.0 への移行](https://jimble.io/ja/migrate-2)）。すぐに直せないなら、そのメソッドに `@SuppressWarnings("removal")` |
-| **ログに WARN が増えることがあります**（D-192） | 2.0 で例外になる書き方を、プロセスで1度だけ出します。どれも黙って効いていなかったものです |
-| **`put(Cookie)` が非推奨になりました**（D-191） | `putSigned` か `putUnsigned` に置き換えてください。これまでの動き（署名しない）と同じなのは `putUnsigned` です |
-| **四則演算を重ねた SQL の字面が変わります**（D-190） | 1つだけのときは変わりません（結果キャッシュの鍵もそのまま）。重ねていたものは、そもそも最初の1つしか効いていませんでした |
-| **既存のアプリの skill は、1度 `--overwrite` で入れ替えてください** | これまでの `jimble new` は控えを書いていないので、`./gradlew jimbleSkills` だけでは「直したかどうか分からない」として触りません。skill を直していなければ `./gradlew jimbleSkills --overwrite`。アプリ固有の書き足しは先に `AGENTS.md` へ移してください |
-| **JSON の配列の列の値の型が `JsonArrayList`（`ArrayList` の子）になります** | `List` / `ArrayList` として扱う分には何も変わりません。`getClass() == ArrayList.class` で比べていたら通らなくなります |
+| **2.0 で消すものを非推奨にしました**（`@Deprecated(forRemoval = true)`） | `DBTransaction`、`DB.beginTransaction` / `commit` / `commitEndTransaction` / `rollback` / `rollbackEndTransaction` / `endTransaction`、`Router.path(パス)`、`Dsl.or` / `Dsl.and`、`Column.and` / `or`、`request().getString` などの `Request` を `Data` として読む4つ（ほかに D-190 の `subtract`、D-191 の `Cookies.put(Cookie)`）。**置き換え先が 1.5 にあるものだけ**です——`selectOrThrow` や `insertNoReturnKey` は 1.5 ではいちばん正しい書き方なので、非推奨にするのは 2.0 です |
+| **`./gradlew jimbleCheck` が移行する行を出します** | 1.5 で置き換え先があるもの（J801〜J810）はいつも、2.0 で型や意味が変わるもの（J901〜J906）は `--target=2.0` のときだけ出します。どれも WARN で、直し方と `migrate-2.md` への引き先つきです |
+| **[2.0 への移行](https://jimble.io/ja/migrate-2)（日英）を足しました** | 旧→新の対応表・2.0 で変わるもの・1.5 で出るようになった警告 |
+| **`UpdateBuilder.setRow(Data)` / `InsertBuilder.valueRow(Data)`** | 平らな行（列名 → 値）で入れます。包む形も `"now()"` の変換も無く、入れ子の行（結果の Data）を渡すと例外です |
+| **2.0 で例外になる書き方を、1度だけ警告します**（呼び出し元の行つき） | `eq(null)` / `not(null)`（`where(Data)` の空の値も）・`set(Data)` / `value(Data)` に包まない行・文字列 `"now()"` の変換・返し方を2つ以上積んだ（`json` と `redirect` など）・送ったあとのヘッダと Cookie・壊れた JSON の本文・`paging()` のあとの `paging(50)`・`request().getString(...)`・キーが無い `required()`・`destroy()` のあとのセッションの変更 |
 
 ---
 
