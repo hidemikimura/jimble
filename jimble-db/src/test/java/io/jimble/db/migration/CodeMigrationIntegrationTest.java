@@ -45,9 +45,7 @@ class CodeMigrationIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), CodeMigrationIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), CodeMigrationIntegrationTest.class);
 
 	}
 
@@ -152,7 +150,7 @@ class CodeMigrationIntegrationTest {
 		CodeMigration.execute();
 
 		assertEquals(0, DBUtil.getMainDB()
-			.select("SELECT COUNT(*) AS cnt FROM migration_code").getLong("cnt"));
+			.select("SELECT COUNT(*) AS cnt FROM migration_code").orElseThrow().getLong("cnt"));
 
 	}
 
@@ -262,7 +260,7 @@ class CodeMigrationIntegrationTest {
 	private Data row (Class<? extends AbstractCodeMigration> cls) {
 
 		Data row = DBUtil.getMainDB().select(
-			"SELECT * FROM migration_code WHERE version LIKE ?", "%" + cls.getCanonicalName());
+			"SELECT * FROM migration_code WHERE version LIKE ?", "%" + cls.getCanonicalName()).orElse(null);
 
 		assertNotNull(row, cls.getCanonicalName() + " のレコードがありません");
 

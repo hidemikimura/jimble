@@ -29,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>開発用 DB が要る（要件 D-16）。</p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class MultiDataSourceIntegrationTest {
 
 	/** サブ DB の名前 */
@@ -43,8 +42,7 @@ class MultiDataSourceIntegrationTest {
 
 		Conf.reload();
 
-		assertTrue(DBUtil.load(Conf.conf().config(), MultiDataSourceIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), MultiDataSourceIntegrationTest.class);
 
 		try (DB db = DBUtil.getDB(SUB_DB)) {
 			TestDdl.execute(db, """
@@ -96,27 +94,20 @@ class MultiDataSourceIntegrationTest {
 	void isolated () throws Exception {
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			assertTrue(sub.insert("INSERT INTO sub_item (name) VALUES (?)", "サブの行") > 0
-				, String.valueOf(sub.getError()));
+			sub.insert("INSERT INTO sub_item (name) VALUES (?)", "サブの行");
 		}
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			Data row = sub.select("SELECT name FROM sub_item WHERE name = ?", "サブの行");
+			Data row = sub.select("SELECT name FROM sub_item WHERE name = ?", "サブの行").orElse(null);
 			assertNotNull(row, "サブ DB から読めない");
 			assertEquals("サブの行", row.getString("name"));
 		}
 
-		/*
-		 * メイン側に同じテーブルは無い。
-		 * DB のエラーは例外ではなく戻り値で返る（要件 F-D-11）ので、
-		 * null が返り isError() が立つ。
-		 */
+		// メイン側に同じテーブルは無い。失敗は例外（2.0。要件 D-193）
 		try (DB main = DBUtil.getMainDB()) {
 
-			Data row = main.select("SELECT name FROM sub_item");
-
-			assertNull(row, "メインからサブのテーブルが見えている");
-			assertTrue(main.isError(), "エラーが立っていない");
+			assertThrows(SqlExecuteException.class, () -> main.select("SELECT name FROM sub_item")
+				, "メインからサブのテーブルが見えている");
 
 		}
 
@@ -129,8 +120,8 @@ class MultiDataSourceIntegrationTest {
 		try (DB main = DBUtil.getMainDB();
 			 DB sub = DBUtil.getDB(SUB_DB)) {
 
-			String mainSchema = main.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(main))).getString("schema_name");
-			String subSchema = sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).getString("schema_name");
+			String mainSchema = main.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(main))).orElseThrow().getString("schema_name");
+			String subSchema = sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).orElseThrow().getString("schema_name");
 
 			assertNotEquals(mainSchema, subSchema);
 			assertEquals(MAIN_DB, mainSchema);
@@ -147,34 +138,31 @@ class MultiDataSourceIntegrationTest {
 		try (DB main = DBUtil.getMainDB();
 			 DB sub = DBUtil.getDB(SUB_DB)) {
 
-			try (DBTransaction mainTransaction = new DBTransaction(main);
-				 DBTransaction subTransaction = new DBTransaction(sub)) {
-
-				mainTransaction.beginTransaction();
-				subTransaction.beginTransaction();
+			try (Tx mainTransaction = main.begin();
+				 Tx subTransaction = sub.begin()) {
 
 				main.insert("INSERT INTO main_item (name) VALUES (?)", "残る行");
 				sub.insert("INSERT INTO sub_item (name) VALUES (?)", "消える行");
 
 				/*
 				 * 片方だけ戻す。
-				 * 1つの DBTransaction で両方を巻き込めるわけではない
+				 * 1つの Tx で両方を巻き込めるわけではない
 				 * （分散トランザクションはやらない）。
 				 */
-				mainTransaction.commitEndTransaction();
-				subTransaction.rollbackEndTransaction();
+				mainTransaction.commit();
+				subTransaction.rollback();
 
 			}
 
 		}
 
 		try (DB main = DBUtil.getMainDB()) {
-			assertNotNull(main.select("SELECT id FROM main_item WHERE name = ?", "残る行")
+			assertTrue(main.select("SELECT id FROM main_item WHERE name = ?", "残る行").isPresent()
 				, "コミットしたのに残っていない");
 		}
 
 		try (DB sub = DBUtil.getDB(SUB_DB)) {
-			assertNull(sub.select("SELECT id FROM sub_item WHERE name = ?", "消える行")
+			assertTrue(sub.select("SELECT id FROM sub_item WHERE name = ?", "消える行").isEmpty()
 				, "ロールバックしたのに残っている");
 		}
 
@@ -198,7 +186,7 @@ class MultiDataSourceIntegrationTest {
 			try (DB sub = main.newSubDB("sub")) {
 
 				assertEquals(SUB_DB
-					, sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).getString("schema_name"));
+					, sub.select("SELECT %s AS schema_name".formatted(TestDdl.currentDatabase(sub))).orElseThrow().getString("schema_name"));
 
 			}
 

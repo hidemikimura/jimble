@@ -408,7 +408,7 @@ class BlogAppIntegrationTest {
 
 		// 後始末
 		Data row = BlogExample.db().select(
-			SQL.select().from(Post.instance()).where(Post.title.eq("フォームから登録")));
+			SQL.select().from(Post.instance()).where(Post.title.eq("フォームから登録"))).orElse(null);
 		if (row != null) {
 			delete("/posts/" + row.getLong(Post.id));
 		}
@@ -447,7 +447,7 @@ class BlogAppIntegrationTest {
 		assertEquals(302, response.statusCode(), response.body());
 
 		Data row = BlogExample.db().select(
-			SQL.select().from(Post.instance()).where(Post.title.eq("画像つきの記事")));
+			SQL.select().from(Post.instance()).where(Post.title.eq("画像つきの記事"))).orElse(null);
 
 		assertNotNull(row, "記事が入っていない");
 
@@ -766,7 +766,7 @@ class BlogAppIntegrationTest {
 	 */
 	private static long insertPost (String title) {
 
-		return BlogExample.db().insert(
+		return BlogExample.db().insertKey(
 			SQL.insert(Post.instance())
 				.value(Post.title, title)
 				.value(Post.body, "本文")
@@ -803,6 +803,7 @@ class BlogAppIntegrationTest {
 
 		return BlogExample.db()
 			.select(SQL.select().from(Post.instance()).where(Post.id.eq(id)))
+			.orElseThrow()
 			.extractTableData(Post.instance())
 			.getString(Post.title);
 

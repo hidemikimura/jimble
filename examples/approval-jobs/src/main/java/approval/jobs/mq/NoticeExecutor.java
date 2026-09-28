@@ -1,6 +1,7 @@
 package approval.jobs.mq;
 
 import io.jimble.db.DB;
+import io.jimble.db.DuplicateKeyException;
 import io.jimble.mq.MqExecutor;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
@@ -81,43 +82,26 @@ public class NoticeExecutor extends MqExecutor {
 		String kind = data.getString("kind");
 
 		// 1. すでに作ってあれば、何もしない
-		Data exists = db.select("SELECT id FROM notice WHERE request_id = ? AND kind = ?"
-			, requestId, kind);
-
-		if (exists != null) {
+		if (db.select("SELECT id FROM notice WHERE request_id = ? AND kind = ?", requestId, kind).isPresent()) {
 			Log.info("通知はもう作ってあります: request_id=%d / kind=%s".formatted(requestId, kind));
 			return MqStatus.completed;
 		}
 
-		db.insert("""
-				INSERT INTO notice (request_id, to_staff_id, kind, sent_at, created_at)
-				VALUES (?, ?, ?, NOW(), NOW())
-			"""
-			, requestId, toStaffId, kind);
-
 		/*
-		 * 2. 一意キーに弾かれていないか見る。
+		 * 2. 一意キーに弾かれたら、隙間に別のワーカーが入って先に作った。
 		 *
-		 * db.insert() は失敗しても例外を投げない。
-		 * 見ないと「入っていないのに completed」になり、
-		 * 行が消えて誰も気づけなくなる。
+		 * 2.0 は一意制約の違反だけを DuplicateKeyException で分けられる。
+		 * それ以外の失敗は例外のまま上へ出て、キューがリトライする。
 		 */
-		if (db.isError()) {
-
-			// 隙間に別のワーカーが入って、先に作った
-			if (db.select("SELECT id FROM notice WHERE request_id = ? AND kind = ?"
-				, requestId, kind) != null) {
-
-				Log.info("通知は別のワーカーが作りました: request_id=%d".formatted(requestId));
-				return MqStatus.completed;
-
-			}
-
-			Log.error("通知を作れませんでした: request_id=%d / %s"
-				.formatted(requestId, String.valueOf(db.getError())));
-
-			return MqStatus.error;
-
+		try {
+			db.insert("""
+					INSERT INTO notice (request_id, to_staff_id, kind, sent_at, created_at)
+					VALUES (?, ?, ?, NOW(), NOW())
+				"""
+				, requestId, toStaffId, kind);
+		} catch (DuplicateKeyException ex) {
+			Log.info("通知は別のワーカーが作りました: request_id=%d".formatted(requestId));
+			return MqStatus.completed;
 		}
 
 		Log.info("通知を作りました: request_id=%d / to=%d / kind=%s"

@@ -7,7 +7,6 @@ import io.jimble.db.sql.definition.table.Table;
 import io.jimble.db.data.SelectListResponse;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.data.Data;
-import io.jimble.util.exception.CodeException;
 
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -23,7 +22,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -37,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p><b>開発用 DB が必要</b>（要件 D-16）。{@code ./gradlew :jimble-db:pgTest}</p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class DbTrapIntegrationTest {
 
 	/** 表 */
@@ -64,7 +61,7 @@ class DbTrapIntegrationTest {
 	static void load () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), DbTrapIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), DbTrapIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 		db.execute("DROP TABLE IF EXISTS trap_rows");
@@ -94,128 +91,76 @@ class DbTrapIntegrationTest {
 
 	private static long count () {
 
-		return DBUtil.getMainDB().select("SELECT COUNT(*) AS c FROM trap_rows").getLong("c");
+		return DBUtil.getMainDB().select("SELECT COUNT(*) AS c FROM trap_rows").orElseThrow().getLong("c");
 
 	}
 
 	// region トランザクション
-
-	@Test
-	@DisplayName("D-190 合流した DBTransaction の rollback は、外の commit を DB_005 で断らせる（1.4 までは黙って commit）")
-	void joinedRollbackMakesOuterRollbackOnly () throws Exception {
-
-		DB db = DBUtil.getMainDB();
-
-		try (DBTransaction outer = new DBTransaction(db)) {
-			outer.beginTransaction();
-			db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "outer");
-
-			try (DBTransaction inner = new DBTransaction(db)) {
-				inner.beginTransaction();
-				db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "inner");
-				inner.rollbackEndTransaction();
-			}
-
-			assertTrue(db.isTransaction(), "中の rollback が外のトランザクションを終わらせています");
-			CodeException e = assertThrows(CodeException.class, outer::commitEndTransaction);
-			assertEquals("DB_005", e.getCode(), e.getMessage());
-			assertTrue(e.getMessage().contains("rollbackEndTransaction()"), e.getMessage());
-		}
-
-		assertEquals(0, count(), "巻き戻し専用なのに書き込まれています");
-
-	}
-
-	@Test
-	@DisplayName("D-190 合流した側が例外で抜けたら、外は巻き戻し専用になる")
-	void joinedExceptionMakesOuterRollbackOnly () throws Exception {
-
-		DB db = DBUtil.getMainDB();
-
-		try (DBTransaction outer = new DBTransaction(db)) {
-			outer.beginTransaction();
-			db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "outer");
-
-			assertThrows(IllegalStateException.class, () -> DBTransaction.transaction(db, tx -> {
-				db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "inner");
-				throw new IllegalStateException("中で失敗");
-			}));
-
-			CodeException e = assertThrows(CodeException.class, outer::commitEndTransaction);
-			assertEquals("DB_005", e.getCode());
-		}
-
-		assertEquals(0, count());
-
-	}
-
-	@Test
-	@DisplayName("D-190 合流した側が commit すれば、外の commit で両方入る（合流は壊していない）")
-	void joinedCommitStillWorks () throws Exception {
-
-		DB db = DBUtil.getMainDB();
-
-		DBTransaction.transaction(db, outer -> {
-			db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "outer");
-			DBTransaction.transaction(db, inner ->
-				db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "inner"));
-			assertTrue(db.isTransaction(), "中の commitEndTransaction が外を終わらせています");
-		});
-
-		assertEquals(2, count());
-
-	}
-
-	@Test
-	@DisplayName("D-190 作ってから外が始まっても合流する（1.4 までは中の commitEndTransaction が外を終わらせていた）")
-	void joinDecidedAtBegin () throws Exception {
-
-		DB db = DBUtil.getMainDB();
-
-		DBTransaction inner = new DBTransaction(db);   // まだ誰も始めていない
-		try (DBTransaction outer = new DBTransaction(db)) {
-			outer.beginTransaction();
-			inner.beginTransaction();
-			db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "x");
-			inner.commitEndTransaction();
-			assertTrue(db.isTransaction(), "中が外のトランザクションを終わらせています");
-			outer.rollbackEndTransaction();
-		}
-
-		assertEquals(0, count(), "外で巻き戻したのに残っています");
-
-	}
+	//
+	// 合流（入れ子）の約束は TxIntegrationTest で見る。1.x の DBTransaction の確かめは 2.0 で消した（要件 D-193）
 
 	@Test
 	@DisplayName("D-190 失敗した文のあと、巻き戻しに成功したら例外を出さない（1.4 までは古い DB_999 が DB_002 で出ていた）")
-	void rollbackAfterFailedStatementDoesNotThrow () throws Exception {
+	void rollbackAfterFailedStatementDoesNotThrow () {
 
 		DB db = DBUtil.getMainDB();
 
-		try (DBTransaction tx = new DBTransaction(db)) {
-			tx.beginTransaction();
-			assertNull(db.select("SELECT * FROM trap_no_such_table"));
-			assertTrue(db.isError());
-			tx.rollbackEndTransaction();   // 例外にならない
+		try (Tx tx = db.begin()) {
+			assertThrows(SqlExecuteException.class, () -> db.select("SELECT * FROM trap_no_such_table"));
+			tx.rollback();   // 例外にならない
 		}
 
 	}
 
 	@Test
-	@DisplayName("D-190 失敗した文のあとの commitEndTransaction は DB_004（古い DB_999 に上書きされない）")
-	void commitAfterFailedStatementKeepsDb004 () throws Exception {
+	@DisplayName("D-190 失敗した文のあとの commit は DB_004（古い DB_999 に上書きされない）")
+	void commitAfterFailedStatementKeepsDb004 () {
 
 		DB db = DBUtil.getMainDB();
 
-		try (DBTransaction tx = new DBTransaction(db)) {
-			tx.beginTransaction();
+		try (Tx tx = db.begin()) {
 			db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "x");
-			db.select("SELECT * FROM trap_no_such_table");
-			CodeException e = assertThrows(CodeException.class, tx::commitEndTransaction);
+			assertThrows(SqlExecuteException.class, () -> db.select("SELECT * FROM trap_no_such_table"));
+			TransactionException e = assertThrows(TransactionException.class, tx::commit);
 			assertEquals("DB_004", e.getCode(), e.getMessage());
+			assertTrue(e.getMessage().contains("trap_no_such_table"), "失敗した文のエラーが出ていません: " + e.getMessage());
 		}
 
 		assertEquals(0, count());
+
+	}
+
+	// endregion
+
+	// region ロック（要件 D-193）
+
+	@Test
+	@DisplayName("D-193 DBLock.lock はトランザクションの外で呼ぶと例外（1.x は true を返して何も守らなかった）")
+	void dbLockOutsideTransactionThrows () {
+
+		DB db = DBUtil.getMainDB();
+		io.jimble.db.lock.DBLock.create(db, "trap-lock");
+
+		IllegalStateException e = assertThrows(IllegalStateException.class, () -> io.jimble.db.lock.DBLock.lock(db, "trap-lock"));
+		assertTrue(e.getMessage().contains("トランザクション"), e.getMessage());
+
+		// 中なら取れる
+		db.transaction(tx -> io.jimble.db.lock.DBLock.lock(db, "trap-lock"));
+
+	}
+
+	@Test
+	@DisplayName("D-193 DBLock.lock はキーが無ければ例外（1.x は false）")
+	void dbLockMissingKeyThrows () {
+
+		DB db = DBUtil.getMainDB();
+
+		try (Tx tx = db.begin()) {
+			IllegalStateException e = assertThrows(IllegalStateException.class,
+				() -> io.jimble.db.lock.DBLock.lock(db, "trap-no-such-key-" + System.nanoTime()));
+			assertTrue(e.getMessage().contains("DBLock.create"), e.getMessage());
+			assertFalse(tx.isFinished());
+		}
 
 	}
 
@@ -261,26 +206,34 @@ class DbTrapIntegrationTest {
 		SelectListResponse response = db.selectListWithRowCount(
 			"SELECT from_date FROM trap_rows WHERE from_date LIKE ? ORDER BY from_date LIMIT 1", "d%");
 
-		assertFalse(db.isError(), String.valueOf(db.getError()));
 		assertEquals(1, response.list().size());
 		assertEquals(3, response.rowCount());
 
 	}
 
 	@Test
-	@DisplayName("D-190 一覧が失敗したら list() が null")
-	void listFailureIsNull () {
+	@DisplayName("D-193 一覧が失敗したら例外（1.x は list() が null）")
+	void listFailureThrows () {
 
 		DB db = DBUtil.getMainDB();
 
-		SelectListResponse response = db.selectListWithRowCount("SELECT 1 AS a FROM trap_no_such_table");
-		assertNull(response.list());
-		assertTrue(db.isError());
+		assertThrows(SqlExecuteException.class, () -> db.selectListWithRowCount("SELECT 1 AS a FROM trap_no_such_table"));
 
 	}
 
 	@Test
-	@DisplayName("D-190 件数の SQL だけが失敗しても list() が null（1.4 までは 0 件に化けていた）")
+	@DisplayName("D-193 FROM の無い SQL の selectListWithRowCount は例外")
+	void rowCountWithoutFromThrows () {
+
+		DB db = DBUtil.getMainDB();
+
+		SqlExecuteException e = assertThrows(SqlExecuteException.class, () -> db.selectListWithRowCount("SELECT 1 AS a"));
+		assertTrue(e.getMessage().contains("FROM"), e.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("D-190 件数の SQL だけが失敗しても例外（1.4 までは 0 件に化けていた）")
 	void rowCountFailureIsNotZero () {
 
 		DB db = DBUtil.getMainDB();
@@ -289,11 +242,11 @@ class DbTrapIntegrationTest {
 			db.dialect().getClass().getSimpleName().toLowerCase().contains("postgres"), "PostgreSQL だけで見る");
 		db.insert("INSERT INTO trap_rows (from_date) VALUES (?)", "d1");
 
-		SelectListResponse response = db.selectListWithRowCount(
-			"SELECT from_date FROM trap_rows UNION SELECT from_date FROM trap_rows");
-		assertTrue(db.isError(), "件数の SQL が通っています（この確かめ方が使えません）");
-		assertNull(response.list(), "件数が失敗したのに成功扱いです");
-		assertEquals(0, response.rowCount());
+		// 一覧だけなら通る（確かめ方の前提）
+		assertEquals(1, db.selectList("SELECT from_date FROM trap_rows UNION SELECT from_date FROM trap_rows").size());
+
+		assertThrows(SqlExecuteException.class, () -> db.selectListWithRowCount(
+			"SELECT from_date FROM trap_rows UNION SELECT from_date FROM trap_rows"), "件数が失敗したのに成功扱いです");
 
 	}
 
@@ -311,7 +264,6 @@ class DbTrapIntegrationTest {
 			"SELECT CAST(? AS CHAR(10)) AS tag, from_date FROM trap_rows WHERE from_date LIKE ? ORDER BY from_date LIMIT 1",
 			"x", "d%");
 
-		assertFalse(db.isError(), String.valueOf(db.getError()));
 		assertEquals(1, response.list().size());
 		assertEquals(3, response.rowCount(), "件数の WHERE に SELECT 句の値が入っています");
 
@@ -325,9 +277,8 @@ class DbTrapIntegrationTest {
 		HikariDataSource pool = (HikariDataSource) DBUtil.getMainDataSource().dataSource();
 		pool.close();
 		try {
-			assertNull(db.select("SELECT 1"));
-			assertTrue(db.isError());
-			String message = db.getError().getMessage();
+			SqlExecuteException e = assertThrows(SqlExecuteException.class, () -> db.select("SELECT 1"));
+			String message = e.getCause().getMessage();
 			assertNotNull(message);
 			assertFalse(message.contains("null"), message);
 			assertTrue(message.toLowerCase().contains("closed") || message.contains("コネクション"), message);
@@ -335,7 +286,7 @@ class DbTrapIntegrationTest {
 			// 次のテストのために繋ぎ直す
 			DBUtil.stop();
 			Conf.reload();
-			assertTrue(DBUtil.load(Conf.conf().config(), DbTrapIntegrationTest.class));
+			DBUtil.load(Conf.conf().config(), DbTrapIntegrationTest.class);
 		}
 
 	}

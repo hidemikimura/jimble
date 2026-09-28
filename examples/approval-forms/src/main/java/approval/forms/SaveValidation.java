@@ -46,7 +46,7 @@ public class SaveValidation extends ValidationExecutor {
 		Data request = context.request().bodyAll();
 
 		// 申請そのもの
-		addErrors(RequestRules.request().validate(null, request));
+		addErrors(RequestRules.request().errors(null, request));
 
 		validateItems(request);
 
@@ -85,7 +85,7 @@ public class SaveValidation extends ValidationExecutor {
 		 * {@link ValidationMessages#toMessages} で文言にしてから積む。
 		 * ついでにテーブル名のネストもここで剥がれる。
 		 */
-		for (Data error : RequestRules.item().validate(null, items)) {
+		for (Data error : RequestRules.item().errors(null, items)) {
 
 			int index = error.getInt("index");
 

@@ -18,9 +18,9 @@ order: 2
 ```kotlin
 plugins {
 	application
-	id("io.jimble.jte") version "1.5.0"
-	id("io.jimble.run") version "1.5.0"
-	id("io.jimble.db")  version "1.5.0"
+	id("io.jimble.jte") version "2.0.0"
+	id("io.jimble.run") version "2.0.0"
+	id("io.jimble.db")  version "2.0.0"
 }
 ```
 
@@ -62,9 +62,9 @@ rootProject.name = "memo"
 // build.gradle.kts
 plugins {
 	application
-	id("io.jimble.jte") version "1.5.0"   // src/main/jte を使うなら
-	id("io.jimble.run") version "1.5.0"   // ホットリロードを使うなら
-	id("io.jimble.db")  version "1.5.0"   // DB を使うなら
+	id("io.jimble.jte") version "2.0.0"   // src/main/jte を使うなら
+	id("io.jimble.run") version "2.0.0"   // ホットリロードを使うなら
+	id("io.jimble.db")  version "2.0.0"   // DB を使うなら
 }
 
 repositories {
@@ -79,7 +79,7 @@ java {
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:1.5.0")
+	implementation("io.jimble:jimble-web:2.0.0")
 
 	testImplementation(platform("org.junit:junit-bom:5.11.4"))
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -113,7 +113,7 @@ jimbleRun {
 >
 > ```
 > Dependency resolution is looking for a library compatible with JVM runtime version 21,
-> but 'io.jimble:jimble-web:1.5.0' is only compatible with JVM runtime version 25 or newer
+> but 'io.jimble:jimble-web:2.0.0' is only compatible with JVM runtime version 25 or newer
 > ```
 
 ## どれを依存に足すか
@@ -305,14 +305,14 @@ jimbleRun {
 `ERROR` が1つでもあれば落ち、`WARN` だけなら落ちません。
 
 ```
-[J101 ERROR] src/main/java/demo/App.java:83  context.request().get〜(...) で読んでいる。Request の中身は空なので、コンパイルは通って null / 空を返す
-    直し方: 送られてきた値は context.request().bodyAll().getString("x")（クエリだけなら bodyQuery()、JSON だけなら bodyJson()）
-    詳しく: https://jimble.io/ja/request-response.md
+[J903 WARN] src/main/java/demo/PostController.java:83  isError() は 2.0 で無くなった（DB の失敗は SqlExecuteException）
+    直し方: db.transaction(...) の中なら確定しないことで守られる。分岐したいのは一意制約くらいなので DuplicateKeyException で受ける
+    詳しく: https://jimble.io/ja/migrate-2.md
 ```
 
 | 規則 | 重さ | 見るもの |
 | --- | --- | --- |
-| J101 | ERROR | `context.request().getString(...)` など（`Request` の中身は空。`bodyAll()` を通す） |
+| J101 | ERROR | `context.request().getString(...)` など（`Request` は `Data` ではない。`bodyAll()` を通す） |
 | J201 | WARN | 設定の `${ENV}` に `?` が無い（環境変数が無い環境で起動時に落ちる） |
 | J202 | ERROR | `${?ENV}` の行のあとで同じキーを書き直している（環境変数が効かない） |
 | J301 | ERROR | `Migration.install()` が `DBUtil.load(...)` のあと（マイグレーションが流れない） |
@@ -321,11 +321,30 @@ jimbleRun {
 | J304 | WARN | codegen を使っているのに、MQ の表（`mq_scheduler` など）を `codegen.exclude_tables` に書いていない |
 | J401 | ERROR | 外側の `before(Auth::guard)` と、`Auth.REALM` のブロックの中の `Remember.restore`（覚えていても毎回 401） |
 | J501 | WARN | skill が使っている jimble の版のものではない（`jimbleSkills` で揃える） |
-| J701 | WARN | トランザクション（`DBTransaction` / `db.begin()` / `db.transaction(...)`）を使うファイルの空の `catch`（コミットされていないのに成功を返す） |
-| J801〜J810 | WARN | 1.5.0 で非推奨になった書き方と、2.0 で例外になる書き方（`DBTransaction`・`Router x = router.path("/x")`・`Dsl.or`・`eq(null)` など）。置き換え先は 1.5 にある（[2.0 への移行](./migrate-2)） |
+| J701 | WARN | トランザクション（`db.begin()` / `db.transaction(...)` / `TransactionException`）を使うファイルの空の `catch`（確定していないのに成功を返す） |
 
-**`./gradlew jimbleCheck --target=2.0`** にすると、2.0 で型や意味が変わる呼び出し（J901〜J906：`Data row = db.select(...)`・`db.isError()` など）も出します。
-1.5 では正しい書き方でもあるので、既定では出しません。
+**1.x の書き方で、2.0 で消えたもの・型や意味が変わったもの**も出します（どれも WARN。書き換え先は [2.0 への移行](./migrate-2)）。
+
+| 規則 | 見るもの |
+| --- | --- |
+| J801 | `new DBTransaction(...)` / `DBTransaction.transaction(...)`（2.0 で消えた） |
+| J802 | DB の `beginTransaction()` / `commitEndTransaction()` / `rollbackEndTransaction()` / `endTransaction()`（2.0 で消えた） |
+| J803 | `Router x = router.path("/x")`（2.0 で消えた。ブロックの `path("/x", r -> { ... })` にする） |
+| J804 | 列の `subtract(...)`（2.0 で消えた。割り算を出していた） |
+| J805 | `Dsl.or(...)` / `Dsl.and(...)`（2.0 で消えた。`Dsl.anyOf` / `Dsl.allOf` にする） |
+| J806 | `cookies().put(cookie)`（2.0 で消えた。署名しなかった） |
+| J807 | `eq(null)` / `not(null)`（2.0 で例外。`is_null()` / `is_not_null()` にする） |
+| J808 | 文字列 `"now()"`（2.0 ではただの文字列。`Dsl.now()` にする） |
+| J810 | `long id = db.insert(...)`（2.0 の `insert` は値を返さない。`insertKey` にする） |
+| J901 | `Data row = db.select(...)` / `selectCached(...)`（2.0 は `Optional<Data>`。`.orElse(...)` などで受けているものは出さない） |
+| J902 | `if (!db.execute(...))` / `boolean x = db.execute(...)`（2.0 は件数を返し、失敗は例外） |
+| J903 | `isError()`（2.0 で無くなった） |
+| J904 | `DBUtil.load` / `DBLock.lock` / `DBLock.create` の戻り値を `if (!...)` などで見ている（2.0 は値を返さず、失敗は例外） |
+| J905 | `RedisLock.tryLock(...)`（2.0 は `Optional<RedisLockResult>`。`Optional` で受けているものは出さない） |
+| J906 | `selectOrThrow` / `selectListOrThrow` / `insertNoReturnKey`（2.0 で非推奨） |
+| J907 | `session().data().put(...)`（と `putData` / `remove` / `clear` / `putAll`。2.0 で例外） |
+
+J8xx と J9xx は**いつも出します**。`--target=2.0` は 1.5 のころのスクリプトがそのまま動くように受け付けますが、何もしません。
 
 > [!NOTE]
 > Java は構文木にせず、コメントと文字列を除いてから読んでいます。**誤検知は、その行か前の行に

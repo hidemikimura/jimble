@@ -13,40 +13,18 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 戻り値の2義性を消す口（{@code selectOrThrow} / {@code insertKey}）
- *
- * <h2>なぜテストにするのか</h2>
- * <p>
- * <b>{@code select} の {@code null} には2つの意味がある</b>——「1件も無かった」と
- * 「読めなかった」である。<b>見分けるには {@code isError()} を見るしかない</b>ので、
- * </p>
- *
- * <pre>
- * Data user = db.select(sql, id);
- * if (user == null) { return 誰でもない; }
- * </pre>
+ * 戻り値の2義性が無くなったこと（要件 D-193）
  *
  * <p>
- * と書いたアプリは、<b>DB が読めなかった日に「そんな利用者はいません」と答える。</b>
- * 例外も出ないしログにも残らない。<b>認証でこれをやると、落ちているあいだ
- * 全員がログインできないのではなく、全員が「知らない人」になる。</b>
- * </p>
- *
- * <p>
- * {@code insert} も同じで、<b>{@code 1} が「id=1」なのか「1件」なのかは
- * 表の定義で決まる</b>——採番列を1本足しただけで、呼ぶ側を触っていないのに意味が変わる。
- * </p>
- *
- * <p>
- * <b>1.0 では戻り値の型を変えられない</b>ので、既定はそのままにして、
- * <b>見分けられる呼び方を足した</b>。ここで固定するのは「足したほうが正しく分岐すること」と
- * 「<b>足しても元の作法が変わっていないこと</b>」の両方である。
+ * 1.x の {@code select} の {@code null} には「1件も無かった」と「読めなかった」の2つの意味があり、
+ * {@code insert} の {@code 1} は「id=1」か「1件」かが表の定義で決まっていた。
+ * 2.0 で {@code select} は {@code Optional}（読めなければ例外）、{@code insert} は値を返さない形にした。
+ * 1.1 で足した {@code selectOrThrow} / {@code insertNoReturnKey} は 2.0 で非推奨の別名として残る。
  * </p>
  *
  * <p><b>開発用 DB が必要</b>（要件 D-16）。{@code ./gradlew :jimble-db:pgTest}</p>
@@ -58,9 +36,7 @@ class SelectInsertAmbiguityTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), SelectInsertAmbiguityTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), SelectInsertAmbiguityTest.class);
 
 		DB db = DBUtil.getMainDB();
 
@@ -111,66 +87,51 @@ class SelectInsertAmbiguityTest {
 	/** 読めない SQL */
 	private static final String UNREADABLE = "SELECT * FROM amb_no_such_table";
 
-	// region いままでの作法は変えていない
+	// region 2.0 の作法
 
 	@Test
-	@DisplayName("select は 0件でもエラーでも null のまま（既定は変えていない）")
-	void selectStillReturnsNullForBoth () {
+	@DisplayName("D-193 select は 0件が空、読めなければ例外（1.x は両方 null）")
+	void selectSeparatesEmptyAndFailure () {
 
 		DB db = DBUtil.getMainDB();
 
-		assertNull(db.select("SELECT * FROM amb_keyed WHERE id = ?", 1));
-		assertFalse(db.isError(), "0件なのにエラーになっています");
+		assertTrue(db.select("SELECT * FROM amb_keyed WHERE id = ?", 1).isEmpty());
 
-		assertNull(db.select(UNREADABLE));
-		assertTrue(db.isError(), "読めていないのにエラーになっていません");
+		assertThrows(SqlExecuteException.class, () -> db.select(UNREADABLE));
 
 	}
 
 	@Test
-	@DisplayName("selectList は 0件が空リスト・エラーが null のまま（既定は変えていない）")
-	void selectListStillReturnsNullOnError () {
+	@DisplayName("D-193 selectList は 0件が空リスト、読めなければ例外（1.x は null）")
+	void selectListNeverReturnsNull () {
 
 		DB db = DBUtil.getMainDB();
 
 		assertEquals(List.of(), db.selectList("SELECT * FROM amb_keyed"));
-		assertNull(db.selectList(UNREADABLE));
+		assertThrows(SqlExecuteException.class, () -> db.selectList(UNREADABLE));
 
 	}
 
 	@Test
-	@DisplayName("insert は失敗すると -1 のまま（既定は変えていない）")
-	void insertStillReturnsMinusOneOnFailure () {
+	@DisplayName("D-193 insert は失敗すると例外（1.x は -1）。主キー重複は DuplicateKeyException")
+	void insertThrowsOnFailure () {
 
 		DB db = DBUtil.getMainDB();
 
-		assertEquals(1, db.insert("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "a", "A"));
+		db.insert("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "a", "A");
 
-		// 主キー重複
-		assertEquals(-1, db.insert("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "a", "A"));
-		assertTrue(db.isError());
+		assertThrows(DuplicateKeyException.class, () -> db.insert("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "a", "A"));
 
-	}
-
-	@Test
-	@DisplayName("採番列の無い表では insert が『件数』を返す——これが2義性である")
-	void insertReturnsTheCountWhenThereIsNoGeneratedColumn () {
-
-		DB db = DBUtil.getMainDB();
-
-		long value = db.insert("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "x", "X");
-
-		// 1 が返るが、これは「1件入った」であって「id=1」ではない
-		assertEquals(1, value);
-		assertFalse(db.isError());
+		assertEquals(1, db.selectList("SELECT * FROM amb_nokey").size());
 
 	}
 
 	// endregion
 
-	// region 足したほうは分岐できる
+	// region 1.1 で足したもの（2.0 で非推奨の別名）
 
 	@Test
+	@SuppressWarnings("removal")
 	@DisplayName("selectOrThrow の null は『1件も無かった』だけ")
 	void selectOrThrowReturnsNullOnlyForEmpty () {
 
@@ -187,6 +148,7 @@ class SelectInsertAmbiguityTest {
 	}
 
 	@Test
+	@SuppressWarnings("removal")
 	@DisplayName("selectOrThrow は読めなければ投げる")
 	void selectOrThrowThrowsWhenUnreadable () {
 
@@ -201,6 +163,7 @@ class SelectInsertAmbiguityTest {
 	}
 
 	@Test
+	@SuppressWarnings("removal")
 	@DisplayName("selectListOrThrow は 0件が空リスト、読めなければ投げる")
 	void selectListOrThrowNeverReturnsNull () {
 
@@ -224,7 +187,7 @@ class SelectInsertAmbiguityTest {
 		assertTrue(first > 0, "採番値が返っていません: " + first);
 		assertEquals(first + 1, second, "採番が進んでいません");
 
-		assertEquals("two", db.selectOrThrow("SELECT * FROM amb_keyed WHERE id = ?", second).getString("name"));
+		assertEquals("two", db.select("SELECT * FROM amb_keyed WHERE id = ?", second).orElseThrow().getString("name"));
 
 	}
 
@@ -237,10 +200,10 @@ class SelectInsertAmbiguityTest {
 		SqlExecuteException thrown = assertThrows(SqlExecuteException.class
 			, () -> db.insertKey("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "y", "Y"));
 
-		assertTrue(thrown.getMessage().contains("insertNoReturnKey"), thrown.getMessage());
+		assertTrue(thrown.getMessage().contains("insert を使って"), thrown.getMessage());
 
 		// 投げても、入ったものは入っている（INSERT 自体は成功している）
-		assertEquals(1, db.selectListOrThrow("SELECT * FROM amb_nokey WHERE code = ?", "y").size());
+		assertEquals(1, db.selectList("SELECT * FROM amb_nokey WHERE code = ?", "y").size());
 
 	}
 
@@ -255,6 +218,18 @@ class SelectInsertAmbiguityTest {
 
 		assertEquals("DB_999", thrown.getCode());
 		assertTrue(thrown.getMessage().contains("INSERT"), thrown.getMessage());
+
+	}
+
+	@Test
+	@SuppressWarnings("removal")
+	@DisplayName("D-193 insertNoReturnKey（非推奨）は件数を返し、失敗は例外")
+	void insertNoReturnKeyReturnsCount () {
+
+		DB db = DBUtil.getMainDB();
+
+		assertEquals(1, db.insertNoReturnKey("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "n", "N"));
+		assertThrows(DuplicateKeyException.class, () -> db.insertNoReturnKey("INSERT INTO amb_nokey (code, name) VALUES (?, ?)", "n", "N"));
 
 	}
 

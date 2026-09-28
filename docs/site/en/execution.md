@@ -59,7 +59,8 @@ post("/save", () -> new SaveExecutor());
 ```
 
 - You can add to the queue while it is running (`context.addExecutor(...)`)
-- Calling `cancel()` **does not stop anything on the spot**. Once `execute` returns, the rest is thrown away and `onCancel` is called
+- `cancel()` **leaves `execute` on the spot** (it throws `ExecutorCanceled`, which the framework catches). The remaining executors are thrown away and `onCancel` is called.
+  Call it inside a `try` with `catch (Exception e)` and it is caught there and the following lines run, so call it outside the `try` (in 1.x it only set a flag, and the following lines ran too)
 - `OPTIONS` is for preflight only, so **the queue is not run** (requirement F-W-19)
 
 ## What runs on which thread

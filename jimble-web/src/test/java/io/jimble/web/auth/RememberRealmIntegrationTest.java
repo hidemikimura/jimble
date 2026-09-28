@@ -94,7 +94,7 @@ class RememberRealmIntegrationTest {
 		originalConf = Conf.conf().config();
 		Conf.replace(ConfigFactory.parseString("session.store = \"none\"").withFallback(originalConf));
 
-		assertTrue(DBUtil.load(Conf.conf().config(), RememberRealmIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), RememberRealmIntegrationTest.class);
 
 		router = new Router();
 		router.get("/me", context -> { });
@@ -353,7 +353,7 @@ class RememberRealmIntegrationTest {
 		assertEquals("会員 有栖", restored.name(), "上げる前の記憶で、上げたあとに思い出せません");
 
 		Data row = db.select("SELECT realm FROM %s WHERE selector = ?"
-			.formatted(db.dialect().identifier(FrameworkTables.AUTH_REMEMBER)), selector);
+			.formatted(db.dialect().identifier(FrameworkTables.AUTH_REMEMBER)), selector).orElse(null);
 		assertEquals("", row.getString("realm"), "上げる前の記憶が種別なしになっていません");
 
 	}
@@ -416,7 +416,7 @@ class RememberRealmIntegrationTest {
 	private static int rows (String realm) {
 
 		Data row = DBUtil.getMainDB().select("SELECT count(*) as cnt FROM %s WHERE realm = ? AND user_id = ?"
-			.formatted(DBUtil.getMainDB().dialect().identifier(FrameworkTables.AUTH_REMEMBER)), realm, ID);
+			.formatted(DBUtil.getMainDB().dialect().identifier(FrameworkTables.AUTH_REMEMBER)), realm, ID).orElse(null);
 
 		return row == null ? -1 : row.getInt("cnt");
 
@@ -446,7 +446,7 @@ class RememberRealmIntegrationTest {
 			)%s""".formatted(table, mysql ? " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin" : ""));
 		db.execute(db.dialect().setTableCommentSql(name, "ログインの記憶:1"));
 
-		assertFalse(db.isError(), String.valueOf(db.getError()));
+		// 失敗は例外（2.0）
 
 	}
 

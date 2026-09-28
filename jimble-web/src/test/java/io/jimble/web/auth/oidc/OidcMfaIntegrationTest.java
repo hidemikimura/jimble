@@ -77,8 +77,7 @@ class OidcMfaIntegrationTest {
 			auth.mfa.secret_key = "0123456789abcdef0123456789abcdef"
 			""").withFallback(originalConf));
 
-		assertTrue(DBUtil.load(Conf.conf().config(), OidcMfaIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), OidcMfaIntegrationTest.class);
 
 	}
 

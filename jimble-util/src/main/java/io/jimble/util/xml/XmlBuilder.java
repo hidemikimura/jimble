@@ -20,15 +20,20 @@ public class XmlBuilder {
 	 *
 	 * @param  xmlData XML
 	 * @return               XML文字列
-	 * @throws Exception     例外
 	 */
-	public String build(XmlData xmlData) throws Exception {
+	public String build(XmlData xmlData){
 
-		try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
-			build(xmlData, byteArrayOutputStream);
-			return byteArrayOutputStream.toString(charset);
+		try {
+			try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
+				build(xmlData, byteArrayOutputStream);
+				return byteArrayOutputStream.toString(charset);
+			} catch (Exception ex) {
+				throw ex;
+			}
+
+	
 		} catch (Exception ex) {
-			throw ex;
+			throw io.jimble.util.internal.Unchecked.of("XML_001", "XML を書き出せませんでした", ex);
 		}
 
 	}
@@ -38,14 +43,19 @@ public class XmlBuilder {
 	 *
 	 * @param  xmlData XML
 	 * @param  outputFile    出力ファイル
-	 * @throws Exception     例外
 	 */
-	public void build(XmlData xmlData, File outputFile) throws Exception {
+	public void build(XmlData xmlData, File outputFile){
 
-		try (FileOutputStream fileOutputStream = new FileOutputStream(outputFile)) {
-			build(xmlData, fileOutputStream);
+		try {
+			try (FileOutputStream fileOutputStream = new FileOutputStream(outputFile)) {
+				build(xmlData, fileOutputStream);
+			} catch (Exception ex) {
+				throw ex;
+			}
+
+	
 		} catch (Exception ex) {
-			throw ex;
+			throw io.jimble.util.internal.Unchecked.of("XML_001", "XML を書き出せませんでした", ex);
 		}
 
 	}
@@ -55,9 +65,8 @@ public class XmlBuilder {
 	 *
 	 * @param  xmlData XML
 	 * @param  outputStream  出力ストリーム
-	 * @throws Exception     例外
 	 */
-	public void build(XmlData xmlData, OutputStream outputStream) throws Exception {
+	public void build(XmlData xmlData, OutputStream outputStream) {
 
 		build(xmlData, new OutputStreamWriter(outputStream, charset));
 
@@ -68,17 +77,22 @@ public class XmlBuilder {
 	 *
 	 * @param  xmlData      XML
 	 * @param  outputStreamWriter 出力ライター
-	 * @throws Exception          例外
 	 */
-	public void build(XmlData xmlData, Writer outputStreamWriter) throws Exception {
+	public void build(XmlData xmlData, Writer outputStreamWriter){
 
-		BufferedWriter bufferedWriter = new BufferedWriter(outputStreamWriter);
+		try {
+			BufferedWriter bufferedWriter = new BufferedWriter(outputStreamWriter);
 
-		bufferedWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+			bufferedWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
 
-		write(xmlData, bufferedWriter);
+			write(xmlData, bufferedWriter);
 
-		bufferedWriter.flush();
+			bufferedWriter.flush();
+
+	
+		} catch (Exception ex) {
+			throw io.jimble.util.internal.Unchecked.of("XML_001", "XML を書き出せませんでした", ex);
+		}
 
 	}
 
@@ -87,7 +101,6 @@ public class XmlBuilder {
 	 *
 	 * @param  xmlData      XML
 	 * @param  outputStreamWriter ライター
-	 * @throws Exception          例外
 	 */
 	private void write(XmlData xmlData, Writer outputStreamWriter) throws Exception {
 

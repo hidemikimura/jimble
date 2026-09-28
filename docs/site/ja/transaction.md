@@ -12,84 +12,11 @@ order: 3
 ```java snippet=transaction-mq
 ```
 
-## 使い分け
+`db.begin()` が返す `Tx` を try-with-resources で囲み、最後に `tx.commit()` を呼びます。
+**`commit()` を呼ばずに抜けたら巻き戻ります**（`return` でも例外でも）。
+上の例では、記事が入らなかったときに `return -1` で抜けるので、何も残りません。
 
-| メソッド | 何をするか |
-| --- | --- |
-| `beginTransaction()` | 始める。他で始まっていれば**合流する**（下の「入れ子」） |
-| `commit()` | 確定する。**トランザクションは続く** |
-| `commitEndTransaction()` | 確定して終わる |
-| `rollback()` | 戻す。トランザクションは続く |
-| `rollbackEndTransaction()` | 戻して終わる |
-| `close()` | 開いたままなら戻す |
-
-`commit()` と `commitEndTransaction()` の違いに注意してください。
-`commit()` は「ここまでを確定して、まだ続ける」です。
-移送元のコードでは `commit()` が中で終わらせていたため、
-**そこから先が黙って自動コミットになる**という穴がありました。jimble では直っています。
-
-## 入れ子（合流）
-
-外でトランザクションが始まっているところで `DBTransaction` を始めると、**新しくは始めず、外に合流します。**
-
-| 中でしたこと | どうなるか |
-| --- | --- |
-| `commit()` / `commitEndTransaction()` | 何もしない。確定させるのは外 |
-| `rollback()` / `rollbackEndTransaction()` | **外を巻き戻し専用にする** |
-| commit せずに閉じた（例外で抜けた） | **外を巻き戻し専用にする** |
-
-巻き戻し専用になった外の `commitEndTransaction()` は、全部を巻き戻して `CodeException`（`DB_005`）を投げます。
-外で続けたいときは、外で `rollback()` してから書き直します。
-
-> [!TRAP]
-> **1.4 までは、中の `rollback()` は黙って何もせず、外がそのままコミットしていました。**
-> 中で「失敗したので戻す」と書いたつもりの行が、外のコミットで入っていました。
-> また「合流しているか」を**作った瞬間にだけ**見ていたので、作ってから外が始まると、
-> 中の `commitEndTransaction()` が**外のトランザクションを終わらせていました**。
-
-## 畳み忘れ
-
-try-with-resources を使わずに `beginTransaction()` して、途中で `return` すると、
-ロールバックもされず接続もプールへ戻りません。
-
-jimble は**実行（`Context`）の終わりに拾います**。
-
-```
-ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックして閉じます: blog_example
-```
-
-黙って戻すと「入れたつもりが入っていない」が残るので、ERROR を出してからロールバックします。
-このログが出たら、囲み忘れです。
-
-**拾うのは `DBTransaction` を使ったときだけではありません。**
-`db.beginTransaction()` を直に呼んだときも同じです
-（コネクションを握っているのは `DB` のほうなので、そちらで見ています）。
-
-## 閉じ忘れた `DB`
-
-**ふつうの SQL は、`DB` を閉じ忘れても漏れません。**
-1文ごとにコネクションをプールへ返しているので、`DBUtil.getMainDB()` を
-使い捨てにする書き方でかまいません。
-
-**握ったまま抜ける道は2つだけ**で、どちらも実行の終わりに拾います。
-
-| 握るもの | いつ返るか |
-| --- | --- |
-| トランザクション中 | `commitEndTransaction()` / `rollbackEndTransaction()` / `close()` |
-| カーソル（`selectListWithFetcher`） | `db.close()` |
-
-```
-ERROR 閉じられていない DB が残っていました。閉じます: blog_example（selectListWithFetcher はカーソルなので、close() までコネクションを返しません）
-```
-
-> [!TRAP]
-> **拾うのは最後の砦です。**拾われた時点で ERROR が出ているので、
-> <b>ログが出たら直す</b>ものだと思ってください。
-> 実行が長いバッチでは、実行の終わりまで1本が握られたままになります。
-
-## 2.0 の形（1.5.0 から）
-
-**新しく書くならこちらを勧めます。**検査例外を投げず、`commit()` は確定して**終わります**。
+## 書き方は3つ
 
 ```java
 db.transaction(tx -> {
@@ -105,77 +32,74 @@ try (Tx tx = db.begin()) {            // 自分で確定したいとき
 }
 ```
 
-| | `Tx` | `DBTransaction` |
-| --- | --- | --- |
-| 確定して終わる | `commit()` | `commitEndTransaction()` |
-| 確定して続ける | `checkpoint()` | `commit()` |
-| 巻き戻して終わる | `rollback()` | `rollbackEndTransaction()` |
-| 失敗 | `TransactionException`（非検査。`getCode()` で `DB_004` など） | `CodeException`（検査） |
-| 2度目の `commit()` | 例外 | 何もしない |
+**ふつうは `db.transaction(...)` がいちばん短く書けます。**
+途中で抜けたいとき（上の `return -1` のような）や、確定を自分で決めたいときは `db.begin()` です。
 
-中身が検査例外を投げたら、巻き戻して `TransactionException`（`DB_006`）に包みます。
-入れ子のときの動き（合流・巻き戻し専用・`DB_005`）は下の「入れ子」と同じです。
-2.0 では `DBTransaction` と `db.beginTransaction()` などを消し、こちらだけにします。
+`transaction` と `transactionResult` で名前が分かれているのは、
+`tx -> db.update(...)` のような式のラムダが「値を返す」とも「返さない」とも読めて、
+同じ名前だと呼び分けられないためです。
 
-## 短く書く
+## `Tx` のメソッド
+
+| メソッド | 何をするか |
+| --- | --- |
+| `commit()` | 確定して**終わる** |
+| `checkpoint()` | ここまでを確定して、**続ける** |
+| `rollback()` | 巻き戻して終わる |
+| `close()` | 終わっていなければ巻き戻す（try-with-resources が呼びます） |
+
+失敗は `TransactionException`（非検査。`SqlExecuteException` の子）です。`getCode()` で `DB_004` などが取れます。
+
+**`commit()` と `rollback()` は1度だけです。**終わったあとにもう一度呼ぶと `IllegalStateException` になります。
+確定して続けたいなら `checkpoint()` を使います。`checkpoint()` のあとに書いた分は、`commit()` しなければ巻き戻ります。
+
+`db.transaction(...)` の中で `tx.commit()` / `tx.rollback()` を自分で呼んでもかまいません。そのときは、抜けたあとに何もしません。
+
+> [!NOTE]
+> 1.x の `DBTransaction` と、DB の `beginTransaction()` / `commit()` / `commitEndTransaction()` などは 2.0 で消しました。
+> `DBTransaction.commit()` は終わらせない確定だったので、そのあとに書いた分が `close()` で黙って巻き戻っていました。
+> 2.0 では、終わらせる確定が `commit()`、続ける確定が `checkpoint()` です（[2.0 への移行](./migrate-2)）。
+
+## 中で SQL が失敗したら
+
+**SQL の失敗は例外です**（[DB を使う](./db)）。受け止めなければ Tx から抜けて、全部巻き戻ります。
+途中まで入ることはありません。
+
+**受け止めて続けても、その Tx は確定できません。**
 
 ```java
-DBTransaction.transaction(db, transaction -> {
-	db.insert(...);
-	db.update(...);
-});
+db.transaction(tx -> {
+	db.insert(...);                  // 通った
+	try {
+		db.update(...);              // 一意制約に当たった
+	} catch (DuplicateKeyException e) {
+		// 受け止めて続ける
+	}
+	db.insert(...);                  // 通った
+});                                  // ← ここで TransactionException（DB_004）。全部巻き戻る
 ```
 
-始めて、渡した処理を走らせて、`commitEndTransaction()` まで済ませます。
-例外が出れば `close()` がロールバックします。
+トランザクションを始めてから1度でも SQL が失敗していたら、`commit()` は全部を巻き戻して
+`TransactionException`（`DB_004`）を投げます。**失敗のあとに成功する文があっても素通りしません。**
+`checkpoint()` も同じように断ります。
 
-## エラーが出ていたらコミットしません
+### 失敗を見て、別の道で書き直したいとき
 
-**jimble の DB はエラーを例外ではなく戻り値で返します**（[原則](./principles)）。
-つまり中の `db.update(...)` が `-1` を返しても、**処理は正常に終わったように見えます。**
-
-```java
-DBTransaction.transaction(db, transaction -> {
-	db.insert(...);          // 通った
-	db.update(...);          // -1。例外は出ない
-	db.insert(...);          // 通った
-});
-```
-
-**この形はコミットしません。**トランザクションの中で1度でもエラーが出ていたら、
-`commitEndTransaction()` はロールバックして `CodeException`（`DB_004`）を投げます。
-
-> [!TRAP]
-> **0.6.0 まではコミットしていました。**しかも失敗した文の中で枠組みが `rollback()` を呼ぶので、
-> **そこまでの文は巻き戻り、そこから先の文だけがコミットされる**という壊れ方でした。
-> 例外もログも出ないので、**データが半分だけ入ったことに誰も気づけません**。
-
-`db.isError()` は**直前の1文についてだけ**答えます。
-コミットしてよいかの判断はトランザクション全体を見ているので、
-**失敗のあとに成功する文が1つあっても素通りしません。**
-
-### エラーを見て、分岐して続けたいとき
-
-**いったん `rollback()` してから書き直します。**
+**その Tx は巻き戻して、新しい Tx で書き直します。**
 
 ```java
-db.beginTransaction();
-
-insert(...);
-db.commit();                 // ここまでは確定。トランザクションは続く
-
-update(...);                 // 失敗した
-
-if (db.isError()) {
-	db.rollback();           // 決着を付ける
-	insertFallback(...);     // 別の道で書き直す
+try {
+	db.transaction(tx -> {
+		insert(...);
+		update(...);                 // 一意制約に当たるかもしれない
+	});                              // 例外で抜けたので、ここで巻き戻っている
+} catch (DuplicateKeyException e) {
+	db.transaction(tx -> insertFallback(...));   // 新しい Tx で、別の道
 }
-
-db.commitEndTransaction();
 ```
 
-**`rollback()` はエラーの持ち越しも畳みます。**畳まないと、
-書き直したあとの `commit()` が「まだエラーが出ている」と言って断ります。
+外にもトランザクションがあるときは、中の Tx は外に合流しています（下の「入れ子」）。
+その場合は、外ごと書き直してください。
 
 > [!TRAP]
 > **失敗のあとの文が通るかどうかは、製品によって違います。**
@@ -187,11 +111,54 @@ db.commitEndTransaction();
 >
 > **どちらにも寄りかからないでください。**jimble が約束するのは
 > 「**コミットは拒まれ、1行も残らない**」ところまでです。
-> 失敗したら、**続けて書く前に `rollback()` してください**。
->
-> **0.6.x はこの違いを隠していました。**各文の `catch` がその場で `rollback()` を呼んでいたので、
-> **どちらの製品でも続けて書けているように見えて、実は前の文が全部消えていました**——
-> それが部分コミットの正体です。
+> 失敗を受け止めたら、続けて書かずに、その Tx を終わらせてください。
+
+## 中身が検査例外を投げたら
+
+`db.transaction(...)` / `transactionResult(...)` の中身は、検査例外を投げてもかまいません（`throws` は要りません）。
+**非検査例外はそのまま、検査例外は `TransactionException`（`DB_006`）に包んで**、巻き戻してから投げ直します。
+元の例外は `getCause().getCause()` にあります。
+
+## 入れ子（合流）
+
+すでにトランザクションが始まっている DB で `db.begin()`（や `db.transaction(...)`）を呼ぶと、
+**新しくは始めず、外に合流します。**合流しているかは `tx.isJoined()` で分かります。
+
+| 中でしたこと | どうなるか |
+| --- | --- |
+| `commit()` / `checkpoint()` | 何もしない。確定させるのは外 |
+| `rollback()` | **外を巻き戻し専用にする** |
+| commit せずに閉じた（例外で抜けた） | **外を巻き戻し専用にする** |
+
+巻き戻し専用になった外の `commit()` は、全部を巻き戻して `TransactionException`（`DB_005`）を投げます。
+**中の例外を外で受け止めて続けても、外は確定できません。**
+外を途中まで確定させることもできません（中の `checkpoint()` は何もしません）。
+
+## DB の行でロックする（`DBLock`）
+
+Redis が無い場所では、`DBLock` で「同じキーの処理を1つずつ」にできます。
+
+```java
+DBLock.create(db, "daily");            // キーの行を作る（あれば何もしない）。先に1回
+
+db.transaction(tx -> {
+	DBLock.lock(db, "daily");          // SELECT ... FOR UPDATE。トランザクションが終わるまで1つだけ
+	...
+});
+```
+
+**`DBLock.lock` はトランザクションの中で呼びます。**外で呼ぶと `IllegalStateException` です
+（`FOR UPDATE` の鍵は文の終わりで外れるので、外で取っても何も守りません）。
+
+- キーが無い（`create` していない）ときも `IllegalStateException` です
+- `create` / `lock` は戻り値がありません（`void`）。SQL の失敗は `SqlExecuteException` です
+- 解放は**トランザクションの終わり**です。明示的に外す口はありません
+
+> [!NOTE]
+> 1.x の `DBLock.lock` は `boolean` を返し、トランザクションの外で呼んでも `true` を返していました。
+> 何も守らないまま先へ進んでいたので、2.0 で例外にしました。
+
+Redis を使うロックは [キャッシュとロック](./cache) にあります。
 
 ## 外へ出すものと、DB に積むもの
 
@@ -203,17 +170,13 @@ db.commitEndTransaction();
 | **外へ出す**（SSE・メール送信・外部 API） | **コミットしたあと** | 戻せないので、先に流すと取り返しがつきません |
 
 ```java
-try (DBTransaction transaction = new DBTransaction(db)) {
+db.transaction(tx -> {
 
-	transaction.beginTransaction();
-
-	long id = db.insert(...);
+	long id = db.insertKey(...);
 
 	new NoticeExecutor().put(db, data);      // ← 中で積む（DB のキュー）
 
-	transaction.commitEndTransaction();
-
-}
+});
 
 PostFeedHandler.notifyNewPost(title);        // ← 外へ出すのはコミットしてから
 ```
@@ -229,3 +192,40 @@ PostFeedHandler.notifyNewPost(title);        // ← 外へ出すのはコミッ�
 > トランザクションの中で `put()` して、実際の送信は
 > [MQ](./mq) の `execute()` に書きます。こうすると、
 > <b>「どちらの中で呼ぶか」を考えなくてよくなります。</b>
+
+## 畳み忘れ
+
+try-with-resources を使わずに `Tx tx = db.begin()` として、`commit()` も `rollback()` もせずに途中で `return` すると、
+ロールバックもされず接続もプールへ戻りません。
+
+jimble は**実行（`Context`）の終わりに拾います**。
+
+```
+ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックして閉じます: blog_example
+```
+
+黙って戻すと「入れたつもりが入っていない」が残るので、ERROR を出してからロールバックします。
+このログが出たら、囲み忘れです。
+（見ているのは `DB` の側です。コネクションを握っているのは `DB` なので。）
+
+## 閉じ忘れた `DB`
+
+**ふつうの SQL は、`DB` を閉じ忘れても漏れません。**
+1文ごとにコネクションをプールへ返しているので、`DBUtil.getMainDB()` を
+使い捨てにする書き方でかまいません。
+
+**握ったまま抜ける道は2つだけ**で、どちらも実行の終わりに拾います。
+
+| 握るもの | いつ返るか |
+| --- | --- |
+| トランザクション中 | `tx.commit()` / `tx.rollback()` / `tx.close()` |
+| カーソル（`selectListWithFetcher`） | `db.close()` |
+
+```
+ERROR 閉じられていない DB が残っていました。閉じます: blog_example（selectListWithFetcher はカーソルなので、close() までコネクションを返しません）
+```
+
+> [!TRAP]
+> **拾うのは最後の砦です。**拾われた時点で ERROR が出ているので、
+> <b>ログが出たら直す</b>ものだと思ってください。
+> 実行が長いバッチでは、実行の終わりまで1本が握られたままになります。

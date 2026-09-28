@@ -17,7 +17,7 @@ import io.jimble.util.exception.CodeException;
  * ふつうは {@link DB#transaction(DB.TxBody)} のほうが短い。
  * </p>
  *
- * <h2>{@code DBTransaction} との違い</h2>
+ * <h2>1.x の {@code DBTransaction} との違い（2.0 で消した）</h2>
  * <ul>
  *   <li><b>{@link #commit()} は終わらせる。</b>終わらせない確定は {@link #checkpoint()} という別の名前にした——
  *       {@code DBTransaction.commit()} は終わらせないので、そのあとに書いた分が {@code close()} で黙って巻き戻っていた</li>
@@ -83,7 +83,7 @@ public final class Tx implements AutoCloseable {
 	 *
 	 * <p>
 	 * 中で1度でもエラーが出ていたら確定せず、巻き戻して {@code DB_004} の
-	 * {@link TransactionException} を投げる（{@code db.update(...)} が -1 を返しただけでも）。
+	 * {@link TransactionException} を投げる（中で SQL の失敗を catch して続けていても）。
 	 * 合流している場合は何もしない。
 	 * </p>
 	 *

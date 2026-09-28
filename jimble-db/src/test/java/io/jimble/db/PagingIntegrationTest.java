@@ -37,9 +37,7 @@ class PagingIntegrationTest {
 	static void setUp () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), PagingIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), PagingIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -25,36 +26,43 @@ class ValidationErrorsTest {
 
 		Data errors = rules.errors(null, req);
 		assertFalse(errors.isEmpty(), "エラーが出ていません");
-		assertEquals(rules.validate(null, req), errors);
+		assertEquals(rules.errors(null, req), errors);
 
 		Data all = Validator.errors(null, req, rules);
 		assertFalse(all.isEmpty());
-		assertEquals(Validator.validate(null, req, rules), all);
+		assertEquals(Validator.errors(null, req, rules), all);
 
 	}
 
 	@Test
-	@DisplayName("D-192 required() の列が送られてこなかったら1度だけ警告する（送られていれば言わない）")
-	void requiredMissingKeyWarns () {
+	@DisplayName("D-196 required() の列が送られてこなければ失敗（1.x は素通り、1.5 は警告）")
+	void requiredMissingKeyFails () {
 
-		java.util.List<String> warns = new java.util.ArrayList<>();
-		WarnOnce.reset();
-		Log.sink((logger, level, message, data, throwable) -> warns.add(message));
-		try {
-			ValidationRules rules = new ValidationRules()
-				.put(ValidationTest.Item.name, new ValidationRule().required());
+		ValidationRules rules = new ValidationRules()
+			.put(ValidationTest.Item.name, new ValidationRule().required());
 
-			assertTrue(rules.errors(null, new Data().putData(ValidationTest.Item.name, "x")).isEmpty());
-			assertTrue(warns.isEmpty(), warns.toString());
+		assertTrue(rules.errors(null, new Data().putData(ValidationTest.Item.name, "x")).isEmpty());
+		assertFalse(rules.errors(null, new Data()).isEmpty(), "キーが無いのに通っている");
 
-			assertTrue(rules.errors(null, new Data()).isEmpty(), "キーが無いのに失敗している（1.x は素通り）");
-			rules.errors(null, new Data());
-			assertEquals(1, warns.stream().filter(w -> w.contains("required()")).count(), warns.toString());
-			assertTrue(warns.getFirst().contains("name"), warns.getFirst());
-		} finally {
-			Log.resetSink();
-			WarnOnce.reset();
-		}
+	}
+
+	@Test
+	@DisplayName("D-196 validate は通らなければ 422 の ValidationException（errors() は一覧）")
+	void validateThrows422 () {
+
+		ValidationRules rules = new ValidationRules()
+			.put(ValidationTest.Item.name, new ValidationRule().required());
+
+		rules.validate(null, new Data().putData(ValidationTest.Item.name, "x"));     // 通る
+
+		ValidationException e = assertThrows(ValidationException.class, () -> rules.validate(null, new Data().putData(ValidationTest.Item.name, "")));
+		assertEquals(422, e.statusCode());
+		assertEquals(rules.errors(null, new Data().putData(ValidationTest.Item.name, "")), e.errors());
+
+		assertThrows(ValidationException.class, () -> Validator.validate(null, new Data(), rules));
+		ValidationException rows = assertThrows(ValidationException.class,
+			() -> rules.validate(null, java.util.List.of(new Data().putData(ValidationTest.Item.name, "x"), new Data())));
+		assertEquals(1, rows.errors().getDataList("rows").size());
 
 	}
 

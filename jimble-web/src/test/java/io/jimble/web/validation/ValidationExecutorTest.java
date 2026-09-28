@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -154,11 +155,8 @@ class ValidationExecutorTest {
 
 			assertFalse(executor.hasError());
 
-			try {
-				executor.execute(context);
-			} catch (Exception ex) {
-				throw new IllegalStateException(ex);
-			}
+			// 落ちたら cancel() でそこを抜ける（2.0。要件 D-196）
+			assertThrows(io.jimble.core.executor.ExecutorCanceled.class, () -> executor.execute(context));
 
 			assertTrue(executor.hasError());
 			assertEquals(List.of("入力してください", "50 文字以下で入力してください"),
@@ -188,11 +186,8 @@ class ValidationExecutorTest {
 		try (WebContext context = new WebContext(
 			new Fakes.FakeRequestSource("POST", "/items"), new Fakes.FakeResponseSink())) {
 
-			try {
-				executor.execute(context);
-			} catch (Exception ex) {
-				throw new IllegalStateException(ex);
-			}
+			// 落ちたら cancel() でそこを抜ける（2.0。要件 D-196）
+			assertThrows(io.jimble.core.executor.ExecutorCanceled.class, () -> executor.execute(context));
 
 			assertEquals(List.of("入力してください"), executor.errors().get("name"));
 
@@ -221,11 +216,8 @@ class ValidationExecutorTest {
 
 		try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
 
-			try {
-				executor.execute(context);
-			} catch (Exception ex) {
-				throw new IllegalStateException(ex);
-			}
+			// 落ちたら cancel() でそこを抜ける（2.0。要件 D-196）
+			assertThrows(io.jimble.core.executor.ExecutorCanceled.class, () -> executor.execute(context));
 
 			try {
 				executor.onCancel(context);

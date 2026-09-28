@@ -429,6 +429,7 @@ public final class Response extends Data {
 	public Response json (Data data) {
 
 		this.isResponseStarted = true;
+		claimBody("json");
 		this.isResponseJson = true;
 		putAllData(data);
 		return this;
@@ -446,6 +447,7 @@ public final class Response extends Data {
 	public Response json (String key, Object value) {
 
 		this.isResponseStarted = true;
+		claimBody("json");
 		this.isResponseJson = true;
 		putData(key, value);
 		return this;
@@ -462,6 +464,7 @@ public final class Response extends Data {
 	public Response json (IColumn column, Object value) {
 
 		this.isResponseStarted = true;
+		claimBody("json");
 		this.isResponseJson = true;
 		putData(column, value);
 		return this;
@@ -497,6 +500,7 @@ public final class Response extends Data {
 	 */
 	public Response addJsonL (Data json) {
 
+		claimBody("jsonl");
 		this.isResponseJsonL = true;
 		this.responseJsonL.add(json);
 		return this;
@@ -511,6 +515,7 @@ public final class Response extends Data {
 	 */
 	public Response jsonL (List<Data> jsonL) {
 
+		claimBody("jsonl");
 		this.isResponseJsonL = true;
 		this.responseJsonL = jsonL;
 		return this;
@@ -533,6 +538,7 @@ public final class Response extends Data {
 	public Response text (String text) {
 
 		this.isResponseStarted = true;
+		claimBody("text");
 		this.responseText = text;
 		return this;
 
@@ -554,6 +560,7 @@ public final class Response extends Data {
 	public Response modelAndView (ModelAndView modelAndView) {
 
 		this.isResponseStarted = true;
+		claimBody("view");
 		this.modelAndViewResponse = modelAndView;
 		return this;
 
@@ -631,6 +638,7 @@ public final class Response extends Data {
 
 		code(302);
 		this.isResponseStarted = true;
+		claimBody("redirect");
 		this.redirectResponse = redirectResponse;
 		return this;
 
@@ -654,6 +662,7 @@ public final class Response extends Data {
 	public Response download (File fileResponse) {
 
 		this.isResponseStarted = true;
+		claimBody("download");
 		this.downloadFileResponse = fileResponse;
 		return this;
 
@@ -669,6 +678,7 @@ public final class Response extends Data {
 	public Response download (File fileResponse, String fileName) {
 
 		this.isResponseStarted = true;
+		claimBody("download");
 		this.downloadFileResponse = fileResponse;
 		this.downloadFileName = fileName;
 		return this;
@@ -781,6 +791,7 @@ public final class Response extends Data {
 	public Response cache (CacheData cacheResponse) {
 
 		this.isResponseStarted = true;
+		claimBody("cache");
 		this.cacheResponse = cacheResponse;
 		return this;
 
@@ -791,45 +802,24 @@ public final class Response extends Data {
 
 	// region レスポンスヘッダ
 
+	/* 積んだ返し方（json / jsonl / text / cache / view / redirect / download） */
+	private String bodyKind = null;
+
 	/*
-	 * 返し方が2つ以上積まれていたら知らせる（要件 D-192）。
+	 * 2種類目の返し方を積んだら例外にする（2.0。要件 D-196）。
 	 *
-	 * send() は JSON → JSONL → 文字 → キャッシュ → 画面 → リダイレクト → ダウンロード の順に
-	 * <b>最初の1つだけ</b>を返し、残りは黙って捨てる。json(...) のあとに redirect(...) すると
-	 * 「本文つきの 302、Location なし」になっていた。2.0 では2つ目を積んだ時点で例外にする。
+	 * send() は <b>最初の1つだけ</b>を返し、残りを黙って捨てていた——json(...) のあとに redirect(...) すると
+	 * 「本文つきの 302、Location なし」になった（1.5 は警告）。同じ種類を重ねるのはよい（json(a).json(b)）。
 	 */
-	private void warnConflictingBodies () {
+	private void claimBody (String kind) {
 
-		List<String> kinds = new ArrayList<>();
-		if (isResponseJson) {
-			kinds.add("json");
-		}
-		if (isResponseJsonL) {
-			kinds.add("jsonl");
-		}
-		if (responseText != null) {
-			kinds.add("text");
-		}
-		if (cacheResponse != null) {
-			kinds.add("cache");
-		}
-		if (modelAndViewResponse != null) {
-			kinds.add("view");
-		}
-		if (redirectResponse != null) {
-			kinds.add("redirect");
-		}
-		if (downloadFileResponse != null) {
-			kinds.add("download");
-		}
-
-		if (kinds.size() > 1) {
-			io.jimble.util.internal.WarnOnce.warn("response.conflicting-bodies",
-				"返し方が2つ以上積まれています: " + kinds + "。返るのは " + kinds.getFirst()
-					+ " だけで、残りは捨てられます（" + request.method() + " " + request.path() + "）。"
-					+ "1つにしてください（2.0 では2つ目を積んだ時点で例外になります）"
+		if (bodyKind != null && !bodyKind.equals(kind)) {
+			throw new IllegalStateException(
+				"返し方は1つだけです（もう " + bodyKind + " を積んでいるところに " + kind + " を積もうとしました）。"
+					+ "送れるのは1つなので、どちらかにしてください"
 					+ io.jimble.util.internal.Docs.see("request-response"));
 		}
+		bodyKind = kind;
 
 	}
 
@@ -842,11 +832,11 @@ public final class Response extends Data {
 	 */
 	public Response setResponseHeader (String name, String value) {
 
+		// 送ったあとは届かない。例外にする（2.0。1.x は黙って捨て、1.5 は警告。要件 D-196）
 		if (sink.isSent()) {
-			io.jimble.util.internal.WarnOnce.warn("response.header-after-send",
-				"送ったあとにヘッダ " + name + " を足しても届きません（send() より前に書いてください）"
+			throw new IllegalStateException(
+				"送ったあとにヘッダ " + name + " は足せません（届きません）。send() より前に書いてください"
 					+ io.jimble.util.internal.Docs.see("request-response"));
-			return this;
 		}
 
 		if (HEADER_CACHE_CONTROL.equalsIgnoreCase(name)) {
@@ -1182,7 +1172,6 @@ public final class Response extends Data {
 			return this;
 		}
 
-		warnConflictingBodies();
 
 		flushCookies();
 		applyDefaultCacheControl();

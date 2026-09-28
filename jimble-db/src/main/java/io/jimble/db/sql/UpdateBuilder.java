@@ -69,7 +69,7 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	 *
 	 * <p>
 	 * キーは<b>このテーブルの列名</b>、値はそのまま入れる。{@code set(Data)} と違って
-	 * 包む形（{@code {"set": {"テーブル名": ...}}}）は要らず、<b>文字列 {@code "now()"} も変えない</b>
+	 * 包む形（{@code {"set": {"テーブル名": ...}}}）は要らない
 	 * （現在時刻は {@code Dsl.now()} を値に入れる）。値が {@code Data} / {@code Map}（入れ子）なら例外——
 	 * 結果の Data をそのまま渡して、テーブル名のキーを列だと思って入れる事故を止める。
 	 * </p>
@@ -95,44 +95,60 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	}
 
 	/**
-	 * VALUE句
+	 * {@code set} 句（リクエストの JSON から組む）
 	 *
-	 * @param data data JSON { set: { table_name: { column_name: value } } }
+	 * <p>
+	 * 形は {@code {"set": {"テーブル名": {"列名": 値}}}}。
+	 * <b>包むキーが無い・このテーブルの分が無い空でない Data は例外</b>（2.0。要件 D-194）——
+	 * 1.x は黙って何もしなかった。平らな行なら {@link #setRow(Data)}。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>値はそのまま入れる。</b>1.x は文字列 {@code "now()"} を SQL の {@code NOW()} に変えていた
+	 * （利用者の入力 {@code "now()"} も現在時刻になった）。現在時刻は {@code Dsl.now()} を値に入れる。
+	 * </p>
+	 *
+	 * @param data {@code {"set": {"テーブル名": {"列名": 値}}}}
 	 * @return  UpdateBuilder
+	 * @throws SqlBuildException	包むキーかテーブルの分が無い
 	 */
 	public UpdateBuilder set (Data data) {
 
-		if (!data.containsKey("set")) {
-			if (!data.isEmpty()) {
-				io.jimble.util.internal.WarnOnce.warn("sql.set-data-unwrapped",
-					"set(Data) は {\"set\": {\"テーブル名\": {列: 値}}} の形を読みます。"
-						+ "\"set\" キーが無いので何もしませんでした（平らな行なら setRow(Data) を使ってください）"
-						+ io.jimble.util.internal.Docs.see("sql"));
+		return setFrom(data, true);
+
+	}
+
+	/**
+	 * {@code set} 句を Data から読む
+	 *
+	 * @param data		Data
+	 * @param strict	包むキーが無ければ例外にするか（{@code apply} は false）
+	 * @return	UpdateBuilder
+	 */
+	private UpdateBuilder setFrom (Data data, boolean strict) {
+
+		if (strict) {
+			requireWrapped(data, "set", "set(Data)", "setRow(Data)");
+		}
+
+		if (data == null || !data.containsKey("set")) {
+			return this;
+		}
+
+		Data wrapped = data.getData("set");
+
+		if (!wrapped.containsKey(table.name())) {
+			if (strict && !wrapped.isEmpty()) {
+				throw new SqlBuildException(
+					"set(Data) の \"set\" に、このテーブル（" + table.name() + "）の分がありません（キー: " + wrapped.keySet() + "）");
 			}
 			return this;
 		}
-		Data setData = data.getData("set");
 
-		if (!setData.containsKey(table.name())) {
-			return this;
-		}
-		Data tableData = setData.getDataOptional(table.name());
+		Data tableData = wrapped.getDataOptional(table.name());
 
 		for (String columnName : tableData.keySet()) {
-			Object v = tableData.get(columnName);
-			if (v instanceof String stringValue) {
-				if ("now()".equals(stringValue)) {
-					io.jimble.util.internal.WarnOnce.warn("sql.now-string",
-						"set(Data) は文字列 \"now()\" を SQL の NOW() に変えます——利用者の入力 \"now()\" も現在時刻になります。"
-							+ "現在時刻は Dsl.now() で渡してください（2.0 ではこの変換をやめ、ただの文字列として入れます）"
-							+ io.jimble.util.internal.Docs.see("sql"));
-					set(new TemporaryColumn(table, columnName), Dsl.now());
-				} else {
-					set(new TemporaryColumn(table, columnName), stringValue);
-				}
-			} else {
-				set(new TemporaryColumn(table, columnName), v);
-			}
+			set(new TemporaryColumn(table, columnName), tableData.get(columnName));
 		}
 
 		return this;
@@ -202,11 +218,11 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	 */
 	public UpdateBuilder where (Data data) {
 
-		List<IWhere> whereList = whereList(data);
-		if (whereList != null) {
-			for (IWhere w : whereList) {
-				where(w);
-			}
+		// "where" キーの無い空でない Data は例外（1.x は条件が付かずに全件。要件 D-194）
+		requireWrapped(data, "where", "where(Data)", null);
+
+		for (IWhere w : whereList(data)) {
+			where(w);
 		}
 
 		return this;
@@ -305,8 +321,11 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	@Override
 	public UpdateBuilder apply(Data data) {
 
-		set(data);
-		where(data);
+		// まとめて読むので、無い句は無いまま（set(Data) の「包むキーが無ければ例外」は通さない）
+		setFrom(data, false);
+		for (IWhere w : whereList(data)) {
+			where(w);
+		}
 		return this;
 
 	}

@@ -47,9 +47,7 @@ class DslIntegrationTest {
 	static void setUp () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), DslIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), DslIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 
@@ -118,10 +116,9 @@ class DslIntegrationTest {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			Data row = db.select(builder);
+			Data row = db.select(builder).orElse(null);
 
-			assertNotNull(row, () -> "SQL が流れませんでした: " + builder.sql(db.dialect())
-				+ " / " + db.getError());
+			assertNotNull(row, () -> "SQL が流れませんでした: " + builder.sql(db.dialect()));
 
 			return row;
 
@@ -311,7 +308,7 @@ class DslIntegrationTest {
 				.from(DslSchema.Item.instance())
 				.where(Dsl.regexp(DslSchema.Item.name, "^[A-Z]+$")));
 
-			assertNotNull(rows, () -> "SQL が流れませんでした: " + db.getError());
+			assertNotNull(rows, "SQL が流れませんでした");
 			assertEquals(1, rows.size(), rows.toString());
 
 		}
@@ -333,9 +330,9 @@ class DslIntegrationTest {
 					Dsl.countDistinct(DslSchema.Item.group_id).as("groups")
 					, Dsl.groupConcat(DslSchema.Item.amount, "/").as("amounts")
 					, Dsl.stddev(DslSchema.Item.amount).as("sd"))
-				.from(DslSchema.Item.instance()));
+				.from(DslSchema.Item.instance())).orElse(null);
 
-			assertNotNull(row, () -> "SQL が流れませんでした: " + db.getError());
+			assertNotNull(row, "SQL が流れませんでした");
 
 			assertEquals(2, row.getInt("groups"));
 
@@ -370,7 +367,7 @@ class DslIntegrationTest {
 				.from(DslSchema.Item.instance())
 				.orderBy(DslSchema.Item.amount.asc()));
 
-			assertNotNull(rows, () -> "SQL が流れませんでした: " + db.getError());
+			assertNotNull(rows, "SQL が流れませんでした");
 			assertEquals(3, rows.size());
 
 			assertEquals(0, rows.get(0).getInt("prev"), "1行目に前の行は無い");
@@ -420,7 +417,7 @@ class DslIntegrationTest {
 				.from(DslSchema.Item.instance())
 				.orderBy(DslSchema.Item.amount.asc()));
 
-			assertNotNull(rows, () -> "SQL が流れませんでした: " + db.getError());
+			assertNotNull(rows, "SQL が流れませんでした");
 			assertEquals(3, rows.size());
 
 			// amount = 10 / 20 / 30 の順

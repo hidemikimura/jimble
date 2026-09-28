@@ -187,6 +187,7 @@ class ContextTest {
 				public void execute (TestContext ctx) {
 					log.add("canceling");
 					cancel();
+					log.add("after cancel");            // 2.0 は cancel() で抜けるので、ここは走らない
 				}
 
 				@Override
@@ -199,7 +200,7 @@ class ContextTest {
 			context.addExecutor(recorder(log, "never"));
 
 			Executor<TestContext> executor = context.pollExecutor();
-			executor.execute(context);
+			assertThrows(io.jimble.core.executor.ExecutorCanceled.class, () -> executor.execute(context));
 
 			assertTrue(executor.isCanceled());
 			context.clearExecutors();

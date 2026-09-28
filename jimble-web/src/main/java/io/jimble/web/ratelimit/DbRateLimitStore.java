@@ -41,7 +41,6 @@ public final class DbRateLimitStore implements RateLimitStore {
 	 * {@inheritDoc}
 	 */
 	@Override
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public RateLimitResult consume (String key, long limit, Duration duration) throws Exception {
 
 		initialize();
@@ -52,13 +51,11 @@ public final class DbRateLimitStore implements RateLimitStore {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			db.beginTransaction();
-
-			try {
+			return db.transactionResult(tx -> {
 
 				Data row = db.select(
 					"SELECT tokens, updated_at FROM %s WHERE rate_key = ? FOR UPDATE".formatted(TABLE)
-					, hash);
+					, hash).orElse(null);
 
 				double tokens = limit;
 
@@ -87,16 +84,9 @@ public final class DbRateLimitStore implements RateLimitStore {
 					+ Sqls.upsert(db.dialect(), List.of("rate_key"), "tokens", "updated_at")
 					, hash, tokens, now);
 
-				db.commitEndTransaction();
-
 				return result;
 
-			} catch (Exception ex) {
-
-				db.rollbackEndTransaction();
-				throw ex;
-
-			}
+			});
 
 		}
 

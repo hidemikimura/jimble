@@ -15,6 +15,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -134,34 +135,23 @@ class DsonTest {
 	}
 
 	@Test
-	@DisplayName("壊れた JSON は黙って通ることがある（落とし穴）")
+	@DisplayName("D-195 壊れた JSON は JsonParseException（1.x は黙って null か、途中までの値）")
 	void decodeBroken () {
 
-		/*
-		 * 移送元からの挙動をそのまま記録しておく。
-		 *
-		 * <b>途中で切れた JSON が、例外にもならず、部分的な結果になる。</b>
-		 * 気づかずに先へ進むので、要件 NF-D-04（落とし穴のページ）に載せる。
-		 * Dson 自体を厳しくするのは影響範囲が広いので別途。
-		 */
+		assertThrows(JsonParseException.class, () -> Dson.decodes("これは JSON ではない", Data.class));
+		assertThrows(JsonParseException.class, () -> Dson.decodes("{", Data.class), "閉じていないオブジェクトが空の Data になっている");
+		assertThrows(JsonParseException.class, () -> Dson.decodes("[1,2", Data.class), "閉じていない配列がそこまでの要素になっている");
+		assertThrows(JsonParseException.class, () -> Dson.decodes("{\"a\":1} x", Data.class), "後ろの余分なものを捨てている");
 
-		// JSON ですらないものは null
-		assertNull(Dson.decodes("これは JSON ではない", Data.class));
+		// 空と null は「何も無い」（例外にしない）
 		assertNull(Dson.decodes("", Data.class));
 		assertNull(Dson.decodes("null", Data.class));
 
-		// 閉じていないオブジェクトは「空の Data」になる
-		Data truncatedObject = Dson.decodes("{", Data.class);
-		assertNotNull(truncatedObject);
-		assertTrue(truncatedObject.isEmpty());
-
-		// 値が無くても通る
+		/*
+		 * <b>ここは残る落とし穴</b>：読み手は寛容なので、括弧が閉じていれば
+		 * 値の無い "a": のような文法の誤りは通る。形（括弧・余分なもの）だけを見ている。
+		 */
 		assertNotNull(Dson.decodes("{\"a\":}", Data.class));
-
-		// 閉じていない配列は、そこまでの要素が返る
-		Data truncatedArray = Dson.decodes("[1,2", Data.class);
-		assertNotNull(truncatedArray);
-		assertEquals(2, truncatedArray.size());
 
 	}
 

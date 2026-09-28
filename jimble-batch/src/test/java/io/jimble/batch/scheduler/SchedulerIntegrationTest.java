@@ -113,7 +113,7 @@ class SchedulerIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), SchedulerIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), SchedulerIntegrationTest.class);
 
 		BatchTables.install(DBUtil.getMainDB());
 		SchedulerQueue.queue().install();
@@ -137,7 +137,7 @@ class SchedulerIntegrationTest {
 		db.execute("TRUNCATE TABLE batch_master");
 		db.execute("TRUNCATE TABLE batch_history");
 		db.execute("TRUNCATE TABLE batch_execute_info");
-		db.execute("TRUNCATE TABLE `%s`".formatted(SchedulerQueue.name()));
+		db.execute("TRUNCATE TABLE %s".formatted(db.dialect().identifier(SchedulerQueue.name())));
 
 		BatchRegistry.clear();
 		MqRegistry.clear();
@@ -343,7 +343,7 @@ class SchedulerIntegrationTest {
 
 		Data history = DBUtil.getMainDB().select(
 			"SELECT id FROM batch_history WHERE class_name = ? ORDER BY id DESC LIMIT 1"
-			, ManualBatch.class.getName());
+			, ManualBatch.class.getName()).orElse(null);
 
 		assertNotNull(history);
 

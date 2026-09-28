@@ -304,7 +304,7 @@ public final class Mfa {
 			 * 使わない表が生える。無ければ 0 でよい（select が落ちる）。
 			 */
 			Data row = db.select("SELECT COUNT(*) AS cnt FROM %s WHERE activated_at > 0"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)));
+				.formatted(table(db, FrameworkTables.AUTH_MFA))).orElse(null);
 
 			return row == null ? 0 : row.getLong("cnt");
 
@@ -622,7 +622,7 @@ public final class Mfa {
 	private static int remainingRecoveryCodes (DB db, String realm, long userId) {
 
 		Data row = db.select("SELECT count(*) as cnt FROM %s WHERE realm = ? AND user_id = ?"
-			.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
+			.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -873,7 +873,7 @@ public final class Mfa {
 
 		try (DB db = DBUtil.getMainDB()) {
 			return db.select("SELECT secret, activated_at, last_counter FROM %s WHERE realm = ? AND user_id = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId);
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId).orElse(null);
 		} catch (Exception cause) {
 			/*
 			 * <b>ここで false を返して「コードが違います」にしない。</b>

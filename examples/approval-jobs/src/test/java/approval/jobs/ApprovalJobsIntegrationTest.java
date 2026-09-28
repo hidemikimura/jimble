@@ -192,7 +192,7 @@ class ApprovalJobsIntegrationTest {
 
 		Data master = DBUtil.getMainDB().select(
 			"SELECT cron, default_cron FROM batch_master WHERE class_name = ?"
-			, ReminderBatch.class.getName());
+			, ReminderBatch.class.getName()).orElse(null);
 
 		/*
 		 * 列が2つある。
@@ -618,7 +618,7 @@ class ApprovalJobsIntegrationTest {
 
 		return DBUtil.getMainDB().select(
 			"SELECT * FROM batch_history WHERE class_name = ? ORDER BY id DESC LIMIT 1"
-			, batchClass.getName());
+			, batchClass.getName()).orElse(null);
 
 	}
 
@@ -633,7 +633,7 @@ class ApprovalJobsIntegrationTest {
 		DB db = DBUtil.getMainDB();
 
 		return db.select("SELECT * FROM %s WHERE id = ?"
-			.formatted(db.dialect().identifier(JobsQueue.NOTICE)), id);
+			.formatted(db.dialect().identifier(JobsQueue.NOTICE)), id).orElse(null);
 
 	}
 
@@ -736,7 +736,7 @@ class ApprovalJobsIntegrationTest {
 	 */
 	private static int count (String sql) {
 
-		Data row = DBUtil.getMainDB().select(sql);
+		Data row = DBUtil.getMainDB().select(sql).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 

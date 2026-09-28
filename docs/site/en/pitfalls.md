@@ -59,28 +59,18 @@ Also, **adding a `before` after the routes are settled throws.**
 That is so "I added it and it does nothing" never gets through in silence.
 Keep route definitions entirely inside the controller's initializer block.
 
-## Reading straight off request() silently gives you nothing
+## A value that was never sent goes into the DB as null
 
-**Symptom**: you are posting a form or JSON, but no value comes back. No exception.
+**Symptom**: it fails with `Column 'title' cannot be null`. The form has the field.
 
-**Cause**: `Request` is a `Data` too, so this is writable:
-
-```java
-context.request().getString("title")   // compiles. returns null
-```
-
-The `Request` object itself holds neither the body nor the query string.
-
-**What to do**: go through `bodyAll()` (or `bodyJson()` and friends when you want to
-pin down where the value came from).
+**Cause**: `getString` on a missing key is `null` (not an exception).
 
 ```java
 Data input = context.request().bodyAll();
-String title = input.getString("title");
+String title = input.getString("title");   // null if it was not sent
 ```
 
-`getString` on a missing key is `null`. **Put that into a NOT NULL column and you get
-`Column 'title' cannot be null`.**
+**Fix**: run [validation](./validation) before you read it. `required()` also fails when the key is missing.
 
 ## The session was not saved
 
@@ -90,6 +80,8 @@ String title = input.getString("title");
 
 ```java snippet=session-save
 ```
+
+Change it with `session().put(...)`. `session().data()` is a read-only copy; writing to it throws.
 
 ## You cannot get at the select result
 
@@ -102,33 +94,27 @@ String title = input.getString("title");
 
 Look it up with `Column` and you cannot get it wrong.
 
-## You do not notice the DB error
+## Catching a DB failure inside a transaction means it cannot commit
 
-**Symptom**: zero rows when zero is impossible. Or an NPE.
+**Symptom**: `tx.commit()` fails with `TransactionException` (`DB_004`) and nothing is saved.
 
-**Cause**: DB errors are return values, not exceptions. `select` gives `null`, the update
-family gives `-1`.
+**Cause**: a DB failure is a `SqlExecuteException`. Catch it inside a transaction and carry on, and
+**that Tx can no longer commit**. `commit()` refuses and rolls everything back.
+
+**Fix**: the only failure worth branching on is usually a unique violation. Catch just
+`DuplicateKeyException`, **outside the transaction**. Let everything else fly up
+(it becomes a 500, and the transaction rolls back).
 
 ```java snippet=db-error
 ```
 
-## The transaction did not carry on
-
-**Symptom**: an update made after `commit()` does not go away when you roll back.
-
-**Cause**: this one is about the code this was ported from. Its `commit()` ended the
-transaction, so everything past that point ran in autocommit.
-In jimble, `commit()` does not end it. `commitEndTransaction()` is what ends it.
-
-**When you read code you brought over, check what comes after each `commit()`.**
-
 ## "A transaction was left neither committed nor rolled back"
 
 ```
-ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックします
+ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックして閉じます: main
 ```
 
-**Cause**: you called `beginTransaction()` without wrapping it in try-with-resources,
+**Cause**: you called `db.begin()` without wrapping it in try-with-resources,
 and then returned partway through.
 
 **Fix**: wrap it. jimble picks it up at the end of the execution and rolls it back,
@@ -160,11 +146,8 @@ public final class Bootstrap {
 
 		Migration.install();                                  // before DBUtil.load
 
-		// false when it could not connect. Ignore it and you fall over later
-		// with an exception that says nothing about the DB
-		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
-			throw new IllegalStateException("could not load the DB");
-		}
+		// if it cannot connect, SqlExecuteException (DB_007) stops the startup
+		DBUtil.load(Conf.conf().config(), Bootstrap.class);
 
 		BatchTables.install(DBUtil.getMainDB());
 		new MqQueue(NoticeExecutor.QUEUE_NAME).install();
@@ -305,3 +288,14 @@ Some things pass on Gradle 8 and break on 9.
 | `"...".formatted(...)` | A Java 15 method. From a 9.7 Kotlin script it **cannot be resolved**. Use a string template |
 
 **Run your build script at least once on the version you are actually going to use.**
+
+## Traps that 2.0 removed
+
+These 1.x traps became **a compile error or an exception** in 2.0. See [Moving to 2.0](./migrate-2) for details.
+
+- `context.request().getString("x")` silently returns `null` → `Request` is no longer a `Data`; compile error
+- Missing `select`'s `null` or the update family's `-1` → a failure is a `SqlExecuteException`
+- Throwing away the return value of `DBUtil.load(...)` and carrying on without a connection → an exception stops the startup
+- The code you ported from and jimble meant different things by `commit()` → `tx.commit()` commits and ends. Use `tx.checkpoint()` to carry on
+- `session().data().put(...)` is never saved → `UnsupportedOperationException`
+- `required()` lets through a field whose key was never sent → it fails

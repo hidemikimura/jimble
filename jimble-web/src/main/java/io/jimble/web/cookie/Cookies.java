@@ -320,30 +320,6 @@ public final class Cookies {
 	 * 書き込む
 	 *
 	 * <p>
-	 * <b>値は署名しない。</b>属性を細かく決めたいときに使う。
-	 * 署名が要るなら {@link #sign(String)} を通してから渡すこと。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>名前からは署名するかどうかが分からない</b>——{@code put(name, value)} は署名し、こちらはしない。
-	 * 署名を使っていると、書いた Cookie を次のリクエストの {@code get} が読めない。
-	 * {@link #putSigned(Cookie)} か {@link #putUnsigned(Cookie)} を使うこと（2.0 で消す。要件 D-191）。
-	 * </p>
-	 *
-	 * @param cookie	Cookie
-	 * @deprecated {@link #putSigned(Cookie)} か {@link #putUnsigned(Cookie)} を使う
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void put (Cookie cookie) {
-
-		put(cookie, cookie.value());
-
-	}
-
-	/**
-	 * 書き込む
-	 *
-	 * <p>
 	 * <b>書いた値はこのリクエストの中で読み返せる</b>（{@link #get(String)}）。
 	 * 受信した Cookie しか見えないと、同じリクエストで発行した CSRF トークンを
 	 * 読み直すたびに新しいものが出てしまう。
@@ -354,9 +330,10 @@ public final class Cookies {
 	 */
 	public void put (Cookie cookie, String plainValue) {
 
+		// 送ったあとは届かない。例外にする（2.0。1.x は黙って捨て、1.5 は警告。要件 D-196）
 		if (flushed) {
-			io.jimble.util.internal.WarnOnce.warn("cookie.put-after-send",
-				"応答を送ったあとに Cookie " + cookie.name() + " を書いても届きません（send() より前に書いてください）"
+			throw new IllegalStateException(
+				"応答を送ったあとに Cookie " + cookie.name() + " は書けません（届きません）。send() より前に書いてください"
 					+ io.jimble.util.internal.Docs.see("session-security"));
 		}
 
@@ -377,7 +354,7 @@ public final class Cookies {
 	 */
 	public void remove (String name) {
 
-		put(CookieConf.create(name, null, Cookie.MAX_AGE_DELETE));
+		putUnsigned(CookieConf.create(name, null, Cookie.MAX_AGE_DELETE));
 
 	}
 

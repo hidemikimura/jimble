@@ -7,6 +7,7 @@ import db.approval_data_example.table.notice.Notice;
 import db.approval_data_example.table.request.Request;
 
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.TransactionException;
 import io.jimble.db.Tx;
 import io.jimble.db.sql.SQL;
@@ -69,7 +70,7 @@ public final class ApproveController {
 			Data request = db.select(SQL.select()
 				.from(Request.instance())
 				.where(Request.id.eq(id))
-				.forUpdate());
+				.forUpdate()).orElse(null);
 
 			if (request == null) {
 				throw new HttpException(404, "申請がありません: " + id);
@@ -83,11 +84,7 @@ public final class ApproveController {
 				.set(Request.status, "approved")
 				.set(Request.decided_by, by)
 				.set(Request.decided_at, Dsl.now())
-				.where(Request.id.eq(id)));
-
-			if (db.isError()) {
-				throw new HttpException(500, "更新できませんでした");
-			}
+				.where(Request.id.eq(id)));        // 失敗は例外（抜けたら巻き戻る）
 
 			db.insert(SQL.insert(Notice.instance())
 				.value(Notice.request_id, id)
@@ -95,11 +92,7 @@ public final class ApproveController {
 				.value(Notice.kind, "approved")
 				.value(Notice.created_at, Dsl.now()));
 
-			if (db.isError()) {
-				throw new HttpException(500, "通知を作れませんでした");
-			}
-
-			tx.commit();       // 確定して終わる（中でエラーが出ていたら TransactionException）
+			tx.commit();       // 確定して終わる
 
 		} catch (TransactionException ex) {
 
@@ -137,15 +130,15 @@ public final class ApproveController {
 
 		DB db = ApprovalDataAuditExample.db();
 
-		db.insert(SQL.insert(AuditLog.instance())
-			.value(AuditLog.staff_id, staffId)
-			.value(AuditLog.action, action)
-			.value(AuditLog.target, target)
-			.value(AuditLog.created_at, Dsl.now()));
-
-		if (db.isError()) {
+		try {
+			db.insert(SQL.insert(AuditLog.instance())
+				.value(AuditLog.staff_id, staffId)
+				.value(AuditLog.action, action)
+				.value(AuditLog.target, target)
+				.value(AuditLog.created_at, Dsl.now()));
+		} catch (SqlExecuteException ex) {
 			// 監査が書けなくても業務は止めない。ただし黙らない
-			Log.error("監査ログを書けませんでした: %s / %s".formatted(action, String.valueOf(db.getError())));
+			Log.error(ex, "監査ログを書けませんでした: %s".formatted(action));
 		}
 
 	}
@@ -176,7 +169,7 @@ public final class ApproveController {
 	 * <p>
 	 * <b>SQL は全部同じでなければならない。</b>1本の文にパラメータだけを積み替えるためである。
 	 * だから <b>{@code value()} を積む順もループの中で揃える</b>。
-	 * 揃っていなければ {@code DB_998} を立てて null が返る
+	 * 揃っていなければ {@code DB_998} の例外になる
 	 * （直すまでは、例外も警告も無しに値が横にずれて入っていた）。
 	 * </p>
 	 *
@@ -205,11 +198,8 @@ public final class ApproveController {
 
 		DB db = ApprovalDataExample.db();
 
+		// 失敗は例外（500）
 		List<Long> ids = db.insertBatch(builders);
-
-		if (ids == null) {
-			throw new HttpException(500, "一括登録に失敗しました: " + db.getError());
-		}
 
 		/*
 		 * <b>戻るのは件数ではなく採番値である。</b>

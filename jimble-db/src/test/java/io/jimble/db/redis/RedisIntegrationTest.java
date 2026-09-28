@@ -39,9 +39,7 @@ class RedisIntegrationTest {
 	static void setUp () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), RedisIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), RedisIntegrationTest.class);
 
 		assertTrue(RedisClient.isConfigured(), "Redis が設定されていません");
 
@@ -99,11 +97,10 @@ class RedisIntegrationTest {
 		String key = "lock:" + UUID.randomUUID();
 
 		// docs:begin redis-lock
-		RedisLockResult result = RedisLock.lock(key);
-
-		assertEquals(RedisLockStatus.Success, result.status());
-
-		closeQuietly(result);
+		// 取れなければ RedisLockException。抜けたら外れる
+		try (RedisLockResult result = RedisLock.lock(key)) {
+			assertEquals(RedisLockStatus.Success, result.status());
+		}
 		// docs:end
 
 	}
@@ -120,13 +117,13 @@ class RedisIntegrationTest {
 		try {
 
 			// 別スレッドから取りに行く（同じスレッドだと再入で取れてしまう）
-			RedisLockStatus[] status = new RedisLockStatus[1];
+			boolean[] got = {true};
 
 			Thread thread = Thread.ofVirtual().start(() ->
-				status[0] = RedisLock.tryLock(key, 100, 1000).status());
+				got[0] = RedisLock.tryLock(key, 100, 1000).isPresent());
 			thread.join();
 
-			assertEquals(RedisLockStatus.Failed, status[0]);
+			assertFalse(got[0], "待ち時間を過ぎたのに取れている（2.0 は空の Optional）");
 
 		} finally {
 			closeQuietly(held);
@@ -147,7 +144,6 @@ class RedisIntegrationTest {
 
 		assertEquals(RedisLockStatus.Success, result.status(),
 			"DB 付きロックが取れていない（SQL 構文エラーの疑い）");
-		assertFalse(db.isError(), "SQL でエラーが出ている");
 
 		closeQuietly(result);
 
@@ -162,11 +158,7 @@ class RedisIntegrationTest {
 	 */
 	private static void closeQuietly (RedisLockResult result) {
 
-		try {
-			result.close();
-		} catch (Exception ex) {
-			throw new IllegalStateException(ex);
-		}
+		result.close();      // 2.0 は検査例外を投げない
 
 	}
 

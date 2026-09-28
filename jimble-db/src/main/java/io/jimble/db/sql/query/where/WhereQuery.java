@@ -446,16 +446,14 @@ public class WhereQuery implements IWhere {
 		}
 
 		/*
-		 * null との比較を知らせる（要件 D-192）。
-		 * 「= NULL」「<> NULL」はどの行にも当たらない（SQL の NULL は比べられない）。
-		 * where(Data) の空の値もここに来る。2.0 では例外にする（design-2.0.md 5.3）。
+		 * null との比較は例外にする（要件 D-194）。
+		 * 「= NULL」「<> NULL」はどの行にも当たらない（SQL の NULL は比べられない）。1.5 は警告だった。
 		 */
-		private static void warnNullComparison (String op, String alternative) {
+		private static io.jimble.db.sql.SqlBuildException nullComparison (String op, String alternative) {
 
-			io.jimble.util.internal.WarnOnce.warn("sql.null-comparison." + op,
-				op + "(null) は「" + ("eq".equals(op) ? "= NULL" : "<> NULL") + "」を組み、どの行にも当たりません。"
-					+ alternative + " を使ってください（2.0 では例外になります）。"
-					+ "where(Data) の空の値もこうなります" + io.jimble.util.internal.Docs.see("sql"));
+			return new io.jimble.db.sql.SqlBuildException(
+				op + "(null) は「" + ("eq".equals(op) ? "= NULL" : "<> NULL") + "」になり、どの行にも当たりません。"
+					+ alternative + " を使ってください" + io.jimble.util.internal.Docs.see("sql"));
 
 		}
 
@@ -511,7 +509,7 @@ public class WhereQuery implements IWhere {
 		public IWhere eq(Object value) {
 
 			if (value == null) {
-				warnNullComparison("eq", "is_null()");
+				throw nullComparison("eq", "is_null()");
 			}
 			setRight(new Eq(value));
 			return this;
@@ -525,7 +523,7 @@ public class WhereQuery implements IWhere {
 		public IWhere not(Object value) {
 
 			if (value == null) {
-				warnNullComparison("not", "is_not_null()");
+				throw nullComparison("not", "is_not_null()");
 			}
 			setRight(new Not(value));
 			return this;

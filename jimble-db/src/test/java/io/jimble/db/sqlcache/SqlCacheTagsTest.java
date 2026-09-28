@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>DB は要らない。</b>ビルダーと結果の形だけで決まる。
  * </p>
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class SqlCacheTagsTest {
 
 	/** データベース名（タグの前に付く） */
@@ -286,10 +285,10 @@ class SqlCacheTagsTest {
 	@DisplayName("外側の OR も絞り込めていない扱いにする")
 	void topLevelOrIsNotNarrowing () {
 
-		// WHERE (customer.id = 1) OR (customer.shop_id = 5)
+		// WHERE (customer.id = 1 OR customer.shop_id = 5)
 		Set<String> tags = SqlCacheTags.of(DB_NAME,
 			SQL.update(Customer.instance()).set(Customer.name, "x")
-				.where(Customer.id.eq(1), Dsl.or(Customer.shop_id.eq(5))));
+				.where(Dsl.anyOf(Customer.id.eq(1), Customer.shop_id.eq(5))));
 
 		assertTrue(tags.contains("jimble_test/customer#@"), tags.toString());
 		assertFalse(tags.contains("jimble_test/customer#id#1"), tags.toString());

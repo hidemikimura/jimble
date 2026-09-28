@@ -12,7 +12,7 @@ order: 4
 | Level | Class | What it does |
 | --- | --- | --- |
 | One field | `ValidationRule` | Stack up "not empty", "an integer from 1 to 120" |
-| One request | `ValidationRules` | Bind rules to columns and run them in one pass |
+| One request | `ValidationRules` | Bind rules to columns and run them in one pass. `validate` **throws a 422** on failure |
 | One route | `ValidationExecutor` | On failure, **stop everything downstream and return 422** |
 
 Use only the lower levels, or only the top one. Either works.
@@ -42,6 +42,7 @@ They run in the order you stacked them and **stop at the first failure** (one er
 > **Everything other than `empty()` lets empty through.**
 > `textLengthMax(100)` means "at most 100 characters, if there is a value";
 > an empty string or `null` is not an error. **Always write required as `empty()`.**
+> `empty()` also fails **when the key was not sent at all**.
 
 > [!NOTE]
 > **Format checks are matched against the whole value.**
@@ -69,13 +70,14 @@ They run in the order you stacked them and **stop at the first failure** (one er
 ```
 
 - **Errors across fields are all collected** (being told about them one at a time is the worst possible experience for the person retyping the form)
-- **Fields that were not sent are not validated** (except through `insertRequired()`)
+- **A field that was not sent fails only the rules with `empty()` (`required()`) in them.** Other rules do not look at it
+- A rule with `insertRequired()` means "required on insert; on update, checked only when sent" (see "Required only on insert" below)
 - When an array arrives for one column, every element is run through
 - `put(rule)` (with no column) lets you write cross-field checks that belong to no single field
 
 ### The raw shape of an error
 
-What `validate` returns is **not wording.** It is which kind of check failed, and the settings it failed against.
+What `errors(...)` returns is **not wording.** It is which kind of check failed, and the settings it failed against.
 
 ```java
 { "validation_type": Empty, "validation_setting": {}, "input": "" }
@@ -101,6 +103,26 @@ What `validate` returns is **not wording.** It is which kind of check failed, an
 > call `ValidationMessages.reset()` in a `finally`.
 > Forget, and **the tests that run afterwards are the ones that fail.**
 
+## Stop, or take the list
+
+| Method | When validation fails |
+| --- | --- |
+| `rules.validate(db, data)` | **Throws `ValidationException` (422) and stops.** Returns nothing |
+| `rules.errors(db, data)` | Returns the list of errors (a `Data`). Does not stop. Empty when it passes |
+
+Normally you write `validate` as a statement.
+
+```java
+rules.validate(db, context.request().bodyAll());   // a 422 right here if it fails
+db.insert(...);
+```
+
+If you do nothing else, the framework replies **422** with the body `{"validation": {"field": ["message"]}}` **plus the input that was sent**
+(the same shape as `ValidationExecutor`). It is an exception, so the `error(...)` hook does run ([Error handling](./errors)).
+`ValidationException` is a subclass of `HttpException`; `errors()` gives you the list.
+
+When you want to look at the list and branch yourself, use `errors(...)`. To run several sets together, use `Validator.validate(db, data, rules...)` / `Validator.errors(db, data, rules...)`.
+
 ## Required only on insert
 
 ```java snippet=validation-insert-required
@@ -115,6 +137,8 @@ The same decision reaches each validator as `isInsertRequest`.
 ```
 
 **Only the rows with errors** come back, and each one carries an `index` (**1-based**).
+
+`validate(db, list)` throws `ValidationException` if even one row fails (the exception's `errors()` is `{"rows": [...]}`).
 
 ## Applying it to a route
 
@@ -143,10 +167,9 @@ You can also stack the result of `ValidationRules` directly.
 addErrors(rules.errors(db, context.request().bodyAll()));
 ```
 
-> [!TRAP]
-> **`validate(...)` / `errors(...)` only return the list of errors; they do not stop anything.** Throw the return value away
-> and invalid input goes straight through. `errors(...)`, added in 1.5.0, is the same as `validate(...)` with a name that says
-> what it returns. In 2.0, `validate(...)` is planned to throw a 422 when validation fails.
+> [!NOTE]
+> In 1.x, `validate(...)` only returned the list, so throwing the return value away let invalid input straight through.
+> 2.0 made it `void` and throws when validation fails. Where you need the list, rewrite it as `errors(...)` ([Moving to 2.0](./migrate-2)).
 
 > [!NOTE]
 > `ValidationExecutor` **does not hold `WebContext` in a field.**
@@ -177,6 +200,7 @@ Paging paging = context.request().paging();
 | A non-numeric value | Ignored; the default is used |
 
 Write `context.request().paging(20)` to change the default used when no `per` arrives.
+There is one `Paging` per request, and the first one made is reused. **Call `paging()` first and then `paging(50)` with a different count, and you get `IllegalStateException`.** Pass the count on the first call.
 
 ### Applying it to a SELECT
 

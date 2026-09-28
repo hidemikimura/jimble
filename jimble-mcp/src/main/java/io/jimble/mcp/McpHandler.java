@@ -60,8 +60,14 @@ public final class McpHandler {
 			return;
 		}
 
-		// 2. 本文を読む
-		Data body = context.request().bodyJson();
+		// 2. 本文を読む（壊れた JSON は JSON-RPC の読めないエラーで返す。2.0 の bodyJson() は 400 の例外）
+		Data body;
+		try {
+			body = context.request().bodyJson();
+		} catch (io.jimble.web.http.HttpException ex) {
+			send(context, 400, McpErrors.of(null, McpErrors.PARSE_ERROR, "JSON として読めません"));
+			return;
+		}
 
 		Object id = body == null ? null : body.get("id");
 

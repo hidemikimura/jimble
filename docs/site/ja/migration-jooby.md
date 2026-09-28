@@ -73,7 +73,7 @@ install(() -> new PostController(new PostService(db)));
 | jooby | jimble |
 | --- | --- |
 | `@GET @Path("/x")` | `get("/x", ...)` |
-| `@Transactional` | `try (DBTransaction transaction = ...)` |
+| `@Transactional` | `db.transaction(tx -> { ... })` |
 | `@Inject` | コンストラクタで渡す |
 
 ### 起動
@@ -123,10 +123,13 @@ jooby の jte モジュールを使っていたなら、テンプレートはそ
 2. `App.java` を `JimbleApp` にする。ルート定義は貼るだけ
 3. ハンドラの中を `context.request()` / `context.response()` に書き換える
 4. `@Inject` を `install()` とコンストラクタに置き換える
-5. `@Transactional` を `try (DBTransaction ...)` に置き換える
+5. `@Transactional` を `db.transaction(tx -> { ... })` に置き換える
 6. 起動して、**ルート一覧と構成行を確認する**
 
 ## 移行しなくてよいもの
 
-DB 層はそのままです。`SQL` / `Column` / `Table` / `Data` / `DB` の使い方は変わりません。
+DB 層のクラス（`SQL` / `Column` / `Table` / `Data` / `DB`）と SQL の組み方はそのままです。
 生成されたテーブル定義のクラスも、そのまま使えます。
+
+ただし**失敗は戻り値ではなく例外です**。`select` は `Optional<Data>` を返し、`isError()` はありません。
+戻り値で失敗を見ていたところは書き換えが要ります（[DB](./db)・[2.0 への移行](./migrate-2)）。

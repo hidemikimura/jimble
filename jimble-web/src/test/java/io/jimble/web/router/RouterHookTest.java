@@ -16,7 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * before / after / error のテスト
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class RouterHookTest {
 
 	/* 実行ログ */
@@ -65,11 +64,11 @@ class RouterHookTest {
 		router.before(record("before:root"));
 		router.after(record("after:root"));
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.before(record("before:/admin"));
 		admin.after(record("after:/admin"));
 
-		Router users = admin.path("/users");
+		Router users = admin.child("/users");
 		users.before(record("before:/admin/users"));
 		users.after(record("after:/admin/users"));
 		users.get("/{id}", context -> { });
@@ -97,7 +96,7 @@ class RouterHookTest {
 		Router router = new Router();
 		router.error(recordError("error:root"));
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.error(recordError("error:/admin"));
 		admin.get("/x", context -> { });
 
@@ -122,12 +121,12 @@ class RouterHookTest {
 		Router router = new Router();
 
 		// /admin 配下（認証あり）
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.before(record("admin-auth"));
 		admin.get("/users", context -> { });
 
 		// /{slug} 配下（認証なし）
-		Router slug = router.path("/{slug}");
+		Router slug = router.child("/{slug}");
 		slug.before(record("slug-before"));
 		slug.get("/detail", context -> { });
 
@@ -152,12 +151,12 @@ class RouterHookTest {
 
 		Router router = new Router();
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.after(record("admin-after"));
 		admin.error(recordError("admin-error"));
 		admin.get("/users", context -> { });
 
-		Router slug = router.path("/{slug}");
+		Router slug = router.child("/{slug}");
 		slug.get("/detail", context -> { });
 
 		RouteMatch match = router.match("GET", "/admin/detail");
@@ -193,12 +192,12 @@ class RouterHookTest {
 		Router router = new Router();
 
 		// 認証つきの /admin
-		Router guarded = router.path("/admin");
+		Router guarded = router.child("/admin");
 		guarded.before(record("auth"));
 		guarded.get("/users", context -> { });
 
 		// 認証なしの /admin（別のスコープ。ログイン画面など）
-		Router open = router.path("/admin");
+		Router open = router.child("/admin");
 		open.get("/login", context -> { });
 
 		runHooks(router.match("GET", "/admin/users"));
@@ -280,7 +279,7 @@ class RouterHookTest {
 
 		Router router = new Router();
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.get("/users", context -> { });
 		admin.before(record("auth"));		// ルートより後に書いても効く
 
@@ -336,7 +335,7 @@ class RouterHookTest {
 		Router router = new Router();
 		router.merge(child.router());
 
-		assertThrows(IllegalStateException.class, () -> router.path("/other").merge(child.router()));
+		assertThrows(IllegalStateException.class, () -> router.child("/other").merge(child.router()));
 
 	}
 
@@ -349,7 +348,7 @@ class RouterHookTest {
 		Router router = new Router();
 		router.error(recordError("error:root"));
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.error(recordError("error:/admin"));
 		admin.get("/x", context -> { });
 

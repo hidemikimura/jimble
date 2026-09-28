@@ -63,6 +63,10 @@ For OR and parentheses, group with `Dsl.anyOf(...)` / `Dsl.allOf(...)` (since 1.
 > **An empty list (or `null`) fails while the SQL is being built** — `IN ()` is broken SQL, and
 > collapsing it to `IN (NULL)` **matches no row and quietly returns nothing**.
 
+> [!NOTE]
+> **Compare with `NULL` using `is_null()` / `is_not_null()`.**
+> `eq(null)` / `not(null)` throw `SqlBuildException` while the SQL is being built, because `= NULL` matches no row.
+
 ## Joins
 
 ```java
@@ -81,7 +85,7 @@ The result nests under the table name, so you get it with `row.getData("comment"
 ## Inserting, updating, deleting
 
 ```java
-long id = db.insert(
+long id = db.insertKey(
 	SQL.insert(Post.instance())
 		.value(Post.title, title)
 		.value(Post.created_at, new Date())      // the application's clock
@@ -110,8 +114,14 @@ int deleted = db.delete(
 > nodes' clocks drift, **a row inserted later can carry an earlier timestamp**, and a
 > list ordered by creation time silently swaps rows around.
 
-`insert` returns the generated key. When you do not need the ID,
-`insertNoReturnKey` is faster.
+`insertKey` returns the generated key (it throws if no key was generated). When you do not need the ID,
+use `insert` (it returns nothing). For `INSERT ... SELECT` and anything else where you need the count, use `execute(...)`.
+
+`update` / `delete` return the number of rows hit. **Every failure is a `SqlExecuteException`**;
+a unique-constraint violation alone is a `DuplicateKeyException` ([Using the DB](./db)).
+
+> [!NOTE]
+> The current time is `Dsl.now()`. **The string `"now()"` goes in as a plain string** (1.x replaced it with the current time).
 
 Updating only the fields that were sent looks like this.
 
@@ -302,13 +312,13 @@ List<Long>    ids    = db.insertBatch(builderList);    // generated keys
 
 **The two return different things.** `executeBatch` gives you row counts
 (`List<Integer>`); `insertBatch` gives you the generated keys (`List<Long>`).
-For the counts, `DB.isBatchSuccess(list)` tells you whether all of them went through.
+**Failures are exceptions.** Pass an empty list and you get an empty list back.
 
 > [!TRAP]
 > **Every builder you stack has to produce the same SQL.** The point of a batch is
 > one statement with the parameters swapped in, so if the order you call `value()`
 > changes partway through, the SQL changes too — **keep the order the same inside
-> the loop**. When it does not match, `DB_998` is set and `null` comes back
+> the loop**. When it does not match, you get a `SqlExecuteException` with `DB_998`
 > (until this was fixed, **the values were silently shifted sideways** with no
 > exception and no warning).
 

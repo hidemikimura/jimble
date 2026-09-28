@@ -37,7 +37,7 @@ class JsonColumnIntegrationTest {
 	static void setUp () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), JsonColumnIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), JsonColumnIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 		String json = MySqlDialect.NAME.equals(db.dialect().name()) ? "json" : "jsonb";
@@ -71,7 +71,7 @@ class JsonColumnIntegrationTest {
 
 		try {
 
-			Data row = DBUtil.getMainDB().select("SELECT * FROM json_column_item WHERE id = ?", 1);
+			Data row = DBUtil.getMainDB().select("SELECT * FROM json_column_item WHERE id = ?", 1).orElse(null);
 
 			assertInstanceOf(JsonArrayList.class, row.get("tags"));
 			assertEquals(List.of("a", "b"), row.getStringList("tags"));

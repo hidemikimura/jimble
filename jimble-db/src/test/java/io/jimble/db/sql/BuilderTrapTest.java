@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 組み上がった SQL の字面とパラメータで固定する。
  * </p>
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
+@SuppressWarnings("removal")  // Column.and / or（非推奨のまま残る）を確かめている
 class BuilderTrapTest {
 
 	private static final Column SITE_ID = TestSchema.Site.id;
@@ -136,15 +136,12 @@ class BuilderTrapTest {
 	}
 
 	@Test
-	@DisplayName("D-190 divide は割り算。subtract は非推奨で、振る舞いは割り算のまま")
-	@SuppressWarnings("removal")
-	void divideAndSubtract () {
+	@DisplayName("D-190 divide は割り算（1.x の subtract は 2.0 で消した。要件 D-194）")
+	void divide () {
 
 		String divide = SQL.select(FEED_COUNT.divide(2).as("x")).from(TestSchema.Site.instance()).sql();
-		String subtract = SQL.select(FEED_COUNT.subtract(2).as("x")).from(TestSchema.Site.instance()).sql();
 
 		assertTrue(divide.contains("`site`.`feed_count` / ? AS `x`"), divide);
-		assertEquals(divide, subtract);
 
 	}
 
@@ -161,7 +158,7 @@ class BuilderTrapTest {
 
 	// endregion
 
-	// region Dsl.and / or / allOf / anyOf
+	// region allOf / anyOf
 
 	@Test
 	@DisplayName("D-190 anyOf は括弧でまとめ、引数を書き換えない")
@@ -186,12 +183,11 @@ class BuilderTrapTest {
 	}
 
 	@Test
-	@DisplayName("D-190 Dsl.or に素の列を渡すと、ClassCastException ではなく直し方つきの例外")
-	void dslOrWithBareColumn () {
+	@DisplayName("D-190 allOf / anyOf に何も渡さなければ例外")
+	void emptyGroupThrows () {
 
-		SqlBuildException e = assertThrows(SqlBuildException.class, () -> Dsl.or(SITE_ID));
-		assertTrue(e.getMessage().contains("anyOf"), e.getMessage());
 		assertThrows(SqlBuildException.class, () -> Dsl.allOf());
+		assertThrows(SqlBuildException.class, () -> Dsl.anyOf());
 
 	}
 

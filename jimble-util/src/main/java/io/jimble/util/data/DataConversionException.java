@@ -4,9 +4,14 @@ package io.jimble.util.data;
  * {@link Data} の値を、求めた型に変えられなかった（要件 D-191）
  *
  * <p>
- * 既定値つきの取り出し（{@link Data#getInt(String, int)} など）が投げる。
- * <b>「無い」と「読めない」を分ける</b>ためにある——既定値を返すのは無いときだけで、
+ * {@link Data} の取り出し（{@code getInt} / {@code getDate} / {@code getEnum} / {@code getData} ほか）が投げる。
+ * <b>「無い」と「読めない」を分ける</b>ためにある——既定値（0 / false / null）を返すのは無いときだけで、
  * {@code "abc"} や {@code "1.5"} を int として読もうとしたら、黙って既定値にせずここで止まる。
+ * 1.5 は既定値つきの版だけ、2.0 は全部の取り出しがこう読む（要件 D-195）。
+ * </p>
+ *
+ * <p>
+ * <b>利用者の入力を読むなら、先に検査する</b>（{@code ValidationRules}）。検査せずに読んで例外になると 500 になる。
  * </p>
  *
  * @since 1.5.0

@@ -1,6 +1,6 @@
 ---
 name: jimble-db
-description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること（文字列の SQL は平ら）、エラーが戻り値で返ること、トランザクションと検査例外、マイグレーションとコード生成の決まりを含む。
+description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること（文字列の SQL は平ら）、select が Optional を返し失敗は例外になること、トランザクション（Tx）、マイグレーションとコード生成の決まりを含む。
 ---
 
 # jimble の DB
@@ -12,6 +12,9 @@ description: jimble で DB を扱うときに使う。SQL ビルダー、結果�
 import io.jimble.db.DB;
 import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
+import io.jimble.db.SqlExecuteException;      // SQL の失敗（非検査）
+import io.jimble.db.DuplicateKeyException;    // 一意制約（SqlExecuteException の子）
+import io.jimble.db.TransactionException;     // 確定できなかった（DB_004 / DB_005 / DB_006）
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;
 import io.jimble.util.data.Data;
@@ -22,18 +25,23 @@ import io.jimble.util.data.Data;
 ```java
 DB db = BlogExample.db();          // 生成されたスキーマクラスが入口
 
-List<Data> posts = db.selectList(
+List<Data> posts = db.selectList(  // 0件は空のリスト。null は返らない
 	SQL.select()
 		.from(Post.instance())
 		.where(Post.published.eq(true))
 		.orderBy(Post.created_at.desc())
 		.limit(20));
 
-Data post = db.select(SQL.select().from(Post.instance()).where(Post.id.eq(id)));
+Data post = db.select(SQL.select().from(Post.instance()).where(Post.id.eq(id)))
+	.orElseThrow(() -> new HttpException(404, "記事がありません: " + id));   // select は Optional<Data>
 ```
 
 **組み立てと実行が分かれている。**ビルダーは自分では走らない——
 `db.select(...)` / `db.selectList(...)` に渡して初めて走る。
+
+**`select` は `Optional<Data>`**（`selectCached` も同じ）。0件は空、読めなければ例外。
+「無ければ 404」は `.orElseThrow(() -> new HttpException(404, "..."))`、
+「無ければ null で続ける」は `.orElse(null)`、有無だけなら `.isPresent()` / `.isEmpty()`。
 
 条件は重ねると AND。
 
@@ -41,15 +49,16 @@ Data post = db.select(SQL.select().from(Post.instance()).where(Post.id.eq(id)));
 .where(Post.title.like("%jimble%"))
 .where(Post.created_at.ge(from).and(Post.created_at.lt(to)))
 .where(Post.id.in(List.of(1L, 2L, 3L)))
+.where(Post.deleted_at.is_null())          // eq(null) は SqlBuildException。is_null() / is_not_null()
 ```
 
-OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる（1.5.0 から。`Dsl.or(x)` は「直前と OR でつなぐ印」で、引数を書き換える）。
+OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 
 ```java
 .where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))
 ```
 
-**1つの条件に比較は1つ。**`Post.id.ge(1).le(9)` は組み立てで落ちる（1.4 までは後ろだけが黙って残った）。
+**1つの条件に比較は1つ。**`Post.id.ge(1).le(9)` は組み立てで落ちる。
 範囲は `between(a, b)`、別の条件は `.and(Post.id.le(9))`。列に直接 `.and(...)` も落ちる。
 
 結合は `left(...)` / `inner(...)` と `on(...)`。`on()` は**直前の結合に付く**。
@@ -61,10 +70,11 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる（1.5.0 か�
 Data row = db.select(SQL.select()
 	.from(Post.instance())
 	.left(Comment.instance()).on(Comment.post_id.eq(Post.id))
-	.where(Post.id.eq(id)));
+	.where(Post.id.eq(id)))
+	.orElseThrow(() -> new HttpException(404, "記事がありません"));
 
 row.getString(Post.title);                    // 列オブジェクトで引く（これが素直）
-row.getString("title");                       // 空が返る。ネストの外を見ている
+row.getString("title");                       // null。ネストの外を見ている
 row.getData(Post.instance());                 // 1テーブルぶんを平らにして取り出す
 row.getData("comment");                       // 結合した側
 ```
@@ -76,7 +86,10 @@ row.getData("comment");                       // 結合した側
 > <b>入れ子が1段残る</b>。平らにしたいなら `getData(テーブル)` か `flattenTable(テーブル)`
 > （これは実際に踏んだ）。
 
-`selectList` は**エラーなら `null`、行が無ければ空のリスト**。ここは分かれている。
+**取り出しは「あるのに読めない値」で `DataConversionException`**（`"abc"` を `getInt`、int に `"1.5"`、桁あふれ、
+真偽に `"yes"`、`getEnum` で一致しない）。**無いキー（キーが無い・null・空文字）は 0 / false / null のまま。**
+DB から読んだ値ならまず起きないが、**利用者の入力を同じ getter で読むと 500 になる**——先に検査する（`jimble-web` の skill）。
+無くてよい enum は `getEnumOptional(key, 型)`。
 
 ### 文字列の SQL の結果はネストしない
 
@@ -84,7 +97,7 @@ row.getData("comment");                       // 結合した側
 `db.select("SELECT ...", ...)` / `selectList(String, ...)` に自分で書いた SQL を渡すと、**平らな Data が返る。**
 
 ```java
-Data row = db.select("SELECT * FROM post WHERE id = ?", id);
+Data row = db.select("SELECT * FROM post WHERE id = ?", id).orElseThrow(() -> new HttpException(404, "ありません"));
 // {"id":1,"title":"..."}                  ← post の下に入っていない
 
 row.getString("title");                   // 取れる
@@ -106,7 +119,7 @@ MySQL の `JSON`、PostgreSQL の `json` / `jsonb` の列は、**枠組みが読
 （オブジェクトは `Data`、配列は `List`）。ビルダーでも文字列の SQL でも同じ。
 
 ```java
-Data row = db.select("SELECT * FROM setting WHERE id = ?", id);
+Data row = db.select("SELECT * FROM setting WHERE id = ?", id).orElseThrow(() -> new HttpException(404, "ありません"));
 // tags 列の中身が ["a","b"] のとき
 
 row.getString("tags");                     // "a"  ← 配列の先頭の要素だけ。JSON の文字ではない
@@ -117,56 +130,101 @@ row.getData("options");                    // オブジェクトの列は Data �
 - 配列の列を `getString` すると、**1度だけ WARN**（「JSON の配列の列 〜 を getString しています」）が出る。見たらここを直す
 - **`getString` で JSON の文字を取ろうとしない。**オブジェクトの列は JSON の文字になるが
   （キーの間の空白などは元のとおりではない）、**配列の列は先頭の要素しか返らない**。
-  それを `Dson.decodes(..., List.class)` に渡すと、JSON ではないので **`null`**
+  それを `Dson.decodes(..., List.class)` に渡すと、JSON ではないので **`JsonParseException`**
 - **元の文字のまま欲しいなら、SQL で文字に変えて読む**：MySQL は `CAST(列 AS CHAR)`、
   PostgreSQL は `列::text`（または `CAST(列 AS text)`）
 - `Dson.decodes(文字列)` / `Dson.decodes(文字列, Data.class)` に**一番外が配列の JSON** を渡すと、
-  `{"0": ..., "1": ...}` の Data になる（添字がキー）。配列は **`Dson.decodes(文字列, List.class)`** で読む
-  （これは `null` にならない。`null` になるのは、渡した文字が JSON でないとき）
+  `{"0": ..., "1": ...}` の Data になる（添字がキー）。配列は **`Dson.decodes(文字列, List.class)`** で読む。
+  壊れた JSON は `JsonParseException`（空文字と `"null"` は `null`）
 
-## エラーは戻り値。例外ではない
+## 失敗は例外。0件は失敗ではない
 
 ```java
-Data row = db.select(...);
+Optional<Data> row = db.select(...);   // 0件は Optional.empty()
+List<Data> rows = db.selectList(...);  // 0件は空のリスト
+int updated = db.update(...);          // 0件は 0
 
-if (row == null) { ... }               // エラーも「無い」も null
-
-db.insert(...);
-
-if (db.isError()) {                    // 書き込みは isError() で見る
-	Log.error(db.getError());
+try {
+	db.insert(...);
+} catch (DuplicateKeyException e) {    // 分けたいのは一意制約くらい。それだけ受ける
+	throw new HttpException(409, "もう登録されています");
 }
 ```
 
-`select` 系は `null`、`insert` / `update` / `delete` は `-1`。
-理由は `db.getError()`。
+**SQL の失敗は `SqlExecuteException`（非検査）。**一意制約の違反だけ子の `DuplicateKeyException`。
+`isError()` / `getError()` は無い。コードは `e.getCode()`、元の JDBC の例外は `getCause().getCause()`。
 
-**`try` で囲まない。**囲むと、囲み忘れたときに上まで飛ぶ。
+**書かなければ上まで飛んで 500、トランザクションの中なら巻き戻る。**
+`catch (Exception e)` で握りつぶさない。組み立ての誤り（`eq(null)` など）は `SqlBuildException` で、DB に投げる前に落ちる。
+
+### catch するところ（非検査なので、コンパイラは教えない。ここで決める）
+
+**書く前に、この表で決める。表に無いものは catch しない。**
+
+| こう書くとき | 受ける例外 | どうする |
+| --- | --- | --- |
+| **利用者の入力を、一意制約（UNIQUE・主キー）のある列に `insert` / `insertKey` / `update` する**（メールアドレス・ログイン ID・コード・スラッグなど） | `DuplicateKeyException` | 409 などの「もう使われています」を返す |
+| 利用者の操作で `RedisLock.lock(...)` を取る | `RedisLockException` | 409 などの「処理中です」を返す（`tryLock(...)` の `isEmpty()` で分けてもよい） |
+| それ以外の DB の失敗（`SqlExecuteException` / `TransactionException`） | 受けない | 500 と巻き戻しに任せる |
+| `ValidationException` / `HttpException` | 受けない | 枠組みが 422 / 指定の状態で返す |
+
+- **一意制約の列かどうかは、マイグレーションの DDL（`UNIQUE` / `PRIMARY KEY` / `CREATE UNIQUE INDEX`）で確かめる。**推測しない
+- **先に `select` で「まだ無い」を確かめても、catch は省けない。**同時に2人が来れば、両方が確かめを通って片方が一意制約に当たる
+- **受けるのはトランザクションの外**（`db.transaction(...)` を囲む）。中で受けて続けると `commit()` が `DB_004` で断る
+- テストでは、同じ値を2回入れて 409 になることを1本書く（catch を忘れると 500 になるので、ここで見つかる）
+
+```java
+try {
+	long id = db.transactionResult(tx -> {          // トランザクションを使うなら、try はその外
+		long memberId = db.insertKey(SQL.insert(Member.instance())
+			.value(Member.email, email)
+			.value(Member.created_at, Dsl.now()));
+		db.insert(SQL.insert(MemberProfile.instance()).value(MemberProfile.member_id, memberId));
+		return memberId;
+	});
+	...
+} catch (DuplicateKeyException e) {
+	throw new HttpException(409, "そのメールアドレスは使われています");
+}
+```
 
 ## 入れる・直す・消す
 
 ```java
-long id = db.insert(SQL.insert(Post.instance())
+db.insert(SQL.insert(Post.instance())            // void。採番値は要らない
 	.value(Post.title, title)
-	.value(Post.created_at, Dsl.now()));       // DB 側の時計
+	.value(Post.created_at, Dsl.now()));         // DB 側の時計
+
+long id = db.insertKey(SQL.insert(Post.instance())   // 採番値が要るとき（採番されなければ例外）
+	.value(Post.title, title));
 
 int updated = db.update(SQL.update(Post.instance())
 	.set(Post.published, true)
 	.where(Post.id.eq(id)));
 
 int deleted = db.delete(SQL.delete(Post.instance()).where(Post.id.eq(id)));
+
+int copied = db.execute("INSERT INTO post_archive SELECT * FROM post WHERE created_at < ?", from);   // 件数
 ```
 
 `SQL.insert(テーブル).value(列, 値)` の形。`insert().into(...)` ではない。
-ID が要らないなら `insertNoReturnKey` のほうが速い。
+**`insert` は `void`、採番値は `insertKey`、件数が要る `INSERT ... SELECT` は `execute`（`int`）。**
+非推奨の `insertNoReturnKey` は使わない。
 
-**時刻はどちらの時計か決める。**`new Date()` はアプリ側、`Dsl.now()` は DB 側。
+**平らな行（`{"title": ..., "body": ...}`）を丸ごと入れるなら `valueRow(row)` / `setRow(row)`。**
+`value(Data)` / `set(Data)` は `{"value": {...}}` / `{"set": {...}}` に包んだ形しか読まず、包まない行は例外。
+
+**時刻はどちらの時計か決める。**`new Date()` はアプリ側、`Dsl.now()` は DB 側
+（**文字列の `"now()"` はただの文字列として入る**）。
 **複数台で動かすなら DB 側**——台ごとに時計がずれると、
 <b>あとから入れた行のほうが古い</b>ことが起きて、作成日時の並びが入れ替わる。
 
+計算は `plus` / `minus` / `multiply` / `divide`（`subtract` は無い）。
+
 ## トランザクション
 
-**1.5.0 からは `db.transaction(...)` / `db.begin()` を使う**（2.0 ではこれだけが残る）。検査例外を投げず、`commit()` は**終わらせる**。
+**書き方は3つだけ。**`db.transaction(...)` / `db.transactionResult(...)` / `try (Tx tx = db.begin())`。
+検査例外は投げない。`DBTransaction` や `db.beginTransaction()` は無い。
 
 ```java
 db.transaction(tx -> {
@@ -178,83 +236,37 @@ long id = db.transactionResult(tx -> db.insertKey(...));   // 値を返す版（
 
 try (Tx tx = db.begin()) {
 	db.update(...);
+	if (...) throw new HttpException(409, "...");   // 例外で抜けたら巻き戻る。rollback は書かない
 	tx.commit();                       // 確定して終わる。続けたいなら tx.checkpoint()
 }                                      // commit せずに抜けたら巻き戻す
 ```
 
-- 中で1度でもエラー（-1 / null）が出ていたら確定しない：`TransactionException`（`getCode()` が `DB_004`）
-- 中身の検査例外は `TransactionException`（`DB_006`）に包まれる。非検査例外はそのまま
-- 一意制約は `DuplicateKeyException`（`insertKey` / `...OrThrow`）か `db.isDuplicateKeyError()` で分ける
-
-1.4 までの書き方（`DBTransaction`）は次のとおり。**1.5.0 で非推奨、2.0 で消える**（`jimbleCheck` の J801 / J802 が書き換える行を出す）。
-
-```java
-try (DBTransaction transaction = new DBTransaction(db)) {
-
-	transaction.beginTransaction();
-
-	db.update(...);
-
-	if (db.isError()) {
-		transaction.rollbackEndTransaction();
-		throw new HttpException(500, "更新できませんでした");
-	}
-
-	transaction.commitEndTransaction();
-
-}
-```
-
-短く書くならこう。例外が出れば `close()` がロールバックする。
-
-```java
-DBTransaction.transaction(db, transaction -> {
-	db.insert(...);
-	db.update(...);
-});
-```
-
-**`DBTransaction` は検査例外を投げる。**`beginTransaction()` / `commit()` / `commitEndTransaction()` /
-`rollback()` / `rollbackEndTransaction()` は `CodeException`（`Exception` の子）、`close()` は `IOException`、
-`DBTransaction.transaction(...)` は `Exception`。書いたメソッドに **`throws Exception`** が無いとコンパイルが通らない。
-
-- ハンドラ（`Handler.handle`）は `throws Exception` なので、**そこから呼ぶメソッドにも `throws Exception` を付ける**
-  （サンプルの `SaveUseCase.save(...) throws Exception` の形）
-- `Runnable` / `forEach` / `Supplier` などのラムダの中では投げられない。**トランザクションはラムダの外で張る**
-- **`catch (Exception e) {}` で黙らせない。**`commitEndTransaction()` の `CodeException`（`DB_004`）は
-  「中でエラーが出たのでロールバックした」という知らせで、捨てると**保存できていないのに成功を返す**
-
-**中で1度でもエラーが出ていたら、コミットしない。**
-ロールバックして `CodeException`（`DB_004`）を投げる——
-エラーが戻り値で返る作りなので、<b>そのままだと部分的にコミットされていた</b>。
-
-**失敗のあとの文が通るかは製品による**（PostgreSQL は断る／MySQL は通す）。
-どちらにも寄りかからず、**失敗したら続ける前に `rollback()` する**。
-枠組みが約束するのは「コミットは拒まれ、1行も残らない」ところまで。
-
-```java
-try (Tx tx = db.begin()) {
-	insert(...);  tx.checkpoint();  // ここまで確定。トランザクションは続く
-	update(...);                    // 失敗
-	if (db.isError()) {
-		// 決着を付けて続けるなら 1.4 までの db.rollback()。Tx では外へ投げて巻き戻すほうが素直
-		throw new HttpException(500, "更新できませんでした");
-	}
-	tx.commit();
-}
-```
-
 | | |
 | --- | --- |
-| `commit()` | 確定する。**トランザクションは続く** |
-| `commitEndTransaction()` | 確定して**終わる**。ふつうはこちら |
-| `rollbackEndTransaction()` | 戻して終わる |
+| `tx.commit()` | 確定して**終わる**（1度だけ） |
+| `tx.checkpoint()` | ここまで確定して、**続ける** |
+| `tx.rollback()` | 巻き戻して終わる |
+| `close()` | 終わっていなければ巻き戻す（try-with-resources が呼ぶ） |
 
-**`commit()` で終わったつもりにしない。**続いているので、そこから先も同じ中にいる。
+- **中で SQL の失敗を `catch` して続けても、確定しない。**`commit()` が全部巻き戻して
+  `TransactionException`（`getCode()` が `DB_004`）を投げる。失敗のあとに成功する文があっても同じ
+- **別の道で書き直したいなら、その Tx は例外で抜けさせて、外で受けて新しい Tx で書く。**
 
-**入れ子は外に合流する。**中の `commit` / `commitEndTransaction` は何もしない（確定させるのは外）。
-**中で `rollback` したり、commit せずに抜けたりすると、外の `commitEndTransaction()` が `DB_005` で断り、全部巻き戻る**
-（1.5.0 から。1.4 までは中の rollback が黙って無視され、外がコミットしていた）。
+  ```java
+  try {
+  	db.transaction(tx -> insert(...));
+  } catch (DuplicateKeyException e) {
+  	db.transaction(tx -> updateInstead(...));    // 新しい Tx
+  }
+  ```
+
+  「あれば更新」なら `onDuplicateKeyUpdate(列, 値)` で1文にするほうが素直
+- 中身の検査例外は `TransactionException`（`DB_006`）に包まれる。非検査例外はそのまま
+- `TransactionException` は `SqlExecuteException` の子。Web では捕まえなければ 500
+
+**入れ子は外に合流する。**中の `commit` / `checkpoint` は何もしない（確定させるのは外）。
+**中で `rollback` したり、例外で抜けたりすると、外の `commit()` が `DB_005` で断り、全部巻き戻る。**
+中の例外を外で受け止めて続けても、外は確定できない。
 
 **外へ出すものと DB に積むものは、コミットの逆側。**
 
@@ -266,13 +278,45 @@ try (Tx tx = db.begin()) {
 いちばん確実なのは、**中で `put()` して、送信は MQ の `execute()` でやる**こと
 （`jimble-batch` の skill）。
 
+## ロック
+
+```java
+DBLock.create(db, "daily");            // キーの行を作る（あれば何もしない）。先に1回。void
+
+db.transaction(tx -> {
+	DBLock.lock(db, "daily");          // SELECT ... FOR UPDATE。トランザクションが終わるまで1つだけ
+	...
+});
+
+try (RedisLockResult lock = RedisLock.lock("order:" + id)) {   // 取れなければ RedisLockException
+	...
+}
+
+Optional<RedisLockResult> got = RedisLock.tryLock("report", 1000, 60000);   // 待っても取れなければ空
+```
+
+- **`DBLock.lock` はトランザクションの中で呼ぶ。**外で呼ぶと `IllegalStateException`（`FOR UPDATE` の鍵は文の終わりで外れ、何も守らない）。
+  `create` していないキーも例外
+- `RedisLock.tryLock` は **`Optional`**。取れたときだけ `try (RedisLockResult lock = got.get())` で囲んで外す
+- `DBLock` は `io.jimble.db.lock`、`RedisLock` / `RedisLockResult` は `io.jimble.db.redis.lock`
+
 ## 落とし穴（実際に踏んだもの）
 
+- **1.x のコードを直すなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す。
+  `isError()` / `DBTransaction` / `long id = db.insert(...)` / `Data row = db.select(...)` はコンパイルエラーになる
+- **`select(...).get()` を書かない。**0件で `NoSuchElementException`（500）。`orElseThrow(() -> new HttpException(404, ...))` か `orElse(null)`
+- **Tx の中で SQL の失敗を受け止めて続けない**（上の `DB_004`）。受けるなら Tx の外で
+- **非推奨の `selectOrThrow` / `selectListOrThrow` / `insertNoReturnKey` / `DB.isBatchSuccess` を書かない。**
+  `select` / `selectList` が同じ意味になり、失敗はもともと例外
+- **`列.eq(null)` / `not(null)` は `SqlBuildException`。**NULL の比較は `is_null()` / `is_not_null()`。
+  値が null かもしれない変数を `eq(x)` に渡すところは、分けて書く
+- **`where(Data)` / `set(Data)` / `value(Data)` は包んだ形（`{"where": ...}` など）しか読まない。**
+  平らな行を渡すと例外。平らな行は `setRow` / `valueRow`
 - **`in()` に空のリストを渡すと組み立てた時点で例外。**「空なら条件を外す」はしない——
   外すと**全件**になる。呼び出し側で `if (ids.isEmpty()) return List.of();` と分ける
 - **`executeBatch` / `insertBatch` に積むビルダーは、SQL が全部同じでなければならない。**
-  `value()` を積む順がループの中で変わると SQL も変わる。
-  揃っていなければ `DB_998` を立てて `null`（直すまでは**値が横にずれて入っていた**）
+  `value()` を積む順がループの中で変わると SQL も変わる。揃っていなければ `DB_998` の例外
+  （直すまでは**値が横にずれて入っていた**）。空の入力は空のリスト
 - **戻り値が違う。**`executeBatch` は件数（`List<Integer>`）、`insertBatch` は採番値（`List<Long>`）
 - **`selectListWithFetcher`（カーソル）は `DB` も畳む。**
   ふつうの SQL は1文ごとにコネクションを返すので閉じ忘れても漏れないが、
@@ -294,16 +338,15 @@ conf/migration/<スキーマ名>/001_xxx.sql      # --- !Ups / # --- !Downs
 
 ```java
 Migration.install();                                  // 登録するだけ。ここでは流れない
-if (!DBUtil.load(Conf.conf().config(), App.class)) { // 流れるのはこの中
-	throw new IllegalStateException("DB を読み込めませんでした");
-}
+DBUtil.load(Conf.conf().config(), App.class);         // 流れるのはこの中。繋がらなければ例外で止まる
 ```
 
 - **`install()` の戻り値は「登録したか」。流れたかではない。**`false` は `migration.on_startup = false` で
   **わざと切ってある**ときだけ。`if (!Migration.install()) throw ...` と書くと、切ってある環境で起動しなくなる。
   **`true` でもまだ1行も流れていない**
 - **`DBUtil.load(...)` のあとに呼ぶと何も起きない。**登録した処理はもう走り終わっているので、黙って流れない
-- 流すのに失敗したら **`DBUtil.load(...)` が例外で落ちる**（戻り値の `false` ではない）。捕まえずに起動を止める
+- **`DBUtil.load(...)` は `void`。**繋がらなければ `SqlExecuteException`（`DB_007`）、流すのに失敗しても例外で落ちる。
+  `if` で囲まず、捕まえずに起動を止める
 
 **jimble が自分で作るテーブル**（`migration` / `session` / `db_cache` / `batch_*` / `auth_*` など）は
 codegen が自動で外す。**MQ のキュー表は外れない**——名前をアプリが決めるので、jimble の管理テーブルに入っていない。

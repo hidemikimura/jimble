@@ -209,15 +209,21 @@ public final class Session {
 	// region 取得
 
 	/**
-	 * 中身
+	 * 中身（読み取り専用の写し）
 	 *
-	 * @return	中身
+	 * <p>
+	 * <b>書き換えると {@code UnsupportedOperationException}</b>（2.0。要件 D-196）。
+	 * 1.x は中身そのものを返していたので、{@code session().data().put(...)} と書くと
+	 * <b>「変えた」印が付かず、保存されなかった</b>。変えるなら {@link #put(String, String)} ほか。
+	 * </p>
+	 *
+	 * @return	中身の写し
 	 */
 	public Data data () {
 
 		load();
 
-		return entry.data();
+		return entry.data().readOnlyCopy();
 
 	}
 
@@ -229,7 +235,8 @@ public final class Session {
 	 */
 	public String get (String key) {
 
-		return data().getStringOptional(key);
+		load();
+		return entry.data().getStringOptional(key);
 
 	}
 
@@ -241,7 +248,8 @@ public final class Session {
 	 */
 	public int getInt (String key) {
 
-		return data().getInt(key);
+		load();
+		return entry.data().getInt(key);
 
 	}
 
@@ -253,7 +261,8 @@ public final class Session {
 	 */
 	public long getLong (String key) {
 
-		return data().getLong(key);
+		load();
+		return entry.data().getLong(key);
 
 	}
 
@@ -265,7 +274,8 @@ public final class Session {
 	 */
 	public boolean getBoolean (String key) {
 
-		return data().getBoolean(key);
+		load();
+		return entry.data().getBoolean(key);
 
 	}
 
@@ -277,7 +287,8 @@ public final class Session {
 	 */
 	public boolean has (String key) {
 
-		return data().containsKey(key);
+		load();
+		return entry.data().containsKey(key);
 
 	}
 
@@ -291,19 +302,26 @@ public final class Session {
 	 * ログインの直後に入れた値が消えていた。
 	 * いまは「保存済み」を戻すので、もう一度 save() すれば保存され、
 	 * 呼ばなければ終わりに「save() が呼ばれていません」と警告が出る。
-	 * destroy() のあとは保存先が無いので、警告だけ出して入れない側に倒す。
 	 */
 	private void markDirty () {
 
-		if (destroyed) {
-			io.jimble.util.internal.WarnOnce.warn("session.change-after-destroy",
-				"destroy() のあとにセッションを変えても保存されません（ログアウトのあとに値を入れていませんか）"
-					+ io.jimble.util.internal.Docs.see("session-security"));
-			return;
-		}
-
 		dirty = true;
 		saved = false;
+
+	}
+
+	/*
+	 * destroy() のあとの変更は例外（2.0。要件 D-196）。
+	 * 保存先が無いので、入れても次のリクエストには残らない——1.x は黙って捨て、1.5 は警告だった。
+	 */
+	private void requireNotDestroyed () {
+
+		if (destroyed) {
+			throw new IllegalStateException(
+				"destroy() のあとにセッションは変えられません（保存先が無いので残りません）。"
+					+ "ログアウトのあとに値を入れたいなら、destroy() の前に入れるか、次のリクエストで入れてください"
+					+ io.jimble.util.internal.Docs.see("session-security"));
+		}
 
 	}
 
@@ -317,11 +335,8 @@ public final class Session {
 	 */
 	public void put (String key, String value) {
 
+		requireNotDestroyed();
 		load();
-		if (destroyed) {
-			markDirty();
-			return;
-		}
 		entry.data().put(key, value);
 		markDirty();
 
@@ -370,11 +385,8 @@ public final class Session {
 	 */
 	public void remove (String key) {
 
+		requireNotDestroyed();
 		load();
-		if (destroyed) {
-			markDirty();
-			return;
-		}
 		entry.data().remove(key);
 		markDirty();
 
@@ -387,11 +399,8 @@ public final class Session {
 	 */
 	public void clear () {
 
+		requireNotDestroyed();
 		load();
-		if (destroyed) {
-			markDirty();
-			return;
-		}
 		entry.data().clear();
 		markDirty();
 

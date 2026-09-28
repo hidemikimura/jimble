@@ -22,7 +22,7 @@ final class DocsOnly {
 			SQL.select()
 				.from(Post.instance())
 				.where(Post.id.eq(1L))
-		);
+		).orElseThrow();
 
 		// SELECT の結果はテーブル名でネストする（要件 F-D-02）
 		String title = row.getData("post").getString("title");
@@ -38,15 +38,17 @@ final class DocsOnly {
 		// docs:begin db-error
 		try (DB db = BlogExample.db()) {
 
+			/*
+			 * 0件は空（空リスト・空の Optional・件数 0）、失敗は SqlExecuteException（2.0）。
+			 * 書かなければ上まで飛んで 500。トランザクションの中なら巻き戻る。
+			 */
 			List<Data> rows = db.selectList(SQL.select().from(Post.instance()));
 
-			/*
-			 * DB のエラーは例外ではなく戻り値で返る（要件 F-D-11）。
-			 * select 系は null、更新系は -1。
-			 */
-			if (rows == null) {
-				Log.error("引けませんでした: " + db.getError());
-				return;
+			// 分岐したい失敗は一意制約くらい。それだけを受け止める
+			try {
+				db.insert(SQL.insert(Post.instance()).value(Post.title, "hello"));
+			} catch (DuplicateKeyException ex) {
+				Log.info("もうあります");
 			}
 
 		}

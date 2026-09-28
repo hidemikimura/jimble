@@ -51,8 +51,7 @@ class AsyncIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), AsyncIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), AsyncIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 
@@ -95,7 +94,7 @@ class AsyncIntegrationTest {
 
 		for (int i = 1; i <= 3; i++) {
 
-			long siteId = db.insert(
+			long siteId = db.insertKey(
 				SQL.insert(TestSchema.Site.instance())
 					.value(TestSchema.Site.group_id, 1L)
 					.value(TestSchema.Site.name, "サイト" + i));
@@ -582,7 +581,7 @@ class AsyncIntegrationTest {
 			return DBUtil.getMainDB().select(
 				SQL.select()
 					.from(TestSchema.Site.instance())
-					.where(TestSchema.Site.id.eq(siteId)));
+					.where(TestSchema.Site.id.eq(siteId))).orElse(null);
 
 		}
 
@@ -613,7 +612,7 @@ class AsyncIntegrationTest {
 			SQL.select(TestSchema.Site.id)
 				.from(TestSchema.Site.instance())
 				.orderBy(TestSchema.Site.id)
-				.limit(1)).getLong(TestSchema.Site.id);
+				.limit(1)).orElseThrow().getLong(TestSchema.Site.id);
 
 		FlatSite site = new FlatSite(siteId);
 
@@ -639,7 +638,7 @@ class AsyncIntegrationTest {
 			SQL.select(TestSchema.Site.id)
 				.from(TestSchema.Site.instance())
 				.orderBy(TestSchema.Site.id)
-				.limit(1)).getLong(TestSchema.Site.id);
+				.limit(1)).orElseThrow().getLong(TestSchema.Site.id);
 
 		long sql = countSql("組み直し", () -> {
 
@@ -664,7 +663,7 @@ class AsyncIntegrationTest {
 			SQL.select(TestSchema.Site.id)
 				.from(TestSchema.Site.instance())
 				.orderBy(TestSchema.Site.id)
-				.limit(1)).getLong(TestSchema.Site.id);
+				.limit(1)).orElseThrow().getLong(TestSchema.Site.id);
 
 		FlatSite site = new FlatSite(siteId);
 

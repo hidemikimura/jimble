@@ -59,15 +59,12 @@ public final class JobsController {
 
 		DB db = DBUtil.getMainDB();
 
-		long id = db.insert("""
+		// 採番値が欲しいので insertKey（失敗は例外）
+		long id = db.insertKey("""
 				INSERT INTO request (staff_id, amount, needed_on, status, created_at)
 				VALUES (?, ?, current_date + %d, 'pending', NOW())
 			""".formatted(inDays)
 			, staffId, amount);
-
-		if (db.isError()) {
-			throw new HttpException(500, "申請を作れませんでした");
-		}
 
 		context.response().json("id", id);
 
@@ -241,11 +238,9 @@ public final class JobsController {
 
 		DB db = DBUtil.getMainDB();
 
-		Data row = db.select("SELECT COUNT(1) AS cnt FROM %s WHERE status = ?"
+		return db.select("SELECT COUNT(1) AS cnt FROM %s WHERE status = ?"
 			.formatted(db.dialect().identifier(JobsQueue.NOTICE))
-			, MqStatus.dead.name());
-
-		return row == null ? 0 : row.getLong("cnt");
+			, MqStatus.dead.name()).map(row -> row.getLong("cnt")).orElse(0L);
 
 	}
 

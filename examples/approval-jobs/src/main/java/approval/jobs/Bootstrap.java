@@ -36,10 +36,8 @@ public final class Bootstrap {
 		// マイグレーション（要件 F-G-*）。DBUtil.load より前に呼ぶ
 		Migration.install();
 
-		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
-			throw new IllegalStateException(
-				"DB を読み込めませんでした（このすぐ上のログに原因が出ています）");
-		}
+		// 繋がらなければ例外で止まる（2.0。1.x は false を返したので、見ないと起動してしまった）
+		DBUtil.load(Conf.conf().config(), Bootstrap.class);
 
 		// バッチのマスタと履歴（要件 F-B-08）
 		BatchTables.install(DBUtil.getMainDB());

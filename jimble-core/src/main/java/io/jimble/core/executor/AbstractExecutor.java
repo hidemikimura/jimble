@@ -17,16 +17,20 @@ public abstract class AbstractExecutor<C extends Context<C>> implements Executor
 	private boolean canceled = false;
 
 	/**
-	 * キャンセルする
+	 * キャンセルする（ここで抜ける）
 	 *
 	 * <p>
-	 * 呼んだ時点では処理は止まらない。{@link #execute(Context)} から戻った後に、
-	 * 残りのExecutorが破棄され {@link #onCancel(Context)} が呼ばれる。
+	 * <b>呼んだところで {@link #execute(Context)} を抜ける</b>（2.0。要件 D-196）。
+	 * 残りの Executor が破棄され {@link #onCancel(Context)} が呼ばれる。
+	 * 1.x は印を立てるだけで、<b>あとの行もそのまま走っていた</b>——{@code cancel(); db.insert(...);} の insert が入った。
 	 * </p>
+	 *
+	 * @throws ExecutorCanceled	いつも（枠組みが受け止める）
 	 */
 	protected final void cancel () {
 
 		this.canceled = true;
+		throw new ExecutorCanceled(this);
 
 	}
 

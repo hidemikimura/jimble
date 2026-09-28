@@ -367,6 +367,7 @@ class DispatcherTest {
 						public void execute (WebContext context) {
 							log.add("validation");
 							cancel();
+							log.add("after cancel");     // 2.0 は cancel() で抜ける（要件 D-196）
 						}
 
 						@Override
@@ -384,6 +385,60 @@ class DispatcherTest {
 
 		assertEquals(List.of("validation", "onCancel"), log);
 		assertEquals(422, response.status());
+
+	}
+
+	@Test
+	@DisplayName("D-196 ValidationRules.validate が通らなければ 422。本文は ValidationExecutor と同じ形")
+	void validationExceptionIs422 () {
+
+		io.jimble.web.validation.ValidationRules rules = new io.jimble.web.validation.ValidationRules()
+			.put(io.jimble.web.validation.ValidationTest.Item.name, new io.jimble.web.validation.ValidationRule().required());
+
+		JimbleApp app = new JimbleApp() {
+			{
+				post("/save", context -> {
+					rules.validate(null, context.request().bodyAll());
+					log.add("saved");
+				});
+			}
+		};
+
+		Dispatcher dispatcher = new Dispatcher(app);
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/save")
+			.header("Accept", "application/json").form("title", "x");
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+		try (WebContext context = new WebContext(source, sink)) {
+			dispatcher.dispatch(context);
+		}
+
+		assertEquals(List.of(), log, "検査に通らないのに先へ進んでいる");
+		assertEquals(422, sink.status());
+		assertTrue(sink.body().contains("\"validation\""), sink.body());
+		assertTrue(sink.body().contains("name"), sink.body());
+		assertTrue(errorLog.isEmpty(), "422 をエラーログに出している: " + errorLog);
+
+	}
+
+	@Test
+	@DisplayName("D-196 壊れた JSON の本文は 400")
+	void malformedJsonIs400 () {
+
+		JimbleApp app = new JimbleApp() {
+			{
+				post("/api", context -> log.add("handler " + context.request().bodyJson()));
+			}
+		};
+
+		Dispatcher dispatcher = new Dispatcher(app);
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("POST", "/api").body("application/json", "{\"a\":");
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+		try (WebContext context = new WebContext(source, sink)) {
+			dispatcher.dispatch(context);
+		}
+
+		assertEquals(List.of(), log);
+		assertEquals(400, sink.status());
 
 	}
 

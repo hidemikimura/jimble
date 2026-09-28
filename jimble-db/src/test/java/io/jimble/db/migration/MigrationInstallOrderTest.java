@@ -55,7 +55,7 @@ class MigrationInstallOrderTest {
 		Migration.install();
 		assertTrue(warns.stream().noneMatch(message -> message.contains("DBUtil.load(...) のあとに")), warns.toString());
 
-		assertTrue(DBUtil.load(Conf.conf().config(), MigrationInstallOrderTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), MigrationInstallOrderTest.class);
 
 		Migration.install();
 

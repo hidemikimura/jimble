@@ -1,6 +1,5 @@
 package io.jimble.web.router;
 
-import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.core.executor.Executor;
 import io.jimble.util.log.Log;
@@ -189,31 +188,9 @@ public final class Router {
 
 	// region パス
 
-	/**
-	 * パスをネストする
-	 *
-	 * <p>
-	 * <b>配下のルーターを返すだけで、自分は変わらない。</b>
-	 * {@code router.path("/admin"); router.get("/x", h);} は {@code /x} をルートに登録する——
-	 * 戻り値を捨てると何も起きない。ブロックで書ける {@link #path(String, java.util.function.Consumer)} を勧める
-	 * （2.0 ではこちらだけが残る。要件 D-191）。
-	 * </p>
-	 *
-	 * @param path	パス
-	 * @return	配下のルーター
-	 *
-	 * @deprecated {@link #path(String, java.util.function.Consumer)} を使う。2.0 で消す（要件 D-192）
-	 */
-	@CheckReturnValue
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public Router path (String path) {
-
-		return child(path);
-
-	}
-
 	/*
-	 * 配下のルーター（Controller のブロックと path(パス, ブロック) から使う。2.0 で path(パス) を消したあとも残る）
+	 * 配下のルーター（Controller のブロックと path(パス, ブロック) から使う）。
+	 * 1.x の公開メソッド path(パス) は戻り値を受け取り忘れると親に登録したので、2.0 で消した（要件 D-196）
 	 */
 	Router child (String path) {
 
@@ -232,7 +209,7 @@ public final class Router {
 	 * </pre>
 	 *
 	 * <p>
-	 * <b>配下のルーターを受け取って書く。</b>戻り値を受け取る形（{@link #path(String)}）と違って、
+	 * <b>配下のルーターを受け取って書く。</b>1.x の戻り値を受け取る形（{@code path(パス)}。2.0 で消した）と違って、
 	 * 受け取り忘れて親に登録してしまうことが無い。
 	 * </p>
 	 *

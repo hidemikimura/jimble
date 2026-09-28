@@ -33,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>コードを読んでも付いているかどうか分からなくなる。</b>
  * </p>
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class ScopeAttributeTest {
 
 	/** 公開か（既定は「公開ではない」＝黙って足したら閉じている） */
@@ -92,7 +91,7 @@ class ScopeAttributeTest {
 
 		router.attribute(PUBLIC, true);
 
-		Router docs = router.path("/docs");
+		Router docs = router.child("/docs");
 		docs.get("/guide", context -> { });
 
 		router.seal();
@@ -107,7 +106,7 @@ class ScopeAttributeTest {
 
 		Router router = new Router();
 
-		Router open = router.path("/docs");
+		Router open = router.child("/docs");
 		open.attribute(PUBLIC, true);
 		open.get("/guide", context -> { });
 
@@ -115,7 +114,7 @@ class ScopeAttributeTest {
 		 * <b>同じ /docs だが、別のブロックで登録している。</b>
 		 * パスに付く作りだと、ここまで公開になってしまう。
 		 */
-		Router secret = router.path("/docs");
+		Router secret = router.child("/docs");
 		secret.get("/internal", context -> { });
 
 		router.seal();
@@ -157,7 +156,7 @@ class ScopeAttributeTest {
 		router.attribute(PUBLIC, true);
 		router.attribute(ROLE, "guest");
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.attribute(PUBLIC, false);
 		admin.get("/users", context -> { });
 
@@ -198,7 +197,7 @@ class ScopeAttributeTest {
 
 		Router router = new Router();
 
-		Router api = router.path("/api");
+		Router api = router.child("/api");
 		api.rateLimit(RateLimit.perIp(5, Duration.ofMinutes(1)));
 		api.get("/items", context -> { });
 
@@ -226,7 +225,7 @@ class ScopeAttributeTest {
 
 		Router router = new Router();
 
-		Router api = router.path("/api");
+		Router api = router.child("/api");
 		api.rateLimit(RateLimit.perIp(100, Duration.ofMinutes(1)));
 		api.post("/login", context -> { }).attribute(RateLimit.KEY, strict);
 
@@ -299,7 +298,7 @@ class ScopeAttributeTest {
 
 		router.attribute(ROLE, "admin");
 
-		Router open = router.path("/open");
+		Router open = router.child("/open");
 		open.attribute(ROLE, null);
 		open.get("", context -> { });
 
@@ -330,7 +329,7 @@ class ScopeAttributeTest {
 
 		Router inBlock = new Router();
 		inBlock.attribute(ROLE, "admin");
-		Router block = inBlock.path("/x");
+		Router block = inBlock.child("/x");
 		block.attribute(ROLE, null);
 		block.get("", context -> { });
 		inBlock.seal();

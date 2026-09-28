@@ -16,6 +16,9 @@ import io.jimble.web.router.AttributeKey;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
 import io.jimble.web.csrf.Csrf;
+import io.jimble.web.validation.ValidationRules;
+import io.jimble.web.validation.ValidationRule;
+import io.jimble.web.validation.ValidationException;   // 422（HttpException の子）
 import io.jimble.util.data.Data;
 ```
 
@@ -36,8 +39,12 @@ public class App extends JimbleApp {
 			install(AdminController::new);         // 走査しない。自分で登録する
 		});
 
-		error((context, cause, statusCode) ->
-			context.response().code(statusCode).json("error", cause.getMessage()));
+		error((context, cause, statusCode) -> {
+			if (cause instanceof ValidationException) {
+				return;                            // 422 の本文 {"validation": {...}} は枠組みが付ける
+			}
+			context.response().code(statusCode).json("error", cause.getMessage());
+		});
 	}
 
 	public static void main (String[] args) {
@@ -52,6 +59,7 @@ public class App extends JimbleApp {
 枠組みのクラスではないので、import 先を探さないこと。
 
 コントローラは `Controller` を継承し、初期化ブロックにルートを書いて `install(X::new)`。
+`Router` を直接受け取って書くところでは `router.path("/admin", admin -> { ... })`（ブロックの形だけ。`router.path("/admin")` は無い）。
 
 ## フィルタと属性は「書いた場所」に付く。パスには付かない
 
@@ -110,15 +118,39 @@ Data input = context.request().bodyAll();
 String title = input.getString("title");
 ```
 
+**`Request` は `Data` ではない。**`context.request().getString("x")` は書けない（コンパイルエラー）。
+値は `bodyAll()` / `body()` / `bodyQuery()` などから読む（`query()` はクエリの生の文字列）。
+本文が `application/json` なのに読めなければ、`bodyAll()` などが **400 の `HttpException`** を投げる。
+
 入れ子は `user.name=taro` でも `user[name]=taro` でも同じ。
 `items[0].price` は添字、`items[].price` は末尾に追加。
 
-無いキーは `getString` なら `null`、`getInt` なら `0`、`getBoolean` なら `false`。
-「無い」と「0」を分けたいなら `getIntObject` か `isNull(key)`。
-**1.5.0 からは `getInt("page", 1)` のように既定値を渡す**——無い・空欄だけが既定値で、`"abc"` は `DataConversionException`（黙って 0 にならない）。
+無いキー（キーが無い・空欄）は `getString` なら `null`、`getInt` なら `0`、`getBoolean` なら `false`。
+「無い」と「0」を分けたいなら `getIntObject` か `isNull(key)`、既定値は `getInt("page", 1)`。
+**あるのに読めない値（`"abc"`、int に `"1.5"`、真偽に `"yes"`）は `DataConversionException` → 500。**
+黙って 0 にはならない。**利用者の入力は、getter で読む前に検査を通す**（下の「検査」）。
+`paging()` は枠組みが寛容に読む（`?page=abc` は1ページ目）。
 
-属性を決めた `Cookie` は `cookies().putSigned(cookie)` / `putUnsigned(cookie)` で書く。
-`put(Cookie)` は**署名しない**ので、`cookie.secret` があると次のリクエストの `get` が `""` になる（1.5.0 で非推奨）。
+属性を決めた `Cookie` は `cookies().putSigned(cookie)` / `putUnsigned(cookie)` で書く（`put(Cookie)` は無い）。
+
+## 検査（バリデーション）
+
+```java
+new ValidationRules()
+	.put(Post.title, new ValidationRule().required().textLengthMax(100))
+	.put(Post.category_id, new ValidationRule().required().integer(1, 9999))
+	.validate(db, input);                  // 通らなければ ValidationException（422）。戻り値は無い
+
+long categoryId = input.getLong(Post.category_id);   // 検査を通したあとなら、読めない値で 500 にならない
+```
+
+- **`validate(...)` は `void`。**通らなければ `ValidationException`（`HttpException` の子、422）を投げ、
+  枠組みが `{"validation": {項目: [メッセージ]}}`（と入力値）で返す。自分で `if` を書かない
+- **エラーの一覧が欲しいときだけ `errors(db, input)`**（`Data`。空なら通った）。本文を自分で作るならこちら
+- 明細などの一覧は `validate(db, list)` / `errors(db, list)`（エラーのある行だけ、1始まりの `index` つき。`validate` の 422 は `{"rows": [...]}` を包む）
+- **`required()`（= `empty()`）はキーが送られてこなくても失敗する。**ほかの規則は空を通すので、必須には `required()` を積む。
+  「登録のときだけ必須、更新は送られた項目だけ見る」は `insertRequired()` と `insertRequestChecker(...)`
+- `ValidationExecutor`（ルートに積む検査）も同じ 422 の形。こちらは `addError(...)` で積み、`error` は通らず `onCancel` で返す
 
 ## 返す
 
@@ -131,13 +163,14 @@ context.response().code(201).send();
 ```
 
 `json()` は重ねて呼ぶと1つの JSON に足されていく。
+**返し方を2種類積む（`json(...)` と `redirect(...)` など）と `IllegalStateException`。**同じ種類を重ねるのはよい。
 **そのあとに `send()` は書かない**——組み立てておけば、
 ディスパッチャが実行の終わりに送る（`error` ハンドラの中でも同じ）。
 サンプルはどれも `json()` で終わっている。
 明示するのは**本文なしで終わらせたいとき**だけ（`code(204).send()`）。
 
 大きいものは `context.response().outputStream()` に直接書く。
-**呼んだ時点でステータス・Cookie・Cache-Control が決まる**ので、`code(...)` やヘッダはその前に。
+**呼んだ時点でステータス・Cookie・Cache-Control が決まる**ので、`code(...)` やヘッダはその前に（送ったあとのヘッダ・Cookie は例外）。
 書いたものは `flush()` するまで溜まる——届いたそばから見せたいなら書くたびに `flush()`。
 `InputStream` は `send(in, "型")` に渡せば、続きが来ていないところで送り出す（中継に使える）。
 
@@ -148,9 +181,11 @@ context.session().put("staff_id", id);
 context.session().save();                  // ← 呼ばないと書かれない
 ```
 
-**自動保存はしない。**変えたら `save()`。**1.5.0 からは `save()` のあとに変えても、もう一度 `save()` すれば保存される**
-（1.4 までは2度目の `save()` が何もせず、`Auth.login` の直後に入れた値などが黙って捨てられていた）。
+**自動保存はしない。**変えたら `save()`。`save()` のあとに変えても、もう一度 `save()` すれば保存される。
 保存し忘れると、リクエストの終わりに「save() が呼ばれていません」と WARN が出る。
+
+**書くのは `session().put(...)` / `remove(...)`。**`session().data()` は**読み取り専用の写し**で、
+`session().data().put(...)` は `UnsupportedOperationException`。`destroy()` のあとの `put` / `remove` / `clear` は `IllegalStateException`。
 保存先は `application.conf` の `session.store`（`none` / `db` / `redis` / `cookie`。既定 `none`）。
 
 **ログインが通ったら `regenerateId()`。**呼ばないと、
@@ -172,15 +207,19 @@ throw new HttpException(401, "ログインしてください");
 | 例外 | コード |
 | --- | --- |
 | `HttpException` | `statusCode()` の値 |
+| `ValidationException` | 422（`validate(...)` が投げる） |
 | `NotFoundException` | 404 |
-| そのほか全部 | **500** |
+| `SqlExecuteException` などそのほか | **500** |
 
 `error(...)` は**画面へ飛ばすか JSON かをアプリが決める**ところ。
 枠組み側（`Auth.guard` など）は投げるだけ。
 
-**`CodeException` は HTTP のコードに効かない**（投げれば 500）。
-**検証（`ValidationExecutor`）の失敗は `error` を通らない**——
-例外を投げずに 422 を返すので、見た目を変えるなら `onCancel` を見る。
+**`CodeException` は HTTP のコードに効かない**（非検査。投げれば 500）。
+**`validate(...)` の `ValidationException` は `error` を通る。**`error` で本文を組むと、枠組みの
+`{"validation": ...}` は付かない——上の例のように素通しするか、`e.errors()` を自分で返す。
+**`ValidationExecutor` の失敗は `error` を通らない**（`cancel()` で抜けて `onCancel` が 422 を返す）。見た目を変えるなら `onCancel` を見る。
+
+自分で `AbstractExecutor` を書くなら、**`cancel()` はそこで抜ける**（後ろの行は走らない。枠組みが `onCancel` を呼ぶ）。
 
 ## ログインと認可
 
@@ -242,7 +281,7 @@ Auth.login(context, principal);
 
 ```java
 // POST /login/code（Auth.PUBLIC が要る。NO_SESSION は付けない）
-if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Auth.login まで済む
+if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   // 通れば中で Auth.login まで済む
 	context.flash().put("message", "コードが違います");
 }
 ```
@@ -266,18 +305,25 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
 
 ## 落とし穴（実際に踏んだもの）
 
-- **`context.request().getString("x")` はコンパイルが通って `null` を返す。**
-  `Request` も `Data` なので通ってしまう。`bodyAll()` を通す
+- **1.x のコードを直すなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す
+  （`request().getString(...)` / `cookies().put(cookie)` / `router.path("/x")` はコンパイルエラーになる）
+- **利用者の入力を検査せずに `getInt` / `getLong` で読まない。**`?id=abc` で `DataConversionException` → **500**。
+  先に `rules.validate(db, input);` を通せば 422 で返る。キーが無い・空欄は 0 のままなので、必須は `required()` で落とす
+- **`Data errors = rules.validate(...)` と書かない。**`validate` は `void`（通らなければ投げる）。一覧は `errors(...)`
+- **部分更新（PATCH）の規則に `required()` を付けると、送られてこない項目で 422 になる。**
+  「登録のときだけ必須」は `insertRequired()`（登録かどうかは `insertRequestChecker(...)` で決める）
+- **`error(...)` が `ValidationException` にも本文を組むと、422 の `{"validation": ...}` が消える**（上の「エラー」）
+- **`session().data().put(...)` は例外。**`session().put(...)`（そして `save()`）
 - **`Auth::guard` はいちばん最初に登録する。**セッションを使うかどうかをここで決めるので、
   先に誰かが `session()` を触ると間に合わない
 - **`PUBLIC` と `NO_SESSION` は別の判断。**ログインの入口は
   「ログインは要らないが**セッションは要る**」。一緒にすると**誰もログインできなくなる**
   （302 は返るのに次のリクエストで 401 になる）
-- **`after` で Cookie を足しても遅い。**応答を送ったあとに走るので、ヘッダはもう出ている
-- **1.4 までは `save()` が1リクエストに1回しか効かなかった。**`before` で先に保存すると、
-  そのリクエストの本来の保存が黙って捨てられた（1.5.0 で直した。1.4 以前のアプリで踏む）
-- **`destroy()` のあとにセッションを変えても保存されない**（1.5.0 から WARN）
-- **`json(...)` と `redirect(...)` のように返し方を2つ積むと、最初の1つだけが返る**（JSON → 文字 → 画面 → リダイレクト → ダウンロードの順。1.5.0 から WARN、2.0 で例外）
+- **`after` で Cookie やヘッダを足せない。**応答を送ったあとに走るので例外になる（`after` の中なのでログに出るだけで、届かない）。
+  `before` かハンドラの中で足す
+- **`destroy()` のあとにセッションを変えると `IllegalStateException`。**ログアウトの処理は `destroy()` を最後に
+- **`json(...)` と `redirect(...)` のように返し方を2種類積むと `IllegalStateException`。**どちらかに決めてから書く
+- **`paging()` のあとに `paging(50)` を呼ぶと `IllegalStateException`。**件数を変えるなら最初から `paging(50)`
 - **`send()` を2回呼ぶとエラー。**`after` や `error` の中では `isSent()` を見てから触る
 - **確定後にフィルタを足すと落ちる**（「足したのに効かない」を作らないため）。
   ルート定義は初期化ブロックの中で完結させる
@@ -291,8 +337,6 @@ if (!Mfa.complete(context, request.getString("code"))) {   // 通れば中で Au
   ファイル名にハッシュを入れる（`app.9f3a1c.js`）か、`<script src="/assets/app.js?v=2">` のように参照を変える。
   開発中は `application.local.conf` などで `assets.immutable_max_age = 0s`（**単位を書く。素の `0` は起動時に落ちる**）。
   そのほかの拡張子は `assets.max_age`（既定 `0s`）＋ `must-revalidate` で、毎回確かめに来る
-- **OIDC のコールバックで `session().save()` を自分で呼ばない。**1.4 までは保存が1リクエストに1回で、
-  先に呼ぶと**そのあとの `Auth.login` の保存が黙って捨てられた**（「入れたのに次で 401」。1.5.0 で直した）
 
 ## 詳しいことは引く
 

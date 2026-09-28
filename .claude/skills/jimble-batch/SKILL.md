@@ -21,6 +21,7 @@ import io.jimble.mq.MqExecutor;
 import io.jimble.mq.MqQueue;
 import io.jimble.mq.MqRegistry;
 import io.jimble.mq.MqStatus;
+import io.jimble.util.data.Data;
 ```
 
 ## バッチを書く
@@ -28,14 +29,20 @@ import io.jimble.mq.MqStatus;
 ```java
 public class PostCleanupBatch extends AbstractBatch {
 
-	@Override public String batchName ()    { return "記事の掃除"; }
-	@Override public boolean isScheduler () { return true; }
-	@Override public String cron ()         { return "15 3 * * *"; }   // 5フィールド
+	@Override public String batchName () { return "記事の掃除"; }
+	@Override public String cron ()      { return "15 3 * * *"; }   // 5フィールド。書けばスケジューラが拾う
+
+	@Override
+	public Data defaultBatchSettings () {
+		return new Data().putData("days", 30);      // 設定の初期値
+	}
 
 	@Override
 	public void execute (BatchArgs args) {
 
-		int days = settings().getInt("days");        // DB に入れた設定
+		long days = args.cliArgs().containsKey("days")   // 引数があればそちら
+			? args.cliArgs().getLong("days")
+			: settings().getLong("days");                // 無ければ DB に入れた設定
 
 		while (!isCancelOrder()) {                   // 長い処理では必ず見る
 			// 1件ずつ処理する
@@ -46,9 +53,11 @@ public class PostCleanupBatch extends AbstractBatch {
 }
 ```
 
-- `isScheduler()` が `true` のものだけスケジューラが拾う
-- `settings()` は DB の設定（初期値は `defaultBatchSettings()`）
-- `args.cliArgs` に `key=value` で渡したものが入る
+- **cron で回すのに要るのは `cron()` だけ**（`isEnableScheduler()` は既定で `true`）。
+  **`isScheduler()` は `true` にしない**——スケジューラ自身の印で、`true` にすると `sync()` が飛ばし、マスタに行ができない
+- `settings()` は DB の設定（初期値は `defaultBatchSettings()`。管理画面から変えられる）
+- `args.cliArgs()` に `key=value` で渡したものが入る（メソッド。フィールドではない）
+- 失敗は例外で抜ければよい（SQL の失敗も `SqlExecuteException` で抜ける）。履歴は `error` になる
 
 ## 登録する。順番が効く
 
@@ -121,7 +130,7 @@ BatchRegistry.add(PostCleanupBatch::new);
 BatchRegistry.sync(DBUtil.getMainDB());
 ```
 
-呼び忘れても**落ちない**。`sync()` がエラーログを出して 0 を返すだけなので、ログを見ないと気づかない。
+呼び忘れると **`sync()` が `IllegalStateException` を投げて起動が止まる**（メッセージに `BatchTables.install` が出る）。
 
 `DbScheduler` の依頼を積む MQ の表（**`mq_scheduler`**）と、アプリの MQ の表は、codegen が自動では外さない。
 `codegen.exclude_tables` に完全一致で並べる（`jimble-db` の skill）。
@@ -170,7 +179,7 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 }
 ```
 
-- **1回の `write()` が1トランザクション**
+- **1回の `write()` が1トランザクション**。SQL の失敗は例外のまま抜けさせる（中で `catch` して続けても、確定は `DB_004` で断られる）
 - **中断はかたまりの切れ目で見る。**`isCancelOrder()` を自分で呼ぶ必要はない
 - `execute()` は `final`。触るのは `reader()` / `process()` / `write()` の3つだけ
 - 途中で落ちたら**そのかたまりだけ戻して、バッチ全体を失敗にする**（黙って次へ進まない）
@@ -261,12 +270,19 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 
 ## 落とし穴（実際に踏んだもの）
 
+- **1.x のコードを直すなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す
+  （`isError()` や `DBTransaction`、`if (!DBUtil.load(...))` はコンパイルエラーになる）
 - **`BatchRegistry.sync()` は登録が全部済んでから。**先に呼ぶと全部 `nothing` になる
 - **`BatchTables.install(db)` を呼ばないとバッチのテーブルが無い**（マイグレーションでは作らない）。
-  呼び忘れても `sync()` がエラーログを出すだけで落ちない
+  呼び忘れると `sync()` が例外を投げて起動が止まる
 - **`mq_scheduler` などの MQ の表は codegen が外さない。**`codegen.exclude_tables` に1つずつ書く（ワイルドカード不可）
-- **`db.insert()` などは失敗しても例外を投げない。**`db.isError()` に入るのは
-  **その直前の1文**の結果だけ。`write()` で複数文を流すなら1文ごとに見るか、自分で投げる
+- **`write()` やトランザクションの中で SQL の失敗を `catch` して続けない。**続けても確定は
+  `TransactionException`（`DB_004`）で断られ、そのかたまりは巻き戻る。1件ずつ飛ばしたいなら、失敗しない形に先に弾く
+  （`onDuplicateKeyUpdate` や存在確認）
+- **`settings()` / `args.cliArgs()` は人が入れた値。**`getLong("days")` は読めない値（`"abc"`）で `DataConversionException`、
+  バッチが失敗になる（黙って 0 にはならない）。キーが無い・空なら 0 のままなので、0 を「未設定」として扱うなら自分で分ける
+- **`isScheduler()` を `true` にしない。**cron で回すのは `cron()` を書くだけ。`true` にするとマスタに行ができず、スケジューラから見えない
+- **`DBLock.lock` はトランザクションの中で呼ぶ**（外は `IllegalStateException`）。`db.transaction(tx -> { DBLock.lock(db, "key"); ... })`
 - **`isCancelOrder()` を見ていないバッチは止められない**（チャンクは自動）
 - `AbstractBatch` の外（Domain 層など）からは
   `Context.current(BatchContext.class).isCancelOrdered()` で同じ指示が見られる

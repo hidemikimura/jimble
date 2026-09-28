@@ -4,7 +4,7 @@ import io.jimble.core.context.Context;
 import io.jimble.core.context.MqContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
@@ -43,7 +43,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </pre>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class MqIntegrationTest {
 
 	/** テスト用のキュー名 */
@@ -180,7 +179,7 @@ class MqIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), MqIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), MqIntegrationTest.class);
 
 		queue = new MqQueue(QUEUE);
 		queue.install();
@@ -247,7 +246,7 @@ class MqIntegrationTest {
 	 */
 	private int rowCount () {
 
-		Data row = DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM %s".formatted(quoted()));
+		Data row = DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM %s".formatted(quoted())).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -271,7 +270,7 @@ class MqIntegrationTest {
 	 */
 	private Data firstRow () {
 
-		return DBUtil.getMainDB().select("SELECT * FROM %s ORDER BY id LIMIT 1".formatted(quoted()));
+		return DBUtil.getMainDB().select("SELECT * FROM %s ORDER BY id LIMIT 1".formatted(quoted())).orElse(null);
 
 	}
 
@@ -338,27 +337,17 @@ class MqIntegrationTest {
 
 		DB db = DBUtil.getMainDB();
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+		try (Tx transaction = db.begin()) {
 
 			new OkExecutor().put(db, new Data().putData("name", "rolled_back"));
 
-			transaction.rollbackEndTransaction();
+			transaction.rollback();
 
 		}
 
 		assertEquals(0, rowCount(), "ロールバックしたのにキューが残っている");
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
-
-			new OkExecutor().put(db, new Data().putData("name", "committed"));
-
-			transaction.commitEndTransaction();
-
-		}
+		db.transaction(tx -> new OkExecutor().put(db, new Data().putData("name", "committed")));
 
 		assertEquals(1, rowCount());
 

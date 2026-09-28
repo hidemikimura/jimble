@@ -29,21 +29,22 @@ You pull values out with `getString` `getInt` `getLong` `getBoolean` `getData` `
 `getBoolean`** — you cannot tell "missing" from "0". When you need to, use the Object
 versions (`getIntObject` and friends) or `isNull(key)`. See [Utilities](./util).
 
-**Prefer the form that takes a default (since 1.5.0).** `getInt("page", 1)` returns `1` only when the key
-is missing or blank; a value it cannot read, such as `"abc"`, stops with a `DataConversionException`
-instead of quietly becoming `0`.
+**A value that is there but cannot be read** (`"abc"` read with `getInt`, for example) is a `DataConversionException`
+instead of quietly becoming `0`. **Run user input through [validation](./validation) first.** Read it unchecked and the
+exception becomes a 500. The form that takes a default (`getInt("page", 1)`) returns the default only when the key is missing or blank.
+
+**`Request` is not a `Data`.** You cannot read it like `context.request().getString("title")` (that is a compile error).
+Go through one of the methods in the table above (usually `bodyAll()`).
+
+```java
+Data input = context.request().bodyAll();
+String title = input.getString("title");
+```
+
+**When the `Content-Type` is `application/json` but the body cannot be read as JSON, `body()` / `bodyJson()` / `bodyAll()`
+throw a 400 `HttpException`** (the same on every read). Nothing carries on with a half-read body or an empty `Data`.
 
 > [!TRAP]
-> **You cannot read straight off `context.request()`.**
-> `Request` is a `Data` too, so `context.request().getString("title")` **compiles** — and
-> returns **`null`**, because neither the body nor the query string is in there.
-> Go through one of the methods in the table above (usually `bodyAll()`).
->
-> ```java
-> Data input = context.request().bodyAll();
-> String title = input.getString("title");
-> ```
->
 > **`getStringOptional` does give you an empty string when the key is missing — and it
 > puts that empty string into the `Data`.** Reading alone adds keys, so do not call it
 > just before serialising to JSON or inside a loop ([Utilities](./util)).
@@ -97,8 +98,11 @@ For the person retyping the form, being told one problem at a time is the worst 
 `ValidationMessages.toMessages(errors)` turns them into a `Data` of field name → message.
 Return that as JSON or hand it to a template.
 
+When stopping is fine, write `rules.validate(db, input);` as a statement. If it fails, it throws `ValidationException` and the framework replies 422.
+
 The list of rules, the `ValidationExecutor` you can apply per route, and paging
 are all in [Validation and paging](./validation).
+Pass the page size **on the first call** (`paging(50)` with a different count after `paging()` throws `IllegalStateException`).
 
 ## Sending a response
 
@@ -112,6 +116,10 @@ context.response().code(201).send();               // no body
 ```
 
 `json()` only builds. Call it several times and it keeps adding to the same JSON document.
+
+**There is only one way to reply per response.** Stack two different kinds out of `json` / `jsonl` / `text` / `cache` / `view` / `redirect` / `download`
+(`redirect(...)` after `json(...)`, say) and the second one throws `IllegalStateException`.
+Stacking the same kind again is fine.
 
 **You do not need a `send()` after `json()`.** Once it is built, the dispatcher sends it at
 the end of the execution. Write `send()` explicitly only when you want to finish **with no
@@ -148,7 +156,7 @@ try (OutputStream out = context.response().outputStream()) {
 
 **Calling `outputStream()` fixes the status and headers.**
 `code(...)`, cookies put in `cookies()` and the default `Cache-Control: no-store` (not overwritten if you set your own)
-are applied at that moment, so settle them first; changes made afterwards do not arrive.
+are applied at that moment, so settle them first. **Writing a header or a cookie after the response has been sent throws `IllegalStateException`** (it would never arrive).
 For 204 / 205 / 304, whatever you write is dropped and a WARN is logged.
 
 **What you write stays buffered until you `flush()`.** For something written to the end, like a CSV, that is fine as is;

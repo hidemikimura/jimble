@@ -124,8 +124,8 @@ buried under "fixed".
 > warning. **Do not switch those warnings off** — otherwise you find out it is gone
 > after you upgrade.
 
-**The list of what 2.0 removes or changes is in [Moving to 2.0](./migrate-2).**
-`./gradlew jimbleCheck --target=2.0` lists the lines to rewrite.
+**The list of what 2.0 removed or changed is in [Moving to 2.0](./migrate-2).**
+`./gradlew jimbleCheck` lists the lines to rewrite (on 1.5, add `--target=2.0`).
 
 ## Choosing a version
 

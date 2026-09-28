@@ -77,9 +77,7 @@ class RememberIntegrationTest {
 		originalConf = Conf.conf().config();
 		Conf.replace(ConfigFactory.parseString("session.store = \"none\"").withFallback(originalConf));
 
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), RememberIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), RememberIntegrationTest.class);
 
 		router = new Router();
 		router.get("/me", context -> { });
@@ -222,7 +220,7 @@ class RememberIntegrationTest {
 		String cookie = browser.cookie(RememberConf.cookieName());
 		String validator = cookie.substring(cookie.indexOf(':') + 1);
 
-		Data row = DBUtil.getMainDB().select("SELECT selector, validator FROM %s".formatted(table()));
+		Data row = DBUtil.getMainDB().select("SELECT selector, validator FROM %s".formatted(table())).orElse(null);
 
 		/*
 		 * <b>そのまま保存すると、DB を読めた人が全員になりすませる。</b>
@@ -584,7 +582,7 @@ class RememberIntegrationTest {
 		new Browser().visit("/me", context -> Remember.issue(context, ALICE));
 
 		String selector = DBUtil.getMainDB()
-			.select("SELECT selector FROM %s".formatted(table())).getString("selector");
+			.select("SELECT selector FROM %s".formatted(table())).orElseThrow().getString("selector");
 
 		long old = Instant.now().minus(Duration.ofDays(31)).toEpochMilli();
 		DBUtil.getMainDB().update("UPDATE %s SET last_used_at = ? WHERE selector = ?"
@@ -776,7 +774,7 @@ class RememberIntegrationTest {
 	 */
 	private static int rowCount () {
 
-		Data row = DBUtil.getMainDB().select("SELECT count(*) as cnt FROM %s".formatted(table()));
+		Data row = DBUtil.getMainDB().select("SELECT count(*) as cnt FROM %s".formatted(table())).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 

@@ -301,7 +301,7 @@ public final class Lockout {
 
 		try (DB db = DBUtil.getMainDB()) {
 			return db.select("SELECT failed_count, last_failed_at FROM %s WHERE attempt_key = ?"
-				.formatted(table(db)), hash(key));
+				.formatted(table(db)), hash(key)).orElse(null);
 		} catch (Exception ex) {
 			Log.error(ex, "ログイン失敗の記録を読めませんでした");
 			return null;

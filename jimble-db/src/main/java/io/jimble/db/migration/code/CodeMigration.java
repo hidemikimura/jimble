@@ -2,6 +2,7 @@ package io.jimble.db.migration.code;
 
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.lock.DBLock;
 import io.jimble.db.migration.Migration;
@@ -106,7 +107,6 @@ public final class CodeMigration {
 	 *
 	 * @throws MigrationException	実行に失敗した場合
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public static void execute () {
 
 		if (!DBUtil.isUseDB() || MIGRATIONS.isEmpty()) {
@@ -116,48 +116,32 @@ public final class CodeMigration {
 		init();
 
 		DB lockDB = DBUtil.getMainDB();
-		DBLock.create(lockDB, Migration.LOCK_KEY);
 
 		try (lockDB) {
 
-			lockDB.beginTransaction();
+			DBLock.create(lockDB, Migration.LOCK_KEY);
 
-			if (!DBLock.lock(lockDB, Migration.LOCK_KEY)) {
-				throw new MigrationException("コードマイグレーションのロックを取得できませんでした");
+			// 抜けたら巻き戻る（ロックも外れる）
+			try (Tx tx = lockDB.begin()) {
+
+				DBLock.lock(lockDB, Migration.LOCK_KEY);
+
+				for (AbstractCodeMigration migration : migrations()) {
+					migration.migrate();
+				}
+
+				tx.commit();
+
 			}
-
-			for (AbstractCodeMigration migration : migrations()) {
-				migration.migrate();
-			}
-
-			lockDB.commitEndTransaction();
 
 		} catch (MigrationException ex) {
 
-			rollbackQuietly(lockDB);
 			throw ex;
 
 		} catch (Exception ex) {
 
-			rollbackQuietly(lockDB);
 			throw new MigrationException("コードマイグレーションに失敗しました", ex);
 
-		}
-
-	}
-
-	/**
-	 * ロールバックする（失敗しても握りつぶす）
-	 *
-	 * @param db	DB
-	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
-	private static void rollbackQuietly (DB db) {
-
-		try {
-			db.rollbackEndTransaction();
-		} catch (Exception ignore) {
-			// ロールバック自体の失敗は元の例外を隠さないよう黙る
 		}
 
 	}

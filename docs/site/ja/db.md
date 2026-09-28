@@ -145,10 +145,7 @@ public static void main (String[] args) {
 
 	Migration.install();                                // 起動時マイグレーション（要るなら。DBUtil.load より前）
 
-	// 繋がらなければ false。ここで止めます
-	if (!DBUtil.load(Conf.conf().config(), App.class)) {
-		throw new IllegalStateException("DB を読み込めませんでした（このすぐ上のログに原因が出ています）");
-	}
+	DBUtil.load(Conf.conf().config(), App.class);       // 繋がらなければ例外。ここで止まります
 
 	JimbleServer.start(new App());
 
@@ -158,12 +155,12 @@ public static void main (String[] args) {
 `DBUtil.load` の2つ目は**クラスパスの起点**です（マイグレーション SQL をここから探します）。
 自分のアプリのクラスを渡してください。
 
-> [!TRAP]
-> **戻り値を捨てないでください。**`DBUtil.load` は繋がらなくても例外を投げません
-> （原因をログに出して `false` を返します）。捨てると**サーバーは起動してしまい**、
-> 最初にリクエストが来たところで落ちます。
-> `DBUtil.getMainDB()` が「DB が読み込めていません」と言って落ちるので迷子にはなりませんが、
-> **起動した時点で気づけるほうが早い**です。
+**繋がらなければ `SqlExecuteException`（`DB_007`）を投げ、起動はそこで止まります。**
+戻り値はありません（`void`）。受け止めずにそのまま `main` から投げてください。
+
+> [!NOTE]
+> 1.x の `DBUtil.load` は繋がらなくても `false` を返すだけで、捨てるとサーバーが起動してしまいました。
+> 2.0 で例外になりました（[2.0 への移行](./migrate-2)）。
 
 > [!TRAP]
 > **入口が複数あるなら、この並びを1か所にまとめてください。**
@@ -256,6 +253,10 @@ plugins {
 ```java snippet=select-nesting
 ```
 
+**`select` は `Optional<Data>` を返します。**1件も無ければ空です
+（上の `.orElseThrow()` は「必ずある」と決めて取り出す書き方です）。
+読めなかったときは空ではなく例外です（下の「エラーの見方」）。
+
 **SELECT の結果はテーブル名でネストします。**
 `post` と `comment` を join したとき、両方に `id` があっても衝突しません。
 
@@ -290,44 +291,47 @@ JSON の文字のまま欲しいなら、SQL で文字にして読んでくだ�
 ```java snippet=db-error
 ```
 
-DB のエラーは例外ではなく戻り値で返ります。
-`select` 系は `null`、`insert` は `-1`、`update` / `delete` は `-1` です。
-理由は `db.getError()` に入っています。
+**DB の失敗は例外で返ります。**SQL が通らなかった・繋がらなかったときは `SqlExecuteException`（非検査）です。
+受け止めなければ上まで飛んで 500 になり、トランザクションの中なら巻き戻ります。
+コードは `getCode()`（`DB_999` など）、元の JDBC の例外は `getCause().getCause()` にあります。
 
-### 「1件も無かった」と「読めなかった」を見分ける
+**0件は失敗ではありません。**空の `Optional`・空のリスト・件数 0 で返ります。
 
-`select` の `null` には**2つの意味**があります。
+| メソッド | 返すもの | 0件のとき |
+| --- | --- | --- |
+| `select` / `selectCached` | `Optional<Data>` | 空の `Optional` |
+| `selectList` / `selectListCached` / `selectListPerformance` | `List<Data>`（`null` は返しません） | 空リスト |
+| `insert` | なし（`void`） | —— |
+| `insertKey` | 採番された値。採番されなければ `SqlExecuteException` | —— |
+| `update` / `delete` | 当たった件数（`int`） | `0` |
+| `execute` | 当たった件数（`int`）。DDL と結果セットを返す文は `0` | `0` |
+| `executeBatch` / `insertBatch` | 文ごとの件数 / 採番値の一覧 | 空の入力は空リスト |
+
+`executeBatch` / `insertBatch` は**SQL が全部同じでなければなりません。**違うものが混ざっていれば `DB_998` の例外です。
+
+### 「1件も無かった」と「読めなかった」
+
+**別のものとして返ります。**空の `Optional` は「1件も無かった」だけで、読めなかったときは例外です。
 
 ```java
-Data user = db.select(sql, id);
-if (user == null) { return 誰でもない; }   // ← DB が読めなくても、ここを通ります
+Optional<Data> user = db.select(sql, id);      // 読めなければ、ここで SqlExecuteException
+if (user.isEmpty()) { return 誰でもない; }      // 空は「1件も無かった」だけ
+
+Data post = db.select(sql, id)
+	.orElseThrow(() -> new HttpException(404, "記事がありません"));
 ```
 
-これだと **DB が落ちた日に「そんな利用者はいません」と答えます。**
-例外も出ませんし、ログにも残りません（`isError()` を見ていないので）。
+DB が落ちた日に「そんな利用者はいません」と答えることはありません。
 
-見分ける書き方は2つあります。
+> [!NOTE]
+> 1.x の `select` は、0件も失敗も `null` でした（`isError()` を見ないと見分けられませんでした）。
+> 2.0 で分かれました。`selectOrThrow` / `selectListOrThrow` は `select` / `selectList` と同じ意味になったので、
+> 非推奨です（2.x で消します）。
 
-```java
-// 1. これまでどおり isError() を見る
-Data user = db.select(sql, id);
-if (db.isError()) { throw ...; }
-if (user == null) { return 誰でもない; }
+### 一意制約だけを受け止める
 
-// 2. 読めなければ投げてもらう（1.1 から）
-Data user = db.selectOrThrow(sql, id);
-if (user == null) { return 誰でもない; }   // null は「1件も無かった」だけ
-```
-
-| メソッド | 戻り値 |
-| --- | --- |
-| `selectOrThrow` | 1件。**`null` は「1件も無かった」だけ**。読めなければ `SqlExecuteException` |
-| `selectListOrThrow` | 複数件。**0件は空リスト**。読めなければ `SqlExecuteException` |
-| `insertKey` | **採番された値だけ**。採番列が無いか、入らなければ `SqlExecuteException` |
-
-**一意制約に当たったときだけは、型で分かれます**（1.5.0 から）。
-`...OrThrow` 系と `insertKey` は `DuplicateKeyException`（`SqlExecuteException` の子）を投げ、
-戻り値で見る書き方なら `db.isDuplicateKeyError()` で見分けられます。
+分岐したい失敗は、たいてい一意制約だけです。**それは型で分かれます。**
+一意制約に当たると `DuplicateKeyException`（`SqlExecuteException` の子）が飛びます（`insert` / `insertKey` / `update` など、どれでも）。
 
 ```java
 try {
@@ -338,13 +342,39 @@ try {
 ```
 
 > [!TRAP]
-> **`insert` の戻り値も2つの意味を持ちます。**
-> 採番された値が取れればその値、取れなければ**入った件数**です。
-> `1` が「id=1 を入れた」なのか「1件入った」なのかは、
-> **その表に採番列があるかどうかで決まります**——
-> **採番列を1本足しただけで、呼ぶ側を触っていないのに意味が変わります。**
->
-> 採番値がほしいなら `insertKey`、件数がほしいなら `insertNoReturnKey` です。
+> **トランザクションの中で受け止めて続けると、その Tx は確定できません。**
+> `tx.commit()` が `TransactionException`（`DB_004`）で断り、全部巻き戻します（[トランザクション](./transaction)）。
+> 「あれば更新」に使うなら、トランザクションの外で受け止めるか、
+> SQL で書いてください（MySQL は `INSERT ... ON DUPLICATE KEY UPDATE`、PostgreSQL は `INSERT ... ON CONFLICT`）。
+
+### どこで catch するか
+
+**DB の例外は非検査なので、コンパイラは catch を求めません。**受けるところは、次の表で決めてください。表に無いものは受けずに、500 と巻き戻しに任せます。
+
+| こう書くとき | 受ける例外 | 返すもの |
+| --- | --- | --- |
+| 利用者の入力を、一意制約（UNIQUE・主キー）のある列に入れる・変える（メールアドレス・ログイン ID など） | `DuplicateKeyException` | 409 などの「もう使われています」 |
+| 利用者の操作で `RedisLock.lock(...)` を取る | `RedisLockException` | 409 などの「処理中です」（`tryLock(...)` の空で分けてもよい） |
+| それ以外（`SqlExecuteException` / `TransactionException`） | 受けない | 枠組みが 500 を返し、ログに出す |
+
+- **先に `select` で「まだ無い」と確かめても、catch は省けません。**同時に2つ来れば、両方が確かめを通って片方が一意制約に当たります
+- **受けるのはトランザクションの外です**（上の TRAP）
+- 同じ値を2回入れるテストを1本書いておくと、catch を忘れたところが 500 で見つかります
+
+### 採番値と件数
+
+**`insert` は何も返しません。**採番値が要るなら `insertKey`、件数が要る `INSERT ... SELECT` などは `execute` です。
+
+```java
+db.insert(SQL.insert(Tag.instance()).value(Tag.name, name));             // 入れるだけ
+long id = db.insertKey(SQL.insert(Post.instance()).value(...));          // 採番値
+int count = db.execute("INSERT INTO archive SELECT * FROM post WHERE ...");  // 件数
+```
+
+> [!NOTE]
+> 1.x の `insert` は、採番値が取れればその値、取れなければ入った件数を返していました
+> （採番列を1本足しただけで意味が変わりました）。2.0 で分けました。
+> `insertNoReturnKey` は非推奨です（2.x で消します）。`insert` か `execute` を使ってください。
 
 
 ## マイグレーション

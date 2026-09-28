@@ -143,6 +143,60 @@ public final class Dson {
 
 	}
 
+	/**
+	 * 読めなければ投げる（static の {@code decodes} はここを通す。要件 D-195）
+	 *
+	 * <p>
+	 * 1.x の {@code decodes} は、壊れた JSON で<b>黙って {@code null}</b> を返していた——
+	 * エラーは中で作った {@code Dson} に入ったまま捨てられるので、呼んだ側からは見る手段が無かった。
+	 * インスタンスの {@code decode} は、これまでどおり {@link #isError()} で見る。
+	 * </p>
+	 *
+	 * @param body	読む処理
+	 * @param <T>	返す型
+	 * @return	読めたもの
+	 * @throws JsonParseException	読めなかったとき
+	 */
+	private static <T> T decodeOrThrow (java.util.function.Function<Dson, T> body) {
+
+		Dson dson = new Dson();
+		T result = body.apply(dson);
+		if (dson.isError()) {
+			Exception cause = dson.getErrorException();
+			throw new JsonParseException("JSON を読めませんでした: " + (cause == null ? "" : cause.getMessage()), cause);
+		}
+		return result;
+
+	}
+
+	/**
+	 * 文字の JSON を読む。括弧が閉じていなければ、読む前に投げる（要件 D-195）
+	 *
+	 * <p>読み手は寛容で、閉じ括弧の無い JSON も途中までの値として読んでしまう。</p>
+	 *
+	 * @param text	JSON
+	 * @param body	読む処理
+	 * @param <T>	返す型
+	 * @return	読めたもの
+	 * @throws JsonParseException	読めなかったとき
+	 */
+	private static <T> T decodeTextOrThrow (String text, java.util.function.Function<Dson, T> body) {
+
+		if (text != null && !io.jimble.util.internal.JsonShape.isComplete(text)) {
+			String shown = text.strip();
+			throw new JsonParseException("JSON を読めませんでした（括弧が閉じていないか、後ろに余分なものがあります）: "
+				+ (shown.length() > 80 ? shown.substring(0, 80) + "…" : shown), null);
+		}
+		T result = decodeOrThrow(body);
+		// JSON ですらないもの（読み手は null を返すだけでエラーにしない）
+		if (result == null && text != null && !text.isBlank() && !"null".equals(text.strip())) {
+			String shown = text.strip();
+			throw new JsonParseException("JSON を読めませんでした: " + (shown.length() > 80 ? shown.substring(0, 80) + "…" : shown), null);
+		}
+		return result;
+
+	}
+
 	/* ***************************** デコード. ******************************/
 
 	/**
@@ -160,7 +214,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (File file, String charset, Class<?>... destClasses) {
 
-		return new Dson().decode(file, charset, destClasses);
+		return decodeOrThrow(dson -> dson.decode(file, charset, destClasses));
 	}
 
 	/**
@@ -174,7 +228,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (Configration conf, File file, String charset, Class<?>... destClasses) {
 
-		return new Dson().decode(conf, file, charset, destClasses);
+		return decodeOrThrow(dson -> dson.decode(conf, file, charset, destClasses));
 	}
 
 	/**
@@ -187,7 +241,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (Reader reader, Class<?>... destClasses) {
 
-		return new Dson().decode(reader, destClasses);
+		return decodeOrThrow(dson -> dson.decode(reader, destClasses));
 	}
 
 	/**
@@ -201,7 +255,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (Configration conf, Reader reader, Class<?>... destClasses) {
 
-		return new Dson().decode(conf, reader, destClasses);
+		return decodeOrThrow(dson -> dson.decode(conf, reader, destClasses));
 	}
 
 	/**
@@ -215,7 +269,7 @@ public final class Dson {
 	 */
 	public <T> T decodes (InputStream stream, String charset, Class<?>... destClasses) {
 
-		return new Dson().decode(stream, charset, destClasses);
+		return decodeOrThrow(dson -> dson.decode(stream, charset, destClasses));
 	}
 
 	/**
@@ -237,7 +291,7 @@ public final class Dson {
 		 * <b>渡した JSON が悪いのだと思って延々と探すことになる</b>。
 		 * 隣の3引数版は最初から {@code decode} を呼んでいた（こちらだけ取り違えていた）。
 		 */
-		return new Dson().decode(conf, stream, charset, destClasses);
+		return decodeOrThrow(dson -> dson.decode(conf, stream, charset, destClasses));
 	}
 
 	/**
@@ -266,7 +320,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (String value, Class<T> destClass) {
 
-		return new Dson().decode(value, destClass);
+		return decodeTextOrThrow(value, dson -> dson.decode(value, destClass));
 
 	}
 
@@ -283,7 +337,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (Configration conf, String value, Class<T> destClass) {
 
-		return new Dson().decode(conf, value, destClass);
+		return decodeTextOrThrow(value, dson -> dson.decode(conf, value, destClass));
 
 	}
 
@@ -296,7 +350,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (String value, Class<?>... destClasses) {
 
-		return new Dson().decode(value, destClasses);
+		return decodeTextOrThrow(value, dson -> dson.decode(value, destClasses));
 	}
 
 	/**
@@ -309,7 +363,7 @@ public final class Dson {
 	 */
 	public static <T> T decodes (Configration conf, String value, Class<?>... destClasses) {
 
-		return new Dson().decode(conf, value, destClasses);
+		return decodeTextOrThrow(value, dson -> dson.decode(conf, value, destClasses));
 	}
 
 	/**

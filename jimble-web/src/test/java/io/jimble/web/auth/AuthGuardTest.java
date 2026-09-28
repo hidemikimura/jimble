@@ -31,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ここは<b>サーバーを立てずに決まること</b>だけを固定する。
  * </p>
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class AuthGuardTest {
 
 	// region 既定は閉じている
@@ -88,14 +87,15 @@ class AuthGuardTest {
 
 		Router router = new Router();
 
-		Router pub = router.path("/public");
-		pub.attribute(Auth.PUBLIC, true);
-		pub.attribute(Auth.NO_SESSION, true);
-		pub.get("/guide", context -> { });
-		pub.get("/faq", context -> { });
+		router.path("/public", pub -> {
+			pub.attribute(Auth.PUBLIC, true);
+			pub.attribute(Auth.NO_SESSION, true);
+			pub.get("/guide", context -> { });
+			pub.get("/faq", context -> { });
 
-		// ブロックの中だが、ここだけ要ログイン
-		pub.get("/me", context -> { }).attribute(Auth.PUBLIC, false);
+			// ブロックの中だが、ここだけ要ログイン
+			pub.get("/me", context -> { }).attribute(Auth.PUBLIC, false);
+		});
 
 		router.get("/requests", context -> { });
 
@@ -148,10 +148,11 @@ class AuthGuardTest {
 
 		Router router = new Router();
 
-		Router admin = router.path("/admin");
-		admin.attribute(Auth.ROLE, "approver");
-		admin.get("/approvals", context -> { });
-		admin.get("/staff", context -> { });
+		router.path("/admin", admin -> {
+			admin.attribute(Auth.ROLE, "approver");
+			admin.get("/approvals", context -> { });
+			admin.get("/staff", context -> { });
+		});
 
 		router.seal();
 

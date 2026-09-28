@@ -28,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>開発用 DB が要る（要件 D-16）。</p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class TransactionCloseTest {
 
 	@Test
@@ -36,7 +35,7 @@ class TransactionCloseTest {
 	void rollbackOnContextClose () throws Exception {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
+		DBUtil.load(Conf.conf().config(), TransactionCloseTest.class);
 
 		try (DB setup = DBUtil.getMainDB()) {
 			TestDdl.execute(setup, """
@@ -59,10 +58,10 @@ class TransactionCloseTest {
 			context.run(() -> {
 
 				try {
-					DBTransaction transaction = new DBTransaction(db);
-					transaction.beginTransaction();
+					Tx transaction = db.begin();
 					db.insert("INSERT INTO tx_leak (name) VALUES (?)", "漏れた行");
 					// commit も rollback も close もしない
+					assertTrue(!transaction.isFinished());
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
 				}
@@ -73,7 +72,7 @@ class TransactionCloseTest {
 
 		// 実行が終わった時点で戻っている
 		try (DB check = DBUtil.getMainDB()) {
-			assertNull(check.select("SELECT id FROM tx_leak WHERE name = ?", "漏れた行")
+			assertTrue(check.select("SELECT id FROM tx_leak WHERE name = ?", "漏れた行").isEmpty()
 				, "畳み忘れたトランザクションが戻っていない");
 		}
 
@@ -86,7 +85,7 @@ class TransactionCloseTest {
 	void committedIsLeftAlone () throws Exception {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
+		DBUtil.load(Conf.conf().config(), TransactionCloseTest.class);
 
 		try (DB setup = DBUtil.getMainDB()) {
 			TestDdl.execute(setup, """
@@ -103,11 +102,10 @@ class TransactionCloseTest {
 			context.run(() -> {
 
 				try (DB db = DBUtil.getMainDB();
-					 DBTransaction transaction = new DBTransaction(db)) {
+					 Tx transaction = db.begin()) {
 
-					transaction.beginTransaction();
 					db.insert("INSERT INTO tx_leak (name) VALUES (?)", "残る行");
-					transaction.commitEndTransaction();
+					transaction.commit();
 
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
@@ -118,7 +116,7 @@ class TransactionCloseTest {
 		}
 
 		try (DB check = DBUtil.getMainDB()) {
-			assertNotNull(check.select("SELECT id FROM tx_leak WHERE name = ?", "残る行")
+			assertTrue(check.select("SELECT id FROM tx_leak WHERE name = ?", "残る行").isPresent()
 				, "コミットしたのに戻されている");
 		}
 
@@ -127,11 +125,11 @@ class TransactionCloseTest {
 	}
 
 	@Test
-	@DisplayName("commit() はトランザクションを終わらせない")
+	@DisplayName("checkpoint() はトランザクションを終わらせない")
 	void commitDoesNotEnd () throws Exception {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), TransactionCloseTest.class));
+		DBUtil.load(Conf.conf().config(), TransactionCloseTest.class);
 
 		try (DB setup = DBUtil.getMainDB()) {
 			TestDdl.execute(setup, """
@@ -144,29 +142,25 @@ class TransactionCloseTest {
 		}
 
 		/*
-		 * 移送元の commit() は中で commitEndTransaction() を呼んでいたので、
-		 * ここでトランザクションが終わっていた。
-		 * 「途中まで確定させて続ける」つもりの2件目が
+		 * 「途中まで確定させて続ける」は checkpoint()。ここで終わると、2件目が
 		 * 自動コミットになり、ロールバックしても残る。
 		 */
 		try (DB db = DBUtil.getMainDB();
-			 DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+			 Tx transaction = db.begin()) {
 
 			db.insert("INSERT INTO tx_leak (name) VALUES (?)", "1件目");
-			transaction.commit();
+			transaction.checkpoint();
 
-			assertTrue(db.isTransaction(), "commit() でトランザクションが終わっている");
+			assertTrue(db.isTransaction(), "checkpoint() でトランザクションが終わっている");
 
 			db.insert("INSERT INTO tx_leak (name) VALUES (?)", "2件目");
-			transaction.rollbackEndTransaction();
+			transaction.rollback();
 
 		}
 
 		try (DB check = DBUtil.getMainDB()) {
-			assertEquals(1, check.select("SELECT COUNT(*) AS cnt FROM tx_leak").getInt("cnt")
-				, "commit() のあとがトランザクションの外になっている");
+			assertEquals(1, check.select("SELECT COUNT(*) AS cnt FROM tx_leak").orElseThrow().getInt("cnt")
+				, "checkpoint() のあとがトランザクションの外になっている");
 		}
 
 		DBUtil.stop();

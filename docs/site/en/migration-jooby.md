@@ -73,7 +73,7 @@ install(() -> new PostController(new PostService(db)));
 | jooby | jimble |
 | --- | --- |
 | `@GET @Path("/x")` | `get("/x", ...)` |
-| `@Transactional` | `try (DBTransaction transaction = ...)` |
+| `@Transactional` | `db.transaction(tx -> { ... })` |
 | `@Inject` | pass it through the constructor |
 
 ### Startup
@@ -124,10 +124,13 @@ The model you pass becomes a `Data`. Receive it with `@param Data data`.
 2. Make `App.java` extend `JimbleApp`. The route definitions are a straight paste
 3. Rewrite the insides of the handlers to `context.request()` / `context.response()`
 4. Replace `@Inject` with `install()` and a constructor
-5. Replace `@Transactional` with `try (DBTransaction ...)`
+5. Replace `@Transactional` with `db.transaction(tx -> { ... })`
 6. Start it up and **check the route list and the configuration line**
 
 ## What you do not have to migrate
 
-The DB layer carries over. How you use `SQL` / `Column` / `Table` / `Data` / `DB` does not change.
+The DB layer's classes (`SQL` / `Column` / `Table` / `Data` / `DB`) and the way you build SQL carry over.
 The generated table definition classes work as they are, too.
+
+**Failures, however, are exceptions, not return values.** `select` returns `Optional<Data>`, and there is no `isError()`.
+Code that checked return values for failure needs rewriting ([DB](./db), [Moving to 2.0](./migrate-2)).

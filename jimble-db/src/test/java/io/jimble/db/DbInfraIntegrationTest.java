@@ -28,7 +28,7 @@ class DbInfraIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), DbInfraIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), DbInfraIntegrationTest.class);
 
 	}
 
@@ -63,7 +63,7 @@ class DbInfraIntegrationTest {
 			""");
 
 		assertTrue(first.apply(db));
-		assertNotNull(db.select("SELECT 1 AS ok FROM version_probe LIMIT 1") == null ? new Data() : new Data()
+		assertNotNull(db.select("SELECT 1 AS ok FROM version_probe LIMIT 1").isEmpty() ? new Data() : new Data()
 			, "テーブルができていない");
 
 		// 版を足すと、その分だけ流れる
@@ -77,7 +77,7 @@ class DbInfraIntegrationTest {
 
 		db.insert("INSERT INTO version_probe (name) VALUES (?)", "あ");
 
-		assertEquals("あ", db.select("SELECT name FROM version_probe LIMIT 1").getString("name"));
+		assertEquals("あ", db.select("SELECT name FROM version_probe LIMIT 1").orElseThrow().getString("name"));
 
 		// もう一度流しても何も起きない
 		DBVersion again = new DBVersion("version_probe", "版のテスト");
@@ -107,7 +107,7 @@ class DbInfraIntegrationTest {
 
 		DBLog.save(db, new Data().putData("message", "出ないはず"));
 
-		assertNull(db.select("SELECT id FROM db_log LIMIT 1"), "設定が無いのに書かれている");
+		assertTrue(db.select("SELECT id FROM db_log LIMIT 1").isEmpty(), "設定が無いのに書かれている");
 
 	}
 
@@ -127,7 +127,7 @@ class DbInfraIntegrationTest {
 
 			DBLog.save(db, new Data().putData("message", "出るはず"));
 
-			Data row = db.select("SELECT content FROM db_log ORDER BY id DESC LIMIT 1");
+			Data row = db.select("SELECT content FROM db_log ORDER BY id DESC LIMIT 1").orElse(null);
 
 			assertNotNull(row, "設定を入れたのに書かれていない（移送元は jooby.log.db を見ていた）");
 

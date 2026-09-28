@@ -266,54 +266,74 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * Data型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（無ければ null）
+	 * @throws DataConversionException	あるのに Data として読めない（2.0。1.x は null）
 	 */
-	/*
-	 * 無検査キャスト：Map の中身の型までは確かめられない。<b>キーは String である前提</b>で読み替える（JSON から作った Map は必ずそうなる）。違えば putAll のところで落ちる。
-	 */
-	@SuppressWarnings("unchecked")
 	public Data getData (String key) {
 
 		if (isNull(key)) {
 			return null;
 		}
 
-		try {
+		Object object = get(key);
 
-			Object object = get(key);
+		if (object instanceof Data data) {
+			return data;
+		}
 
-			if (PropertyUtil.isAssignableFrom(Data.class, object.getClass())) {
-				return (Data) object;
+		/*
+		 * Map は Data に置き換える（中身は同じ。返したものへの書き込みが元に届くように）。
+		 * それ以外（JSON の文字など）は変換した写しを返し、<b>書き戻さない</b>（要件 D-195）——
+		 * 1.x は書き戻していたので、読んだだけで JSON の出力が「文字」から「オブジェクト」に変わっていた。
+		 */
+		if (object instanceof Map<?, ?> map) {
+			Data res = new Data();
+			for (Map.Entry<?, ?> entry : map.entrySet()) {
+				res.put(String.valueOf(entry.getKey()), entry.getValue());
 			}
-
-			if (object instanceof Map<?, ?>) {
-				try {
-					Map<String, ?> map = (Map<String, ?>) object;
-					Data res = new Data();
-					res.putAll(map);
-					put(key, res);
-					return res;
-				} catch (Exception ignore) {}
-			}
-
-			Data res = Convertor.convert(null, object, Data.class);
 			put(key, res);
 			return res;
+		}
 
-		} catch (Exception ignore) {
+		// 文字は JSON のオブジェクトとしてだけ読む（Convertor は読めない文字も空の Data にしてしまう）
+		if (object instanceof CharSequence text) {
+			try {
+				Data res = fromJsonString(text.toString());
+				if (res == null) {
+					throw new DataConversionException(key, object, Data.class);
+				}
+				return res;
+			} catch (io.jimble.util.json.JsonParseException ex) {
+				throw conversionFailed(key, object, Data.class, ex);
+			}
+		}
 
-			return null;
-
+		try {
+			Data res = Convertor.convert(null, object, Data.class);
+			if (res == null) {
+				throw new DataConversionException(key, object, Data.class);
+			}
+			return res;
+		} catch (DataConversionException ex) {
+			throw ex;
+		} catch (Exception ex) {
+			// 読めない値を null（1.x）にすると、getDataOptional が空の Data で上書きしていた
+			throw conversionFailed(key, object, Data.class, ex);
 		}
 
 	}
 
 	/**
-	 * Data型で値を取得する
-	 * 値がない場合は生成して返す
+	 * Data型で値を取得する（無ければ空の Data を作って入れる）
+	 *
+	 * <p>
+	 * <b>名前のとおり「無ければ作って入れる」</b>——{@code data.getDataOptional("x").put(...)} と書いた値が残る。
+	 * 読めない値（文字の {@code "abc"} など）は例外（2.0。1.x は空の Data で<b>元の値を上書き</b>していた）。
+	 * </p>
 	 *
 	 * @param key	キー
 	 * @return	値
+	 * @throws DataConversionException	あるのに Data として読めない
 	 */
 	public Data getDataOptional (String key) {
 
@@ -491,57 +511,59 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * @param key	キー
 	 * @return	値
 	 */
-	/*
-	 * 無検査キャスト：Map の中身の型までは確かめられない。<b>キーは String である前提</b>で読み替える（JSON から作った Map は必ずそうなる）。違えば putAll のところで落ちる。
-	 */
-	@SuppressWarnings("unchecked")
 	public List<Data> getDataList (String key) {
 
 		if (isNull(key)) {
 			return null;
 		}
 
-		try {
+		Object object = get(key);
 
-			Object object = get(key);
-			if (object instanceof List<?> list) {
-				List<Data> res = new ArrayList<>();
-
-				for (Object o : list) {
-					Data converted = null;
-					if (PropertyUtil.isAssignableFrom(Data.class, o.getClass())) {
-						converted = (Data) o;
-					} else if (o instanceof Map<?,?>) {
-						try {
-							Map<String, ?> map = (Map<String, ?>) o;
-							converted = (Data) PropertyUtil.newInstance(Data.class);
-							if (converted != null) {
-								converted.putAll(map);
-								put(key, res);
-							}
-						} catch (Exception ex) {}
+		/*
+		 * 要素が Data か Map だけのリストは、Data に揃えて置き換える（中身は同じ）。
+		 * それ以外の変換は写しを返し、書き戻さない（要件 D-195）。
+		 */
+		if (object instanceof List<?> list && list.stream().allMatch(o -> o instanceof Map<?, ?>)) {
+			List<Data> res = new ArrayList<>(list.size());
+			boolean same = true;
+			for (Object o : list) {
+				if (o instanceof Data d) {
+					res.add(d);
+				} else {
+					same = false;
+					Data d = new Data();
+					for (Map.Entry<?, ?> entry : ((Map<?, ?>) o).entrySet()) {
+						d.put(String.valueOf(entry.getKey()), entry.getValue());
 					}
-
-					if (converted == null) {
-						converted = Convertor.convert(null, o, Data.class);
-					}
-
-					res.add(converted);
+					res.add(d);
 				}
-
-				put(key, res);
-
-				return res;
 			}
-
-			List<Data> res = Convertor.convert(null, object, ArrayList.class, Data.class);
+			if (same) {
+				@SuppressWarnings("unchecked")
+				List<Data> original = (List<Data>) list;
+				return original;
+			}
 			put(key, res);
 			return res;
+		}
 
+		// 一覧でも配列でも文字（JSON の配列）でもないものは読めない（Convertor は 5 も [5] のように包んでしまう）
+		if (!(object instanceof List<?>) && !object.getClass().isArray() && !(object instanceof CharSequence)) {
+			throw new DataConversionException(key, object, List.class);
+		}
+
+		try {
+			List<Data> res = object instanceof CharSequence text
+				? Dson.decodes(text.toString(), ArrayList.class, Data.class)
+				: Convertor.convert(null, object, ArrayList.class, Data.class);
+			if (res == null) {
+				throw new DataConversionException(key, object, List.class);
+			}
+			return res;
+		} catch (DataConversionException ex) {
+			throw ex;
 		} catch (Exception ex) {
-
-			return null;
-
+			throw conversionFailed(key, object, List.class, ex);
 		}
 
 	}
@@ -598,7 +620,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * byte型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに byte として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public byte getByte (String key) {
 
@@ -611,30 +634,19 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * byte型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Byte として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Byte getByteObject (String key) {
 
-		if (isNull(key)) {
+		Long value = readLong(key, Byte.class);
+		if (value == null) {
 			return null;
 		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Byte) {
-				return (Byte) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).byteValue();
-			}
-
-			return Convertor.convert(null, object, Byte.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+			throw new DataConversionException(key, get(key), Byte.class);
 		}
+		return value.byteValue();
 
 	}
 
@@ -713,7 +725,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * short型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに short として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public short getShort (String key) {
 
@@ -726,30 +739,19 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * short型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Short として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Short getShortObject (String key) {
 
-		if (isNull(key)) {
+		Long value = readLong(key, Short.class);
+		if (value == null) {
 			return null;
 		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Short) {
-				return (Short) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).shortValue();
-			}
-
-			return Convertor.convert(null, object, Short.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+			throw new DataConversionException(key, get(key), Short.class);
 		}
+		return value.shortValue();
 
 	}
 
@@ -783,10 +785,10 @@ public class Data extends LinkedHashMap<String, Object> {
 
 	/**
 	 * int型で値を取得する
-	 * 値がなかった場合、0を返します。
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに int として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public int getInt (String key) {
 
@@ -799,30 +801,19 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * int型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Integer として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Integer getIntObject (String key) {
 
-		if (isNull(key)) {
+		Long value = readLong(key, Integer.class);
+		if (value == null) {
 			return null;
 		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Integer) {
-				return (Integer) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).intValue();
-			}
-
-			return Convertor.convert(null, object, Integer.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+			throw new DataConversionException(key, get(key), Integer.class);
 		}
+		return value.intValue();
 
 	}
 
@@ -857,10 +848,11 @@ public class Data extends LinkedHashMap<String, Object> {
 	/*
 	 * 既定値を返すのは「無い」ときだけにする。
 	 *
-	 * getInt(key) は、無い・null・"abc"・本当に 0 が全部 0 になる——<b>0 が本当の 0 か毎回疑う</b>ことになる。
-	 * ここでは<b>無い（キーが無い・null・空文字）ときだけ既定値</b>で、読めない値は DataConversionException にする。
+	 * 1.x の getInt(key) は、無い・null・"abc"・本当に 0 が全部 0 だった——<b>0 が本当の 0 か毎回疑う</b>ことになる。
+	 * <b>無い（キーが無い・null・空文字）ときだけ既定値</b>で、読めない値は DataConversionException にする。
 	 * 小数を int で読む（"1.5"）のも、桁あふれも、黙って丸めずに止める。
-	 * 2.0 では getInt(key) も「無ければ例外」になる（design-2.0.md 6 章）。
+	 * 2.0 で getInt(key) などの既定値なし版も同じ読み方になった（無ければ 0。要件 D-195）。
+	 * 「無ければ例外」にはしなかった——既存アプリの「無ければ 0」を頼った行が全部止まるので（design-2.0.md 9.3）。
 	 */
 
 	/**
@@ -942,22 +934,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public double getDouble (String key, double defaultValue) {
 
-		Object value = presentValue(key);
-		if (value == null) {
-			return defaultValue;
-		}
-		if (value instanceof Number number) {
-			return number.doubleValue();
-		}
-		try {
-			double parsed = Double.parseDouble(value.toString().trim());
-			if (Double.isNaN(parsed) || Double.isInfinite(parsed)) {
-				throw new NumberFormatException();
-			}
-			return parsed;
-		} catch (NumberFormatException ex) {
-			throw new DataConversionException(key, value, Double.class);
-		}
+		Double value = readDouble(key, Double.class);
+		return value == null ? defaultValue : value;
 
 	}
 
@@ -992,21 +970,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public boolean getBoolean (String key, boolean defaultValue) {
 
-		Object value = presentValue(key);
-		if (value == null) {
-			return defaultValue;
-		}
-		if (value instanceof Boolean b) {
-			return b;
-		}
-		String text = value.toString().trim();
-		if ("true".equalsIgnoreCase(text) || "1".equals(text)) {
-			return true;
-		}
-		if ("false".equalsIgnoreCase(text) || "0".equals(text)) {
-			return false;
-		}
-		throw new DataConversionException(key, value, Boolean.class);
+		Boolean value = getBooleanObject(key);
+		return value == null ? defaultValue : value;
 
 	}
 
@@ -1079,6 +1044,41 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/*
+	 * 数として読む。無ければ null、読めなければ例外。文字の NaN / Infinity は読めない扱い。
+	 */
+	private Double readDouble (String key, Class<?> type) {
+
+		Object value = presentValue(key);
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof Number number) {
+			return number.doubleValue();
+		}
+		try {
+			double parsed = Double.parseDouble(value.toString().trim());
+			if (Double.isNaN(parsed) || Double.isInfinite(parsed)) {
+				throw new NumberFormatException();
+			}
+			return parsed;
+		} catch (NumberFormatException ex) {
+			throw new DataConversionException(key, value, type);
+		}
+
+	}
+
+	/*
+	 * 変換の失敗を DataConversionException にする（元の例外を cause に残す）
+	 */
+	private static DataConversionException conversionFailed (String key, Object value, Class<?> type, Exception cause) {
+
+		DataConversionException ex = new DataConversionException(key, value, type);
+		ex.initCause(cause);
+		return ex;
+
+	}
+
+	/*
 	 * 整数として読む。無ければ null、読めなければ例外。小数は丸めずに止める。
 	 */
 	private Long readLong (String key, Class<?> type) {
@@ -1109,7 +1109,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * long型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに long として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public long getLong (String key) {
 
@@ -1122,30 +1123,12 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * long型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Long として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Long getLongObject (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Long) {
-				return (Long) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).longValue();
-			}
-
-			return Convertor.convert(null, object, Long.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
-		}
+		return readLong(key, Long.class);
 
 	}
 
@@ -1181,7 +1164,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * float型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに float として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public float getFloat (String key) {
 
@@ -1194,30 +1178,19 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * float型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Float として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Float getFloatObject (String key) {
 
-		if (isNull(key)) {
+		Double value = readDouble(key, Float.class);
+		if (value == null) {
 			return null;
 		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Float) {
-				return (Float) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).floatValue();
-			}
-
-			return Convertor.convert(null, object, Float.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		if (!Double.isNaN(value) && !Double.isInfinite(value) && Math.abs(value) > Float.MAX_VALUE) {
+			throw new DataConversionException(key, get(key), Float.class);
 		}
+		return value.floatValue();
 
 	}
 
@@ -1253,7 +1226,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * double型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに double として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public double getDouble (String key) {
 
@@ -1266,30 +1240,12 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * double型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに Double として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Double getDoubleObject (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Double) {
-				return (Double) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).doubleValue();
-			}
-
-			return Convertor.convert(null, object, Double.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
-		}
+		return readDouble(key, Double.class);
 
 	}
 
@@ -1325,29 +1281,22 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * BigDecimal型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら 0）
+	 * @throws DataConversionException	あるのに BigDecimal として読めない（2.0。1.x は黙って 0。要件 D-195）
 	 */
 	public BigDecimal getBigDecimal (String key) {
 
-		if (isNull(key)) {
-			return new BigDecimal("0");
+		Object value = presentValue(key);
+		if (value == null) {
+			return BigDecimal.ZERO;
 		}
-
+		if (value instanceof BigDecimal decimal) {
+			return decimal;
+		}
 		try {
-
-			Object object = get(key);
-			if (object instanceof BigDecimal) {
-				return (BigDecimal) object;
-			} else if (object instanceof Number) {
-				return new BigDecimal(String.valueOf(object));
-			}
-
-			return Convertor.convert(null, object, BigDecimal.class);
-
-		} catch (Exception ex) {
-
-			return new BigDecimal("0");
-
+			return new BigDecimal(value instanceof Number ? value.toString() : value.toString().trim());
+		} catch (NumberFormatException ex) {
+			throw new DataConversionException(key, value, BigDecimal.class);
 		}
 
 	}
@@ -1372,7 +1321,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * boolean型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら false）
+	 * @throws DataConversionException	あるのに boolean（true / false / 1 / 0） として読めない（2.0。1.x は黙って false。要件 D-195）
 	 */
 	public boolean getBoolean (String key) {
 
@@ -1385,33 +1335,26 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * boolean型で値を取得する
 	 *
 	 * @param key キー
-	 * @return 値
+	 * @return 値（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのに boolean（true / false / 1 / 0） として読めない（2.0。1.x は黙って null。要件 D-195）
 	 */
 	public Boolean getBooleanObject (String key) {
 
-		if (isNull(key)) {
+		Object value = presentValue(key);
+		if (value == null) {
 			return null;
 		}
-
-		try {
-
-			Object object = get(key);
-			if (object instanceof Boolean) {
-				return (Boolean) object;
-			} else if (object instanceof Number) {
-				return ((Number) object).longValue() == 1;
-			} else if (object instanceof String) {
-				return "true".equalsIgnoreCase((String) object)
-					|| "1".equalsIgnoreCase((String) object);
-			}
-
-			return Convertor.convert(null, object, Boolean.class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		if (value instanceof Boolean b) {
+			return b;
 		}
+		String text = value.toString().trim();
+		if ("true".equalsIgnoreCase(text) || "1".equals(text)) {
+			return true;
+		}
+		if ("false".equalsIgnoreCase(text) || "0".equals(text)) {
+			return false;
+		}
+		throw new DataConversionException(key, value, Boolean.class);
 
 	}
 
@@ -1423,7 +1366,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public boolean getBoolean (IColumn column) {
 
-		return getTableData(column).getTableData(column).getBoolean(column.name());
+		return getTableData(column).getBoolean(column.name());
 
 	}
 
@@ -1506,16 +1449,22 @@ public class Data extends LinkedHashMap<String, Object> {
 	@SafeVarargs
 	public final <T> T getValue (String key, T...types) {
 
-		try {
-
-			Object value = get(key);
-			return Convertor.convert(null, value, types.getClass().getComponentType());
-
-		} catch (Exception ex) {
-
+		Object value = get(key);
+		if (value == null) {
 			return null;
-
 		}
+		Class<?> type = types.getClass().getComponentType();
+		T res;
+		try {
+			res = Convertor.convert(null, value, type);
+		} catch (Exception ex) {
+			// 読めない値を null にしない（2.0。要件 D-195）
+			throw conversionFailed(key, value, type, ex);
+		}
+		if (res == null) {
+			throw new DataConversionException(key, value, type);
+		}
+		return res;
 
 	}
 
@@ -1540,18 +1489,56 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
 	 */
 	@SafeVarargs
+	@SuppressWarnings("varargs")  // 受け取った配列をそのまま次（@SafeVarargs、読むだけ）へ渡す
 	public final <T> T getValue (IColumn column, T...types) {
 
-		try {
+		return getTableData(column).getValue(column.name(), types);
 
-			Object value = getTableData(column).get(column.name());
-			return Convertor.convert(null, value, types.getClass().getComponentType());
+	}
 
-		} catch (Exception ex) {
+	// endregion
 
+	// region 一覧の読み方（要件 D-195）
+
+	/*
+	 * 一覧として読む。無ければ null、読めなければ DataConversionException。
+	 * 変換した写しを返し、書き戻さない——1.x は Optional 版が、あった値も変換して書き戻していたので、
+	 * 読んだだけで JSON の出力（[1, 2] が ["1", "2"] になるなど）が変わっていた。
+	 */
+	private <E> List<E> listOf (String key, Class<E> element) {
+
+		if (isNull(key)) {
 			return null;
-
 		}
+
+		Object object = get(key);
+		try {
+			List<E> res = Convertor.convert(null, object, List.class, element);
+			if (res == null) {
+				throw new DataConversionException(key, object, List.class);
+			}
+			return res;
+		} catch (DataConversionException ex) {
+			throw ex;
+		} catch (Exception ex) {
+			throw conversionFailed(key, object, List.class, ex);
+		}
+
+	}
+
+	/*
+	 * Optional 版：無ければ空の一覧を作って入れる（名前どおり。取り出して足す書き方のため）。
+	 * あった値は書き換えない。
+	 */
+	private <E> List<E> optionalList (String key, List<E> read) {
+
+		if (read != null) {
+			return read;
+		}
+
+		List<E> created = new ArrayList<>();
+		put(key, created);
+		return created;
 
 	}
 
@@ -1567,16 +1554,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<String> getStringList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, String.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, String.class);
 
 	}
 
@@ -1588,13 +1566,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<String> getStringListOptional (String key) {
 
-		List<String> res = getStringList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getStringList(key));
 
 	}
 
@@ -1652,18 +1624,23 @@ public class Data extends LinkedHashMap<String, Object> {
 			return null;
 		}
 
-		Object object = getObject(key);
+		Object object = get(key);
+		List<Class<?>> classList = new ArrayList<>();
+		classList.add(List.class);
+		if (types != null && types.length > 0) {
+			classList.addAll(Arrays.asList(types));
+		}
 		try {
-			List<Class<?>> classList = new ArrayList<>();
-			classList.add(List.class);
-			if (types != null && types.length > 0) {
-				classList.addAll(Arrays.asList(types));
-			}
 			List<T> res = Convertor.convert(null, object, classList.toArray(new Class<?>[]{}));
-			put(key, res);
+			if (res == null) {
+				throw new DataConversionException(key, object, List.class);
+			}
+			// 変換した写しを返す。書き戻さない（1.x は書き戻していた。要件 D-195）
 			return res;
+		} catch (DataConversionException ex) {
+			throw ex;
 		} catch (Exception ex) {
-			return null;
+			throw conversionFailed(key, object, List.class, ex);
 		}
 
 	}
@@ -1689,13 +1666,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public final <T> List<T> getObjectListOptional (String key, Class<T>...types) {
 
 		// 1.4 までは types を渡し忘れていて、要素の型が変換されなかった（要件 D-190）
-		List<T> res = getObjectList(key, types);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getObjectList(key, types));
 
 	}
 
@@ -1765,16 +1736,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Byte> getByteList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Byte.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Byte.class);
 
 	}
 
@@ -1786,13 +1748,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Byte> getByteListOptional (String key) {
 
-		List<Byte> res = getByteList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getByteList(key));
 
 	}
 
@@ -1832,16 +1788,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Short> getShortList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Short.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Short.class);
 
 	}
 
@@ -1853,13 +1800,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Short> getShortListOptional (String key) {
 
-		List<Short> res = getShortList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getShortList(key));
 
 	}
 
@@ -1899,16 +1840,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Integer> getIntList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Integer.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Integer.class);
 
 	}
 
@@ -1920,13 +1852,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Integer> getIntListOptional (String key) {
 
-		List<Integer> res = getIntList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getIntList(key));
 
 	}
 
@@ -1966,16 +1892,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Long> getLongList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Long.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Long.class);
 
 	}
 
@@ -1987,13 +1904,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Long> getLongListOptional (String key) {
 
-		List<Long> res = getLongList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getLongList(key));
 
 	}
 
@@ -2033,16 +1944,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Float> getFloatList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Float.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Float.class);
 
 	}
 
@@ -2054,13 +1956,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Float> getFloatListOptional (String key) {
 
-		List<Float> res = getFloatList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getFloatList(key));
 
 	}
 
@@ -2100,16 +1996,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Double> getDoubleList (String key) {
 
-		if (isNull(key)) {
-			return null;
-		}
-
-		Object object = getObject(key);
-		try {
-			return Convertor.convert(null, object, List.class, Double.class);
-		} catch (Exception ex) {
-			return null;
-		}
+		return listOf(key, Double.class);
 
 	}
 
@@ -2121,13 +2008,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public List<Double> getDoubleListOptional (String key) {
 
-		List<Double> res = getDoubleList(key);
-		if (res == null) {
-			res = new ArrayList<>();
-		}
-		put(key, res);
-
-		return res;
+		return optionalList(key, getDoubleList(key));
 
 	}
 
@@ -2263,7 +2144,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	 *
 	 * @param key		キー
 	 * @param enumType	enum型
-	 * @return	enum
+	 * @return	enum（キーが無い・null・空文字なら null）
+	 * @throws DataConversionException	あるのにどの定数とも一致しない（2.0。1.x は null。要件 D-195）
 	 */
 	/*
 	 * 無検査キャスト：戻り値の型 {@code T} は呼び出し側が決める。<b>enum かどうかは実行時に確かめている</b>ので、ここで返すのは必ず enum である。{@code T} が違えば呼び出し側で ClassCastException になる（型を書いた側の間違い）。
@@ -2271,27 +2153,24 @@ public class Data extends LinkedHashMap<String, Object> {
 	@SuppressWarnings("unchecked")
 	public <T> T getEnum (String key, Class<? extends Enum<?>> enumType) {
 
-		Object value = get(key);
+		Object value = presentValue(key);
 		if (value == null) {
 			return null;
-		} else if (value.getClass().isEnum()) {
+		}
+		if (enumType.isInstance(value)) {
 			return (T) value;
 		}
 
-		String textValue = getString(key);
-		if (textValue == null || textValue.isEmpty()) {
-			return null;
-		}
+		String textValue = value instanceof Enum<?> e ? e.name() : value.toString();
 
 		for (Object e : enumType.getEnumConstants()) {
-			if (e instanceof Enum<?> eo) {
-				if (textValue.equals(eo.name())) {
-					return (T) eo;
-				}
+			if (e instanceof Enum<?> eo && textValue.equals(eo.name())) {
+				return (T) eo;
 			}
 		}
 
-		return null;
+		// 一致しなければ例外（2.0。1.x は null で、「無い」と「綴りが違う」が見分けられなかった。要件 D-195）
+		throw new DataConversionException(key, value, enumType);
 
 	}
 
@@ -2300,11 +2179,49 @@ public class Data extends LinkedHashMap<String, Object> {
 	 *
 	 * @param column	列
 	 * @param enumType	enum型
-	 * @return	enum
+	 * @return	enum（無ければ null）
+	 * @throws DataConversionException	あるのにどの定数とも一致しない
 	 */
 	public <T> T getEnum (IColumn column, Class<? extends Enum<?>> enumType) {
 
 		return getTableData(column).getEnum(column.name(), enumType);
+
+	}
+
+	/**
+	 * enumで取得する（無ければ空）
+	 *
+	 * <pre>
+	 * Status status = data.getEnumOptional("status", Status.class).orElse(Status.draft);
+	 * </pre>
+	 *
+	 * @param key		キー
+	 * @param enumType	enum型
+	 * @param <E>		enum型
+	 * @return	enum（キーが無い・null・空文字なら空）
+	 * @throws DataConversionException	あるのにどの定数とも一致しない
+	 * @since 2.0.0
+	 */
+	public <E extends Enum<E>> java.util.Optional<E> getEnumOptional (String key, Class<E> enumType) {
+
+		E value = getEnum(key, enumType);
+		return java.util.Optional.ofNullable(value);
+
+	}
+
+	/**
+	 * enumで取得する（無ければ空）
+	 *
+	 * @param column	列
+	 * @param enumType	enum型
+	 * @param <E>		enum型
+	 * @return	enum（無ければ空）
+	 * @throws DataConversionException	あるのにどの定数とも一致しない
+	 * @since 2.0.0
+	 */
+	public <E extends Enum<E>> java.util.Optional<E> getEnumOptional (IColumn column, Class<E> enumType) {
+
+		return getTableData(column).getEnumOptional(column.name(), enumType);
 
 	}
 
@@ -2320,24 +2237,25 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public Date getDate (String key) {
 
-		if (isNull(key)) {
+		Object object = presentValue(key);
+		if (object == null) {
 			return null;
 		}
+		if (object instanceof Date date) {
+			return date;
+		}
 
+		Date res;
 		try {
-
-			Object object = get(key);
-			if (object instanceof Date) {
-				return (Date) object;
-			}
-
-			return Convertor.convert(null, object, Date.class);
-
+			res = Convertor.convert(null, object, Date.class);
 		} catch (Exception ex) {
-
-			return null;
-
+			throw conversionFailed(key, object, Date.class, ex);
 		}
+		// 読めない日付を null（1.x）にしない（要件 D-195）
+		if (res == null) {
+			throw new DataConversionException(key, object, Date.class);
+		}
+		return res;
 
 	}
 
@@ -2399,26 +2317,13 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public String getDateString (String key, String format) {
 
-		if (isNull(key)) {
+		Date value = getDate(key);
+
+		if (value == null) {
 			return "";
 		}
 
-		try {
-
-			Date value = getDate(key);
-
-			if (value == null) {
-				return "";
-			}
-
-			SimpleDateFormat sdf = new SimpleDateFormat(format);
-			return sdf.format(value);
-
-		} catch (Exception ex) {
-
-			return "";
-
-		}
+		return new SimpleDateFormat(format).format(value);
 
 	}
 
@@ -2632,17 +2537,46 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * JSON文字列からオブジェクトを生成する
 	 *
 	 * @param jsonString	JSON文字列
-	 * @return	オブジェクト
+	 * @return	オブジェクト（{@code null} を渡したら null）
+	 * @throws io.jimble.util.json.JsonParseException	読めなかったとき（2.0。1.x は黙って null か空の Data。要件 D-195）
 	 */
 	@CheckReturnValue
 	public static Data fromJsonString (String jsonString) {
 
-		return Dson.decodes(jsonString, Data.class);
+		if (jsonString == null) {
+			return null;
+		}
+
+		if (!io.jimble.util.internal.JsonShape.isComplete(jsonString)) {
+			throw new io.jimble.util.json.JsonParseException(
+				"JSON を読めませんでした（括弧が閉じていないか、後ろに余分なものがあります）: " + abbreviate(jsonString.strip()), null);
+		}
+
+		Data data = Dson.decodes(jsonString, Data.class);
+
+		/*
+		 * 読み手は寛容で、途中で切れた JSON も例外なく「空の Data」を返すことがある。
+		 * だから「空でない文字なのに、{} でも null でもないのに、何も読めなかった」を壊れたとみなす（要件 D-195）。
+		 */
+		String text = jsonString.strip();
+		if (!text.isEmpty() && !"null".equals(text)
+			&& (data == null || (data.isEmpty() && !text.matches("\\{\\s*\\}")))) {
+			throw new io.jimble.util.json.JsonParseException(
+				"JSON を読めませんでした（オブジェクトとして読めた中身がありません）: " + abbreviate(text), null);
+		}
+
+		return data;
 
 	}
 
 	// endregion
 
+
+	private static String abbreviate (String text) {
+
+		return text.length() > 80 ? text.substring(0, 80) + "…" : text;
+
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -2786,6 +2720,88 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
+	 * 書き込みの前に呼ぶ（要件 D-196）
+	 *
+	 * <p>
+	 * {@link #readOnlyCopy()} の写しがここで断る。{@code keySet()} / {@code values()} / {@code entrySet()} の
+	 * 見せ方は写しの側で書き換えられないものに差し替える。
+	 * </p>
+	 */
+	protected void beforeWrite () {
+	}
+
+	/**
+	 * 書き換えられない写し
+	 *
+	 * <p>
+	 * 書き込むと {@code UnsupportedOperationException}。<b>写しを書き換えても元に届かない</b>ことを、
+	 * 黙らずに知らせるために使う（{@code Session.data()} など。要件 D-196）。浅い写しである。
+	 * </p>
+	 *
+	 * @return	写し
+	 * @since 2.0.0
+	 */
+	public Data readOnlyCopy () {
+
+		ReadOnlyData copy = new ReadOnlyData();
+		copy.fill(this);
+		return copy;
+
+	}
+
+	/*
+	 * 書き換えられない Data（readOnlyCopy の写し）
+	 */
+	private static final class ReadOnlyData extends Data {
+
+		private static final long serialVersionUID = 1L;
+
+		private boolean sealed = false;
+
+		private void fill (Data source) {
+
+			for (Map.Entry<String, Object> entry : source.entrySet()) {
+				super.put(entry.getKey(), entry.getValue());
+			}
+			sealed = true;
+
+		}
+
+		@Override
+		protected void beforeWrite () {
+
+			if (sealed) {
+				throw new UnsupportedOperationException(
+					"この Data は読み取り専用の写しです（書き換えても元に届きません）。"
+						+ "セッションなら context.session().put(...) で変えてください");
+			}
+
+		}
+
+		@Override
+		public Set<String> keySet () {
+
+			return java.util.Collections.unmodifiableSet(super.keySet());
+
+		}
+
+		@Override
+		public Collection<Object> values () {
+
+			return java.util.Collections.unmodifiableCollection(super.values());
+
+		}
+
+		@Override
+		public Set<Map.Entry<String, Object>> entrySet () {
+
+			return java.util.Collections.unmodifiableSet(super.entrySet());
+
+		}
+
+	}
+
+	/**
 	 * すでに持っている値だけ（{@link #beforeAccess()} を通さない）
 	 *
 	 * <p>
@@ -2857,6 +2873,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object put (String key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.put(key, value);
 
 	}
@@ -2865,6 +2882,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object remove (Object key) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.remove(key);
 
 	}
@@ -2873,6 +2891,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public void putAll (Map<? extends String, ? extends Object> map) {
 
 		beforeAccess();
+		beforeWrite();
 		super.putAll(map);
 
 	}
@@ -2881,6 +2900,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public void clear () {
 
 		beforeAccess();
+		beforeWrite();
 		super.clear();
 
 	}
@@ -2929,6 +2949,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public void replaceAll (BiFunction<? super String, ? super Object, ? extends Object> function) {
 
 		beforeAccess();
+		beforeWrite();
 		super.replaceAll(function);
 
 	}
@@ -2937,6 +2958,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object putIfAbsent (String key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.putIfAbsent(key, value);
 
 	}
@@ -2945,6 +2967,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public boolean remove (Object key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.remove(key, value);
 
 	}
@@ -2953,6 +2976,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public boolean replace (String key, Object oldValue, Object newValue) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.replace(key, oldValue, newValue);
 
 	}
@@ -2961,6 +2985,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object replace (String key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.replace(key, value);
 
 	}
@@ -2969,6 +2994,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object computeIfAbsent (String key, Function<? super String, ? extends Object> mappingFunction) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.computeIfAbsent(key, mappingFunction);
 
 	}
@@ -2977,6 +3003,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object computeIfPresent (String key, BiFunction<? super String, ? super Object, ? extends Object> remappingFunction) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.computeIfPresent(key, remappingFunction);
 
 	}
@@ -2985,6 +3012,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object compute (String key, BiFunction<? super String, ? super Object, ? extends Object> remappingFunction) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.compute(key, remappingFunction);
 
 	}
@@ -2993,6 +3021,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object merge (String key, Object value, BiFunction<? super Object, ? super Object, ? extends Object> remappingFunction) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.merge(key, value, remappingFunction);
 
 	}
@@ -3001,6 +3030,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object putFirst (String key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.putFirst(key, value);
 
 	}
@@ -3009,6 +3039,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Object putLast (String key, Object value) {
 
 		beforeAccess();
+		beforeWrite();
 		return super.putLast(key, value);
 
 	}
@@ -3033,6 +3064,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Map.Entry<String, Object> pollFirstEntry () {
 
 		beforeAccess();
+		beforeWrite();
 		return super.pollFirstEntry();
 
 	}
@@ -3041,6 +3073,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	public Map.Entry<String, Object> pollLastEntry () {
 
 		beforeAccess();
+		beforeWrite();
 		return super.pollLastEntry();
 
 	}

@@ -58,7 +58,7 @@ public class DBCache extends AbstractCache {
 				db_cache
 			WHERE
 				cache_key = ?
-		""", key);
+		""", key).orElse(null);
 
 		if (data == null) {
 			return null;
@@ -92,9 +92,6 @@ public class DBCache extends AbstractCache {
 			WHERE
 				group_key = ?
 		""", group);
-		if (list == null) {
-			return null;
-		}
 
 		List<String> res = new ArrayList<>();
 		for (Data data : list) {
@@ -131,7 +128,7 @@ public class DBCache extends AbstractCache {
 				db_cache
 			WHERE
 				cache_key = ?
-		""", key);
+		""", key).orElse(null);
 
 		if (data == null) {
 			return new CacheData(key, group);
@@ -155,7 +152,7 @@ public class DBCache extends AbstractCache {
 				db_cache
 			WHERE
 				cache_key = ?
-		""", key);
+		""", key).orElse(null);
 		if (data == null) {
 			return new CacheData(key, group);
 		}
@@ -182,9 +179,6 @@ public class DBCache extends AbstractCache {
 			WHERE
 				group_key = ?
 		""", group);
-		if (list == null) {
-			return null;
-		}
 
 		List<CacheData> res = new ArrayList<>();
 		for (Data data : list) {
@@ -207,7 +201,7 @@ public class DBCache extends AbstractCache {
 						db_cache
 					WHERE
 						cache_key = ?
-				""", key);
+				""", key).orElse(null);
 				if (row == null) {
 					res.add(new CacheData(key, group));
 				} else {
@@ -227,7 +221,8 @@ public class DBCache extends AbstractCache {
 	@Override
 	public boolean set(String key, String value, String contentType) {
 
-		long res = db().insert(
+		// 失敗は例外（2.0。要件 D-193）
+		db().insert(
 			"""
 				INSERT INTO db_cache (
 					cache_key
@@ -253,7 +248,7 @@ public class DBCache extends AbstractCache {
 			, StringUtil.utf8Length(value)
 		);
 
-		return res >= 0;
+		return true;
 
 	}
 
@@ -263,7 +258,8 @@ public class DBCache extends AbstractCache {
 	@Override
 	public boolean set(String key, String value, String contentType, String group) {
 
-		long res = db().insert(
+		// 失敗は例外（2.0。要件 D-193）
+		db().insert(
 			"""
 				INSERT INTO db_cache (
 					cache_key
@@ -289,7 +285,7 @@ public class DBCache extends AbstractCache {
 			, StringUtil.utf8Length(value)
 		);
 
-		return res >= 0;
+		return true;
 
 	}
 
@@ -334,7 +330,7 @@ public class DBCache extends AbstractCache {
 				db_cache
 			WHERE
 				cache_key = ?
-		""", key);
+		""", key).orElse(null);
 
 		return data != null;
 

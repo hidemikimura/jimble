@@ -38,9 +38,7 @@ class DbSessionIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), DbSessionIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), DbSessionIntegrationTest.class);
 
 	}
 
@@ -56,7 +54,11 @@ class DbSessionIntegrationTest {
 	void clean () {
 
 		SessionStores.reset();
-		DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
+		try {
+			DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
+		} catch (io.jimble.db.SqlExecuteException notYet) {
+			// 表はストアが最初に使うときに作る。まだ無ければ消すものも無い
+		}
 
 	}
 
@@ -405,7 +407,7 @@ class DbSessionIntegrationTest {
 	private long count () {
 
 		return DBUtil.getMainDB()
-			.select("SELECT COUNT(*) AS cnt FROM %s".formatted(quoted())).getLong("cnt");
+			.select("SELECT COUNT(*) AS cnt FROM %s".formatted(quoted())).orElseThrow().getLong("cnt");
 
 	}
 

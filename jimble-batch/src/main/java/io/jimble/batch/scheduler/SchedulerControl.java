@@ -64,7 +64,7 @@ public final class SchedulerControl {
 
 			DBValue.set(db, KEY_ENABLED, "1");
 
-			return !db.isError();
+			return true;
 
 		} catch (Exception ex) {
 
@@ -88,7 +88,7 @@ public final class SchedulerControl {
 
 			DBValue.set(db, KEY_ENABLED, "0");
 
-			return !db.isError();
+			return true;
 
 		} catch (Exception ex) {
 

@@ -1,5 +1,7 @@
 package io.jimble.db;
 
+import io.jimble.util.exception.CodeException;
+
 import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.util.internal.Docs;
@@ -105,8 +107,8 @@ public class DBUtil {
 			try (
 				DB db = new DB(dbSource)
 			) {
-				Data row = db.select("SELECT 1");
-				if (row == null || db.isError()) {
+				// 読めなければ例外（下で false）
+				if (db.select("SELECT 1").isEmpty()) {
 					return false;
 				}
 			} catch (Throwable ex) {
@@ -239,21 +241,19 @@ public class DBUtil {
 	 * DB設定を読み込む
 	 *
 	 * <p>
-	 * <b>繋がらなくても例外を投げない。</b>原因をログに出して {@code false} を返す。
-	 * <b>戻り値を見ずに先へ進むと、サーバーは起動してしまい</b>、
-	 * 最初にリクエストが来たところで落ちる（要件 F-X-05 / D-130）。
-	 * 呼ぶ側で見て、その場で止めること。
+	 * <b>繋がらなければ例外で止まる</b>（2.0。要件 D-193）。1.x は原因をログに出して {@code false} を返したので、
+	 * <b>戻り値を見ずに先へ進むとサーバーは起動してしまい</b>、最初にリクエストが来たところで落ちていた（F-X-05 / D-130）。
+	 * 設定に {@code db} が無ければ何もしない。
 	 * </p>
 	 *
 	 * @param conf		Conf
 	 * @param appCls	クラスパスの起点（マイグレーション SQL をここから探す）
-	 * @return	全部読み込めた場合 = true。設定に {@code db} が無いときも true
+	 * @throws SqlExecuteException	データソースを作れなかったとき（コード {@code DB_007}。元の例外は cause の cause）
 	 */
-	@CheckReturnValue
-	public static boolean load (Config conf, Class<?> appCls) {
+	public static void load (Config conf, Class<?> appCls) {
 
 		if (!conf.hasPath("db")) {
-			return true;
+			return;
 		}
 
 		/*
@@ -328,12 +328,10 @@ public class DBUtil {
 					 */
 					if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
 						if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
-							Log.error("failed create write datasource: " + dbName, ex);
-							return false;
+							throw loadFailed("failed create write datasource", dbName, ex);
 						}
 						if (isCreated) {
-							Log.error("failed create write datasource: " + dbName, ex);
-							return false;
+							throw loadFailed("failed create write datasource", dbName, ex);
 						}
 						isCreated = true;
 						String url = writeDbConf.url();
@@ -347,8 +345,7 @@ public class DBUtil {
 								st = connection.prepareStatement(writeDbConf.createDatabaseSql());
 								st.execute();
 							} catch (Exception ex3) {
-								Log.error("failed create write datasource: " + dbName, ex);
-								return false;
+								throw loadFailed("failed create write datasource", dbName, ex);
 							} finally {
 								writeDbConf.url(url);
 								if (st != null) {
@@ -356,12 +353,10 @@ public class DBUtil {
 								}
 							}
 						} catch (Exception ex2) {
-							Log.error("failed create write datasource: " + dbName, ex);
-							return false;
+							throw loadFailed("failed create write datasource", dbName, ex);
 						}
 					} else {
-						Log.error("failed create write datasource: " + dbName, ex);
-						return false;
+						throw loadFailed("failed create write datasource", dbName, ex);
 					}
 				}
 			}
@@ -384,8 +379,7 @@ public class DBUtil {
 					end = System.currentTimeMillis();
 					Log.info("success create read datasource: " + dbName + " (" + (end - start) +"ms)");
 				} catch (Exception ex) {
-					Log.error("failed create read datasource: " + dbName, ex);
-					return false;
+					throw loadFailed("failed create read datasource", dbName, ex);
 				}
 			}
 
@@ -424,8 +418,7 @@ public class DBUtil {
 						end = System.currentTimeMillis();
 						Log.info("success create sub datasource: " + dbName + " (" + (end - start) +"ms)");
 					} catch (Exception ex) {
-						Log.error("failed create subs datasource: " + dbName, ex);
-						return false;
+						throw loadFailed("failed create subs datasource", dbName, ex);
 					}
 				}
 			}
@@ -481,7 +474,21 @@ public class DBUtil {
 			}
 		}
 
-		return true;
+	}
+
+	/**
+	 * データソースを作れなかった
+	 *
+	 * @param what		何をしていたか
+	 * @param dbName	DB名
+	 * @param ex		元の例外
+	 * @return	投げる例外
+	 */
+	private static SqlExecuteException loadFailed (String what, String dbName, Exception ex) {
+
+		return new SqlExecuteException(
+			"データソースを作れませんでした（" + what + "）: " + dbName + ": " + ex.getMessage(),
+			new CodeException("DB_007", ex.getMessage(), ex));
 
 	}
 

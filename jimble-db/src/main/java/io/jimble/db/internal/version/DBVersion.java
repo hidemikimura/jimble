@@ -7,7 +7,6 @@ import io.jimble.db.internal.generator.info.TableInfo;
 import io.jimble.db.dialect.DialectException;
 import io.jimble.db.dialect.MySqlDialect;
 import io.jimble.db.dialect.PostgreSqlDialect;
-import io.jimble.util.log.Log;
 
 import java.util.*;
 
@@ -38,12 +37,8 @@ public class DBVersion {
 		 * <b>「コメントに版番号を書く」という仕組み自体は両方にある</b>ので、
 		 * 引き方だけを方言に寄せて、仕組みは1つのままにしてある。
 		 */
+		// 引けなければ例外（1.x は空として進み、あるテーブルを作りにいって失敗していた）
 		List<Data> tableList = db.selectList(db.dialect().tableCommentsSql());
-
-		if (tableList == null) {
-			Log.error("テーブル一覧を引けませんでした: " + db.getDBName());
-			tableList = List.of();
-		}
 
 		for (Data table : tableList) {
 			TableInfo tableInfo = new TableInfo();
@@ -154,7 +149,8 @@ public class DBVersion {
 	 * 適用する
 	 *
 	 * @param db    DB
-	 * @return  正常に終了した場合 = true
+	 * @return  適用した場合 = true。この DB の定義を読み込んでいなければ false
+	 * @throws io.jimble.db.SqlExecuteException	SQL が失敗したとき
 	 */
 	public boolean apply (DB db) {
 
@@ -178,11 +174,8 @@ public class DBVersion {
 			}
 			String comment = tableComment + ":" + version.version;
 			for (String sql : version.sqlList(product, tableName)) {
+				// 失敗は例外（起動が止まる。2.0。要件 D-193）
 				db.execute(sql.replace(PLACEHOLDER, comment));
-				if (db.isError()) {
-					Log.error(db.getError());
-					return false;
-				}
 			}
 			applyVersion = version.version;
 		}

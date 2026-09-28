@@ -4,6 +4,88 @@
 
 ---
 
+## 2.0.0（2026-09-28）
+
+**間違えやすい API を消し、型を変えた版（段D）。**戻り値を捨てると効かない・黙って何もしない書き方を作り直しました（D-193〜D-198）。
+**壊れ方はコンパイルエラーか例外だけです。**黙って意味が変わる変更はしていません。
+上げ方は [2.0 への移行](https://jimble.io/ja/migrate-2) にまとめました。1.5 で `./gradlew jimbleCheck --target=2.0` を流してから上げるのが近道です。
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **DB の失敗はすべて例外になりました**（D-193） | `null` / `-1` / `false` を返して `isError()` で見る書き方は無くなりました。失敗は `SqlExecuteException`（非検査）、一意制約の違反は子の `DuplicateKeyException` です |
+| **`select` は `Optional<Data>` です**（D-193） | `Data row = db.select(...)` はコンパイルエラーになります。1.x と同じ「無ければ null」は `.orElse(null)` |
+| **トランザクションの中で SQL の失敗を受け止めると、確定できません**（D-193） | catch して続けても `tx.commit()` が `DB_004` で断り、全部巻き戻します。一意制約を「あれば更新」に使っていたなら、トランザクションの外で受けるか `ON CONFLICT` へ |
+| **Data の取り出しは、読めない値で例外です**（D-195） | `getInt("x")` に `"abc"` が入っていると `DataConversionException`。**無いキーは 0 / false / null のまま**です。利用者の入力は先にバリデーションを通してください |
+| **`validate(...)` は通らなければ 422 です**（D-196） | 一覧が欲しいところは `errors(...)` に。`required()` はキーごと送られなくても失敗します |
+| **検査例外が減りました**（D-197） | 投げなくなったものを `catch (IOException e)` していると、コンパイルエラーになります。消してください |
+
+### DB（D-193）
+
+| | |
+|---|---|
+| **失敗は例外** | `select` / `selectList` / `insert` / `update` / `delete` / `execute` / `executeBatch` / `insertBatch` ほか。元の例外は `getCause()` から辿れます |
+| **戻り値の型** | `select` / `selectCached` → `Optional<Data>`。`selectList` 系 → `null` を返さない（0件は空リスト）。`insert` → `void`（採番値は `insertKey`）。`execute` → `int`（件数）。`update` / `delete` → 件数（-1 は返らない） |
+| **バッチ** | 空の入力は空リスト（1.x は `null`）。SQL が揃っていなければ `DB_998` |
+| **消したもの** | `isError()` / `getError()` / `isDuplicateKeyError()`、`DBTransaction`、`beginTransaction` / `commit` / `commitEndTransaction` / `rollback` / `rollbackEndTransaction` / `endTransaction`。トランザクションは `db.begin()` / `db.transaction(...)` / `db.transactionResult(...)` だけです |
+| **2.0 で非推奨にしたもの**（2.x で消します） | `selectOrThrow` / `selectListOrThrow`（`select` / `selectList` と同じ意味になった）、`insertNoReturnKey`、`DB.isBatchSuccess`、`RedisLockStatus.Failed` |
+| **`DBUtil.load(...)` → `void`** | 繋がらなければ `SqlExecuteException`（`DB_007`）で起動が止まります |
+| **`DBLock`** | `create` / `lock` → `void`。**`lock` をトランザクションの外で呼ぶと例外**（FOR UPDATE の鍵が文の終わりで外れ、何も守っていなかった）。create していないキーも例外 |
+| **`RedisLock`** | `lock` は取れなければ `RedisLockException`（新しい非検査例外）。`tryLock` → `Optional<RedisLockResult>` |
+| **`close()` は検査例外を投げない** | `DB` / `RedisLockResult` / `ResultSetFetcher` |
+| **`@CheckReturnValue` を外したもの** | 戻り値を捨ててよくなった `insert` / `update` / `delete` / `execute` / `executeBatch` / `insertBatch` |
+| **枠組みの中で捨てていた失敗** | DB のキャッシュ・キャッシュの無効化・バッチの履歴・マイグレーションは例外に。スケジューラの定期読み込みとバッチの中断確認は、ログを出して続けます |
+
+### SQL を組む側（D-194）
+
+| | |
+|---|---|
+| **`eq(null)` / `not(null)` は例外** | `is_null()` / `is_not_null()` を使います。`where(Data)` の空の値も同じです |
+| **`where(Data)` に包まない Data は例外** | `"where"` キーが無いと、1.x は条件が付かずに**全件**でした（Select / Update / Delete）。空の Data は何もしません |
+| **`set(Data)` / `value(Data)` に包まない行は例外** | 1.x は黙って何も入れませんでした。平らな行は `setRow` / `valueRow` |
+| **文字列 `"now()"` の魔法を消しました** | ただの文字列として入ります。現在時刻は `Dsl.now()` |
+| **消したもの** | 列の `subtract`（割り算を出していた）、`Dsl.and(w)` / `Dsl.or(w)`。`ISelect.divide` は抽象メソッドに |
+
+### Data（D-195）
+
+| | |
+|---|---|
+| **あるのに読めない値は `DataConversionException`** | `getInt` / `getLong` / `getDouble` / `getBigDecimal` / `getBoolean` / `getDate` / `getEnum` / `getValue` / `getData` / 一覧ほか。1.x は黙って 0 / false / null でした。`getBoolean` が読めるのは true / false / 1 / 0 だけです |
+| **無いキーは 0 / false / null のまま** | キーが無い・`null`・空文字。既存のアプリの「無ければ 0」を頼った行を止めないためです |
+| **型を変えて読んでも書き戻さない** | 1.x は読んだだけで JSON の出力が変わっていました。Optional 版の「無ければ空を作って入れる」は残しました |
+| **壊れた JSON は `JsonParseException`** | `Data.fromJsonString` / `Dson.decodes`。空文字と `"null"` は `null` |
+| **足したもの** | `getEnumOptional(key, 型)`、`readOnlyCopy()`、`Dson.decodeOrThrow` / `decodeTextOrThrow` |
+
+### Web（D-196）
+
+| | |
+|---|---|
+| **消したもの** | `Router.path(String)`、`Cookies.put(Cookie)`。`Request` は `Data` を継承しません（`bodyAll()` などから読みます） |
+| **`validate(...)` → `void`** | 通らなければ `ValidationException`（422。新しい、`HttpException` の子）。枠組みが `{"validation": {項目: [メッセージ]}}` で返します。一覧は `errors(...)`。一覧の版 `errors(db, List)` / `validate(db, List)` を足しました |
+| **`required()` / `empty()` はキーが無ければ失敗** | `insertRequired()` の規則は「登録のときだけ必須」のまま |
+| **1.5 で警告だったものが例外に** | 返し方を2つ積む・送ったあとのヘッダと Cookie・`destroy()` のあとのセッションの変更・`paging()` のあとの `paging(50)` は `IllegalStateException`。読めない JSON の本文は 400（MCP は `PARSE_ERROR`） |
+| **`session().data()` は読み取り専用の写し** | 1.x は書き換えても保存されませんでした。`session().put(...)` を使います |
+| **`AbstractExecutor.cancel()` はそこで抜ける** | `ExecutorCanceled` を投げ、枠組みが受け止めて `onCancel` を呼びます。1.x は印を立てるだけで、あとの行も走りました |
+
+### 検査例外（D-197）
+
+| | |
+|---|---|
+| **`CodeException` は `RuntimeException` の子** | `catch (CodeException e)` はそのまま書けます |
+| **非検査にしたもの** | `LoadingCache.get()` / `LoadingCacheMulti.get(k)`、`Convertor.convert`、`CsvReader` / `CsvWriter`、`XmlBuilder.build`、`IOUtil.copy` / `readLines`、`ValidationRule` / `IValidator`（`IOException` は `UncheckedIOException`、ほかは `CodeException` で包みます） |
+
+### jimbleCheck（D-198）
+
+| | |
+|---|---|
+| **J8xx と J9xx をいつも出します** | `--target=2.0` は受け付けて何もしません |
+| **Optional で受け取る 2.0 の書き方は出しません** | J901（`select`）と J905（`tryLock`） |
+| **J907 を足しました** | `session().data().put(...)` など（2.0 で例外） |
+| **J809 を外しました** | 文として書く `validate(...)` が 2.0 の正しい書き方になったため。J906 からは `selectCached` / `selectListCached` を外しました（名前は変わりません） |
+
+---
+
 ## 1.5.0（2026-09-28）
 
 **AI が jimble を正しく使えるようにし、間違えやすい API を作り直し始めた版。**

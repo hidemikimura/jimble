@@ -3,7 +3,7 @@ package io.jimble.db.redis.lock;
 import io.jimble.db.DB;
 import org.redisson.api.RLock;
 
-import java.io.IOException;
+import io.jimble.util.log.Log;
 
 /**
  * Redisロック結果
@@ -60,12 +60,21 @@ public class RedisLockResult implements AutoCloseable {
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * 鍵を外す（DB の印も戻す）
+	 *
+	 * <p>
+	 * <b>検査例外を投げない</b>（2.0。1.x は {@code IOException}）。外すときの失敗はログに出す——
+	 * 鍵は保持時間が過ぎれば Redis の側で外れる。
+	 * </p>
 	 */
 	@Override
-	public void close() throws IOException {
+	public void close () {
 
-		if (lock != null) {
+		if (lock == null) {
+			return;
+		}
+
+		try {
 			if (db != null) {
 				db.update("""
 						UPDATE redis_lock SET
@@ -76,12 +85,17 @@ public class RedisLockResult implements AutoCloseable {
 					, false
 					, lockKeyHash
 				);
-				db = null;
 			}
+		} catch (Exception ex) {
+			Log.error(ex, "ロックの DB の印を戻せませんでした");
+		} finally {
+			db = null;
 			try {
 				lock.unlock();
-				lock = null;
-			} catch (Exception ex) {}
+			} catch (Exception ex) {
+				Log.error(ex, "ロックを外せませんでした");
+			}
+			lock = null;
 		}
 
 	}

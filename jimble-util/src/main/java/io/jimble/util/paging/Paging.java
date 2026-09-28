@@ -304,6 +304,28 @@ public class Paging {
 	}
 
 	/**
+	 * リクエストの数を読む（読めなければ 0 ＝既定）
+	 *
+	 * <p>
+	 * <b>利用者が打った値なので、読めなくても止めない</b>——{@code ?page=abc} は 1 ページ目にする（1.x と同じ）。
+	 * {@code Data.getLong} は 2.0 で読めない値を例外にしたので、ここだけ寛容に読む（要件 D-195）。
+	 * </p>
+	 *
+	 * @param requestData	リクエストデータ
+	 * @param key			キー
+	 * @return	数（無い・読めないなら 0）
+	 */
+	private static long requestNumber (Data requestData, String key) {
+
+		try {
+			return requestData.getLong(key);
+		} catch (io.jimble.util.data.DataConversionException ex) {
+			return 0;
+		}
+
+	}
+
+	/**
 	 * リクエスト情報を読み込む
 	 *
 	 * @param requestData   リクエストデータ
@@ -323,7 +345,7 @@ public class Paging {
 				 * <b>断らずに上限まで返す</b>——断ると、
 				 * これまで動いていた管理画面が 400 になる。
 				 */
-				load(requestData.getLong(namePage()), max);
+				load(requestNumber(requestData, namePage()), max);
 
 				return;
 
@@ -337,7 +359,7 @@ public class Paging {
 
 		} else {
 
-			long _per = requestData.getLong(namePer());
+			long _per = requestNumber(requestData, namePer());
 			if (_per <= 0) {
 				_per = per;
 			}
@@ -345,7 +367,7 @@ public class Paging {
 				_per = DEFAULT_PER;
 			}
 
-			load(requestData.getLong(namePage()), _per);
+			load(requestNumber(requestData, namePage()), _per);
 
 		}
 

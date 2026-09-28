@@ -45,7 +45,7 @@ cache.remove("top:posts");
 | Method | What comes back |
 | --- | --- |
 | `getString(key)` | A string, or `null` when there is nothing (`""` on the memory implementation only) |
-| `get(key)` | A `CacheData` (with creation time and kind). **Check `isError()`** |
+| `get(key)` | A `CacheData` (with creation time and kind). **`isError()` is true** when there is nothing |
 | `set(key, value, contentType[, group])` | `true` when it went in |
 | `has(key, group)` / `remove(key)` / `removeGroup(group)` | |
 
@@ -80,7 +80,7 @@ sql_cache.enabled = true
 ```
 
 ```java
-Data customer = db.selectCached(
+Optional<Data> customer = db.selectCached(
 	SQL.select()
 		.from(Customer.instance())
 		.inner(Shop.instance()).on(Customer.shop_id.eq(Shop.id))
@@ -219,6 +219,7 @@ List<Data> posts = cache.get();
 | Expiry | **None** unless you pass a `Duration` |
 | When another machine calls `clear()` | It checks the shared cache **once a minute** and throws its copy away |
 | The `DB` handed to the loader | A new connection (separate from the caller's transaction) |
+| When the loader fails | `get()` throws an unchecked exception (the original is `getCause()`) |
 
 > [!TRAP]
 > **A loader that returns `null` still counts as loaded.**
@@ -236,21 +237,25 @@ this".
 
 ```java
 // Wait 100ms, give up if it is not free. Hold it for 30 seconds once taken
-try (RedisLockResult lock = RedisLock.tryLock("batch:daily", 100, 30000)) {
+Optional<RedisLockResult> lock = RedisLock.tryLock("batch:daily", 100, 30000);
+if (lock.isEmpty()) {
+	return;   // someone else is running it
+}
 
-	if (lock.status() != RedisLockStatus.Success) {
-		return;   // someone else is running it
-	}
-
+try (RedisLockResult held = lock.get()) {
 	// only one machine gets in here
-
-} catch (IOException ignore) {
 }
 ```
 
-> [!WARN]
-> **Failing to take the lock does not throw.** You must check `status()`.
-> If you do not, you get "the work proceeds without holding the lock".
+| | When the lock is not taken |
+| --- | --- |
+| `RedisLock.lock(key)` | **`RedisLockException`** (unchecked) |
+| `RedisLock.tryLock(key, wait, hold)` | An **empty `Optional`** if it is still not free after waiting. `RedisLockException` if Redis cannot be reached |
+
+**You never proceed inside without the lock.**
+In 1.x `status()` merely became `Failed`, and if you did not check it you went
+ahead without a lock.
+`close()` throws no checked exception, so you need no `catch (IOException e)`.
 
 > [!TRAP]
 > **The same thread can take the same key again** (the lock is reentrant).
@@ -269,19 +274,28 @@ That is so you never create "it went ahead even though there was no lock".
 
 ### Locking with the DB alone
 
-Where there is no Redis you can use `DBLock`. **Inside a transaction**, create
-the row first, then take it.
+Where there is no Redis you can use `DBLock`. Create the row beforehand, then
+take it **inside a transaction**.
 
 ```java
-DBLock.create(db, "daily");           // once only
+DBLock.create(db, "daily");           // once only (does nothing if it exists)
 ...
-if (DBLock.lock(db, "daily")) {       // SELECT ... FOR UPDATE
+db.transaction(tx -> {
+	DBLock.lock(db, "daily");         // SELECT ... FOR UPDATE
 	// one at a time until the transaction ends
-}
+});
 ```
 
-If the row is not there you get `false`. It is released **at the end of the
-transaction**; there is no way to release it explicitly.
+Neither `create` nor `lock` returns anything. **Failures are exceptions.**
+
+| | What happens |
+| --- | --- |
+| Calling `lock` outside a transaction | `IllegalStateException` (the `FOR UPDATE` lock is released at the end of the statement and protects nothing) |
+| Calling `lock` on a key you never `create`d | `IllegalStateException` |
+| The SQL fails | `SqlExecuteException` |
+
+It is released **at the end of the transaction**; there is no way to release it
+explicitly.
 
 ## Configuration keys
 

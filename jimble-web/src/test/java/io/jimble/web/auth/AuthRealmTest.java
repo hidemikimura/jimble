@@ -40,7 +40,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * セッションは、リクエストをまたいで中身を持ち越すメモリの保存先（{@link MemoryStore}）で持つ。DB は要らない。
  * </p>
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class AuthRealmTest {
 
 	/** 運用者の種別 */
@@ -60,15 +59,17 @@ class AuthRealmTest {
 
 		router = new Router();
 
-		Router ops = router.path("/ops");
-		ops.attribute(Auth.REALM, OPERATOR);
-		ops.attribute(Auth.ROLE, "ops");
-		ops.get("/me", context -> { });
+		router.path("/ops", ops -> {
+			ops.attribute(Auth.REALM, OPERATOR);
+			ops.attribute(Auth.ROLE, "ops");
+			ops.get("/me", context -> { });
+		});
 
-		Router admin = router.path("/admin");
-		admin.attribute(Auth.REALM, MEMBER);
-		admin.attribute(Auth.ROLE, "member");
-		admin.get("/me", context -> { });
+		router.path("/admin", admin -> {
+			admin.attribute(Auth.REALM, MEMBER);
+			admin.attribute(Auth.ROLE, "member");
+			admin.get("/me", context -> { });
+		});
 
 		router.get("/plain/me", context -> { });
 

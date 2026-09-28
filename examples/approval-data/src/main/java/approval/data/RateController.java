@@ -135,9 +135,8 @@ public final class RateController {
 
 		try (Tx tx = db.begin()) {
 
-			if (!DBLock.lock(db, LOCK_KEY)) {
-				throw new HttpException(409, "ほかで書き換え中です");     // 抜けたら巻き戻る
-			}
+			// 取れるまで待つ。失敗は例外（抜けたら巻き戻る）
+			DBLock.lock(db, LOCK_KEY);
 
 			int updated = db.update(SQL.update(Rate.instance())
 				.set(Rate.value, value)

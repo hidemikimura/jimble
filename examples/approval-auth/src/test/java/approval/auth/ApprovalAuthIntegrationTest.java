@@ -117,7 +117,7 @@ class ApprovalAuthIntegrationTest {
 
 		for (String loginId : new String[] { "member1", "member2", "approver1" }) {
 			Data staff = ApprovalAuthExample.db().select(
-				SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId)));
+				SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId))).orElse(null);
 			if (staff != null) {
 				Remember.forgetAll(staff.getData(Staff.instance()).getLong("id"));
 			}
@@ -1292,7 +1292,7 @@ class ApprovalAuthIntegrationTest {
 	private static long staffId (String loginId) {
 
 		Data row = ApprovalAuthExample.db().select(
-			SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId)));
+			SQL.select().from(Staff.instance()).where(Staff.login_id.eq(loginId))).orElse(null);
 
 		return row == null ? 0 : row.getData(Staff.instance()).getLong("id");
 

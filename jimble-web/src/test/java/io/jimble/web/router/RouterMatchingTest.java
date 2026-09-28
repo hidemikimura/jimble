@@ -15,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Router のマッチングのテスト
  */
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class RouterMatchingTest {
 
 	/* 何もしないハンドラ */
@@ -199,7 +198,7 @@ class RouterMatchingTest {
 		router.get("/users/{id}", NOOP);
 		router.get("/files/*", NOOP);
 
-		Router admin = router.path("/admin");
+		Router admin = router.child("/admin");
 		admin.get("/dashboard", NOOP);
 
 		List<String> lines = router.routes().stream().map(RouteInfo::toString).toList();
@@ -221,8 +220,8 @@ class RouterMatchingTest {
 	void nestedPath () {
 
 		Router router = new Router();
-		Router api = router.path("/api");
-		Router v1 = api.path("/v1");
+		Router api = router.child("/api");
+		Router v1 = api.child("/v1");
 		Route route = v1.get("/ping", NOOP);
 
 		assertSame(route, router.match("GET", "/api/v1/ping").route());

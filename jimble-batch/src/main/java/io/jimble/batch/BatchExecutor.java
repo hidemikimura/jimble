@@ -338,7 +338,7 @@ public final class BatchExecutor {
 						updated_at >= %s
 					LIMIT 1
 				""".formatted(db.dialect().intervalFromNow("SECOND", true))
-				, BatchConf.alive().toSeconds());
+				, BatchConf.alive().toSeconds()).orElse(null);
 
 			return row != null;
 

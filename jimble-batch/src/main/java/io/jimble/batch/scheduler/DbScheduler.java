@@ -12,6 +12,7 @@ import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.MqQueue;
 import io.jimble.mq.MqRegistry;
@@ -420,7 +421,9 @@ public final class DbScheduler implements CancelOrderNotify {
 
 		DB db = DBUtil.getMainDB();
 
-		List<Data> rows = db.selectList("""
+		List<Data> rows;
+		try {
+			rows = db.selectList("""
 				SELECT
 					class_name
 					, name
@@ -436,9 +439,9 @@ public final class DbScheduler implements CancelOrderNotify {
 					class_name
 			"""
 			, BatchMasterStatus.enable.name());
-
-		if (db.isError() || rows == null) {
-			Log.error("バッチマスタを読めませんでした: %s".formatted(db.getError()));
+		} catch (SqlExecuteException ex) {
+			// スケジューラは止めない。次の回でもう一度読む
+			Log.error(ex, "バッチマスタを読めませんでした");
 			return;
 		}
 
@@ -573,7 +576,7 @@ public final class DbScheduler implements CancelOrderNotify {
 		}
 
 		Data history = DBUtil.getMainDB().select(
-			"SELECT class_name, execute_info FROM batch_history WHERE id = ?", batchId);
+			"SELECT class_name, execute_info FROM batch_history WHERE id = ?", batchId).orElse(null);
 
 		if (history == null) {
 			Log.error("バッチ履歴がありません: id=%d".formatted(batchId));

@@ -1,7 +1,7 @@
 package io.jimble.batch;
 
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.util.log.Log;
 
@@ -52,7 +52,7 @@ import java.util.List;
  * <p>
  * {@link #reader(BatchArgs, DB)} に渡る {@code db} と
  * {@link #write(List, DB)} に渡る {@code db} は<b>別のインスタンス</b>である。
- * 同じにはできない。{@code DBTransaction.close()} は {@code db.close()} を呼び、
+ * 同じにはできない。チャンクの {@code Tx} が終わると {@code db.close()} が走り、
  * それはコネクションをプールへ返すので、
  * <b>同じ {@code DB} で読んでいるとチャンクを1つ確定した時点で読みかけが死ぬ。</b>
  * 渡された {@code db} をそのまま使っていれば、これは起きない。
@@ -154,10 +154,9 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 	 * </p>
 	 *
 	 * <p>
-	 * <b>{@code db.insert()} などは失敗しても例外を投げない。</b>
-	 * {@code db.isError()} にその<b>直前の1文</b>の結果が入るだけである。
-	 * 複数文を流すなら、1文ごとに見るか、自分で例外を投げること。
-	 * 枠のほうでも最後に一度だけ見ているが、それは最後の1文しか拾えない。
+	 * {@code db.insert()} などの失敗は {@code SqlExecuteException} で抜け、このチャンクは巻き戻る（2.0）。
+	 * <b>中で受け止めて続けても、確定のときに {@code DB_004} で断られて巻き戻る。</b>
+	 * 1行だけよけたいなら、{@link #process(Object)} で null を返してよけること。
 	 * </p>
 	 *
 	 * @param items	書くもの（空にはならない）
@@ -341,31 +340,21 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 	 * @param items	書くもの
 	 * @throws Exception	エラー
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private void writeChunk (DB db, List<T> items) throws Exception {
 
 		/*
 		 * 抜けるときに close() が走る。
 		 * コミット済みならコネクションはもう返っているので何もしない。
 		 * 例外で抜けたときはここでロールバックされる。
+		 *
+		 * 1.x はここで最後の1文の isError() しか見られなかった。2.0 は SQL の失敗が例外なので、
+		 * write() の中で失敗した文があれば必ずここを例外で抜ける（受け止めて続けても commit が断る）。
 		 */
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+		try (Tx tx = db.begin()) {
 
 			write(List.copyOf(items), db);
 
-			/*
-			 * 最後の1文しか見られない（DB は文を流すたびに error を上書きする）。
-			 * 何も見ないよりはよい、という程度のもので、
-			 * <b>write() の側で見るのが本筋</b>である。
-			 */
-			if (db.isError()) {
-				throw new IllegalStateException(
-					"チャンクの書き込みが失敗しています: %s".formatted(String.valueOf(db.getError())));
-			}
-
-			transaction.commitEndTransaction();
+			tx.commit();
 
 		}
 

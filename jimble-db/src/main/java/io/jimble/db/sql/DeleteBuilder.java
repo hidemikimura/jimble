@@ -94,11 +94,11 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 	 */
 	public DeleteBuilder where (Data data) {
 
-		List<IWhere> whereList = whereList(data);
-		if (whereList != null) {
-			for (IWhere w : whereList) {
-				where(w);
-			}
+		// "where" キーの無い空でない Data は例外（1.x は条件が付かずに全件。要件 D-194）
+		requireWrapped(data, "where", "where(Data)", null);
+
+		for (IWhere w : whereList(data)) {
+			where(w);
 		}
 
 		return this;
@@ -179,7 +179,9 @@ public class DeleteBuilder extends AbstractBuilder<DeleteBuilder> {
 	@Override
 	public DeleteBuilder apply(Data data) {
 
-		where(data);
+		for (IWhere w : whereList(data)) {
+			where(w);
+		}
 		return this;
 
 	}
