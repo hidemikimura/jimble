@@ -3,7 +3,7 @@ package io.jimble.mq;
 import io.jimble.core.context.MqContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
@@ -257,13 +257,10 @@ public final class MqQueue {
 
 		for (DB db : DBUtil.getDBList()) {
 
-			Data row = db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
+			// 読めなければ例外（1.x はその DB を黙って 0 件と数えていた）
+			total += db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
 				.formatted(db.dialect().identifier(queueName))
-				, MqStatus.waiting.name());
-
-			if (row != null) {
-				total += row.getLong("pending");
-			}
+				, MqStatus.waiting.name()).map(row -> row.getLong("pending")).orElse(0L);
 
 		}
 
@@ -330,12 +327,9 @@ public final class MqQueue {
 	 * @param type	実行種別
 	 * @return	行（無ければ null）
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private Data claim (DB db, MqExecuteType type) {
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+		try (Tx tx = db.begin()) {
 
 			Data row = db.select("""
 					SELECT
@@ -351,10 +345,10 @@ public final class MqQueue {
 					LIMIT 1 FOR UPDATE SKIP LOCKED
 				""".formatted(db.dialect().identifier(queueName))
 				, type.name()
-				, MqStatus.waiting.name());
+				, MqStatus.waiting.name()).orElse(null);
 
 			if (row == null) {
-				transaction.rollbackEndTransaction();
+				// 何も取らずに抜ける（close で巻き戻る）
 				return null;
 			}
 
@@ -362,7 +356,7 @@ public final class MqQueue {
 				, MqStatus.running.name()
 				, row.getLong("id"));
 
-			transaction.commitEndTransaction();
+			tx.commit();
 
 			return row;
 

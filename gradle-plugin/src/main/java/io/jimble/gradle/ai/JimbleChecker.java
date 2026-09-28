@@ -110,7 +110,8 @@ public final class JimbleChecker {
 	 */
 	public static List<Finding> check (Path rootDir, Path projectDir, String version) {
 
-		return check(rootDir, projectDir, version, false);
+		// 2.0 では J9xx もいつも出す（要件 D-198）
+		return check(rootDir, projectDir, version, true);
 
 	}
 
@@ -152,9 +153,10 @@ public final class JimbleChecker {
 	// region 2.0 への移行（要件 D-192）
 
 	/*
-	 * 規則：番号・形・読み方・直し方。1.5 で置き換え先があるもの（J8xx）はいつも出し、
-	 * 2.0 で型や意味が変わるだけのもの（J9xx）は --target=2.0 のときだけ出す——
-	 * 1.5 では正しい書き方でもあるので、いつも出すと他の警告が埋もれる。
+	 * 規則：番号・形・読み方・直し方。J8xx（1.5 で置き換え先があったもの）と J9xx（2.0 で型や意味が変わったもの）。
+	 * 1.5 の jimbleCheck は J9xx を --target=2.0 のときだけ出した（1.5 では正しい書き方でもあったので）。
+	 * 2.0 の jimbleCheck はどちらもいつも出す（要件 D-198）。target2 は 1.5 との互換のために残してある。
+	 * J809（validate の戻り値を捨てている）は 2.0 で外した——文として書く validate(...) が 2.0 の正しい書き方になった。
 	 */
 	private record MigrationRule (String id, Pattern pattern, boolean target2, String message, String fix) {}
 
@@ -162,51 +164,101 @@ public final class JimbleChecker {
 
 	private static final List<MigrationRule> MIGRATION_RULES = List.of(
 		new MigrationRule("J801", Pattern.compile("\\bnew\\s+DBTransaction\\s*\\(|\\bDBTransaction\\s*\\.\\s*transaction\\s*\\("), false
-			, "DBTransaction は 1.5.0 で非推奨、2.0 で消える（検査例外を投げ、commit() が終わらない）"
+			, "DBTransaction は 2.0 で消えた（1.5.0 で非推奨。検査例外を投げ、commit() が終わらなかった）"
 			, "db.transaction(tx -> { ... }) か try (Tx tx = db.begin()) { ...; tx.commit(); } に書き換える（commitEndTransaction() は tx.commit()、commit() は tx.checkpoint()）"),
 		new MigrationRule("J802", Pattern.compile("\\.\\s*(?:beginTransaction|commitEndTransaction|rollbackEndTransaction|endTransaction)\\s*\\(\\s*\\)"), false
-			, "DB のトランザクション操作（beginTransaction など）は 1.5.0 で非推奨、2.0 で消える"
+			, "DB のトランザクション操作（beginTransaction など）は 2.0 で消えた（1.5.0 で非推奨）"
 			, "try (Tx tx = db.begin()) { ...; tx.commit(); }（抜けたら巻き戻る）か db.transaction(tx -> { ... })"),
 		new MigrationRule("J803", Pattern.compile("\\bRouter\\s+\\w+\\s*=\\s*[\\w.()]*\\.\\s*path\\s*\\(\\s*\"[^\"]*\"\\s*\\)"), false
-			, "Router.path(パス) は配下のルーターを返すだけで、1.5.0 で非推奨、2.0 で消える（受け取り忘れると親に登録する）"
+			, "Router.path(パス) は 2.0 で消えた（配下のルーターを返すだけで、受け取り忘れると親に登録していた）"
 			, "router.path(\"/admin\", admin -> { admin.get(...); }) のブロックで書く"),
 		new MigrationRule("J804", Pattern.compile("\\b[A-Z]\\w*\\.[a-z_]\\w*\\.\\s*subtract\\s*\\("), false
-			, "列の subtract(...) は名前と違って割り算（/）を出す。1.5.0 で非推奨、2.0 で消える"
+			, "列の subtract(...) は 2.0 で消えた（名前と違って割り算（/）を出していた）"
 			, "割り算なら divide(...)、引き算なら minus(...)"),
 		new MigrationRule("J805", Pattern.compile("\\bDsl\\s*\\.\\s*(?:or|and)\\s*\\("), false
-			, "Dsl.or(...) / Dsl.and(...) は「直前とつなぐ印」で、引数を書き換える。1.5.0 で非推奨、2.0 で消える"
+			, "Dsl.or(...) / Dsl.and(...) は 2.0 で消えた（「直前とつなぐ印」で、引数を書き換えていた）"
 			, "括弧でまとめる Dsl.anyOf(a, b, ...) / Dsl.allOf(a, b, ...)"),
 		new MigrationRule("J806", Pattern.compile("\\bcookies\\s*\\(\\s*\\)\\s*\\.\\s*put\\s*\\(\\s*(?:new\\s+Cookie\\s*\\([^;]*\\)|[\\w.]+)\\s*\\)\\s*;"), false
-			, "cookies().put(Cookie) は署名しない（put(名前, 値) は署名する）。cookie.secret があると次のリクエストの get が \"\" になる。1.5.0 で非推奨"
+			, "cookies().put(Cookie) は 2.0 で消えた（署名しなかったので、cookie.secret があると次のリクエストの get が \"\" になっていた）"
 			, "署名するなら cookies().putSigned(cookie)、しないなら cookies().putUnsigned(cookie)"),
 		new MigrationRule("J807", Pattern.compile("\\.\\s*(?:eq|not)\\s*\\(\\s*null\\s*\\)"), false
-			, "eq(null) / not(null) は「= NULL」を組み、どの行にも当たらない。2.0 では例外になる"
+			, "eq(null) / not(null) は 2.0 で例外になった（「= NULL」はどの行にも当たらない）"
 			, "is_null() / is_not_null() を使う"),
-		new MigrationRule("J809", Pattern.compile("(?m)^\\s*[\\w.()]*\\.\\s*validate\\s*\\(\\s*[\\w.()]+\\s*,[^;]*\\)\\s*;"), false
-			, "validate(db, データ) の戻り値（エラーの一覧）を捨てている。エラーがあっても素通りする。2.0 では validate が失敗で 422 の例外に変わる"
-			, "Data errors = rules.errors(db, データ); if (!errors.isEmpty()) { ... } と受け取る"),
 		new MigrationRule("J810", Pattern.compile("\\blong\\s+\\w+\\s*=\\s*[\\w.()]*\\.\\s*insert\\s*\\("), false
-			, "insert(...) の戻り値は「採番値か件数のどちらか」（採番列の有無で決まる）。2.0 では insert は値を返さない"
-			, "採番値が欲しいなら insertKey(...)（無ければ例外）、件数が欲しいなら insertNoReturnKey(...)"),
-		new MigrationRule("J901", Pattern.compile("\\bData\\s+\\w+\\s*=\\s*[\\w.()]*\\.\\s*select(?:Cached)?\\s*\\("), true
-			, "2.0 では select(...) が Optional<Data> を返し、失敗は例外になる（この行はコンパイルが通らなくなる）"
-			, "2.0 では db.select(...).orElse(null) / .orElseThrow(...)。1.5 のうちは selectOrThrow(...) にしておくと、null が「0件」だけになる"),
+			, "insert(...) は 2.0 で値を返さなくなった（1.x は「採番値か件数のどちらか」で、採番列の有無で決まっていた）"
+			, "採番値が欲しいなら insertKey(...)（無ければ例外）、件数が欲しいなら execute(...)"),
+		new MigrationRule("J901", Pattern.compile("\\bData\\s+\\w+\\s*=\\s*[\\w.()]*?\\.\\s*select(?:Cached)?\\s*\\("), true
+			, "select(...) は 2.0 で Optional<Data> を返し、失敗は例外になった（この行はコンパイルが通らない）"
+			, "db.select(...).orElseThrow(() -> new HttpException(404, ...)) か .orElse(null)（null は「0件」だけ）"),
 		new MigrationRule("J902", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*)[\\w.()]*\\.\\s*execute\\s*\\("), true
-			, "2.0 では execute(...) が件数（int）を返し、失敗は例外になる（この行はコンパイルが通らなくなる）"
+			, "execute(...) は 2.0 で件数（int）を返し、失敗は例外になった（この行はコンパイルが通らない）"
 			, "失敗は例外で受ける。db.transaction(...) の中なら何も書かなくてよい"),
 		new MigrationRule("J903", Pattern.compile("\\.\\s*isError\\s*\\(\\s*\\)"), true
-			, "2.0 では isError() が無くなる（DB の失敗は例外になる）"
+			, "isError() は 2.0 で無くなった（DB の失敗は SqlExecuteException）"
 			, "db.transaction(...) の中なら確定しないことで守られる。分岐したいのは一意制約くらいなので DuplicateKeyException で受ける"),
 		new MigrationRule("J904", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*|assert\\w*\\s*\\(\\s*)(?:DBUtil\\s*\\.\\s*load|DBLock\\s*\\.\\s*(?:lock|create))\\s*\\("), true
-			, "2.0 では DBUtil.load / DBLock.lock / DBLock.create が値を返さず、失敗は例外になる"
+			, "DBUtil.load / DBLock.lock / DBLock.create は 2.0 で値を返さず、失敗は例外になった"
 			, "戻り値の分岐を消し、失敗は例外で受ける（DBLock.lock はトランザクションの中で呼ぶ）"),
 		new MigrationRule("J905", Pattern.compile("\\bRedisLock\\s*\\.\\s*tryLock\\s*\\("), true
-			, "2.0 では RedisLock.tryLock(...) が Optional<RedisLockResult> を返す"
+			, "RedisLock.tryLock(...) は 2.0 で Optional<RedisLockResult> を返す"
 			, "取れたかは Optional で見る。lock(...) は取れなければ例外になる"),
-		new MigrationRule("J906", Pattern.compile("\\.\\s*(?:selectOrThrow|selectListOrThrow|insertNoReturnKey|selectCached|selectListCached)\\s*\\("), true
-			, "2.0 では select / selectList / insert が同じ意味になり、この名前は非推奨になる"
-			, "2.0 に上げたら select(...)（Optional）/ selectList(...) / insert(...) に置き換える")
+		new MigrationRule("J906", Pattern.compile("\\.\\s*(?:selectOrThrow|selectListOrThrow|insertNoReturnKey)\\s*\\("), true
+			, "selectOrThrow / selectListOrThrow / insertNoReturnKey は 2.0 で非推奨（select / selectList / insert が同じ意味になった）"
+			, "select(...).orElse(null) / selectList(...) / insert(...)（件数が要るなら execute(...)）に置き換える"),
+		new MigrationRule("J907", Pattern.compile("\\bsession\\s*\\(\\s*\\)\\s*\\.\\s*data\\s*\\(\\s*\\)\\s*\\.\\s*(?:put|putData|remove|clear|putAll)\\s*\\("), true
+			, "session().data() は 2.0 で読み取り専用の写しになった（書き換えると例外。1.x は「変えた」印が付かず保存されなかった）"
+			, "context.session().put(キー, 値) / remove(キー) で変える")
 	);
+
+	/*
+	 * 戻り値が Optional になった呼び出し。2.0 の書き方（.orElse(...) などで受け取る）なら出さない
+	 */
+	private static final java.util.Set<String> OPTIONAL_RESULT = java.util.Set.of("J901", "J905");
+
+	private static final Pattern OPTIONAL_USE = Pattern.compile(
+		"\\s*\\.\\s*(?:orElse|orElseGet|orElseThrow|isPresent|isEmpty|ifPresent|ifPresentOrElse|map|flatMap|filter|get|stream|or)\\s*\\(");
+
+	/**
+	 * 呼び出しの閉じ括弧のあとで Optional として受け取っているか
+	 *
+	 * @param code	文字列の中身を空白にしたソース
+	 * @param open	呼び出しの開き括弧の位置
+	 * @return	受け取っていれば true
+	 */
+	static boolean takesOptional (String code, int open) {
+
+		int depth = 0;
+		for (int i = open; i < code.length(); i++) {
+			char c = code.charAt(i);
+			if (c == '(') {
+				depth++;
+			} else if (c == ')') {
+				depth--;
+				if (depth == 0) {
+					return OPTIONAL_USE.matcher(code).region(i + 1, code.length()).lookingAt();
+				}
+			}
+		}
+		return false;
+
+	}
+
+	private static final Pattern OPTIONAL_ASSIGN = Pattern.compile("Optional\\s*<[^;=(){}]*>\\s*\\w+\\s*=\\s*$");
+
+	/**
+	 * {@code Optional<...> x = } に入れているか
+	 *
+	 * @param code	文字列の中身を空白にしたソース
+	 * @param start	呼び出しの始まり
+	 * @return	入れていれば true
+	 */
+	static boolean assignedToOptional (String code, int start) {
+
+		int from = Math.max(0, code.lastIndexOf(';', start - 1) + 1);
+		from = Math.max(from, code.lastIndexOf('{', start - 1) + 1);
+		return OPTIONAL_ASSIGN.matcher(code.substring(from, start)).find();
+
+	}
 
 	/**
 	 * 2.0 への移行で書き換える呼び出しを見る
@@ -235,11 +287,16 @@ public final class JimbleChecker {
 			// blank() は文字列の中身を空白にするが、引用符は残す——"/admin" は "      " として当たる
 			Matcher m = rule.pattern().matcher(code);
 			while (m.find()) {
+				// 2.0 の正しい書き方（Optional を受け取っている）は出さない
+				if (OPTIONAL_RESULT.contains(rule.id())
+					&& (takesOptional(code, m.end() - 1) || assignedToOptional(code, m.start()))) {
+					continue;
+				}
 				add(findings, rawLines, rule.id(), Level.WARN, file, lineOf(code, m.start()), rule.message(), rule.fix(), MIGRATE);
 			}
 		}
 
-		// J808: 文字列 "now()"（コメントの中は除く）
+		// J808: 文字列 "now()"（コメントの中は除く）。2.0 はただの文字列として入る
 		int from = 0;
 		while (true) {
 			int at = raw.indexOf("\"now()\"", from);
@@ -248,7 +305,7 @@ public final class JimbleChecker {
 			}
 			if (at < code.length() && code.charAt(at) == '"') {
 				add(findings, rawLines, "J808", Level.WARN, file, lineOf(code, at)
-					, "文字列 \"now()\" は set(Data) / value(Data) で SQL の NOW() に変わる（利用者の入力 \"now()\" も現在時刻になる）。2.0 ではこの変換をやめる"
+					, "文字列 \"now()\" は 2.0 で set(Data) / value(Data) に入れてもただの文字列になった（1.x は SQL の NOW() に変えていた）"
 					, "現在時刻は Dsl.now() を値に入れる。平らな行なら setRow(Data) / valueRow(Data)（変換しない）"
 					, MIGRATE);
 			}
@@ -279,7 +336,7 @@ public final class JimbleChecker {
 		Matcher request = REQUEST_GET.matcher(code);
 		while (request.find()) {
 			add(findings, rawLines, "J101", Level.ERROR, file, lineOf(code, request.start())
-				, "context.request().get〜(...) で読んでいる。Request の中身は空なので、コンパイルは通って null / 空を返す"
+				, "context.request().get〜(...) で読んでいる。2.0 の Request は Data を継承しないのでコンパイルが通らない（1.x はコンパイルが通って、いつも null / 空を返していた）"
 				, "送られてきた値は context.request().bodyAll().getString(\"x\")（クエリだけなら bodyQuery()、JSON だけなら bodyJson()）"
 				, DOCS + "request-response.md");
 		}
@@ -315,8 +372,8 @@ public final class JimbleChecker {
 			Matcher empty = EMPTY_CATCH.matcher(code);
 			while (empty.find()) {
 				add(findings, rawLines, "J701", Level.WARN, file, lineOf(code, empty.start())
-					, "空の catch がある。DBTransaction の CodeException（DB_004）は「中でエラーが出たのでロールバックした」知らせで、捨てると保存できていないのに成功を返す"
-					, "捨てずに投げ直すか、HttpException(500, ...) にする。ハンドラから呼ぶメソッドには throws Exception を付ける"
+					, "空の catch がある。トランザクションの中で SQL の失敗を捨てても tx.commit() は DB_004 で断る。外で TransactionException を捨てると、保存できていないのに成功を返す"
+					, "捨てずに投げ直す（非検査なので throws は要らない）。受け止めて続けたいなら、トランザクションの外で受けて新しい Tx でやり直す"
 					, DOCS + "transaction.md");
 			}
 		}

@@ -84,8 +84,9 @@ public class LoadingCacheMulti<K, V> {
 	 *
 	 * @param k	キー
 	 * @return  値
+	 * @throws RuntimeException	読み込めなかったとき（元の例外は cause。2.0。1.x は検査例外の Exception）
 	 */
-	public V get (K k) throws Exception {
+	public V get (K k) {
 
 		V result = cache.get(k);
 		if (isUseCache(k, true)) {
@@ -101,7 +102,12 @@ public class LoadingCacheMulti<K, V> {
 
 			isLoading = true;
 
-			result = loader.load(k, db());
+			try {
+				result = loader.load(k, db());
+			} catch (Exception ex) {
+				// 検査例外は包む（2.0。1.x は throws Exception。要件 D-197）
+				throw io.jimble.util.internal.Unchecked.of("CACHE_001", "キャッシュを読み込めませんでした: " + key, ex);
+			}
 			cache.put(k, result);
 			cacheInstance().set(this.key + k, "1", "application/text");
 			lastGetAt.put(k, new Date());

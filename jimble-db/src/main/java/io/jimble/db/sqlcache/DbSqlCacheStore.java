@@ -53,7 +53,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 		try (DB db = DBUtil.getMainDB().withoutSqlCache()) {
 
 			Data row = db.select(
-				"SELECT content, expires_at FROM %s WHERE cache_key = ?".formatted(TABLE), key);
+				"SELECT content, expires_at FROM %s WHERE cache_key = ?".formatted(TABLE), key).orElse(null);
 
 			if (row == null || row.isEmpty()) {
 				return null;
@@ -75,7 +75,6 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 	 * {@inheritDoc}
 	 */
 	@Override
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public void put (String key, Set<String> tags, String value, Duration ttl) throws Exception {
 
 		if (tags.isEmpty()) {
@@ -88,9 +87,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 
 		try (DB db = DBUtil.getMainDB().withoutSqlCache()) {
 
-			db.beginTransaction();
-
-			try {
+			db.transaction(tx -> {
 
 				db.execute("""
 					INSERT INTO %s (cache_key, content, expires_at, created_at)
@@ -113,14 +110,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 						+ Sqls.insertIgnoreTail(db.dialect())
 					, params);
 
-				db.commitEndTransaction();
-
-			} catch (Exception ex) {
-
-				db.rollbackEndTransaction();
-				throw ex;
-
-			}
+			});
 
 		}
 
@@ -160,7 +150,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 				"SELECT DISTINCT cache_key FROM %s WHERE tag IN (%s)".formatted(TAG_TABLE, places)
 				, hashes.toArray());
 
-			if (rows == null || rows.isEmpty()) {
+			if (rows.isEmpty()) {
 				return;
 			}
 

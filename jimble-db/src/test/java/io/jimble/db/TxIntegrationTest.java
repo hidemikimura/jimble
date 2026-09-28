@@ -1,6 +1,5 @@
 package io.jimble.db;
 
-import io.jimble.db.lock.DBLock;
 import io.jimble.db.redis.lock.RedisLock;
 import io.jimble.db.sql.SelectBuilder;
 import io.jimble.db.sql.definition.column.Column;
@@ -43,7 +42,7 @@ class TxIntegrationTest {
 	static void load () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), TxIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), TxIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 		db.execute("DROP TABLE IF EXISTS tx_rows");
@@ -73,7 +72,7 @@ class TxIntegrationTest {
 
 	private static long count () {
 
-		return DBUtil.getMainDB().select("SELECT COUNT(*) AS c FROM tx_rows").getLong("c");
+		return DBUtil.getMainDB().select("SELECT COUNT(*) AS c FROM tx_rows").orElseThrow().getLong("c");
 
 	}
 
@@ -150,7 +149,8 @@ class TxIntegrationTest {
 		DB db = DBUtil.getMainDB();
 		try (Tx tx = db.begin()) {
 			insert(db, "a");
-			db.select("SELECT * FROM tx_no_such_table");
+			// 受け止めて続けても（2.0 は失敗が例外）
+			assertThrows(SqlExecuteException.class, () -> db.select("SELECT * FROM tx_no_such_table"));
 			TransactionException e = assertThrows(TransactionException.class, tx::commit);
 			assertEquals("DB_004", e.getCode());
 		}
@@ -297,24 +297,17 @@ class TxIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("D-191 戻り値で見る書き方でも isDuplicateKeyError で見分けられる（ほかのエラーは false）")
-	void isDuplicateKeyError () {
+	@DisplayName("D-193 一意制約でない失敗は DuplicateKeyException にならない。元の例外は cause に残る")
+	void duplicateKeyOnlyForUniqueViolations () {
 
 		DB db = DBUtil.getMainDB();
 		insert(db, "dup");
 
-		assertTrue(db.insert("INSERT INTO tx_rows (code) VALUES (?)", "dup") < 0);
-		assertTrue(db.isDuplicateKeyError());
+		DuplicateKeyException dup = assertThrows(DuplicateKeyException.class, () -> db.insert("INSERT INTO tx_rows (code) VALUES (?)", "dup"));
+		assertInstanceOf(java.sql.SQLException.class, dup.getCause().getCause());
 
-		assertTrue(db.insert("INSERT INTO tx_no_such_table (code) VALUES (?)", "x") < 0);
-		assertFalse(db.isDuplicateKeyError(), "一意制約ではないのに true");
-
-		insert(db, "ok");
-		assertFalse(db.isDuplicateKeyError(), "成功したのに true");
-
-		// 元の例外が残っている
-		db.insert("INSERT INTO tx_rows (code) VALUES (?)", "dup");
-		assertInstanceOf(java.sql.SQLException.class, db.getError().getCause());
+		SqlExecuteException other = assertThrows(SqlExecuteException.class, () -> db.insert("INSERT INTO tx_no_such_table (code) VALUES (?)", "x"));
+		assertFalse(other instanceof DuplicateKeyException, "一意制約ではないのに DuplicateKeyException");
 
 	}
 
@@ -328,13 +321,17 @@ class TxIntegrationTest {
 
 		for (String m : new String[] {"select", "selectList", "selectOrThrow", "selectListOrThrow", "selectCached",
 			"selectListCached", "selectListPerformance", "selectListWithRowCount", "selectListWithRowCountPerformance",
-			"insert", "insertNoReturnKey", "update", "delete", "execute", "executeBatch", "insertBatch", "begin"}) {
+			"insertNoReturnKey", "begin"}) {
 			assertAnnotated(DB.class, m);
 		}
-		assertAnnotated(DBUtil.class, "load");
+		/*
+		 * 2.0 で失敗が例外になったので、戻り値（件数・採番値）を捨ててよいものからは外した（要件 D-193）。
+		 * 付けたままだと、文として db.update(...); と書くたびに警告が出る。
+		 */
+		for (String m : new String[] {"insert", "update", "delete", "execute", "executeBatch", "insertBatch", "insertKey"}) {
+			assertNotAnnotated(DB.class, m);
+		}
 		assertAnnotated(DBUtil.class, "healthCheck");
-		assertAnnotated(DBLock.class, "lock");
-		assertAnnotated(DBLock.class, "create");
 		assertAnnotated(RedisLock.class, "lock");
 		assertAnnotated(RedisLock.class, "tryLock");
 		assertAnnotated(Table.class, "inner");
@@ -361,6 +358,17 @@ class TxIntegrationTest {
 		return attr.map(a -> a.annotations().stream()
 				.anyMatch(an -> an.className().equalsString("Lio/jimble/util/annotation/CheckReturnValue;")))
 			.orElse(false);
+
+	}
+
+	private static void assertNotAnnotated (Class<?> type, String method) throws Exception {
+
+		for (MethodModel m : model(type).methods()) {
+			if (m.methodName().equalsString(method) && (m.flags().flagsMask() & ClassFile.ACC_PUBLIC) != 0) {
+				assertFalse(hasAnnotation(m.findAttribute(Attributes.runtimeInvisibleAnnotations())),
+					type.getSimpleName() + "." + method + m.methodTypeSymbol().displayDescriptor() + " に @CheckReturnValue が付いています");
+			}
+		}
 
 	}
 

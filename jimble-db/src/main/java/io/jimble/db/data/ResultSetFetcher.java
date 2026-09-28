@@ -107,9 +107,13 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 	 * @param number	行番号(1から)
 	 * @return	移動できた場合 = true
 	 */
-	public boolean moveRow (int number) throws Exception {
+	public boolean moveRow (int number) {
 
-		return this.iterator.getResultSet().absolute(number);
+		try {
+			return this.iterator.getResultSet().absolute(number);
+		} catch (java.sql.SQLException ex) {
+			throw new io.jimble.db.SqlExecuteException("カーソルを動かせませんでした: " + ex.getMessage(), new io.jimble.util.exception.CodeException("DB_999", ex.getMessage(), ex));
+		}
 
 	}
 
@@ -122,9 +126,13 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 	 *
 	 * @return	行番号
 	 */
-	public int getRow () throws Exception {
+	public int getRow () {
 
-		return this.iterator.getResultSet().getRow();
+		try {
+			return this.iterator.getResultSet().getRow();
+		} catch (java.sql.SQLException ex) {
+			throw new io.jimble.db.SqlExecuteException("カーソルを動かせませんでした: " + ex.getMessage(), new io.jimble.util.exception.CodeException("DB_999", ex.getMessage(), ex));
+		}
 
 	}
 
@@ -137,9 +145,13 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 	 *
 	 * @return	移動できた場合 = true
 	 */
-	public boolean moveLast () throws Exception {
+	public boolean moveLast () {
 
-		return this.iterator.getResultSet().last();
+		try {
+			return this.iterator.getResultSet().last();
+		} catch (java.sql.SQLException ex) {
+			throw new io.jimble.db.SqlExecuteException("カーソルを動かせませんでした: " + ex.getMessage(), new io.jimble.util.exception.CodeException("DB_999", ex.getMessage(), ex));
+		}
 
 	}
 
@@ -151,7 +163,7 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void close() throws IOException {
+	public void close() {
 
 		Exception exception1 = null;
 		Exception exception2 = null;
@@ -181,7 +193,7 @@ public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseabl
 
 		if (exception1 != null || exception2 != null) {
 
-			IOException exception = new IOException();
+			java.io.UncheckedIOException exception = new java.io.UncheckedIOException("カーソルを閉じられませんでした", new IOException());
 			if (exception1 != null) {
 				exception.addSuppressed(exception1);
 			}

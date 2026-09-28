@@ -56,7 +56,8 @@ post("/save", () -> new SaveExecutor());
 ```
 
 - キューは実行中にも積めます（`context.addExecutor(...)`）
-- `cancel()` を呼んでも**その場では止まりません**。`execute` から戻ったあとに残りが捨てられ、`onCancel` が呼ばれます
+- `cancel()` は**その場で `execute` を抜けます**（`ExecutorCanceled` を投げ、枠組みが受け止めます）。残りの Executor が捨てられ、`onCancel` が呼ばれます。
+  `catch (Exception e)` で囲んだ中で呼ぶと、そこで受け止められてあとの行が走るので、`try` の外で呼んでください（1.x は印を立てるだけで、あとの行も走っていました）
 - `OPTIONS` はプリフライト専用なので、**キューを回しません**（要件 F-W-19）
 
 ## どこが何のスレッドで動くか

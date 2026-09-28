@@ -58,27 +58,18 @@ install(() -> new SpaController("/admin", ...));   // ← 認証されない
 「足したのに効かない」を黙って通さないためです。
 ルート定義はコントローラの初期化ブロックの中で完結させてください。
 
-## request() から直接読むと、黙って空になる
+## 送られてこなかった値が null のまま DB に入る
 
-**症状**: フォームも JSON も送っているのに、値が取れない。例外は出ない。
+**症状**: `Column 'title' cannot be null` で落ちる。フォームには項目がある。
 
-**原因**: `Request` も `Data` なので、こう書けてしまいます。
-
-```java
-context.request().getString("title")   // コンパイルは通る。null が返る
-```
-
-`Request` そのものには本文もクエリも入っていません。
-
-**対処**: `bodyAll()`（またはどこから来た値か決め打ちで `bodyJson()` など）を通します。
+**原因**: 無いキーの `getString` は `null` です（例外にはなりません）。
 
 ```java
 Data input = context.request().bodyAll();
-String title = input.getString("title");
+String title = input.getString("title");   // 送られてこなければ null
 ```
 
-無いキーの `getString` は `null` です。**そのまま NOT NULL の列に入れると
-`Column 'title' cannot be null` になります。**
+**対処**: 読む前に [検証](./validation) を通します。`required()` はキーが無いときも失敗にします。
 
 ## セッションが保存されていない
 
@@ -88,6 +79,8 @@ String title = input.getString("title");
 
 ```java snippet=session-save
 ```
+
+変えるのは `session().put(...)` です。`session().data()` は読み取り専用の写しで、書き換えると例外になります。
 
 ## select の結果が取れない
 
@@ -100,32 +93,26 @@ String title = input.getString("title");
 
 `Column` で引けば間違えません。
 
-## DB のエラーに気づかない
+## トランザクションの中で DB の失敗を受け止めると、確定できない
 
-**症状**: 0件のはずがないのに0件。あるいは NPE。
+**症状**: `tx.commit()` が `TransactionException`（`DB_004`）で落ち、何も保存されない。
 
-**原因**: DB のエラーは例外ではなく戻り値です。`select` は `null`、更新系は `-1`。
+**原因**: DB の失敗は `SqlExecuteException` です。トランザクションの中でそれを `catch` して続けても、
+**その Tx は確定できません**。`commit()` が断り、全部巻き戻します。
+
+**対処**: 分岐したい失敗は一意制約くらいです。**トランザクションの外で** `DuplicateKeyException` だけを受け止めます。
+ほかの失敗は書かずに上まで飛ばします（500 になり、トランザクションは巻き戻ります）。
 
 ```java snippet=db-error
 ```
 
-## トランザクションが続いていない
-
-**症状**: `commit()` のあとの更新が、ロールバックしても戻らない。
-
-**原因**: これは移送元の話です。移送元の `commit()` はトランザクションを
-終わらせていたので、そこから先が自動コミットになっていました。
-jimble では `commit()` は終わらせません。終わらせるのは `commitEndTransaction()` です。
-
-**移送してきたコードを見るときは、`commit()` の後ろを確認してください。**
-
 ## 「コミットもロールバックもされていない」が出る
 
 ```
-ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックします
+ERROR コミットもロールバックもされていないトランザクションが残っていました。ロールバックして閉じます: main
 ```
 
-**原因**: try-with-resources で囲まずに `beginTransaction()` して、途中で `return` しています。
+**原因**: try-with-resources で囲まずに `db.begin()` して、途中で `return` しています。
 
 **対処**: 囲んでください。jimble は実行の終わりに拾ってロールバックしますが、
 それは事故の後始末であって、正しい書き方ではありません。
@@ -154,10 +141,8 @@ public final class Bootstrap {
 
 		Migration.install();                                  // DBUtil.load より前
 
-		// 繋がらなければ false。見ずに進むと、あとで DB の話をしない例外で落ちる
-		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
-			throw new IllegalStateException("DB を読み込めませんでした");
-		}
+		// 繋がらなければ SqlExecuteException（DB_007）で起動が止まる
+		DBUtil.load(Conf.conf().config(), Bootstrap.class);
 
 		BatchTables.install(DBUtil.getMainDB());
 		new MqQueue(NoticeExecutor.QUEUE_NAME).install();
@@ -296,3 +281,14 @@ Gradle 8 では通り、9 で落ちるものがあります。
 | `"...".formatted(...)` | Java 15 のメソッド。9.7 の Kotlin スクリプトからは**解決できません**。文字列テンプレートにします |
 
 **ビルドスクリプトは、実際に使うバージョンで一度は流してください。**
+
+## 2.0 でなくなった落とし穴
+
+1.x にあった次の落とし穴は、2.0 で**コンパイルエラーか例外**になりました。詳しくは [2.0 への移行](./migrate-2) を読んでください。
+
+- `context.request().getString("x")` が黙って `null` を返す → `Request` は `Data` ではなくなり、コンパイルエラー
+- `select` の `null`・更新系の `-1` を見落とす → 失敗は `SqlExecuteException`
+- `DBUtil.load(...)` の戻り値を捨てて、繋がらないまま進む → 例外で起動が止まる
+- 移送元の `commit()` と jimble の `commit()` の意味が違う → `tx.commit()` は確定して終わる。続けるなら `tx.checkpoint()`
+- `session().data().put(...)` が保存されない → `UnsupportedOperationException`
+- `required()` がキーごと送られない項目を通す → 失敗になる

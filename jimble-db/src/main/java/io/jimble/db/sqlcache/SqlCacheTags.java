@@ -311,9 +311,9 @@ public final class SqlCacheTags {
 	 *
 	 * <p>
 	 * <b>いちばん外側の OR も見る。</b>
-	 * {@code where(a.eq(1), Dsl.or(b.eq(2)))} は
-	 * {@code (a = 1) OR (b = 2)} になるので、
-	 * a = 1 に絞り込めているとは言えない。
+	 * 「直前と OR でつなぐ」印の付いた条件（1.x の {@code Dsl.or(...)}。2.0 では
+	 * {@code WhereQuery.logicalOperator("OR")} を直に呼んだときだけ）があると
+	 * {@code (a = 1) OR (b = 2)} になるので、a = 1 に絞り込めているとは言えない。
 	 * </p>
 	 *
 	 * @param whereList	WHERE

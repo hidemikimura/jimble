@@ -51,9 +51,7 @@ class LockoutIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), LockoutIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), LockoutIntegrationTest.class);
 
 		passwordHash = PasswordUtil.createHash(PASSWORD);
 
@@ -405,7 +403,7 @@ class LockoutIntegrationTest {
 
 		return DBUtil.getMainDB().select(
 			"SELECT failed_count, last_failed_at FROM %s WHERE attempt_key = ?".formatted(table())
-			, hashed(key));
+			, hashed(key)).orElse(null);
 
 	}
 

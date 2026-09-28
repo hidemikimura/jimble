@@ -280,12 +280,12 @@ public final class MfaController {
 	 */
 	private static String loginIdOf (long id) {
 
-		Data row = ApprovalAuthExample.db().select(
+		return ApprovalAuthExample.db().select(
 			SQL.select()
 				.from(Staff.instance())
-				.where(Staff.id.eq(id)));
-
-		return row == null ? "" : row.getData(Staff.instance()).getString("login_id");
+				.where(Staff.id.eq(id)))
+			.map(row -> row.getData(Staff.instance()).getString("login_id"))
+			.orElse("");
 
 	}
 

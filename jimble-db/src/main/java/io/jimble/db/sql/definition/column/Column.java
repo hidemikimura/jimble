@@ -232,18 +232,6 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	@SuppressWarnings("removal")
-	public ISelect subtract(Object value) {
-
-		return divide(value);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
 	public ISelect divide(Object value) {
 
 		return new SelectQuery().select(this).divide(value);
@@ -267,7 +255,8 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code and(...)} する。2.0 で消す（要件 D-192）
+	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code and(...)} する。
+	 *             {@code IWhere} の約束なので消せない——列の型で呼んだときにコンパイラが知らせるよう、非推奨のまま残す（要件 D-194）
 	 */
 	@Override
 	@Deprecated(since = "1.5.0", forRemoval = true)
@@ -285,7 +274,8 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code or(...)} する。2.0 で消す（要件 D-192）
+	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code or(...)} する。
+	 *             {@code IWhere} の約束なので消せない——列の型で呼んだときにコンパイラが知らせるよう、非推奨のまま残す（要件 D-194）
 	 */
 	@Override
 	@Deprecated(since = "1.5.0", forRemoval = true)

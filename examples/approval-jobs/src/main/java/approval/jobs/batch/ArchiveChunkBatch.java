@@ -199,23 +199,11 @@ public class ArchiveChunkBatch extends AbstractChunkBatch<Data> {
 				, item.get("created_at"));
 
 			/*
-			 * 1文ごとに見る。
-			 *
-			 * db.insert() は失敗しても例外を投げず、
-			 * db.isError() は<b>直前の1文しか覚えていない</b>。
-			 * まとめて最後に1回だけ見ると、途中の失敗を取りこぼす。
+			 * 失敗は例外（2.0）。1.x は1文ごとに isError() を見る必要があった——
+			 * 直前の1文しか覚えていないので、まとめて最後に見ると途中の失敗を取りこぼした。
+			 * いまは例外がそのままチャンクの Tx を巻き戻す。
 			 */
-			if (db.isError()) {
-				throw new IllegalStateException("書庫に入れられませんでした: id=%d / %s"
-					.formatted(item.getLong("id"), String.valueOf(db.getError())));
-			}
-
 			db.delete("DELETE FROM request WHERE id = ?", item.getLong("id"));
-
-			if (db.isError()) {
-				throw new IllegalStateException("元の申請を消せませんでした: id=%d / %s"
-					.formatted(item.getLong("id"), String.valueOf(db.getError())));
-			}
 
 		}
 

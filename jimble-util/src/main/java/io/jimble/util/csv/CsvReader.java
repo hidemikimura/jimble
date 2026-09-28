@@ -30,9 +30,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param csvFile CSVファイル
-	 * @throws Exception 例外
 	 */
-	public CsvReader(File csvFile) throws Exception {
+	public CsvReader(File csvFile) {
 
 		this(csvFile, 1, 2);
 
@@ -43,11 +42,10 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 *
 	 * @param csvFile	CSVファイル
 	 * @param charset	文字コード
-	 * @throws Exception 例外
 	 */
-	public CsvReader(File csvFile, String charset) throws Exception {
+	public CsvReader(File csvFile, String charset) {
 
-		this(new FileInputStream(csvFile), 1, 2, charset);
+		this(openStream(csvFile), 1, 2, charset);
 
 	}
 
@@ -57,11 +55,10 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * @param csvFile     CSVファイル
 	 * @param headerRowNo ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo   ボディ行番号
-	 * @throws Exception 例外
 	 */
-	public CsvReader(File csvFile, int headerRowNo, int bodyRowNo) throws Exception {
+	public CsvReader(File csvFile, int headerRowNo, int bodyRowNo) {
 
-		this(new FileReader(csvFile, Charset.forName(FileCharDetecter.detector(csvFile, "SHIFT-JIS"))), headerRowNo, bodyRowNo);
+		this(openReader(csvFile), headerRowNo, bodyRowNo);
 
 	}
 
@@ -70,9 +67,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 *
 	 * @param is 			CSVファイル
 	 * @param charset		文字コード
-	 * @throws Exception 例外
 	 */
-	public CsvReader(InputStream is, String charset) throws Exception {
+	public CsvReader(InputStream is, String charset) {
 
 		this(new InputStreamReader(is, Charset.forName(charset)), 1, 2);
 
@@ -85,9 +81,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * @param headerRowNo	ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo		ボディ行番号
 	 * @param charset		文字コード
-	 * @throws Exception 例外
 	 */
-	public CsvReader(InputStream is, int headerRowNo, int bodyRowNo, String charset) throws Exception {
+	public CsvReader(InputStream is, int headerRowNo, int bodyRowNo, String charset) {
 
 		this(new InputStreamReader(is, Charset.forName(charset)), headerRowNo, bodyRowNo);
 
@@ -97,9 +92,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param isr 			CSVファイル
-	 * @throws Exception 例外
 	 */
-	public CsvReader(Reader isr) throws Exception {
+	public CsvReader(Reader isr) {
 
 		this(isr, 1, 2);
 
@@ -111,9 +105,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * @param isr 			CSVファイル
 	 * @param headerRowNo	ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo		ボディ行番号
-	 * @throws Exception 例外
 	 */
-	public CsvReader(Reader isr, int headerRowNo, int bodyRowNo) throws Exception {
+	public CsvReader(Reader isr, int headerRowNo, int bodyRowNo) {
 
 		BufferedReader bufferedReader = new BufferedReader(isr);
 		csvReader = de.siegmar.fastcsv.reader.CsvReader.builder().ofCsvRecord(bufferedReader);
@@ -142,9 +135,8 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * 次の行に移動する
 	 *
 	 * @return 行が存在する場合 = true
-	 * @throws Exception 例外
 	 */
-	public boolean next () throws Exception {
+	public boolean next () {
 
 		if (!csvIterator.hasNext()) {
 			return false;
@@ -498,11 +490,42 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void close () throws IOException {
+	public void close () {
 
 		if (csvReader != null) {
-			csvReader.close();
-			csvReader = null;
+			try {
+				csvReader.close();
+			} catch (IOException ex) {
+				throw new java.io.UncheckedIOException(ex);
+			} finally {
+				csvReader = null;
+			}
+		}
+
+	}
+
+	/*
+	 * ファイルを開く（コンストラクタの this(...) の中で使うので、ここで包む。要件 D-197）
+	 */
+	private static InputStream openStream (File csvFile) {
+
+		try {
+			return new FileInputStream(csvFile);
+		} catch (IOException ex) {
+			throw new java.io.UncheckedIOException("CSV を開けませんでした: " + csvFile, ex);
+		}
+
+	}
+
+	/*
+	 * 文字コードを見てからファイルを開く
+	 */
+	private static Reader openReader (File csvFile) {
+
+		try {
+			return new FileReader(csvFile, Charset.forName(FileCharDetecter.detector(csvFile, "SHIFT-JIS")));
+		} catch (Exception ex) {
+			throw io.jimble.util.internal.Unchecked.of("CSV_001", "CSV を開けませんでした: " + csvFile, ex);
 		}
 
 	}

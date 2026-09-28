@@ -130,8 +130,10 @@ public final class JimbleDbCli {
 
 		Conf.reload();
 
-		if (!DBUtil.load(Conf.conf().config(), JimbleDbCli.class)) {
-			throw new IllegalStateException("DB に接続できませんでした（env=%s）".formatted(Conf.env()));
+		try {
+			DBUtil.load(Conf.conf().config(), JimbleDbCli.class);
+		} catch (RuntimeException ex) {
+			throw new IllegalStateException("DB に接続できませんでした（env=%s）: %s".formatted(Conf.env(), ex.getMessage()), ex);
 		}
 
 	}

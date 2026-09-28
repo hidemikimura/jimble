@@ -54,8 +54,6 @@ public class Validator {
 	/**
 	 * 複数の {@link ValidationRules} をまとめて走らせ、エラーの一覧を返す
 	 *
-	 * <p>{@link #validate(DB, Data, ValidationRules...)} と同じ（要件 D-191）。</p>
-	 *
 	 * @param db	DB
 	 * @param req	リクエスト
 	 * @param rules	規則の束
@@ -65,26 +63,11 @@ public class Validator {
 	@CheckReturnValue
 	public static Data errors (DB db, Data req, ValidationRules...rules) {
 
-		return validate(db, req, rules);
-
-	}
-
-	/**
-	 * 複数の {@link ValidationRules} をまとめて走らせる
-	 *
-	 * @param db	DB
-	 * @param req	リクエスト
-	 * @param rules	規則の束
-	 * @return	エラー情報（無ければ空。<b>{@code null} は返らない</b>）
-	 */
-	@CheckReturnValue
-	public static Data validate (DB db, Data req, ValidationRules...rules) {
-
 		Data result = new Data();
 
 		for (ValidationRules rule : rules) {
 
-			Data validationResult = rule.validate(db, req);
+			Data validationResult = rule.errors(db, req);
 
 			if (validationResult != null) {
 				merge(result, validationResult);
@@ -93,6 +76,25 @@ public class Validator {
 		}
 
 		return result;
+
+	}
+
+	/**
+	 * 複数の {@link ValidationRules} をまとめて走らせ、通らなければ 422 の例外で止める
+	 *
+	 * <p>1.x は一覧を返していた。一覧が欲しいなら {@link #errors(DB, Data, ValidationRules...)}（要件 D-196）。</p>
+	 *
+	 * @param db	DB
+	 * @param req	リクエスト
+	 * @param rules	規則の束
+	 * @throws ValidationException	通らなかったとき（422）
+	 */
+	public static void validate (DB db, Data req, ValidationRules...rules) {
+
+		Data errors = errors(db, req, rules);
+		if (!errors.isEmpty()) {
+			throw new ValidationException(errors);
+		}
 
 	}
 

@@ -69,10 +69,15 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
-	// region 実行エラー
+	// region 実行エラー（要件 D-193）
 
-	/* エラー内容（直前の1文だけ） */
-	private CodeException error = null;
+	/*
+	 * 直前の失敗（トランザクションの DB_004 の説明に出す）。
+	 *
+	 * 2.0 で<b>失敗はすべて例外</b>になったので、呼ぶ側がこれを見ることはもう無い
+	 * （1.x の {@code isError()} / {@code getError()} は消した）。
+	 */
+	private CodeException lastError = null;
 
 	/* トランザクションを開けてから、1度でもエラーが出たか */
 	private boolean errorSinceTransaction = false;
@@ -80,60 +85,46 @@ public class DB implements Closeable, AutoCloseable {
 	/*
 	 * 直前の insert が「採番値」を返したか。
 	 *
-	 * <b>戻り値だけでは、採番値なのか件数なのか分からない</b>（要件 F-D-30）。
-	 * 見分けるのに要るのは<b>ここでしか分からない1ビット</b>なので、
-	 * {@link #insertKey(String, Object...)} のために持っておく。
+	 * <b>JDBC の戻りだけでは、採番値なのか件数なのか分からない</b>（要件 F-D-30）。
+	 * {@link #insertKey(String, Object...)} が「採番されなかった」を見分けるのに使う。
 	 */
 	private boolean insertReturnedKey = false;
 
 	/**
-	 * エラー判定
+	 * 失敗を例外にする（要件 D-193）
 	 *
 	 * <p>
-	 * <b>直前の1文についてだけ答える。</b>次の文を実行すると戻る。
-	 * トランザクション全体を見たいときは {@code DBTransaction} が見ている（要件 D-155）。
+	 * <b>例外を作るのはここだけにする。</b>ここを通らずに投げると、
+	 * <b>トランザクションの持ち越しに入らない</b>——例外を受け止めて続けた文が
+	 * そのままコミットされる（D-155）。
 	 * </p>
 	 *
-	 * @return	エラーの場合 = true
-	 */
-	public boolean isError () {
-
-		return error != null;
-
-	}
-
-	/**
-	 * SQL の失敗を DB_999 にする（元の例外を cause に残す。要件 D-191）
+	 * <p>
+	 * 一意制約の違反（PostgreSQL の SQLSTATE 23505、MySQL の 1062）は {@link DuplicateKeyException}、
+	 * それ以外は {@link SqlExecuteException}。元の例外は cause に残す（{@code getCause().getCause()}）。
+	 * </p>
 	 *
+	 * @param what	何をしていたか（SELECT など）
 	 * @param ex	元の例外
-	 * @return	エラー
+	 * @return	投げる例外
 	 */
-	private static CodeException sqlError (Exception ex) {
+	private SqlExecuteException fail (String what, Exception ex) {
 
-		return new CodeException("DB_999", ex.getMessage(), ex);
+		// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
+		this.plannedTags = null;
 
-	}
+		CodeException error = ex instanceof CodeException code ? code : new CodeException("DB_999", ex.getMessage(), ex);
 
-	/**
-	 * 直前の1文が一意制約に当たったか
-	 *
-	 * <p>
-	 * 戻り値でエラーを見る書き方のまま、<b>「もう使われている」だけを分岐する</b>ために使う。
-	 * </p>
-	 *
-	 * <pre>
-	 * if (db.insert(builder) &lt; 0) {
-	 *     if (db.isDuplicateKeyError()) { return 「使われています」; }
-	 *     throw ...;
-	 * }
-	 * </pre>
-	 *
-	 * @return	当たっていれば true
-	 * @since 1.5.0
-	 */
-	public boolean isDuplicateKeyError () {
+		this.lastError = error;
+		this.errorSinceTransaction = true;
 
-		return isDuplicateKey(this.error);
+		if (isDuplicateKey(error)) {
+			return new DuplicateKeyException(
+				"%s が一意制約に当たりました: %s".formatted(what, ex.getMessage()), error);
+		}
+
+		return new SqlExecuteException(
+			"%s を実行できませんでした: %s".formatted(what, ex.getMessage()), error);
 
 	}
 
@@ -167,32 +158,10 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * エラーを記録する
-	 *
-	 * <p>
-	 * <b>{@code error} を立てるのはここだけにする。</b>
-	 * 直に代入すると、<b>トランザクションの持ち越しに入らない</b>——
-	 * その1文だけ静かに失敗して、トランザクションはそのままコミットされる（D-155）。
-	 * </p>
-	 *
-	 * @param value	エラー
-	 */
-	private void setError (CodeException value) {
-
-		this.error = value;
-
-		if (value != null) {
-			this.errorSinceTransaction = true;
-		}
-
-	}
-
-	/**
 	 * トランザクションを開けてから、1度でもエラーが出たか
 	 *
 	 * <p>
-	 * <b>{@link #isError()} と違って、次の文では戻らない。</b>
-	 * {@code DBTransaction} がコミットしてよいかを決めるのに使う。
+	 * 例外を受け止めて続けても、<b>{@link Tx#commit()} はこれを見て断る</b>（DB_004）。
 	 * </p>
 	 *
 	 * @return	出ていれば true
@@ -206,7 +175,7 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 持ち越しているエラーの印を消す
 	 *
-	 * <p>トランザクションの開始と、{@link #rollback()} と、終了から呼ぶ。</p>
+	 * <p>トランザクションの開始と、巻き戻しと、終了から呼ぶ。</p>
 	 */
 	void clearErrorSinceTransaction () {
 
@@ -225,9 +194,8 @@ public class DB implements Closeable, AutoCloseable {
 	 * 巻き戻し専用にする
 	 *
 	 * <p>
-	 * 外のトランザクションに合流した {@code DBTransaction} が {@code rollback()} したとき、
-	 * または commit せずに閉じたときに呼ぶ。<b>外の {@link #commit()} は DB_005 で断る</b>。
-	 * 1.4 までは合流した側の rollback が<b>黙って何もせず、外がそのまま commit していた</b>。
+	 * 外のトランザクションに合流した {@link Tx} が {@code rollback()} したとき、
+	 * または commit せずに閉じたときに呼ぶ。<b>外の {@link Tx#commit()} は DB_005 で断る</b>。
 	 * </p>
 	 *
 	 * @param reason	理由（エラーに出す）
@@ -237,40 +205,6 @@ public class DB implements Closeable, AutoCloseable {
 		if (this.rollbackOnlyReason == null) {
 			this.rollbackOnlyReason = reason;
 		}
-
-	}
-
-	public CodeException getError () {
-
-		return error;
-
-	}
-
-	/**
-	 * エラーが出ていたら投げる
-	 *
-	 * <p>
-	 * <b>{@code ...OrThrow} 系だけがここを通る。</b>
-	 * 既定の作法（戻り値で返す）は変えていない。
-	 * </p>
-	 *
-	 * @param what	何をしていたか
-	 */
-	private void requireNoError (String what) {
-
-		CodeException cause = this.error;
-
-		if (cause == null) {
-			return;
-		}
-
-		if (isDuplicateKey(cause)) {
-			throw new DuplicateKeyException(
-				"%s が一意制約に当たりました: %s".formatted(what, cause.getMessage()), cause);
-		}
-
-		throw new SqlExecuteException(
-			"%s を実行できませんでした: %s".formatted(what, cause.getMessage()), cause);
 
 	}
 
@@ -708,7 +642,7 @@ public class DB implements Closeable, AutoCloseable {
 	 * キャッシュを見てから1件取得する（要件 F-D-28）
 	 *
 	 * <pre>
-	 * Data customer = db.selectCached(
+	 * Optional&lt;Data&gt; customer = db.selectCached(
 	 *     SQL.select()
 	 *         .from(Customer.instance())
 	 *         .inner(Shop.instance()).on(Customer.shop_id.eq(Shop.id))
@@ -718,17 +652,19 @@ public class DB implements Closeable, AutoCloseable {
 	 * <p>
 	 * <b>更新があれば自動で消える。</b>消し方は
 	 * {@link io.jimble.db.sqlcache.SqlCacheTags} を参照。
+	 * 戻り値と失敗の扱いは {@link #select(SelectBuilder)} と同じ（2.0。要件 D-193）。
 	 * </p>
 	 *
 	 * @param builder	SelectBuilder
-	 * @return	結果
+	 * @return	結果。1件も無ければ空
+	 * @throws SqlExecuteException	読めなかったとき
 	 */
 	@CheckReturnValue
-	public Data selectCached (SelectBuilder builder) {
+	public Optional<Data> selectCached (SelectBuilder builder) {
 
 		List<Data> rows = selectListCached(builder);
 
-		return rows == null || rows.isEmpty() ? null : rows.getFirst();
+		return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
 
 	}
 
@@ -738,10 +674,12 @@ public class DB implements Closeable, AutoCloseable {
 	 * <p>
 	 * <b>トランザクションの中では素通しで引く。</b>
 	 * まだ確定していない値をキャッシュに残さないためである。
+	 * 戻り値と失敗の扱いは {@link #selectList(SelectBuilder)} と同じ（2.0。要件 D-193）。
 	 * </p>
 	 *
 	 * @param builder	SelectBuilder
-	 * @return	結果
+	 * @return	結果。0件なら空リスト（null は返さない）
+	 * @throws SqlExecuteException	読めなかったとき
 	 */
 	@CheckReturnValue
 	public List<Data> selectListCached (SelectBuilder builder) {
@@ -773,11 +711,8 @@ public class DB implements Closeable, AutoCloseable {
 			return cached;
 		}
 
+		// 読めなければここで投げる。失敗はキャッシュに入らない
 		List<Data> rows = selectList(sql, params);
-
-		if (rows == null) {
-			return null;
-		}
 
 		SqlCache.put(key, SqlCacheTags.of(getDBName(), builder, rows), rows);
 
@@ -794,10 +729,12 @@ public class DB implements Closeable, AutoCloseable {
 	 * 1件取得する
 	 *
 	 * @param builder   SelectBuilder
-	 * @return  結果
+	 * @return  結果。1件も無ければ空
+	 * @throws SqlExecuteException  読めなかったとき
+	 * @see #select(String, Object...)
 	 */
 	@CheckReturnValue
-	public Data select(SelectBuilder builder) {
+	public Optional<Data> select (SelectBuilder builder) {
 
 		return select(builder.sql(dialect()), builder.params());
 
@@ -806,36 +743,24 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 1件取得する
 	 *
-	 * <p>
-	 * <b>{@code null} には2つの意味がある（D-173）。</b>
-	 * 「1件も無かった」と「読めなかった」である。<b>見分けるには
-	 * {@link #isError()} を見ること</b>——
-	 * </p>
-	 *
 	 * <pre>
-	 * Data row = db.select(sql, id);
-	 * if (db.isError()) { ... 読めなかった ... }
-	 * if (row == null)  { ... 1件も無かった ... }
+	 * Data user = db.select(sql, id).orElseThrow(() -&gt; new HttpException(404));
 	 * </pre>
 	 *
 	 * <p>
-	 * <b>{@code selectList} とは揃っていない。</b>あちらは 0件が空リストで、
-	 * 読めなかったときだけ {@code null} である。<b>同じ select 系で
-	 * {@code null} の意味が違う</b>——1.0 では
-	 * <b>戻り値の型を変えられない</b>ので、揃えるのは 2.0 になる。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>2行書き忘れないために {@link #selectOrThrow(String, Object...)} がある</b>（1.1 で足した）。
-	 * あちらは読めなければ投げるので、<b>{@code null} は「1件も無かった」だけ</b>になる。
+	 * <b>「1件も無かった」は空の {@link Optional}、「読めなかった」は例外</b>（2.0。要件 D-193）。
+	 * 1.x は両方を {@code null} で返していたので、{@code if (user == null)} と書くと
+	 * <b>DB が読めなかった日に「そんな利用者はいません」と答えていた</b>。
+	 * 型を変えたので、{@code Data row = db.select(...)} はコンパイルが通らない——書き換え漏れが残らない。
 	 * </p>
 	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果。1件も無いか、読めなければ null
+	 * @return  結果。1件も無ければ空
+	 * @throws SqlExecuteException  読めなかったとき
 	 */
 	@CheckReturnValue
-	public Data select(String sql, Object...params) {
+	public Optional<Data> select (String sql, Object...params) {
 
 		try (
 			ResultSetFetcher fetcher = new ResultSetFetcher()
@@ -843,24 +768,20 @@ public class DB implements Closeable, AutoCloseable {
 
 			selectListWithFetcher(fetcher, sql, params);
 
-			if (fetcher.isError() || this.error != null) {
-				return null;
-			}
-
 			Iterator<Data> iterator = fetcher.iterator();
 			if (iterator.hasNext()) {
-				return iterator.next();
+				return Optional.of(iterator.next());
 			}
 
-			return null;
+			return Optional.empty();
+
+		} catch (SqlExecuteException ex) {
+
+			throw ex;
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			return null;
+			throw fail("SELECT", ex);
 
 		} finally {
 
@@ -875,55 +796,33 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param builder   SelectBuilder
 	 * @return  結果。1件も無ければ null
+	 * @throws SqlExecuteException  読めなかったとき
+	 * @deprecated 2.0 で {@link #select(SelectBuilder)} が同じ意味（読めなければ投げる）になった。
+	 *             {@code select(builder).orElse(null)} と同じ。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	@CheckReturnValue
 	public Data selectOrThrow (SelectBuilder builder) {
 
-		Data row = select(builder);
-
-		requireNoError("SELECT");
-
-		return row;
+		return select(builder).orElse(null);
 
 	}
 
 	/**
 	 * 1件取得する（読めなければ投げる）
 	 *
-	 * <p>
-	 * <b>{@link #select(String, Object...)} との違いは、{@code null} の意味が1つになること</b>だけである。
-	 * あちらは「1件も無かった」と「読めなかった」の両方を {@code null} で返すので、
-	 * </p>
-	 *
-	 * <pre>
-	 * Data user = db.select(sql, id);
-	 * if (user == null) { return 誰でもない; }   // ← DB が落ちていても、ここを通る
-	 * </pre>
-	 *
-	 * <p>
-	 * と書くと、<b>DB が読めなかった日に「そんな利用者はいません」と答える。</b>
-	 * 例外も出ないしログにも残らない（{@link #isError()} を見ていないので）。
-	 * こちらを使えば、読めなかったときは {@link SqlExecuteException} で止まる。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>既定の作法を変えたわけではない。</b>{@link #select(String, Object...)} は
-	 * そのままなので、{@link #isError()} を見ている既存のコードは何も直さなくてよい。
-	 * </p>
-	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
 	 * @return  結果。<b>1件も無ければ null</b>
 	 * @throws SqlExecuteException  読めなかったとき
+	 * @deprecated 2.0 で {@link #select(String, Object...)} が同じ意味（読めなければ投げる）になった。
+	 *             {@code select(sql, params).orElse(null)} と同じ。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	@CheckReturnValue
 	public Data selectOrThrow (String sql, Object...params) {
 
-		Data row = select(sql, params);
-
-		requireNoError("SELECT");
-
-		return row;
+		return select(sql, params).orElse(null);
 
 	}
 
@@ -935,10 +834,11 @@ public class DB implements Closeable, AutoCloseable {
 	 * 複数件取得する
 	 *
 	 * @param builder   SelectBuilder
-	 * @return  結果
+	 * @return  結果。0件なら空リスト（null は返さない）
+	 * @throws SqlExecuteException  読めなかったとき
 	 */
 	@CheckReturnValue
-	public List<Data> selectList(SelectBuilder builder) {
+	public List<Data> selectList (SelectBuilder builder) {
 
 		return selectList(builder.sql(dialect()), builder.params());
 
@@ -948,28 +848,23 @@ public class DB implements Closeable, AutoCloseable {
 	 * 複数件取得する
 	 *
 	 * <p>
-	 * <b>0件は空リスト、読めなかったときだけ {@code null} である</b>（{@link #select} とは違う）。
-	 * <b>{@code null} かどうかを見ずに回すと、読めなかった日に
-	 * {@code NullPointerException} で落ちる</b>——落ちるだけまだよい。
-	 * 落としたくないなら {@link #selectListOrThrow(String, Object...)}。
+	 * <b>0件は空リスト、読めなかったときは例外</b>（2.0。要件 D-193）。
+	 * 1.x は読めなかったときに {@code null} を返していた。
 	 * </p>
 	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果。0件なら空リスト。読めなければ null
+	 * @return  結果。0件なら空リスト（null は返さない）
+	 * @throws SqlExecuteException  読めなかったとき
 	 */
 	@CheckReturnValue
-	public List<Data> selectList(String sql, Object...params) {
+	public List<Data> selectList (String sql, Object...params) {
 
 		try (
 			ResultSetFetcher fetcher = new ResultSetFetcher()
 		) {
 
 			selectListWithFetcher(fetcher, sql, params);
-
-			if (fetcher.isError() || this.error != null) {
-				return null;
-			}
 
 			List<Data> res = new ArrayList<>();
 			for (Data row : fetcher) {
@@ -978,13 +873,13 @@ public class DB implements Closeable, AutoCloseable {
 
 			return res;
 
+		} catch (SqlExecuteException ex) {
+
+			throw ex;
+
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			return null;
+			throw fail("SELECT", ex);
 
 		} finally {
 
@@ -999,52 +894,31 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param builder   SelectBuilder
 	 * @return  結果。0件なら空リスト
+	 * @throws SqlExecuteException  読めなかったとき
+	 * @deprecated 2.0 で {@link #selectList(SelectBuilder)} が同じ意味になった。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	@CheckReturnValue
 	public List<Data> selectListOrThrow (SelectBuilder builder) {
 
-		return requireList(selectList(builder));
+		return selectList(builder);
 
 	}
 
 	/**
 	 * 複数件取得する（読めなければ投げる）
 	 *
-	 * <p>
-	 * <b>{@code null} を返さない。</b>読めなかったときは {@link SqlExecuteException} で止まる。
-	 * </p>
-	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
 	 * @return  結果。<b>0件なら空リスト</b>
 	 * @throws SqlExecuteException  読めなかったとき
+	 * @deprecated 2.0 で {@link #selectList(String, Object...)} が同じ意味になった。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	@CheckReturnValue
 	public List<Data> selectListOrThrow (String sql, Object...params) {
 
-		return requireList(selectList(sql, params));
-
-	}
-
-	/**
-	 * 取れていなければ投げる
-	 *
-	 * @param list	{@link #selectList} の戻り値
-	 * @return	そのまま
-	 */
-	private List<Data> requireList (List<Data> list) {
-
-		requireNoError("SELECT");
-
-		/*
-		 * ここに来て null なら、エラーの印が立っていないのに null が返っている。
-		 * <b>戻り値の意味が壊れているので、空リストで隠さず落とす。</b>
-		 */
-		if (list == null) {
-			throw new SqlExecuteException("結果を取得できませんでした（エラーの印は立っていません）");
-		}
-
-		return list;
+		return selectList(sql, params);
 
 	}
 
@@ -1056,22 +930,33 @@ public class DB implements Closeable, AutoCloseable {
 	 * 複数件取得する（大量件数テーブル）
 	 *
 	 * @param builder   SelectBuilder
-	 * @return  結果
+	 * @return  結果。0件なら空リスト
+	 * @throws SqlExecuteException  読めなかったとき
 	 */
 	@CheckReturnValue
 	public List<Data> selectListPerformance (SelectBuilder builder) {
 
 		// メインテーブルのPK列のみ取得する
 		List<Data> _list = selectList(builder.simpleSql(dialect()), builder.params());
-		if (_list == null) {
-			return null;
-		}
+
+		return selectListByPk(builder, _list);
+
+	}
+
+	/**
+	 * PK の一覧で読み直す
+	 *
+	 * @param builder	元の builder（書き換えない）
+	 * @param pkRows	PK列だけの行
+	 * @return	結果
+	 */
+	private List<Data> selectListByPk (SelectBuilder builder, List<Data> pkRows) {
 
 		// PK列を条件にする
 		Column pkColumn = builder.mainTablePkColumn();
 
 		List<Long> idTable = new ArrayList<>();
-		for (Data data : _list) {
+		for (Data data : pkRows) {
 			idTable.add(data.getLong(pkColumn));
 		}
 
@@ -1098,30 +983,34 @@ public class DB implements Closeable, AutoCloseable {
 	// region 複数件取得する(件数付き)
 
 	/**
+	 * 件数を読む
+	 *
+	 * @param sql		件数の SQL
+	 * @param params	パラメータ
+	 * @return	件数
+	 */
+	private long selectRowCount (String sql, List<Object> params) {
+
+		return select(sql, params).map(row -> row.getLong("cnt")).orElse(0L);
+
+	}
+
+	/**
 	 * 複数件取得する(件数付き)
 	 *
 	 * @param builder   SelectBuilder
-	 * @return  結果
+	 * @return  結果（{@code list()} は null にならない）
+	 * @throws SqlExecuteException  一覧か件数を読めなかったとき
 	 */
 	@CheckReturnValue
 	public SelectListResponse selectListWithRowCount (SelectBuilder builder) {
 
 		List<Data> list = selectList(builder);
-		if (list == null) {
-			return new SelectListResponse(null, 0, null);
-		}
 
-		long rowCount = 0;
-		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
-		if (data != null) {
-			rowCount = data.getLong("cnt");
-		} else if (isError()) {
-			// 件数の失敗を 0 件に化けさせない（要件 D-190）。list() が null ならエラー、に揃える
-			return new SelectListResponse(null, 0, null);
-		}
+		long rowCount = selectRowCount(builder.rowCountSql(dialect()), builder.rowCountParams());
 
 		Paging paging = null;
-		if (builder.paging() != null && list != null) {
+		if (builder.paging() != null) {
 			builder.paging().set(list.size(), rowCount);
 			paging = builder.paging();
 		}
@@ -1135,83 +1024,73 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  結果（{@code list()} は null にならない）
+	 * @throws SqlExecuteException  一覧か件数を読めなかったとき、SQL に FROM が無いとき
 	 */
 	@CheckReturnValue
 	public SelectListResponse selectListWithRowCount (String sql, Object...params) {
 
+		/*
+		 * 語として探す（要件 D-190）。1.4 までは indexOf("FROM") だったので、
+		 * {@code from_date} のような列名や {@code order_no} に当たって、<b>黙って違う件数</b>を数えていた。
+		 */
+		int indexOrderBy = lastKeyword(sql, "ORDER\\s+BY");
+		int indexLimit = lastKeyword(sql, "LIMIT");
+		int indexFrom = firstKeyword(sql, "FROM");
+
 		List<Data> list = selectList(sql, params);
-		long rowCount = 0;
 
-		{
-			/*
-			 * 語として探す（要件 D-190）。1.4 までは indexOf("FROM") だったので、
-			 * {@code from_date} のような列名や {@code order_no} に当たって、<b>黙って違う件数</b>を数えていた。
-			 */
-			int indexOrderBy = lastKeyword(sql, "ORDER\\s+BY");
-			int indexLimit = lastKeyword(sql, "LIMIT");
-			int indexFrom = firstKeyword(sql, "FROM");
-			if (list == null) {
-				return new SelectListResponse(null, 0, null);
-			}
-			if (indexFrom < 0) {
-				setError(new CodeException("DB_999", "selectListWithRowCount: FROM が見つかりません: " + sql));
-				return new SelectListResponse(null, 0, null);
-			}
+		if (indexFrom < 0) {
+			throw fail("SELECT", new CodeException("DB_999", "selectListWithRowCount: FROM が見つかりません: " + sql));
+		}
 
-			/*
-			 * ORDER も LIMIT も無い SQL では lastIndexOf が -1 を返し、
-			 * Math.min(-1, -1) で <b>末尾が -1 になって例外</b>になっていた。
-			 * 見つからなかったものは「末尾まで」として扱う。
-			 */
-			int end = sql.length();
-			if (indexOrderBy >= 0) {
-				end = Math.min(end, indexOrderBy);
-			}
-			if (indexLimit >= 0) {
-				end = Math.min(end, indexLimit);
-			}
+		/*
+		 * ORDER も LIMIT も無い SQL では lastIndexOf が -1 を返し、
+		 * Math.min(-1, -1) で <b>末尾が -1 になって例外</b>になっていた。
+		 * 見つからなかったものは「末尾まで」として扱う。
+		 */
+		int end = sql.length();
+		if (indexOrderBy >= 0) {
+			end = Math.min(end, indexOrderBy);
+		}
+		if (indexLimit >= 0) {
+			end = Math.min(end, indexLimit);
+		}
 
-			StringBuilder sb = new StringBuilder();
-			sb.append("SELECT COUNT(__count_table.cnt) AS cnt");
-			sb.append(" FROM (");
-			sb.append("SELECT 1 AS cnt ");
-			sb.append(sql, indexFrom, end);
-			sb.append(") __count_table");
+		StringBuilder sb = new StringBuilder();
+		sb.append("SELECT COUNT(__count_table.cnt) AS cnt");
+		sb.append(" FROM (");
+		sb.append("SELECT 1 AS cnt ");
+		sb.append(sql, indexFrom, end);
+		sb.append(") __count_table");
 
-			int paramCount = 0;
-			for (char c : sb.toString().toCharArray()) {
-				if (c == '?') {
-					paramCount++;
-				}
-			}
-
-			/*
-			 * 捨てた部分の ? の分だけ、<b>前と後ろの両方から</b>パラメータを捨てる（要件 D-190）。
-			 * 1.4 までは後ろからしか捨てなかったので、{@code SELECT ? AS tag, ... WHERE x = ?} では
-			 * <b>WHERE に SELECT 句の値が入り、黙って違う件数</b>になっていた。
-			 */
-			int leading = countPlaceholders(sql, 0, indexFrom);
-			List<Object> newParams;
-			if (params == null) {
-				newParams = new ArrayList<>();
-			} else {
-				newParams = new ArrayList<>(Parameter.flatten(new SQLParameterList(params)));
-				for (int i = 0; i < leading && !newParams.isEmpty(); i++) {
-					newParams.removeFirst();
-				}
-				while (newParams.size() > paramCount) {
-					newParams.removeLast();
-				}
-			}
-
-			Data data = select(sb.toString(), newParams);
-			if (data != null) {
-				rowCount = data.getLong("cnt");
-			} else if (isError()) {
-				return new SelectListResponse(null, 0, null);
+		int paramCount = 0;
+		for (char c : sb.toString().toCharArray()) {
+			if (c == '?') {
+				paramCount++;
 			}
 		}
+
+		/*
+		 * 捨てた部分の ? の分だけ、<b>前と後ろの両方から</b>パラメータを捨てる（要件 D-190）。
+		 * 1.4 までは後ろからしか捨てなかったので、{@code SELECT ? AS tag, ... WHERE x = ?} では
+		 * <b>WHERE に SELECT 句の値が入り、黙って違う件数</b>になっていた。
+		 */
+		int leading = countPlaceholders(sql, 0, indexFrom);
+		List<Object> newParams;
+		if (params == null) {
+			newParams = new ArrayList<>();
+		} else {
+			newParams = new ArrayList<>(Parameter.flatten(new SQLParameterList(params)));
+			for (int i = 0; i < leading && !newParams.isEmpty(); i++) {
+				newParams.removeFirst();
+			}
+			while (newParams.size() > paramCount) {
+				newParams.removeLast();
+			}
+		}
+
+		long rowCount = selectRowCount(sb.toString(), newParams);
 
 		return new SelectListResponse(list, rowCount, null);
 
@@ -1264,52 +1143,19 @@ public class DB implements Closeable, AutoCloseable {
 	 * 複数件取得する(件数付き)
 	 *
 	 * @param builder   SelectBuilder
-	 * @return  結果
+	 * @return  結果（{@code list()} は null にならない）
+	 * @throws SqlExecuteException  一覧か件数を読めなかったとき
 	 */
 	@CheckReturnValue
 	public SelectListResponse selectListWithRowCountPerformance (SelectBuilder builder) {
 
-		long rowCount = 0;
-		List<Data> list;
+		long rowCount = selectRowCount(builder.rowCountSql(dialect()), builder.rowCountParams());
 
-		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
-		if (data != null) {
-			rowCount = data.getLong("cnt");
-		} else if (isError()) {
-			return new SelectListResponse(null, 0, null);
-		}
-
-		{
-			// メインテーブルのPK列のみ取得する
-			List<Data> _list = selectList(builder.simpleSql(dialect()), builder.params());
-			if (_list == null) {
-				// 1.4 までは応答ごと null を返していた。兄弟（list() が null）に揃える（要件 D-190）
-				return new SelectListResponse(null, 0, null);
-			}
-
-			// PK列を条件にする
-			Column pkColumn = builder.mainTablePkColumn();
-
-			List<Long> idTable = new ArrayList<>();
-			for (Data d : _list) {
-				idTable.add(d.getLong(pkColumn));
-			}
-
-			// 写しに組み直す（渡された builder は書き換えない。要件 D-190）
-			SelectBuilder byPk = builder.copy();
-			byPk.clearWhere();
-			byPk.clearHaving();
-			byPk.offset(-1);
-			byPk.limit(-1);
-			byPk.where(
-				pkColumn.in(idTable)
-			);
-
-			list = selectList(byPk);
-		}
+		// メインテーブルのPK列のみ取得する（渡された builder は書き換えない。要件 D-190）
+		List<Data> list = selectListByPk(builder, selectList(builder.simpleSql(dialect()), builder.params()));
 
 		Paging paging = null;
-		if (builder.paging() != null && list != null) {
+		if (builder.paging() != null) {
 			builder.paging().set(list.size(), rowCount);
 			paging = builder.paging();
 		}
@@ -1327,8 +1173,9 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param fetcher	ResultSetFetcher
 	 * @param builder	SelectBuilder
+	 * @throws SqlExecuteException	読めなかったとき
 	 */
-	public void selectListWithFetcher(ResultSetFetcher fetcher, SelectBuilder builder) {
+	public void selectListWithFetcher (ResultSetFetcher fetcher, SelectBuilder builder) {
 
 		selectListWithFetcher(fetcher, builder.sql(dialect()), builder.params());
 
@@ -1337,14 +1184,17 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 逐次取得で取得する
 	 *
+	 * <p>
+	 * <b>読めなかったときは例外</b>（2.0。要件 D-193）。そのときはコネクションも返してから投げる。
+	 * 読めたときはカーソルを開いたまま返すので、読み終わったら {@code db.close()} すること。
+	 * </p>
+	 *
 	 * @param fetcher	ResultSetFetcher
 	 * @param sql		SQL
 	 * @param params	パラメータ
+	 * @throws SqlExecuteException	読めなかったとき
 	 */
-	public void selectListWithFetcher(ResultSetFetcher fetcher, String sql, Object...params) {
-
-		this.error = null;
-
+	public void selectListWithFetcher (ResultSetFetcher fetcher, String sql, Object...params) {
 
 		// SQLを実行する
 		PreparedStatement st = null;
@@ -1397,20 +1247,19 @@ public class DB implements Closeable, AutoCloseable {
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
 			fetcher.markError();
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
 
 			IOUtil.close(rs, st);
+
+			// 読めなかったのでカーソルは無い。コネクションを返してから投げる（トランザクション中は握ったまま）
+			closeAfterQuery();
+
+			throw fail("SELECT", ex);
 
 		} finally {
 
 			/*
-			 * <b>ここは closeAfterQuery() を呼ばない。</b>
+			 * <b>読めたときは closeAfterQuery() を呼ばない。</b>
 			 * カーソルは呼ぶ側が1行ずつ読むので、読み終わるまで
 			 * ResultSet を開いておく必要がある——つまり
 			 * <b>コネクションを握ったまま抜ける。</b>
@@ -1418,6 +1267,7 @@ public class DB implements Closeable, AutoCloseable {
 			 * 返すのは呼ぶ側の {@code db.close()} である。
 			 * 呼ばれなければプールから1本消えるので、
 			 * 実行の終わりに拾ってもらう（要件 F-D-16）。
+			 * 失敗したときは上で返しているので、ここは何もしない（connection が null）。
 			 */
 			registerCloseTask();
 
@@ -1433,35 +1283,138 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 登録する
 	 *
-	 * <p>
-	 * <b>戻り値には2つの意味がある（D-173）。</b>
-	 * 採番された値が取れればその値、取れなければ<b>入った件数</b>である。
-	 * だから <b>{@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
-	 * この戻り値だけでは分からない</b>——
-	 * <b>その表に自動採番の列があるかどうかで決まる</b>。
-	 * </p>
+	 * @param builder   InsertBuilder
+	 * @throws SqlExecuteException  入らなかったとき（一意制約なら {@link DuplicateKeyException}）
+	 * @see #insert(String, Object...)
+	 */
+	public void insert (InsertBuilder builder) {
+
+		insertRaw(builder);
+
+	}
+
+	/**
+	 * 登録する
 	 *
 	 * <p>
-	 * <b>採番列を1本足しただけで、戻り値の意味が変わる。</b>
-	 * 件数がほしいなら {@link #insertNoReturnKey}、
-	 * 採番値がほしいなら採番列のある表でこちらを使うこと。
+	 * <b>値を返さない</b>（2.0。要件 D-193）。1.x は「採番値が取れればその値、取れなければ入った件数」を返していたので、
+	 * 返ってきた {@code 1} が「id=1」なのか「1件」なのかは<b>その表に採番列があるかどうかで決まっていた</b>。
 	 * </p>
 	 *
-	 * <p>
-	 * 失敗したときは <b>{@code -1}</b> で、理由は {@link #getError()} に入る。
-	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
-	 * </p>
+	 * <ul>
+	 *   <li>採番値が欲しい → {@link #insertKey(String, Object...)}（採番されなければ例外）</li>
+	 *   <li>件数が欲しい（{@code INSERT ... SELECT} など）→ {@link #execute(String, Object...)}</li>
+	 * </ul>
 	 *
-	 * <p>
-	 * <b>採番値だけがほしいなら {@link #insertKey(String, Object...)}</b>（1.1 で足した）。
-	 * あちらは<b>件数を返さない</b>ので、返ってきた {@code 1} は必ず「id=1」である。
-	 * </p>
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @throws SqlExecuteException  入らなかったとき（一意制約なら {@link DuplicateKeyException}）
+	 */
+	public void insert (String sql, Object...params) {
+
+		insertRaw(sql, params);
+
+	}
+
+	/**
+	 * 登録して、採番された値を返す
 	 *
 	 * @param builder   InsertBuilder
-	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
+	 * @return  採番された値
+	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
 	 */
+	public long insertKey (InsertBuilder builder) {
+
+		return requireKey(insertRaw(builder));
+
+	}
+
+	/**
+	 * 登録して、採番された値を返す
+	 *
+	 * <p>
+	 * <b>採番値以外を返さない。</b>採番されなかったら投げる——
+	 * 採番列の無い表に入れているなら {@link #insert(String, Object...)} が正しい。
+	 * </p>
+	 *
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @return  採番された値
+	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
+	 */
+	public long insertKey (String sql, Object...params) {
+
+		return requireKey(insertRaw(sql, params));
+
+	}
+
+	/**
+	 * 採番値が返っていなければ投げる
+	 *
+	 * @param value	{@link #insertRaw} の戻り値
+	 * @return	採番された値
+	 */
+	private long requireKey (long value) {
+
+		if (!insertReturnedKey) {
+			throw new SqlExecuteException(
+				"採番された値が返りませんでした"
+					+ "（採番列の無い表に入れているなら insert を使ってください）");
+		}
+
+		return value;
+
+	}
+
+	/**
+	 * 登録する（件数を返す）
+	 *
+	 * @param builder   InsertBuilder
+	 * @return  入った件数
+	 * @throws SqlExecuteException  入らなかったとき
+	 * @deprecated 2.0 で {@link #insert(InsertBuilder)} が値を返さなくなり、1.x の2義（採番値か件数か）が無くなった。
+	 *             件数は1件の INSERT なら 1 なので {@code insert} を使う。2.x で消す（要件 D-193）
+	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	@CheckReturnValue
-	public long insert (InsertBuilder builder) {
+	public long insertNoReturnKey (InsertBuilder builder) {
+
+		String sql = builder.sql(dialect());
+		List<Object> params = builder.params();
+
+		if (isSqlCacheEnabled()) {
+			plan(SqlCacheTags.of(getDBName(), builder));
+		}
+
+		return executeUpdate("INSERT", sql, params);
+
+	}
+
+	/**
+	 * 登録する（件数を返す）
+	 *
+	 * @param sql       SQL
+	 * @param params    パラメータ
+	 * @return  入った件数
+	 * @throws SqlExecuteException  入らなかったとき
+	 * @deprecated 2.0 で {@link #insert(String, Object...)} が値を返さなくなった。
+	 *             件数が要るなら {@link #execute(String, Object...)}。2.x で消す（要件 D-193）
+	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
+	@CheckReturnValue
+	public long insertNoReturnKey (String sql, Object...params) {
+
+		return executeUpdate("INSERT", sql, params);
+
+	}
+
+	/**
+	 * 登録する（中身。消す予定を置いてから生 SQL 版に降りる）
+	 *
+	 * @param builder	InsertBuilder
+	 * @return	採番値か件数（{@link #insertReturnedKey} で見分ける）
+	 */
+	private long insertRaw (InsertBuilder builder) {
 
 		// 先に組み立てる。ここで例外が出ても「消す予定」を持ち越さない（要件 F-D-28）
 		String sql = builder.sql(dialect());
@@ -1476,58 +1429,26 @@ public class DB implements Closeable, AutoCloseable {
 			plan(SqlCacheTags.of(getDBName(), builder));
 		}
 
-		return insert(sql, params);
+		return insertRaw(sql, params);
 
 	}
 
 	/**
-	 * 登録する
+	 * 登録する（中身）
 	 *
-	 * <p>
-	 * <b>戻り値には2つの意味がある（D-173）。</b>
-	 * 採番された値が取れればその値、取れなければ<b>入った件数</b>である。
-	 * だから <b>{@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
-	 * この戻り値だけでは分からない</b>——
-	 * <b>その表に自動採番の列があるかどうかで決まる</b>。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>採番列を1本足しただけで、戻り値の意味が変わる。</b>
-	 * 件数がほしいなら {@link #insertNoReturnKey}、
-	 * 採番値がほしいなら採番列のある表でこちらを使うこと。
-	 * </p>
-	 *
-	 * <p>
-	 * 失敗したときは <b>{@code -1}</b> で、理由は {@link #getError()} に入る。
-	 * 1.0 では戻り値の型を変えられないので、揃えるのは 2.0 になる。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>採番値だけがほしいなら {@link #insertKey(String, Object...)}</b>（1.1 で足した）。
-	 * あちらは<b>件数を返さない</b>ので、返ってきた {@code 1} は必ず「id=1」である。
-	 * </p>
-	 *
-	 * @param sql       SQL
-	 * @param params    パラメータ
-	 * @return  採番された値。採番列が無ければ入った件数。失敗したら -1
+	 * @param sql		SQL
+	 * @param params	パラメータ
+	 * @return	採番値か件数（{@link #insertReturnedKey} で見分ける）
 	 */
-	@CheckReturnValue
-	public long insert (String sql, Object...params) {
+	private long insertRaw (String sql, Object...params) {
 
-		this.error = null;
 		this.insertReturnedKey = false;
-
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		ResultSet rs = null;
 		try {
 
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
 			getWriteConnection();
 
 			// SQLステートメントを作成する
@@ -1579,175 +1500,11 @@ public class DB implements Closeable, AutoCloseable {
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return -1;
+			throw fail("INSERT", ex);
 
 		} finally {
 
 			IOUtil.close(rs, st);
-			closeAfterQuery();
-
-		}
-
-	}
-
-	/**
-	 * 登録して、採番された値を返す
-	 *
-	 * @param builder   InsertBuilder
-	 * @return  採番された値
-	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
-	 */
-	public long insertKey (InsertBuilder builder) {
-
-		return requireKey(insert(builder));
-
-	}
-
-	/**
-	 * 登録して、採番された値を返す
-	 *
-	 * <p>
-	 * <b>{@link #insert(String, Object...)} の2義性を消しただけ</b>である。
-	 * あちらは「採番値が取れればその値、取れなければ件数」なので、
-	 * </p>
-	 *
-	 * <pre>
-	 * long id = db.insert(builder);   // 1 が返った
-	 * </pre>
-	 *
-	 * <p>
-	 * の {@code 1} が「id=1 を入れた」なのか「1件入った」なのかは、
-	 * <b>その表に採番列があるかどうかで決まる</b>。表の定義を1本変えただけで、
-	 * 呼ぶ側を1行も触っていないのに<b>意味が変わる</b>。
-	 * </p>
-	 *
-	 * <p>
-	 * こちらは<b>採番値以外を返さない</b>。採番されなかったら投げる——
-	 * 採番列の無い表に入れているなら {@link #insertNoReturnKey(String, Object...)} が正しい。
-	 * </p>
-	 *
-	 * @param sql       SQL
-	 * @param params    パラメータ
-	 * @return  採番された値
-	 * @throws SqlExecuteException  入らなかったとき、採番値が返らなかったとき
-	 */
-	public long insertKey (String sql, Object...params) {
-
-		return requireKey(insert(sql, params));
-
-	}
-
-	/**
-	 * 採番値が返っていなければ投げる
-	 *
-	 * @param value	{@link #insert} の戻り値
-	 * @return	採番された値
-	 */
-	private long requireKey (long value) {
-
-		requireNoError("INSERT");
-
-		if (!insertReturnedKey) {
-			throw new SqlExecuteException(
-				"採番された値が返りませんでした"
-					+ "（採番列の無い表に入れているなら insertNoReturnKey を使ってください）");
-		}
-
-		return value;
-
-	}
-
-	/**
-	 * 登録する
-	 *
-	 * @param builder   InsertBuilder
-	 * @return  結果
-	 */
-	@CheckReturnValue
-	public long insertNoReturnKey (InsertBuilder builder) {
-
-		String sql = builder.sql(dialect());
-		List<Object> params = builder.params();
-
-		if (isSqlCacheEnabled()) {
-			/*
-			 * <b>切っているときは組み立てすらしない。</b>
-			 * タグを作るには WHERE を読んでテーブルのキーを引く必要があり、
-			 * 使っていないアプリがすべての更新でそれを払うことになる（D-95）。
-			 */
-			plan(SqlCacheTags.of(getDBName(), builder));
-		}
-
-		return insert(sql, params);
-
-	}
-
-	/**
-	 * 登録する
-	 *
-	 * @param sql       SQL
-	 * @param params    パラメータ
-	 * @return  結果
-	 */
-	@CheckReturnValue
-	public long insertNoReturnKey (String sql, Object...params) {
-
-		this.error = null;
-
-
-		// SQLを実行する
-		PreparedStatement st = null;
-		try {
-
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
-			getWriteConnection();
-
-			// SQLステートメントを作成する
-			st = connection.prepareStatement(sql);
-
-			// SQLパラメータを設定する
-			setParameters(st, new SQLParameterList(params));
-
-			long start = System.nanoTime();
-
-			// SQLを実行する
-			long result = st.executeUpdate();
-
-			Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-			// DB sticky
-			DBSticky.updated();
-
-			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
-
-			return result;
-
-		} catch (Exception ex) {
-
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return -1;
-
-		} finally {
-
-			IOUtil.close(st);
 			closeAfterQuery();
 
 		}
@@ -1762,9 +1519,9 @@ public class DB implements Closeable, AutoCloseable {
 	 * 更新する
 	 *
 	 * @param builder   UpdateBuilder
-	 * @return  結果
+	 * @return  更新した件数
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public int update (UpdateBuilder builder) {
 
 		String sql = builder.sql(dialect());
@@ -1786,65 +1543,20 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 更新する
 	 *
+	 * <p>
+	 * <b>失敗は例外</b>（2.0。要件 D-193）。1.x は {@code -1} を返していたので、
+	 * 文として {@code db.update(...);} と書くと失敗が消えていた。
+	 * 戻り値は当たった件数なので、捨ててよい。
+	 * </p>
+	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  更新した件数
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public int update (String sql, Object...params) {
 
-		this.error = null;
-
-
-		// SQLを実行する
-		PreparedStatement st = null;
-		try {
-
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
-			getWriteConnection();
-
-			// SQLステートメントを作成する
-			st = connection.prepareStatement(sql);
-
-			// SQLパラメータを設定する
-			setParameters(st, new SQLParameterList(params));
-
-			long start = System.nanoTime();
-
-			// SQLを実行する
-			int result = st.executeUpdate();
-
-			Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-			// DB sticky
-			DBSticky.updated();
-
-			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
-
-			return result;
-
-		} catch (Exception ex) {
-
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return -1;
-
-		} finally {
-
-			IOUtil.close(st);
-			closeAfterQuery();
-
-		}
+		return executeUpdate("UPDATE", sql, params);
 
 	}
 
@@ -1856,9 +1568,9 @@ public class DB implements Closeable, AutoCloseable {
 	 * 削除する
 	 *
 	 * @param builder   DeleteBuilder
-	 * @return  結果
+	 * @return  削除した件数
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public int delete (DeleteBuilder builder) {
 
 		String sql = builder.sql(dialect());
@@ -1882,13 +1594,24 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param sql       SQL
 	 * @param params    パラメータ
-	 * @return  結果
+	 * @return  削除した件数
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public int delete (String sql, Object...params) {
 
-		this.error = null;
+		return executeUpdate("DELETE", sql, params);
 
+	}
+
+	/**
+	 * 更新系の1文を流す（中身）
+	 *
+	 * @param what		何をしていたか
+	 * @param sql		SQL
+	 * @param params	パラメータ
+	 * @return	件数
+	 */
+	private int executeUpdate (String what, String sql, Object...params) {
 
 		// SQLを実行する
 		PreparedStatement st = null;
@@ -1924,14 +1647,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return -1;
+			throw fail(what, ex);
 
 		} finally {
 
@@ -1951,42 +1667,25 @@ public class DB implements Closeable, AutoCloseable {
 	 * SQL をそのまま実行する（DDL や、ビルダーで組めない文）
 	 *
 	 * <p>
-	 * <b>戻り値は「成功したか」である（D-173）。</b>
-	 * かつては JDBC の {@code Statement#execute()} をそのまま返していた——
-	 * あれは<b>「結果セットが返ってきたか」</b>であって、成功したかではない。
-	 * {@code DELETE} も {@code CREATE TABLE} も、<b>うまくいったのに false</b> が返っていた。
-	 * Javadoc も1行も無かったので、<b>読む側は false を失敗と読むしかない</b>。
+	 * <b>戻り値は当たった件数</b>、<b>失敗は例外</b>（2.0。要件 D-193）。
+	 * DDL と、結果セットを返す文は 0 を返す（結果セットは読まずに閉じる。要るなら {@code select} 系を使う）。
 	 * </p>
 	 *
 	 * <p>
-	 * 失敗したときは {@link #getError()} に理由が入る（作法は
-	 * <a href="https://jimble.io/ja/principles">原則</a>のとおり、戻り値で分岐して理由をここから取る）。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>結果セットが要るなら {@code select} 系を使うこと。</b>
-	 * ここでは結果セットを読まずに閉じる。
+	 * 1.x は「成功したか」の {@code boolean} を返していたので、{@code if (!db.execute(...))} はコンパイルが通らなくなる。
 	 * </p>
 	 *
 	 * @param sql		SQL
 	 * @param params	パラメータ
-	 * @return	成功した場合 = true
+	 * @return	当たった件数（DDL と結果セットを返す文は 0）
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
-	public boolean execute (String sql, Object...params) {
-
-		this.error = null;
-
+	public int execute (String sql, Object...params) {
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
 
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
 			getWriteConnection();
 
 			// SQLステートメントを作成する
@@ -1998,10 +1697,11 @@ public class DB implements Closeable, AutoCloseable {
 			long start = System.nanoTime();
 
 			/*
-			 * <b>戻り値は捨てる。</b>{@code Statement#execute()} が返すのは
-			 * 「結果セットが返ってきたか」であって、成功したかではない。
+			 * {@code Statement#execute()} が返すのは「結果セットが返ってきたか」であって、成功したかではない。
+			 * 結果セットでなければ件数を読む。
 			 */
-			st.execute();
+			boolean resultSet = st.execute();
+			int count = resultSet ? 0 : Math.max(st.getUpdateCount(), 0);
 
 			Context.recordSqlExecution(System.nanoTime() - start, sql);
 
@@ -2011,18 +1711,11 @@ public class DB implements Closeable, AutoCloseable {
 			// SQL結果キャッシュを消す（要件 F-D-28）
 			invalidateCache();
 
-			return true;
+			return count;
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return false;
+			throw fail("SQL", ex);
 
 		} finally {
 
@@ -2039,27 +1732,46 @@ public class DB implements Closeable, AutoCloseable {
 	// region バッチ実行
 
 	/**
-	 * 登録バッチ実行（自動採番値取得）
+	 * 束ねた SQL が全部同じか確かめる
 	 *
-	 * @param builderList   InsertBuilder
-	 * @return  結果
+	 * @param what			呼んだメソッド
+	 * @param builderList	ビルダー
+	 * @param paramsList	パラメータを詰める先
+	 * @return	SQL
 	 */
-	@CheckReturnValue
-	public List<Integer> executeBatch (List<IBuilder> builderList) {
+	private String sameSql (String what, List<? extends IBuilder> builderList, List<List<Object>> paramsList) {
 
 		String sql = null;
-		List<List<Object>> paramsList = new ArrayList<>();
 		for (IBuilder builder : builderList) {
 			String builderSql = builder.sql(dialect());
 			if (sql == null) {
 				sql = builderSql;
 			} else if (!sql.equals(builderSql)) {
-				setError(new CodeException("DB_998", "executeBatch: SQLが一致しません"));
-				Log.error("executeBatch mismatch:\n" + sql + "\n" + builderSql);
-				return null;
+				throw fail(what, new CodeException("DB_998",
+					what + ": SQL が一致しません（束ねられるのは同じ形の文だけです）\n  " + sql + "\n  " + builderSql));
 			}
 			paramsList.add(builder.params());
 		}
+		return sql;
+
+	}
+
+	/**
+	 * 登録バッチ実行
+	 *
+	 * <p>
+	 * <b>SQL が全部同じでなければならない</b>（要件 F-D-08）。違うものが混ざっていたら {@code DB_998} の例外。
+	 * 空の一覧は何もせず空リストを返す（2.0。1.x は {@code null}）。
+	 * </p>
+	 *
+	 * @param builderList   ビルダー
+	 * @return  1文ずつの件数
+	 * @throws SqlExecuteException  失敗したとき
+	 */
+	public List<Integer> executeBatch (List<IBuilder> builderList) {
+
+		List<List<Object>> paramsList = new ArrayList<>();
+		String sql = sameSql("executeBatch", builderList, paramsList);
 
 		// SQL結果キャッシュを消す（要件 F-D-28）。SQL が同じなので、消す先も同じ
 		if (isSqlCacheEnabled()) {
@@ -2071,30 +1783,27 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * 登録バッチ実行（自動採番値取得）
+	 * バッチ実行
 	 *
 	 * @param sql           SQL
-	 * @param paramsList    パラメータ一覧
-	 * @return  結果
+	 * @param paramsList    パラメータ一覧（空なら何もしない）
+	 * @return  1文ずつの件数
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public List<Integer> executeBatch (String sql, List<List<Object>> paramsList) {
 
-		this.error = null;
+		List<Integer> res = new ArrayList<>();
 
+		if (paramsList == null || paramsList.isEmpty()) {
+			this.plannedTags = null;
+			return res;
+		}
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
 
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
 			getWriteConnection();
-
-			List<Integer> res = new ArrayList<>();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql);
@@ -2109,41 +1818,18 @@ public class DB implements Closeable, AutoCloseable {
 				batchCount++;
 
 				if (batchCount == batchExecuteLimit) {
-
 					batchCount = 0;
-
-					long start = System.nanoTime();
-
-					int[] temp = st.executeBatch();
-
-					Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-					if (!isBatchSuccess(temp)) {
-						throw new Exception("failed execute batch");
-					}
-					for (int r : temp) {
+					for (int r : runBatch(st, sql)) {
 						res.add(r);
 					}
-
 				}
 
 			}
 
 			if (batchCount > 0) {
-
-				long start = System.nanoTime();
-
-				int[] temp = st.executeBatch();
-
-				Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-				if (!isBatchSuccess(temp)) {
-					throw new Exception("failed execute batch");
-				}
-				for (int r : temp) {
+				for (int r : runBatch(st, sql)) {
 					res.add(r);
 				}
-
 			}
 
 			// DB sticky
@@ -2156,14 +1842,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return null;
+			throw fail("executeBatch", ex);
 
 		} finally {
 
@@ -2171,6 +1850,32 @@ public class DB implements Closeable, AutoCloseable {
 			closeAfterQuery();
 
 		}
+
+	}
+
+	/**
+	 * 積んだ分を流す
+	 *
+	 * @param st	ステートメント
+	 * @param sql	SQL（記録用）
+	 * @return	結果
+	 */
+	private static int[] runBatch (PreparedStatement st, String sql) throws SQLException {
+
+		long start = System.nanoTime();
+
+		int[] result = st.executeBatch();
+
+		Context.recordSqlExecution(System.nanoTime() - start, sql);
+
+		// JDBC の約束では -2（SUCCESS_NO_INFO）も成功。-3（EXECUTE_FAILED）は失敗
+		for (int r : result) {
+			if (r < 0 && r != Statement.SUCCESS_NO_INFO) {
+				throw new SQLException("バッチの中に失敗した文があります（結果 " + r + "）");
+			}
+		}
+
+		return result;
 
 	}
 
@@ -2184,36 +1889,17 @@ public class DB implements Closeable, AutoCloseable {
 	 * <p>
 	 * <b>SQL が全部同じでなければならない</b>（要件 F-D-08）。
 	 * 1本の {@code PreparedStatement} にパラメータだけを積み替えるためである。
-	 * 違うものが混ざっていたら {@code DB_998} を立てて null を返す。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>以前は確かめていなかった。</b>先頭の SQL に全員のパラメータを流し込むので、
-	 * {@code value()} の並びが違うビルダーを混ぜると
-	 * <b>例外も警告も無しに値が横にずれて入っていた</b>
-	 * （個数が合っていると DB も気づかない）。
-	 * {@code executeBatch} は元から確かめていたので、そちらに揃えた。
+	 * 違うものが混ざっていたら {@code DB_998} の例外。空の一覧は空リストを返す。
 	 * </p>
 	 *
 	 * @param builderList   InsertBuilder
-	 * @return  結果（SQL が揃っていなければ null）
+	 * @return  採番値
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public List<Long> insertBatch (List<InsertBuilder> builderList) {
 
-		String sql = null;
 		List<List<Object>> paramsList = new ArrayList<>();
-		for (InsertBuilder builder : builderList) {
-			String builderSql = builder.sql(dialect());
-			if (sql == null) {
-				sql = builderSql;
-			} else if (!sql.equals(builderSql)) {
-				setError(new CodeException("DB_998", "insertBatch: SQLが一致しません"));
-				Log.error("insertBatch mismatch:\n" + sql + "\n" + builderSql);
-				return null;
-			}
-			paramsList.add(builder.params());
-		}
+		String sql = sameSql("insertBatch", builderList, paramsList);
 
 		// SQL結果キャッシュを消す（要件 F-D-28）
 		if (isSqlCacheEnabled()) {
@@ -2228,28 +1914,25 @@ public class DB implements Closeable, AutoCloseable {
 	 * 登録バッチ実行（自動採番値取得）
 	 *
 	 * @param sql           SQL
-	 * @param paramsList    パラメータ一覧
-	 * @return  結果
+	 * @param paramsList    パラメータ一覧（空なら何もしない）
+	 * @return  採番値
+	 * @throws SqlExecuteException  失敗したとき
 	 */
-	@CheckReturnValue
 	public List<Long> insertBatch (String sql, List<List<Object>> paramsList) {
 
-		this.error = null;
+		List<Long> res = new ArrayList<>();
 
+		if (paramsList == null || paramsList.isEmpty()) {
+			this.plannedTags = null;
+			return res;
+		}
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		ResultSet rs = null;
 		try {
 
-			/*
-			 * コネクションは try の中で取る（要件 D-190）。
-			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
-			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
-			 */
 			getWriteConnection();
-
-			List<Long> res = new ArrayList<>();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
@@ -2267,15 +1950,8 @@ public class DB implements Closeable, AutoCloseable {
 
 					batchCount = 0;
 
-					long start = System.nanoTime();
+					runBatch(st, sql);
 
-					int[] temp = st.executeBatch();
-
-					Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-					if (!isBatchSuccess(temp)) {
-						throw new Exception("failed execute batch");
-					}
 					rs = st.getGeneratedKeys();
 					while (rs.next()) {
 						res.add(dialect().generatedKey(rs));
@@ -2288,15 +1964,8 @@ public class DB implements Closeable, AutoCloseable {
 
 			if (batchCount > 0) {
 
-				long start = System.nanoTime();
+				runBatch(st, sql);
 
-				int[] temp = st.executeBatch();
-
-				Context.recordSqlExecution(System.nanoTime() - start, sql);
-
-				if (!isBatchSuccess(temp)) {
-					throw new Exception("failed execute batch");
-				}
 				rs = st.getGeneratedKeys();
 				while (rs.next()) {
 					res.add(dialect().generatedKey(rs));
@@ -2315,14 +1984,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		} catch (Exception ex) {
 
-			Log.error(ex);
-
-			setError(sqlError(ex));
-
-			// 失敗した更新の「消す予定」を次の呼び出しに持ち越さない（要件 F-D-28）
-			this.plannedTags = null;
-
-			return null;
+			throw fail("insertBatch", ex);
 
 		} finally {
 
@@ -2341,24 +2003,18 @@ public class DB implements Closeable, AutoCloseable {
 	 * バッチ実行結果成功判定
 	 *
 	 * <p>
-	 * <b>受け取るのは {@code List<Integer>} ではない（D-173）。</b>
-	 * {@code List<Integer>} で固定すると、<b>{@code List<Long>} を受ける版を
-	 * あとから足せない</b>——消去したあとの署名が同じ
-	 * （{@code isBatchSuccess(List)}）になって衝突する。
-	 * {@code insertBatch} が採番値を {@code Long} で返すようになった日に、
-	 * <b>置く場所が無い</b>ことに気づくことになる。
-	 * </p>
-	 *
-	 * <p>
 	 * JDBC の約束では、{@code -2}（{@code SUCCESS_NO_INFO}）も成功である。
+	 * <b>空の一覧は成功</b>（2.0 は空の入力に空リストを返す）。{@code null} は失敗。
 	 * </p>
 	 *
 	 * @param list	バッチ実行結果
 	 * @return	成功の場合 = true
+	 * @deprecated 2.0 で {@code executeBatch} / {@code insertBatch} は失敗を例外で知らせるので、見る必要が無くなった。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	public static boolean isBatchSuccess (List<? extends Number> list) {
 
-		if (list == null || list.isEmpty()) {
+		if (list == null) {
 			return false;
 		}
 
@@ -2385,10 +2041,12 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @param resArray	バッチ実行結果
 	 * @return	成功の場合 = true
+	 * @deprecated 2.0 で失敗は例外になった。2.x で消す（要件 D-193）
 	 */
+	@Deprecated(since = "2.0.0", forRemoval = true)
 	public static boolean isBatchSuccess (int...resArray) {
 
-		if (resArray == null || resArray.length == 0) {
+		if (resArray == null) {
 			return false;
 		}
 
@@ -2526,34 +2184,18 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
-	/**
-	 * トランザクションを開始する
-	 *
-	 * <p>
-	 * <b>ここからコネクションを握り続ける。</b>{@code closeAfterQuery()} は
-	 * トランザクション中は返さないので、コミットもロールバックもされなければ
-	 * <b>プールへ戻らない。</b>実行の終わりに拾ってもらうよう登録する（要件 F-D-16）。
-	 * </p>
-	 *
-	 * <p>
-	 * <b>1文も流さずに終わる道があるので、ここで登録する。</b>
-	 * {@code closeAfterQuery()} の側だけに置くと、
-	 * 開始してすぐ抜けたときに登録されない。
-	 * </p>
-	 *
-	 * @deprecated {@link #begin()} を使う（{@link #transaction(TxBody)} ならもっと短い）。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void beginTransaction() throws Exception {
-
-		txBegin();
-
-	}
-
 	/*
-	 * beginTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で beginTransaction を消したあとも残る）
+	 * トランザクションを始める（Tx から呼ぶ）。
+	 *
+	 * <b>ここからコネクションを握り続ける。</b>closeAfterQuery() は
+	 * トランザクション中は返さないので、実行の終わりに拾ってもらうよう登録する（要件 F-D-16）。
+	 * 1文も流さずに終わる道があるので、ここで登録する。
+	 *
+	 * 1.x の公開メソッド beginTransaction / commit / commitEndTransaction / rollback /
+	 * rollbackEndTransaction / endTransaction と DBTransaction は 2.0 で消した（要件 D-193）。
+	 * 中身はここに残り、Tx だけが使う。
 	 */
-	void txBegin() throws Exception {
+	void txBegin () throws SQLException {
 
 		if (connection == null) {
 			getWriteConnection();
@@ -2720,22 +2362,10 @@ public class DB implements Closeable, AutoCloseable {
 
 	// endregion
 
-	/**
-	 * トランザクションをコミットする
-	 *
-	 * @deprecated {@link Tx#checkpoint()}（続ける）か {@link Tx#commit()}（終わる）を使う。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void commit() throws Exception {
-
-		txCommit();
-
-	}
-
 	/*
-	 * commit の中身（要件 D-192。Tx から呼ぶ。2.0 で commit を消したあとも残る）
+	 * 確定する。終わらせない（Tx#checkpoint と、txCommitEnd から呼ぶ）
 	 */
-	void txCommit() throws Exception {
+	void txCommit () throws SQLException {
 
 		if (connection == null) {
 			return;
@@ -2758,22 +2388,10 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
-	/**
-	 * トランザクションをコミットし終了する
-	 *
-	 * @deprecated {@link Tx#commit()} を使う。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void commitEndTransaction() throws Exception {
-
-		txCommitEnd();
-
-	}
-
 	/*
-	 * commitEndTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で commitEndTransaction を消したあとも残る）
+	 * 確定して終わる（Tx#commit から呼ぶ）
 	 */
-	void txCommitEnd() throws Exception {
+	void txCommitEnd () throws SQLException {
 
 		try {
 			txCommit();
@@ -2784,20 +2402,16 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * トランザクションをロールバックする
-	 */
-	/**
 	 * エラーが出ていたらコミットさせない
 	 *
 	 * <p>
 	 * <b>ここが無いと、部分的にコミットされる。</b>
-	 * jimble の DB はエラーを戻り値で返す（原則4）ので、
-	 * {@code db.update(...)} が -1 を返しても<b>処理は正常に終わったように見える</b>——
-	 * そのまま commit まで進んでいた（D-155）。
+	 * 失敗した文の例外を受け止めて（{@code catch (DuplicateKeyException e)} など）続けたとき、
+	 * そのまま commit まで進むと、<b>失敗した文の前後だけが入る</b>（D-155）。
 	 * </p>
 	 *
 	 * <p>
-	 * <b>自分で巻き戻してから投げる。</b>{@code endTransaction()} に任せると、
+	 * <b>自分で巻き戻してから投げる。</b>終了処理に任せると、
 	 * あちらは {@code setAutoCommit(true)} を呼ぶだけなので、
 	 * <b>JDBC の決まりで、開いていたトランザクションがコミットされてしまう</b>——
 	 * 拒んだはずのものが入る。
@@ -2805,7 +2419,7 @@ public class DB implements Closeable, AutoCloseable {
 	 *
 	 * @throws CodeException	トランザクションを開けてから1度でもエラーが出ていた場合
 	 */
-	private void requireNoErrorSinceTransaction () throws Exception {
+	private void requireNoErrorSinceTransaction () throws SQLException {
 
 		if (rollbackOnlyReason != null) {
 
@@ -2821,8 +2435,7 @@ public class DB implements Closeable, AutoCloseable {
 				, """
 				中のトランザクションが巻き戻しを求めたので、コミットしませんでした（全部巻き戻しました）。
 				  理由: %s
-				  中で rollback() した、または commit せずに閉じた DBTransaction があります。
-				  外で続けたいなら、外で rollback() してから書き直してください。
+				  中で rollback() した、または commit せずに閉じた Tx があります。
 				  詳しく: %s
 				""".formatted(reason, Docs.url("transaction")));
 
@@ -2832,7 +2445,7 @@ public class DB implements Closeable, AutoCloseable {
 			return;
 		}
 
-		CodeException cause = this.error;
+		CodeException cause = this.lastError;
 
 		if (isTransaction()) {
 			connection.rollback();
@@ -2842,31 +2455,18 @@ public class DB implements Closeable, AutoCloseable {
 
 		throw new CodeException("DB_004"
 			, """
-			トランザクションの中でエラーが出ているので、コミットしませんでした。
-			  最後のエラー: %s
-			  エラーを見て続けたいなら、いったん rollback() してから書き直してください
-			  （SQL → commit → SQL（失敗）→ rollback → SQL → commit と書けます）。
+			トランザクションの中で SQL が失敗しているので、コミットしませんでした（全部巻き戻しました）。
+			  失敗: %s
+			  例外を受け止めて続けたいなら、その Tx はいったん巻き戻して、新しい Tx で書き直してください。
 			  詳しく: %s
-			""".formatted(cause == null ? "（直前の文は成功。それより前で出ています）" : cause.getMessage(), Docs.url("transaction")));
-
-	}
-
-	/**
-	 * トランザクションをロールバックする（終わらせない）
-	 *
-	 * @deprecated {@link Tx#rollback()} を使う。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void rollback() throws Exception {
-
-		txRollback();
+			""".formatted(cause == null ? "（不明）" : cause.getMessage(), Docs.url("transaction")));
 
 	}
 
 	/*
-	 * rollback の中身（要件 D-192。Tx から呼ぶ。2.0 で rollback を消したあとも残る）
+	 * 巻き戻す。終わらせない（txRollbackEnd と close から呼ぶ）
 	 */
-	void txRollback() throws Exception {
+	void txRollback () throws SQLException {
 
 		if (connection == null) {
 			return;
@@ -2879,35 +2479,15 @@ public class DB implements Closeable, AutoCloseable {
 		// 無かったことになるので、消す予定も捨てる（要件 F-D-28）
 		discardCache();
 
-		/*
-		 * <b>エラーの持ち越しもここで畳む</b>（要件 D-156）。
-		 *
-		 * 巻き戻したということは、<b>呼んだ側がエラーを見て決着を付けた</b>ということである。
-		 * 畳まないと、そのあと書き直して {@code commit()} しても
-		 * <b>「エラーが出ている」と言って断られる</b>——
-		 * <b>SQL → commit → SQL（失敗）→ rollback → SQL → commit</b> と
-		 * 分岐して続ける書き方ができなくなる。
-		 */
+		// エラーの持ち越しもここで畳む（要件 D-156）。巻き戻したので、もう持ち越すものは無い
 		clearErrorSinceTransaction();
 
 	}
 
-	/**
-	 * トランザクションをロールバックし終了する
-	 *
-	 * @deprecated {@link Tx#rollback()} を使う。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void rollbackEndTransaction() throws Exception {
-
-		txRollbackEnd();
-
-	}
-
 	/*
-	 * rollbackEndTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で rollbackEndTransaction を消したあとも残る）
+	 * 巻き戻して終わる（Tx#rollback / Tx#close から呼ぶ）
 	 */
-	void txRollbackEnd() throws Exception {
+	void txRollbackEnd () throws SQLException {
 
 		try {
 			txRollback();
@@ -2917,42 +2497,27 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
-	/**
-	 * トランザクションを終了する
-	 *
-	 * @deprecated {@link Tx#close()}（try-with-resources）を使う。2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public void endTransaction() throws Exception {
-
-		txEnd();
-
-	}
-
 	/*
-	 * endTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で endTransaction を消したあとも残る）
+	 * 終わる（自動コミットに戻してコネクションを返す）
+	 *
+	 * <b>ここで起きたエラーだけを投げる</b>（要件 D-190）。
+	 * 1.4 までは最後に直前の文のエラーをそのまま投げていたので、失敗した文のあと<b>巻き戻しに成功しても</b>、
+	 * その文の古いエラーがここから出ていた。
 	 */
-	void txEnd() throws Exception {
+	void txEnd () throws SQLException {
 
 		if (connection == null) {
 			return;
 		}
 
-		/*
-		 * <b>ここで起きたエラーだけを投げる</b>（要件 D-190）。
-		 * 1.4 までは最後に {@code this.error} をそのまま投げていたので、
-		 * 失敗した文のあと<b>巻き戻しに成功しても</b>、その文の古いエラーがここから出ていた——
-		 * {@code DBTransaction} はそれを「ロールバックに失敗しました」（DB_002）に包み直し、
-		 * {@code commitEndTransaction()} では DB_004 の丁寧な説明を上書きしていた。
-		 */
-		CodeException before = this.error;
+		SQLException failure = null;
 
 		try {
 			if (isTransaction()) {
 				connection.setAutoCommit(true);
 			}
-		} catch (Exception ex) {
-			setError(new CodeException("DB_999", ex.getMessage(), ex));
+		} catch (SQLException ex) {
+			failure = ex;
 		} finally {
 			/*
 			 * コミットせずに終わった。消す予定は捨てる（要件 F-D-28）。
@@ -2961,9 +2526,10 @@ public class DB implements Closeable, AutoCloseable {
 			discardCache();
 			clearErrorSinceTransaction();
 			close();
-			if (this.error != null && this.error != before) {
-				throw this.error;
-			}
+		}
+
+		if (failure != null) {
+			throw failure;
 		}
 
 	}
@@ -2973,10 +2539,15 @@ public class DB implements Closeable, AutoCloseable {
 	// region Closeable
 
 	/**
-	 * {@inheritDoc}
+	 * 閉じる（コネクションをプールへ返す）
+	 *
+	 * <p>
+	 * トランザクションの途中なら巻き戻す。<b>検査例外を投げない</b>（2.0。1.x は {@code IOException}）。
+	 * 閉じるときの失敗はログに出す。
+	 * </p>
 	 */
 	@Override
-	public void close() throws IOException {
+	public void close () {
 
 		if (connection == null) {
 			return;

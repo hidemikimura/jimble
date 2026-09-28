@@ -161,7 +161,7 @@ public final class LoginController {
 		Data row = ApprovalAuthExample.db().select(
 			SQL.select()
 				.from(Staff.instance())
-				.where(Staff.id.eq(id)));
+				.where(Staff.id.eq(id))).orElse(null);
 
 		if (row == null) {
 			return null;
@@ -234,7 +234,7 @@ public final class LoginController {
 		Data row = ApprovalAuthExample.db().select(
 			SQL.select()
 				.from(Staff.instance())
-				.where(Staff.login_id.eq(loginId)));
+				.where(Staff.login_id.eq(loginId))).orElse(null);
 
 		if (row == null) {
 			return new Data();

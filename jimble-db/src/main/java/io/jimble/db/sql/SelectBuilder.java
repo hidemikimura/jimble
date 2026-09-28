@@ -284,11 +284,11 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public SelectBuilder where (Data where) {
 
-		List<IWhere> whereList = whereList(where);
-		if (whereList != null) {
-			for (IWhere w : whereList) {
-				where(w);
-			}
+		// "where" キーの無い空でない Data は例外（1.x は条件が付かずに全件。要件 D-194）
+		requireWrapped(where, "where", "where(Data)", null);
+
+		for (IWhere w : whereList(where)) {
+			where(w);
 		}
 
 		return this;
@@ -1101,7 +1101,10 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	@Override
 	public SelectBuilder apply(Data data) {
 
-		where(data);
+		// まとめて読むので、無い句は無いまま（where(Data) の「包むキーが無ければ例外」は通さない）
+		for (IWhere w : whereList(data)) {
+			where(w);
+		}
 		orderBy(data);
 		return this;
 

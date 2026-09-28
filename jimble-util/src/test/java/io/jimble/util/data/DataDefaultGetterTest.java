@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -85,9 +84,9 @@ class DataDefaultGetterTest {
 		assertThrows(DataConversionException.class, () -> d.getBoolean("yes", false));
 		assertThrows(DataConversionException.class, () -> d.getBoolean("two", false));
 
-		// いままでの取り出しは変えていない
-		assertEquals(0, d.getInt("abc"));
-		assertFalse(d.getBoolean("yes"));
+		// 2.0 は既定値なしの取り出しも同じ読み方（要件 D-195）
+		assertThrows(DataConversionException.class, () -> d.getInt("abc"));
+		assertThrows(DataConversionException.class, () -> d.getBoolean("yes"));
 
 	}
 

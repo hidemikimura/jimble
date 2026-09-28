@@ -55,6 +55,8 @@ import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
 import io.jimble.db.DB;
 import io.jimble.db.Tx;                    // トランザクション（db.begin()）
+import io.jimble.db.SqlExecuteException;   // SQL の失敗（非検査）
+import io.jimble.db.DuplicateKeyException; // 一意制約の違反。Spring の同名クラスではない
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;      // now() など
 import io.jimble.util.data.Data;
@@ -75,10 +77,13 @@ Web だけでなくバッチや MQ も含めた「一つの実行」のほう。
 | `@RestController` / `@GetMapping` | `get("/path", Controller::method)` を初期化ブロックに書く |
 | `@Autowired` / コンストラクタ注入 | `new` する。`install(AdminController::new)` |
 | `@Transactional` | `db.transaction(tx -> { ... })`（例外なら巻き戻す。検査例外は要らない） |
+| `@RequestParam` / `@PathVariable` / `@RequestBody` | `context.request().bodyAll().getString("x")`（`Request` は `Data` ではない） |
 | `@Value("${x}")` | `Conf.conf().getString("x", "既定")` |
 | `@PreAuthorize("hasRole('X')")` | `.attribute(Auth.ROLE, "X")` をルートに付ける |
 | `JpaRepository` / エンティティ | `SQL.select().from(Post.instance())`。テーブルクラスは codegen が作る |
-| 例外で DB エラーを拾う | **戻り値で返る。** `select` 系は `null`、更新系は `-1` |
+| `Optional<Post> findById(id)` | `db.select(...)` が **`Optional<Data>`**。無ければ `.orElseThrow(() -> new HttpException(404, "..."))` |
+| `DataAccessException` / Spring の `DuplicateKeyException` | `SqlExecuteException` / `DuplicateKeyException`（どちらも `io.jimble.db`。非検査） |
+| `@Valid` / `BindingResult` | `rules.validate(db, input);`（通らなければ 422 で止まる）。一覧が欲しいなら `rules.errors(db, input)` |
 | `application.properties` | `application.conf`（HOCON） |
 
 ## DB の書き方
@@ -88,22 +93,23 @@ Web だけでなくバッチや MQ も含めた「一つの実行」のほう。
 ```java
 DB db = MyExample.db();                       // codegen が作る入口
 
-Data row = db.select(SQL.select()
+Data row = db.select(SQL.select()             // select は Optional<Data>。0件は空
 	.from(Request.instance())
-	.where(Request.id.eq(id)));
+	.where(Request.id.eq(id)))
+	.orElseThrow(() -> new HttpException(404, "申請がありません: " + id));
 
-if (row == null) { ... }                      // エラーも「無い」も null
-
-db.insert(SQL.insert(Notice.instance())       // insert(テーブル).value(列, 値)
+db.insert(SQL.insert(Notice.instance())       // insert(テーブル).value(列, 値)。戻り値は void
 	.value(Notice.request_id, id)
-	.value(Notice.created_at, Dsl.now()));
+	.value(Notice.created_at, Dsl.now()));   // 採番値が要るなら long id = db.insertKey(...)
 
-if (db.isError()) { ... }                     // 書き込みは isError() で見る
-
-db.update(SQL.update(Request.instance())
+int updated = db.update(SQL.update(Request.instance())   // update / delete は件数
 	.set(Request.status, "approved")
 	.where(Request.id.eq(id)));
 ```
+
+**失敗は例外（`SqlExecuteException`、非検査）。**`isError()` は無い。
+書かなければ上まで飛んで 500、トランザクションの中なら巻き戻る。
+分けたいのは一意制約くらいなので、それだけ `catch (DuplicateKeyException e)` で受ける。
 
 **列は静的フィールドで、名前は DB のまま**（`Request.decided_by`。camelCase ではない）。
 
@@ -112,51 +118,62 @@ db.update(SQL.update(Request.instance())
 ```java
 try (Tx tx = db.begin()) {
 
-	// ... db.insert / db.update ...
+	// ... db.insert / db.update ...   失敗は例外 → try を抜けて巻き戻る
 
-	if (db.isError()) {
-		throw new HttpException(500, "更新できませんでした");   // 抜けたら巻き戻る
+	if (!"pending".equals(row.getString(Request.status))) {
+		throw new HttpException(409, "もう決まっています");   // 投げれば巻き戻る。rollback は書かない
 	}
 
-	tx.commit();           // 確定して終わる（中で失敗があれば TransactionException）
+	tx.commit();           // 確定して終わる
 
 }
 ```
 
-短くするなら `db.transaction(tx -> { ... });`。`DBTransaction` は 1.5.0 で非推奨（2.0 で消える）。
+短くするなら `db.transaction(tx -> { ... });`、値を返すなら `db.transactionResult(tx -> ...)`。
+**トランザクションはこの3つだけ**（`DBTransaction` や `db.beginTransaction()` は無い）。
 
 ## 守っている5つの決めごと
 
 1. **上から順に追えること** — `main` から目的の処理まで指でたどれる
 2. **起動時にクラスパスを走査しない** — コントローラもバッチも自分で登録する
 3. **黙って間違えないこと** — 「静かに効かなくなる」状態を潰す
-4. **例外にしないところ** — DB のエラーは戻り値
+4. **失敗は例外にする** — 戻り値で失敗を返さない（非検査の例外）。壊れ方はコンパイルエラーか例外だけ
 5. **一つの実行 = 一つの Context** — `ScopedValue` で渡す。`ThreadLocal` ではない
 
 **機能を足すか迷ったら、この5つで決まる。**
 
 ## 落とし穴（実際に踏んだもの）
 
-- **`request()` から直接は読めない。** 送られてきた値は `context.request().bodyAll()`
-  の中にある。`request().getString("x")` は**黙って null を返す**
+- **1.x から上げるなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す
+  （`isError()` や `DBTransaction` などはコンパイルエラーになるので、そこは迷わない）
+- **`select` は `Optional<Data>`。**`.get()` をそのまま書かない（0件で `NoSuchElementException` → 500）。
+  「無ければ 404」は `.orElseThrow(() -> new HttpException(404, "..."))`、「無ければ null」は `.orElse(null)`
+- **トランザクションの中で SQL の失敗を `catch` して続けない。**続けても `tx.commit()` が
+  `TransactionException`（`DB_004`）で断り、全部巻き戻る。「あれば更新」は Tx の外で `DuplicateKeyException` を受けるか、
+  ビルダーの `onDuplicateKeyUpdate(列, 値)`（MySQL / PostgreSQL の違いは吸収する）で書く
+- **利用者の入力を `getInt` / `getLong` で読む前に検査する。**`"abc"` や `"1.5"` は `DataConversionException` で **500** になる
+  （黙って 0 にはならない）。先に `rules.validate(db, input);` を通せば 422 で返る。
+  **キーが無い・空文字は 0 / null のまま**（例外にならない）
+- **非推奨の `selectOrThrow` / `selectListOrThrow` / `insertNoReturnKey` を書かない。**
+  `select` / `selectList` / `insert`（件数が要るなら `execute`）で同じことになる
 - **ビルダーで組んだ SELECT の結果はテーブル名でネストされている。**
   文字列のキーで引くと何も取れない（`null`）。**列オブジェクトを渡せばそのまま引ける** →
   `row.getString(Staff.name)`（`row.getString("name")` は `null`）
 - **文字列の SQL（`db.select("SELECT ...")`）の結果はネストしない。**平らな Data が返り、
   `row.getData(Staff.instance())` は `null`。結合すると同じ名前の列（`id` など）は**黙ってあとの値で上書き**される。
   別名を付けるか、`テーブル__列` の別名でネストさせる（`jimble-db` の skill）
-- **トランザクションは `db.transaction(...)` / `db.begin()` で書く**（1.5.0 から）。`DBTransaction` は検査例外
-  （`CodeException` / `IOException`）を投げ、`commit()` が終わらない——1.5.0 で非推奨。どちらでも `catch` で黙らせない
+- **`DuplicateKeyException` の import を間違えない。**`org.springframework.dao` ではなく `io.jimble.db`
 - **JSON の列（MySQL の `JSON` / PostgreSQL の `json`・`jsonb`）は読んだ時点で `Data` / `List` になっている。**
   配列の列を `getString` すると**先頭の要素だけ**が返る（JSON の文字ではない）。配列は `getStringList` / `getDataList`、
   文字のまま欲しいなら `CAST(列 AS CHAR)`（MySQL）/ `列::text`（PostgreSQL）で読む
 - **一番外が配列の JSON は `Dson.decodes(json, List.class)` で読む。**`Data.class`（や引数なし）だと
-  `{"0": ..., "1": ...}` になる。`List.class` で `null` が返るなら、渡した文字が JSON ではない
+  `{"0": ..., "1": ...}` になる。渡した文字が JSON でなければ `JsonParseException`（空文字と `"null"` は `null`）
 - **`Data.put` は `Data` を返さない。**`Map.put` なので戻り値は**前の値**（`Object`）。
   `new Data().put("a", 1).put("b", 2)` はコンパイルが通らず、`return data.put("x", v);` は Data ではなく前の値（初めて入れたなら `null`）を返す。
   続けて書くなら **`putData("a", 1).putData("b", 2)`**（こちらは自身を返す）
 - **`Migration.install()` の戻り値は「登録したか」で、流れたかではない。**`DBUtil.load(...)` より前に呼び、
-  実際に流れるのは `load` の中。`false` は `migration.on_startup = false` のときだけなので、落とす判定に使わない
+  実際に流れるのは `load` の中。`false` は `migration.on_startup = false` のときだけなので、落とす判定に使わない。
+  `DBUtil.load(...)` は `void` で、繋がらない・流せないときは例外で起動が止まる（`if` で囲まない）
 - **秘密の設定は2行で書く。**既定の行を先に、`${?環境変数}` の行をあとに置く。
 
   ```conf
@@ -170,8 +187,8 @@ try (Tx tx = db.begin()) {
   - **順番を逆にする**と、**あとの `""` が必ず勝って環境変数が効かない**（エラーは出ない）
   - `application.prod.conf` などの環境別ファイルで `include "application.conf"` のあとに**同じキーを値つきで書き直すと、
     そちらが勝って環境変数が効かない**。書き直すなら2行組ごと書く
-- **セッションは自動保存されない。** `context.session().save()` を明示的に呼ぶ。
-  1リクエストにつき1回だけ効く
+- **セッションは自動保存されない。** 変えたら `context.session().save()` を明示的に呼ぶ。
+  書くのは `session().put(...)`。**`session().data()` は読み取り専用の写し**で、`put` すると `UnsupportedOperationException`
 - **`Auth::guard` はいちばん最初に登録する。** セッションを使うかどうかをここで決めるので、
   先に誰かが `session()` を触ると間に合わない
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず、
@@ -193,7 +210,7 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 
 ## もっと深いところ
 
-同じところに skill が2本ある。**そちらのほうが詳しい。**
+同じところに skill が3本ある。**そちらのほうが詳しい。**
 
 | | |
 | --- | --- |
@@ -204,8 +221,7 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 ## 書いたら確かめる
 
 ```bash
-./gradlew jimbleCheck     # jimble の既知の落とし穴を見つける（直し方と引き先つき）
-./gradlew jimbleCheck --target=2.0   # 2.0 で型や意味が変わる呼び出しも出す（移行するとき）
+./gradlew jimbleCheck     # jimble の既知の落とし穴と 1.x の書き方を見つける（直し方と引き先つき）
 ./gradlew jimbleSkills    # jimble の版を上げたら、この skill をその版に揃える
 ```
 
@@ -213,11 +229,11 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
   誤検知なら、その行か前の行に `// jimble-check:ignore J101` と書く
 - **アプリ固有の決まりは skill を直さず、プロジェクトの根の `AGENTS.md` に書く。**skill を直すと `jimbleSkills` で揃えられなくなる
 - jimble が出す例外や警告の多くには **`詳しく: https://jimble.io/ja/〜.md`** が付いている。そのページを取って読む
-- **非推奨（`[removal]` の警告）は書き換える。**置き換え先は 1.5 にある（J801〜J810 と https://jimble.io/ja/migrate-2.md）。
-  **新しく書くコードで非推奨の API を使わない**——`DBTransaction` ではなく `db.transaction(...)` / `db.begin()`、
-  `router.path("/x")` ではなく `router.path("/x", x -> {...})`、`Dsl.or` ではなく `Dsl.anyOf`
+- **非推奨（`[removal]` の警告）は書き換える。新しく書くコードで使わない**——
+  `selectOrThrow` / `selectListOrThrow` → `select` / `selectList`、`insertNoReturnKey` → `insert`（件数が要るなら `execute`）、
+  `DB.isBatchSuccess` と `RedisLockStatus.Failed` は要らない（失敗は例外）。詳しくは https://jimble.io/ja/migrate-2.md
 - **`@CheckReturnValue`（`io.jimble.util.annotation`）が付いたメソッドの戻り値は捨てない。**
-  値を返すだけ（`Column.as(...)`・`Router.path("/x")`）か、失敗を戻り値でしか言わない（`db.update(...)` の -1・`validate(...)` のエラー一覧）。
+  値を返すだけのもの（`db.select(...)`・`db.begin()`・`rules.errors(...)`・`Column.as(...)`）で、捨てると何もしていない。
   Error Prone と IntelliJ は捨てた行を指摘する
 
 ## 詳しいことは引く

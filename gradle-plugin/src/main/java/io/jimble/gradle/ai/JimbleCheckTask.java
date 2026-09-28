@@ -54,14 +54,14 @@ public abstract class JimbleCheckTask extends DefaultTask {
 	 * どの版への移行を見るか（{@code --target=2.0}）
 	 *
 	 * <p>
-	 * {@code 2.0} にすると、2.0 で型や意味が変わる呼び出し（J9xx）も出す。
-	 * 1.5 では正しい書き方でもあるので、既定では出さない（要件 D-192）。
+	 * 2.0 の jimbleCheck は、2.0 で型や意味が変わった呼び出し（J9xx）を<b>いつも</b>出す（要件 D-198）。
+	 * 1.5 で {@code --target=2.0} を付けて流していたスクリプトがそのまま動くよう、受け付けて何もしない。
 	 * </p>
 	 *
 	 * @return	版
 	 */
 	@Internal
-	@Option(option = "target", description = "2.0 にすると、2.0 で型や意味が変わる呼び出し（J9xx）も出す")
+	@Option(option = "target", description = "2.0（既定。1.5 との互換のために受け付ける）")
 	public abstract Property<String> getTarget ();
 
 	/**
@@ -79,7 +79,7 @@ public abstract class JimbleCheckTask extends DefaultTask {
 			getRootDir().get().getAsFile().toPath()
 			, getProjectDir().get().getAsFile().toPath()
 			, AiResources.version()
-			, "2.0".equals(target));
+			, true);
 
 		if (findings.isEmpty()) {
 			getLogger().lifecycle("jimbleCheck: 見つかりませんでした（jimble %s の既知の落とし穴）".formatted(AiResources.version()));

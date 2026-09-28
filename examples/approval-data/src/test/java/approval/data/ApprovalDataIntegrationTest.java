@@ -5,6 +5,7 @@ import db.approval_data_example.ApprovalDataExample;
 import db.approval_data_example.table.rate.Rate;
 
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.cache.Cache;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -130,15 +132,15 @@ class ApprovalDataIntegrationTest {
 		 * <b>トップレベルの db { } にしてあるから当たる。</b>
 		 * subs にぶら下げていたら、監査ログのテーブルは存在しない。
 		 */
-		assertNotNull(ApprovalDataExample.db()
-			.select("SELECT 1 AS ok FROM request LIMIT 1"), "メインのテーブルが無い");
+		assertTrue(ApprovalDataExample.db()
+			.select("SELECT 1 AS ok FROM request LIMIT 1").isPresent(), "メインのテーブルが無い");
 
-		assertNotNull(ApprovalDataAuditExample.db()
-			.select("SELECT COUNT(1) AS cnt FROM audit_log"), "監査 DB のテーブルが無い");
+		assertTrue(ApprovalDataAuditExample.db()
+			.select("SELECT COUNT(1) AS cnt FROM audit_log").isPresent(), "監査 DB のテーブルが無い");
 
 		// 履歴もデータソースごとにできる
-		assertNotNull(ApprovalDataAuditExample.db()
-			.select("SELECT COUNT(1) AS cnt FROM migration"), "監査 DB に migration が無い");
+		assertTrue(ApprovalDataAuditExample.db()
+			.select("SELECT COUNT(1) AS cnt FROM migration").isPresent(), "監査 DB に migration が無い");
 
 	}
 
@@ -148,14 +150,9 @@ class ApprovalDataIntegrationTest {
 
 		DB db = ApprovalDataExample.db();
 
-		Data row = db.select("SELECT COUNT(1) AS cnt FROM audit_log");
-
-		/*
-		 * <b>例外ではなく戻り値で返る</b>（要件 F-D-11）。
-		 * null が返り、isError() が立つ。
-		 */
-		assertNull(row, "メインから監査ログが見えている");
-		assertTrue(db.isError(), "エラーが立っていない");
+		// 失敗は例外（2.0。要件 D-193）
+		assertThrows(SqlExecuteException.class, () -> db.select("SELECT COUNT(1) AS cnt FROM audit_log")
+			, "メインから監査ログが見えている");
 
 	}
 
@@ -183,7 +180,7 @@ class ApprovalDataIntegrationTest {
 			main.execute("insert into rate (code, value, updated_at) values ('TMP', 1, now())");
 
 			// 別の接続からは、まだ見えない
-			assertNull(scratch.select("SELECT id FROM rate WHERE code = 'TMP'")
+			assertTrue(scratch.select("SELECT id FROM rate WHERE code = 'TMP'").isEmpty()
 				, "サブ DB から未確定の行が見えている（接続を共有している）");
 
 			tx.rollback();
@@ -191,7 +188,7 @@ class ApprovalDataIntegrationTest {
 		}
 
 		// 戻したので、どちらからも見えない
-		assertNull(main.select("SELECT id FROM rate WHERE code = 'TMP'"));
+		assertTrue(main.select("SELECT id FROM rate WHERE code = 'TMP'").isEmpty());
 
 	}
 
@@ -210,7 +207,7 @@ class ApprovalDataIntegrationTest {
 		assertEquals(200, response.statusCode(), response.body());
 
 		assertEquals("approved", ApprovalDataExample.db()
-			.select("SELECT status FROM request WHERE id = ?", id).getString("status"));
+			.select("SELECT status FROM request WHERE id = ?", id).orElseThrow().getString("status"));
 
 		assertEquals(1, count(ApprovalDataExample.db()
 			, "SELECT COUNT(1) AS cnt FROM notice WHERE request_id = " + id));
@@ -254,7 +251,7 @@ class ApprovalDataIntegrationTest {
 		post("/requests/" + id + "/approve", "by=9");
 
 		Data row = ApprovalDataAuditExample.db().select(
-			"SELECT staff_id, action, target FROM audit_log ORDER BY id DESC LIMIT 1");
+			"SELECT staff_id, action, target FROM audit_log ORDER BY id DESC LIMIT 1").orElse(null);
 
 		assertNotNull(row, "監査ログが書かれていない");
 		assertEquals("approve", row.getString("action"));
@@ -306,11 +303,11 @@ class ApprovalDataIntegrationTest {
 		 * 誰も例外を見ないので、気づくのは<b>通知が来ないと言われたとき</b>である。
 		 */
 		assertEquals("pending", ApprovalDataExample.db()
-			.select("SELECT status FROM request WHERE id = ?", id).getString("status")
+			.select("SELECT status FROM request WHERE id = ?", id).orElseThrow().getString("status")
 			, "通知が入らなかったのに、状態だけ変わっている");
 
-		assertNull(ApprovalDataExample.db()
-			.select("SELECT decided_by FROM request WHERE id = ? AND decided_by IS NOT NULL", id)
+		assertTrue(ApprovalDataExample.db()
+			.select("SELECT decided_by FROM request WHERE id = ? AND decided_by IS NOT NULL", id).isEmpty()
 			, "決めた人だけ残っている");
 
 		// 確定していないので監査ログも書かれない
@@ -347,7 +344,7 @@ class ApprovalDataIntegrationTest {
 
 		}
 
-		assertNull(ApprovalDataExample.db().select("SELECT id FROM rate WHERE code = 'LEAK'")
+		assertTrue(ApprovalDataExample.db().select("SELECT id FROM rate WHERE code = 'LEAK'").isEmpty()
 			, "畳み忘れたトランザクションが確定している");
 
 	}
@@ -388,7 +385,7 @@ class ApprovalDataIntegrationTest {
 		 */
 		DB target = ApprovalDataExample.db();
 
-		List<Long> ids = target.insertBatch(List.of(
+		SqlExecuteException e = assertThrows(SqlExecuteException.class, () -> target.insertBatch(List.of(
 			SQL.insert(Rate.instance())
 				.value(Rate.code, "AAA")
 				.value(Rate.value, 1L)
@@ -397,10 +394,9 @@ class ApprovalDataIntegrationTest {
 				.value(Rate.value, 2L)
 				.value(Rate.code, "BBB")
 				.value(Rate.updated_at, Dsl.now())
-		));
+		)), "SQL が違うのに通っている");
 
-		assertNull(ids, "SQL が違うのに通っている");
-		assertEquals("DB_998", target.getError().getCode(), String.valueOf(target.getError()));
+		assertEquals("DB_998", e.getCode(), e.getMessage());
 
 		// 1件も入っていない
 		assertEquals(0, count(target, "SELECT COUNT(1) AS cnt FROM rate WHERE code IN ('AAA','BBB')"));
@@ -489,7 +485,7 @@ class ApprovalDataIntegrationTest {
 		 */
 		assertTrue(RedisClient.isConfigured(), "テストの設定に redis が無い");
 
-		try (RedisLockResult lock = RedisLock.tryLock("approval-data-test", 1000, 5000)) {
+		try (RedisLockResult lock = RedisLock.tryLock("approval-data-test", 1000, 5000).orElseThrow()) {
 
 			assertEquals(RedisLockStatus.Success, lock.status());
 
@@ -543,8 +539,8 @@ class ApprovalDataIntegrationTest {
 		DB db = ApprovalDataExample.db();
 
 		// 起動のときに走っている（Bootstrap に登録されている）
-		assertNotNull(db.select("SELECT version FROM migration_code WHERE version LIKE ?"
-			, "20260910-%"), "起動のときに走っていない");
+		assertTrue(db.select("SELECT version FROM migration_code WHERE version LIKE ?"
+			, "20260910-%").isPresent(), "起動のときに走っていない");
 
 		/*
 		 * <b>消してから、もう一度走らせる。</b>
@@ -568,7 +564,7 @@ class ApprovalDataIntegrationTest {
 
 		Data row = db.select(
 			"SELECT state, execute_info FROM migration_code WHERE version LIKE ?"
-			, "20260910-%");
+			, "20260910-%").orElse(null);
 
 		assertNotNull(row, "コードマイグレーションの記録が無い");
 		assertEquals("completed", row.getString("state"), row.toString());
@@ -616,7 +612,7 @@ class ApprovalDataIntegrationTest {
 
 		return ApprovalDataExample.db()
 			.select("SELECT id FROM request WHERE status = 'pending' ORDER BY id LIMIT 1")
-			.getLong("id");
+			.orElseThrow().getLong("id");
 
 	}
 
@@ -629,7 +625,7 @@ class ApprovalDataIntegrationTest {
 	private static long rateOf (String code) {
 
 		return ApprovalDataExample.db()
-			.select("SELECT value FROM rate WHERE code = ?", code).getLong("value");
+			.select("SELECT value FROM rate WHERE code = ?", code).orElseThrow().getLong("value");
 
 	}
 
@@ -642,7 +638,7 @@ class ApprovalDataIntegrationTest {
 	 */
 	private static int count (DB db, String sql) {
 
-		Data row = db.select(sql);
+		Data row = db.select(sql).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 

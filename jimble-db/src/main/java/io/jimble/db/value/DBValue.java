@@ -498,7 +498,7 @@ public class DBValue {
 					value_key = ?
 			"""
 			, key
-		);
+		).orElse(null);
 		if (result == null) {
 			result = set(db, key, defaultValue, cacheSecond, description);
 		} else {

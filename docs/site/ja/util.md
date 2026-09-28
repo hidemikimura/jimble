@@ -31,19 +31,26 @@ DB の値は**列（`Column`）で読み書き**します。列版は**テーブ
 | `flattenTable(Table)` / `extractTableData(Table)` | 平らにする / 取り出す。**無ければ `null`** |
 
 > [!TRAP]
-> **`getStringOptional` などの Optional 版は Data を書き換えます。**
-> 無ければ空文字を **`put` してから**返すので、読んだだけでキーが増えます。
-> JSON にして返す直前やループの中で呼ぶと、出力が変わります。
+> **`getDataOptional` / `getStringListOptional` などの Optional 版は Data を書き換えます。**
+> 名前どおり「無ければ空を作って **`put` してから**返す」ので、`data.getDataOptional("x").put(...)` と書いた値が残ります。
+> そのかわり、読んだだけでキーが増えます。JSON にして返す直前やループの中で呼ぶと、出力が変わります。
+> あった値は書き換えません。`getStringOptional` は空文字を返すだけで、書き込みません。
 
 > [!TRAP]
-> **「無い」と「0」が区別できません。**`getString` は `null`、
+> **「無い」と「0」が区別できません。**キーが無い・`null`・空文字のとき、`getString` は `null`、
 > `getInt` は `0`、`getBoolean` は `false` を返します。
 > 区別したいときは `getIntObject` など **Object 版**か `isNull(key)` を使ってください。
->
-> **1.5.0 からは既定値を渡す形があります**（`getInt(key, 既定値)` / `getLong` / `getDouble` / `getBoolean` / `getString`）。
-> 既定値を返すのは**無い・`null`・空文字のときだけ**で、読めない値（`"abc"`、int に `"1.5"`、桁あふれ、
-> 真偽に `"yes"`）は `DataConversionException` になります。**書き込みもしません**（Optional 版と違います）。
-> 2.0 では `getInt(key)` も「無ければ例外」になります。
+> 既定値を渡す形もあります（`getInt(key, 既定値)` / `getLong` / `getDouble` / `getBoolean` / `getString`）。
+
+**あるのに読めない値は `DataConversionException` です。**`"abc"`、int に `"1.5"`、桁あふれ、真偽に `"yes"`（読めるのは `true` / `false` / `1` / `0` だけ）などです。
+`getEnum` も一致しなければ例外で、無くてよいなら `getEnumOptional(key, 型)` を使います。
+利用者の入力を `getInt` などで読むなら、**先にバリデーションを通してください。**通さずに読んで例外になると 500 です。
+
+- 型を変えて読んでも（数の一覧を `getStringList` で読むなど）、**元の Data には書き戻しません**
+- 書き換えられない写しが要るときは `readOnlyCopy()`（書き込むと `UnsupportedOperationException`）
+
+> [!NOTE]
+> 1.x は読めない値でも黙って `0` / `false` / `null` を返していました（[2.0 への移行](./migrate-2)）。
 
 > [!NOTE]
 > **`toString()` は要約です**（キーと型だけ）。
@@ -65,16 +72,20 @@ DB の値は**列（`Column`）で読み書き**します。列版は**テーブ
 | ストリームに直接 | `data.outputJsonString(outputStream)` |
 | 組み立てずに逐次書く | `JsonHashWriter` / `JsonArrayWriter` |
 
-> [!WARN]
-> **`Dson.encodes` / `decodes`（static 版）は失敗しても `null` を返すだけ**です。
-> 理由が要るなら `new Dson()` を作り、`decode(...)` のあとに `isError()` /
-> `getErrorException()` を見てください。
+**壊れた JSON は `JsonParseException`（非検査）です。**`Data.fromJsonString` も `Dson.decodes` も同じです。
+括弧が閉じていない・後ろに余分なものがある・JSON ですらない、のどれでも例外になります。
+空文字と `"null"` は `null` を返します（例外にしません）。
+
+> [!NOTE]
+> **形しか見ません。**読み手は寛容なので、括弧が閉じていれば、値の無い `"a":` のような文法の誤りは通ります。
+> インスタンスの `new Dson().decode(...)` は例外を投げず、これまでどおり `isError()` / `getErrorException()` で見ます。
 
 ## 型変換
 
 `Convertor.convert(conf, src, 変換先.class)` が入口です。
 Bean ↔ `Data` ↔ Map ↔ List ↔ プリミティブが同じ1本を通ります。
 `data.convert(new MyBean())` も中身は同じものです。
+変換できなければ**非検査例外**です（`throws` も `catch` も要りません）。
 
 > [!TRAP]
 > **`Configration` は使い回さないでください。**変換の途中で階層カウンタと
@@ -102,7 +113,7 @@ Data json = res.getContentJson();
 - POST は `HttpPostExecutor`。`addBodyForm(name, value)` / `setBodyJson(data)`
 - **ファイルを1つでも足すと multipart になります**（`addBodyForm(name, file, contentType)`）
 - プロキシは `setProxy(new HttpProxy(host, port, id, pass))`
-- **例外を投げません。**`isError` を見てください（DB と同じ流儀）
+- **例外を投げません。**`isError` を見てください
 
 > [!WARN]
 > **タイムアウトの既定は 30 秒**で、接続と応答の**両方に同じ値**が入ります。個別には指定できません。
@@ -123,6 +134,7 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 ```
 
 **1行ずつ読みます**（全部メモリに載せません）。書くほうは `CsvWriter#writeLine(Object...)`。
+`CsvReader` / `CsvWriter` は**検査例外を投げません**。読み書きの失敗は `UncheckedIOException` です。
 
 > [!WARN]
 > **文字コードを省略すると、判定に失敗したときは Shift_JIS になります。**
@@ -131,7 +143,7 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 ## XML
 
 `XmlParser.parse(file)` で `XmlData` の木にします（**全部メモリに載ります**）。
-組み立ては `XmlBuilder.build(xmlData)`。
+組み立ては `XmlBuilder.build(xmlData)`（検査例外は投げません）。
 
 ## ハッシュと暗号
 
@@ -173,7 +185,7 @@ String value = DBValue.getString(db, "last_imported_at", "");
 | URL | `UrlUtil` / `UrlBuilder`（ドメイン抽出・punycode・エンコード） |
 | 数値・パース | `Parse.parseInt` など（**失敗しても例外を投げません**） |
 | 正規表現 | `Patterns`（メール・URL・ドメイン・電話） |
-| ファイル | `FileUtil` / `IOUtil` / `FileCharDetecter`（文字コード判定） |
+| ファイル | `FileUtil` / `IOUtil`（`copy` / `readLines` の失敗は `UncheckedIOException`）/ `FileCharDetecter`（文字コード判定） |
 | スレッド | `VirtualThreadManager` / `ThreadManager`（[実行モデル](./execution)） |
 | 計測 | `StopWatch` |
 

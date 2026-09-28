@@ -516,14 +516,8 @@ public final class Remember {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?".formatted(table(db)), realm, userId);
-
-			if (db.isError()) {
-				throw new IllegalStateException("ログインの記憶を消せませんでした: %s（%s）"
-					.formatted(who, db.getError() == null ? "理由不明" : db.getError().getMessage()));
-			}
-
-			return deleted;
+			// 消せなければ例外（下で包み直す）
+			return db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?".formatted(table(db)), realm, userId);
 
 		} catch (IllegalStateException ex) {
 
@@ -821,7 +815,7 @@ public final class Remember {
 			return db.select("""
 				SELECT realm, validator, previous_validator, rotated_at, user_id, created_at, last_used_at
 				FROM %s WHERE selector = ?
-				""".formatted(table(db)), selector);
+				""".formatted(table(db)), selector).orElse(null);
 		} catch (Exception ex) {
 			Log.error(ex, "ログインの記憶を読めませんでした");
 			return null;

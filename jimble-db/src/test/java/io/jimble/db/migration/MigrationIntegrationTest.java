@@ -56,9 +56,7 @@ class MigrationIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), MigrationIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), MigrationIntegrationTest.class);
 
 	}
 
@@ -328,7 +326,7 @@ class MigrationIntegrationTest {
 
 		assertEquals("complete", state("test_1.sql"));
 		assertEquals("", DBUtil.getMainDB()
-			.select("SELECT down FROM migration WHERE name = ?", "test_1.sql").getString("down"));
+			.select("SELECT down FROM migration WHERE name = ?", "test_1.sql").orElseThrow().getString("down"));
 
 	}
 
@@ -664,7 +662,7 @@ class MigrationIntegrationTest {
 		assertEquals("complete", state("test_1.sql"));
 		assertTrue(hasTable("migration_test_a"));
 		assertEquals("a;b", DBUtil.getMainDB()
-			.select("SELECT v FROM migration_test_a WHERE id = 1").getString("v"));
+			.select("SELECT v FROM migration_test_a WHERE id = 1").orElseThrow().getString("v"));
 
 		// コメントで切れていれば、実行は create と insert の2文になる
 		assertEquals(2, upCount("test_1.sql"), "1文ずつに切れていない");
@@ -693,10 +691,10 @@ class MigrationIntegrationTest {
 
 		assertEquals("complete", state("test_1.sql"));
 		assertEquals(2, DBUtil.getMainDB()
-			.select("SELECT COUNT(*) AS cnt FROM migration_test_a").getLong("cnt")
+			.select("SELECT COUNT(*) AS cnt FROM migration_test_a").orElseThrow().getLong("cnt")
 			, "バックスラッシュのせいで後ろの insert が巻き込まれている");
 		assertEquals("c:\\", DBUtil.getMainDB()
-			.select("SELECT v FROM migration_test_a WHERE id = 1").getString("v"));
+			.select("SELECT v FROM migration_test_a WHERE id = 1").orElseThrow().getString("v"));
 
 		/*
 		 * 件数だけでは足りない。PostgreSQL の JDBC は「;」で区切った複数文を
@@ -772,7 +770,7 @@ class MigrationIntegrationTest {
 
 		assertEquals(expected
 			, DBUtil.getMainDB()
-				.select("SELECT hash FROM migration WHERE name = ?", "test_1.sql").getString("hash")
+				.select("SELECT hash FROM migration WHERE name = ?", "test_1.sql").orElseThrow().getString("hash")
 			, "ハッシュの取り方が変わっている");
 
 	}
@@ -853,8 +851,7 @@ class MigrationIntegrationTest {
 				continue;
 			}
 
-			db.execute(sql);
-			assertFalse(db.isError(), sql + " / " + (db.isError() ? db.getError().getMessage() : ""));
+			db.execute(sql);     // 失敗は例外
 			count++;
 
 		}
@@ -885,7 +882,7 @@ class MigrationIntegrationTest {
 	 */
 	private String state (String name) {
 
-		Data row = DBUtil.getMainDB().select("SELECT state FROM migration WHERE name = ?", name);
+		Data row = DBUtil.getMainDB().select("SELECT state FROM migration WHERE name = ?", name).orElse(null);
 
 		return row == null ? null : row.getString("state");
 
@@ -899,7 +896,7 @@ class MigrationIntegrationTest {
 	 */
 	private String errorInfo (String name) {
 
-		Data row = DBUtil.getMainDB().select("SELECT error_info FROM migration WHERE name = ?", name);
+		Data row = DBUtil.getMainDB().select("SELECT error_info FROM migration WHERE name = ?", name).orElse(null);
 
 		return row == null ? null : row.getString("error_info");
 
@@ -915,7 +912,7 @@ class MigrationIntegrationTest {
 
 		return DBUtil.getMainDB()
 			.select("SELECT COUNT(*) AS cnt FROM migration_history WHERE name = ? AND kind = 'up'", name)
-			.getLong("cnt");
+			.orElseThrow().getLong("cnt");
 
 	}
 
@@ -928,7 +925,7 @@ class MigrationIntegrationTest {
 
 		return DBUtil.getMainDB()
 			.select("SELECT COUNT(*) AS cnt FROM migration_history WHERE name LIKE 'test_%'")
-			.getLong("cnt");
+			.orElseThrow().getLong("cnt");
 
 	}
 
@@ -944,7 +941,7 @@ class MigrationIntegrationTest {
 		return DBUtil.getMainDB().select("""
 			SELECT COUNT(*) AS cnt FROM information_schema.tables
 			WHERE table_schema = %s AND table_name = ?
-			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table).getLong("cnt") > 0;
+			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table).orElseThrow().getLong("cnt") > 0;
 
 	}
 
@@ -960,7 +957,7 @@ class MigrationIntegrationTest {
 		return DBUtil.getMainDB().select("""
 			SELECT COUNT(*) AS cnt FROM information_schema.columns
 			WHERE table_schema = %s AND table_name = ? AND column_name = ?
-			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table, column).getLong("cnt") > 0;
+			""".formatted(TestDdl.currentSchema(DBUtil.getMainDB())), table, column).orElseThrow().getLong("cnt") > 0;
 
 	}
 

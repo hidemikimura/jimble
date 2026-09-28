@@ -176,16 +176,18 @@ public class DBSticky {
 			&& DBUtil.isUseDB() && DBUtil.isUseRead();
 
 		if (isPersist) {
-			Data row = DBUtil.getMainDB().newWriteDB().select("""
-				SELECT
-					last_updated_at
-				FROM
-					db_sticky
-				WHERE
-					cookie_id = ?
-			""", cookieId);
-			if (row != null) {
-				lastUpdatedAt = row.getLong("last_updated_at");
+			try {
+				DBUtil.getMainDB().newWriteDB().select("""
+					SELECT
+						last_updated_at
+					FROM
+						db_sticky
+					WHERE
+						cookie_id = ?
+				""", cookieId).ifPresent(row -> lastUpdatedAt = row.getLong("last_updated_at"));
+			} catch (SqlExecuteException ex) {
+				// 読めなくてもリクエストは止めない（書いたことが無い扱い。apply() の失敗と揃える）
+				Log.error(ex, "db_sticky を読めませんでした");
 			}
 		}
 

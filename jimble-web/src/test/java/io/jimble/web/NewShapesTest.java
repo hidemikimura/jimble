@@ -121,12 +121,9 @@ class NewShapesTest {
 	@DisplayName("D-191 戻り値を捨てると効かないメソッドに @CheckReturnValue が付いている")
 	void checkReturnValue () throws Exception {
 
-		assertAnnotated(Router.class, "path", 1);
 		assertAnnotated(Auth.class, "attemptLogin", 4);
 		assertAnnotated(Csrf.class, "isValid", 1);
-		assertAnnotated(ValidationRules.class, "validate", 2);
 		assertAnnotated(ValidationRules.class, "errors", 2);
-		assertAnnotated(Validator.class, "validate", 3);
 		assertAnnotated(Validator.class, "errors", 3);
 
 	}

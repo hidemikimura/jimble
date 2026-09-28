@@ -34,14 +34,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class DbMetricsIntegrationTest {
 
 	@BeforeAll
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), DbMetricsIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), DbMetricsIntegrationTest.class);
 
 	}
 
@@ -81,14 +80,13 @@ class DbMetricsIntegrationTest {
 		 */
 		long before = value("db.pool.jimble_test.active");
 
-		try (DB db = DBUtil.getMainDB()) {
+		/*
+		 * <b>トランザクションの外では、1文ごとに返してしまう。</b>
+		 * 借りたままにするために取引を開く
+		 */
+		try (DB db = DBUtil.getMainDB(); Tx tx = db.begin()) {
 
-			/*
-			 * <b>トランザクションの外では、1文ごとに返してしまう。</b>
-			 * 借りたままにするために取引を開く
-			 */
-			db.beginTransaction();
-			db.select("SELECT 1 AS ok");
+			assertTrue(db.select("SELECT 1 AS ok").isPresent() && !tx.isFinished());
 
 			assertEquals(before + 1, value("db.pool.jimble_test.active"), "借りたのに増えていない");
 

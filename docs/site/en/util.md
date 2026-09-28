@@ -31,20 +31,30 @@ DB values are **read and written by column (`Column`)**. The column versions **f
 | `flattenTable(Table)` / `extractTableData(Table)` | Flatten / pull out. **`null` if it is not there** |
 
 > [!TRAP]
-> **The Optional variants — `getStringOptional` and the rest — write to the Data.**
-> When the key is missing they **`put` an empty string first** and then return it,
-> so reading alone adds keys. Call one just before serialising to JSON, or inside a loop,
-> and the output changes.
+> **The Optional variants — `getDataOptional`, `getStringListOptional` and the rest — write to the Data.**
+> As the name says, when the key is missing they **create an empty value, `put` it** and then return it,
+> so a value written with `data.getDataOptional("x").put(...)` stays.
+> The price is that reading alone adds keys. Call one just before serialising to JSON, or inside a loop,
+> and the output changes. A value that is already there is not rewritten.
+> `getStringOptional` just returns an empty string and does not write.
 
 > [!TRAP]
-> **You cannot tell "missing" from "0".** `getString` returns `null`,
+> **You cannot tell "missing" from "0".** When the key is missing, `null` or blank, `getString` returns `null`,
 > `getInt` returns `0`, `getBoolean` returns `false`.
 > When you need to tell them apart, use the **Object versions** — `getIntObject` and friends — or `isNull(key)`.
->
-> **Since 1.5.0 there is a form that takes a default** (`getInt(key, default)` / `getLong` / `getDouble` / `getBoolean` / `getString`).
-> It returns the default **only when the key is missing, `null` or blank**; a value it cannot read (`"abc"`, `"1.5"` as an int,
-> an overflow, `"yes"` as a boolean) throws a `DataConversionException`. **It does not write either** (unlike the Optional versions).
-> In 2.0, `getInt(key)` will also throw when the key is missing.
+> There is also a form that takes a default (`getInt(key, default)` / `getLong` / `getDouble` / `getBoolean` / `getString`).
+
+**A value that is there but cannot be read throws `DataConversionException`.** That means `"abc"`, `"1.5"` as an int,
+an overflow, `"yes"` as a boolean (only `true` / `false` / `1` / `0` are read), and so on.
+`getEnum` also throws when nothing matches; if the value may be absent, use `getEnumOptional(key, type)`.
+When you read user input with `getInt` and friends, **run it through validation first.** Read it unvalidated,
+hit the exception, and the answer is a 500.
+
+- Reading as a different type (a list of numbers through `getStringList`, say) **does not write back into the Data**
+- When you want a copy that cannot be changed, use `readOnlyCopy()` (writing to it throws `UnsupportedOperationException`)
+
+> [!NOTE]
+> In 1.x an unreadable value silently came back as `0` / `false` / `null` ([Migrating to 2.0](./migrate-2)).
 
 > [!NOTE]
 > **`toString()` is a summary** (keys and types only).
@@ -66,16 +76,21 @@ It is our own implementation (neither Jackson nor Gson).
 | Straight to a stream | `data.outputJsonString(outputStream)` |
 | Write it out piece by piece, without building it | `JsonHashWriter` / `JsonArrayWriter` |
 
-> [!WARN]
-> **The static `Dson.encodes` / `decodes` do nothing on failure but return `null`.**
-> If you need the reason, create a `new Dson()` and check `isError()` /
-> `getErrorException()` after `decode(...)`.
+**Broken JSON throws `JsonParseException` (unchecked).** `Data.fromJsonString` and `Dson.decodes` behave the same.
+Unclosed brackets, something extra at the end, or something that is not JSON at all — each of these throws.
+An empty string and `"null"` return `null` (no exception).
+
+> [!NOTE]
+> **Only the shape is checked.** The reader is lenient, so as long as the brackets close, a grammar mistake such as
+> `"a":` with no value gets through.
+> The instance method `new Dson().decode(...)` does not throw; check `isError()` / `getErrorException()` as before.
 
 ## Type conversion
 
 `Convertor.convert(conf, src, Target.class)` is the way in.
 Bean ↔ `Data` ↔ Map ↔ List ↔ primitives all go down the same single path.
 `data.convert(new MyBean())` is the same machinery underneath.
+When it cannot convert, it throws an **unchecked exception** (no `throws` or `catch` needed).
 
 > [!TRAP]
 > **Do not reuse a `Configration`.** Its depth counter and its record of circular
@@ -103,7 +118,7 @@ Data json = res.getContentJson();
 - POST is `HttpPostExecutor`. `addBodyForm(name, value)` / `setBodyJson(data)`
 - **Add even one file and it becomes multipart** (`addBodyForm(name, file, contentType)`)
 - The proxy is `setProxy(new HttpProxy(host, port, id, pass))`
-- **It does not throw.** Check `isError` (the same style as the DB)
+- **It does not throw.** Check `isError`
 
 > [!WARN]
 > **The default timeout is 30 seconds**, and **the same value goes to both** connect and response. You cannot set them separately.
@@ -124,6 +139,7 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 ```
 
 **It reads a line at a time** (it does not put the whole file in memory). For writing, `CsvWriter#writeLine(Object...)`.
+`CsvReader` / `CsvWriter` **throw no checked exceptions**. A read or write failure is an `UncheckedIOException`.
 
 > [!WARN]
 > **Leave the character encoding out and, when detection fails, you get Shift_JIS.**
@@ -132,7 +148,7 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 ## XML
 
 `XmlParser.parse(file)` turns it into a tree of `XmlData` (**all of it goes in memory**).
-To build one, `XmlBuilder.build(xmlData)`.
+To build one, `XmlBuilder.build(xmlData)` (it throws no checked exception).
 
 ## Hashing and encryption
 
@@ -175,7 +191,7 @@ String value = DBValue.getString(db, "last_imported_at", "");
 | URLs | `UrlUtil` / `UrlBuilder` (domain extraction, punycode, encoding) |
 | Numbers and parsing | `Parse.parseInt` and friends (**they do not throw on failure**) |
 | Regular expressions | `Patterns` (email, URL, domain, phone) |
-| Files | `FileUtil` / `IOUtil` / `FileCharDetecter` (character encoding detection) |
+| Files | `FileUtil` / `IOUtil` (a failure in `copy` / `readLines` is an `UncheckedIOException`) / `FileCharDetecter` (character encoding detection) |
 | Threads | `VirtualThreadManager` / `ThreadManager` ([Execution model](./execution)) |
 | Measurement | `StopWatch` |
 

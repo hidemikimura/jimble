@@ -3,6 +3,7 @@ package io.jimble.db.sqlcache;
 import io.jimble.db.TestDdl;
 import io.jimble.core.context.BatchContext;
 import io.jimble.db.DB;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sqlcache.SqlCacheSchema.Customer;
@@ -43,7 +44,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class SqlCacheIntegrationTest {
 
 	@BeforeAll
@@ -51,7 +51,7 @@ class SqlCacheIntegrationTest {
 
 		enableSqlCache();
 
-		assertTrue(DBUtil.load(Conf.conf().config(), SqlCacheIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), SqlCacheIntegrationTest.class);
 
 		try (DB db = DBUtil.getMainDB()) {
 
@@ -166,7 +166,7 @@ class SqlCacheIntegrationTest {
 			SQL.select()
 				.from(Customer.instance())
 				.inner(Shop.instance()).on(Customer.shop_id.eq(Shop.id))
-				.where(Customer.id.eq(1)));
+				.where(Customer.id.eq(1))).orElse(null);
 
 	}
 
@@ -431,9 +431,10 @@ class SqlCacheIntegrationTest {
 
 			selectCustomer1(db);
 
-			db.beginTransaction();
-			db.update(SQL.update(Customer.instance()).set(Customer.name, "消える").where(Customer.id.eq(1)));
-			db.rollbackEndTransaction();
+			try (Tx tx = db.begin()) {
+				db.update(SQL.update(Customer.instance()).set(Customer.name, "消える").where(Customer.id.eq(1)));
+				tx.rollback();
+			}
 
 			long sql = countSql("当たるはず", () ->
 				assertEquals("顧客1", selectCustomer1(db).getData("customer").getString("name")));
@@ -454,9 +455,8 @@ class SqlCacheIntegrationTest {
 
 			selectCustomer1(db);
 
-			db.beginTransaction();
-			db.update(SQL.update(Customer.instance()).set(Customer.name, "確定").where(Customer.id.eq(1)));
-			db.commitEndTransaction();
+			db.transaction(tx ->
+				db.update(SQL.update(Customer.instance()).set(Customer.name, "確定").where(Customer.id.eq(1))));
 
 			long sql = countSql("引き直し", () ->
 				assertEquals("確定", selectCustomer1(db).getData("customer").getString("name")));
@@ -475,13 +475,16 @@ class SqlCacheIntegrationTest {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			db.beginTransaction();
-			db.update(SQL.update(Customer.instance()).set(Customer.name, "未確定").where(Customer.id.eq(1)));
+			try (Tx tx = db.begin()) {
 
-			// トランザクションの中なので素通しで引く（自分の変更が見える）
-			assertEquals("未確定", selectCustomer1(db).getData("customer").getString("name"));
+				db.update(SQL.update(Customer.instance()).set(Customer.name, "未確定").where(Customer.id.eq(1)));
 
-			db.rollbackEndTransaction();
+				// トランザクションの中なので素通しで引く（自分の変更が見える）
+				assertEquals("未確定", selectCustomer1(db).getData("customer").getString("name"));
+
+				tx.rollback();
+
+			}
 
 			// 未確定の値が残っていたら、ここで「未確定」が返る
 			assertEquals("顧客1", selectCustomer1(db).getData("customer").getString("name")

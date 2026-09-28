@@ -153,18 +153,6 @@ public class SelectQuery implements ISelect {
 
 	/**
 	 * {@inheritDoc}
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	@SuppressWarnings("removal")
-	public ISelect subtract(Object value) {
-
-		return divide(value);
-
-	}
-
-	/**
-	 * {@inheritDoc}
 	 *
 	 * <p>
 	 * 演算が2つ以上あるときは、<b>書いた順に左から括弧でくくる</b>——

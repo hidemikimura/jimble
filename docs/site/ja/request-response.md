@@ -29,20 +29,22 @@ order: 2
 （「無い」と「0」は区別できません。区別したいときは `getIntObject` などの Object 版か `isNull(key)`。
 詳しくは [ユーティリティ](./util)）。
 
-**既定値を渡す形（1.5.0 から）を勧めます。**`getInt("page", 1)` は、無い・空欄のときだけ `1` を返し、
-`"abc"` のように読めない値は `DataConversionException` で止まります（黙って `0` になりません）。
+**あるのに読めない値**（`"abc"` を `getInt` で読むなど）は `DataConversionException` です（黙って `0` になりません）。
+**利用者の入力は、先に [検証](./validation) を通してください。**通さずに読んで例外になると 500 です。
+既定値を渡す形（`getInt("page", 1)`）は、無い・空欄のときだけ既定値を返します。
+
+**`Request` は `Data` ではありません。**`context.request().getString("title")` のようには読めません（コンパイルエラーです）。
+上の表のどれか（ふつうは `bodyAll()`）を通してください。
+
+```java
+Data input = context.request().bodyAll();
+String title = input.getString("title");
+```
+
+**`Content-Type` が `application/json` なのに本文が JSON として読めないと、`body()` / `bodyJson()` / `bodyAll()` が 400 の `HttpException` を投げます**（何度読んでも同じです）。
+途中まで読んだ本文や空の `Data` で先へ進むことはありません。
 
 > [!TRAP]
-> **`context.request()` から直接は読めません。**
-> `Request` も `Data` なので `context.request().getString("title")` は<b>コンパイルが通り</b>ますが、
-> 本文もクエリも入っていないので **`null` が返ります。**
-> 上の表のどれか（ふつうは `bodyAll()`）を通してください。
->
-> ```java
-> Data input = context.request().bodyAll();
-> String title = input.getString("title");
-> ```
->
 > **`getStringOptional` は「無ければ空文字」ですが、その空文字を `Data` に入れます。**
 > 読んだだけでキーが増えるので、JSON にして返す直前やループの中では使わないでください
 > （[ユーティリティ](./util)）。
@@ -96,8 +98,11 @@ JSON の本文と混ざったときは、フォームの値が JSON を上書き
 `ValidationMessages.toMessages(errors)` で、項目名 → メッセージの `Data` になります。
 そのまま JSON で返すか、テンプレートに渡します。
 
+止めてよいなら `rules.validate(db, input);` と文で書きます。通らなければ `ValidationException` で、枠組みが 422 を返します。
+
 ルールの一覧、ルート単位でかける `ValidationExecutor`、ページングは
 [検証とページング](./validation) にまとめてあります。
+ページングの件数は**最初の1回で**渡します（`paging()` のあとに `paging(50)` と違う件数を渡すと `IllegalStateException` です）。
 
 ## 返す
 
@@ -111,6 +116,10 @@ context.response().code(201).send();               // 本文なし
 ```
 
 `json()` は組み立てるだけです。複数回呼ぶと、1つの JSON に足されていきます。
+
+**返し方は1つだけです。**`json` / `jsonl` / `text` / `cache` / `view` / `redirect` / `download` のうち、
+違う種類を2つ積んだ時点で `IllegalStateException` になります（`json(...)` のあとに `redirect(...)` など）。
+同じ種類を重ねるのは構いません。
 
 **`json()` のあとに `send()` を書く必要はありません。**
 組み立てておけば、ディスパッチャが実行の終わりに送ります。
@@ -146,7 +155,7 @@ try (OutputStream out = context.response().outputStream()) {
 
 **`outputStream()` を呼んだ時点でステータスとヘッダが決まります。**
 `code(...)`・`cookies()` に積んだ Cookie・既定の `Cache-Control: no-store`（自分で決めていれば上書きしません）は、
-その前に済ませてください。あとから変えても届きません。
+その前に済ませてください。**送ったあとにヘッダや Cookie を書くと `IllegalStateException` です**（もう届きません）。
 204 / 205 / 304 のときは、書いたものは捨てられて WARN が出ます。
 
 **書いたものは `flush()` するまで溜まります。**CSV のように最後まで書き切るものはそのままで構いませんが、

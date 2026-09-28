@@ -2,6 +2,7 @@ package io.jimble.db.migration.code;
 
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.migration.MigrationException;
@@ -144,10 +145,11 @@ public abstract class AbstractCodeMigration {
 		DB db = DBUtil.getMainDB();
 
 		// 移送元は version しか取っていなかったため state の判定が常に外れていた
-		Data row = db.select("SELECT version, state FROM migration_code WHERE version = ?", versionKey());
-
-		if (db.isError()) {
-			throw new MigrationException("コードマイグレーションの状態を取得できませんでした: " + versionKey(), db.getError());
+		Data row;
+		try {
+			row = db.select("SELECT version, state FROM migration_code WHERE version = ?", versionKey()).orElse(null);
+		} catch (SqlExecuteException ex) {
+			throw new MigrationException("コードマイグレーションの状態を取得できませんでした: " + versionKey(), ex);
 		}
 
 		if (row != null) {
@@ -167,7 +169,8 @@ public abstract class AbstractCodeMigration {
 
 		DB db = DBUtil.getMainDB();
 
-		db.insert(Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.MIGRATION_CODE) + """
+		try {
+			db.insert(Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.MIGRATION_CODE) + """
 				 (
 					version
 					, state
@@ -184,10 +187,9 @@ public abstract class AbstractCodeMigration {
 			, MigrationCodeState.waiting.name()
 			, null
 			, null
-		);
-
-		if (db.isError()) {
-			throw new MigrationException("コードマイグレーションを登録できませんでした: " + versionKey(), db.getError());
+			);
+		} catch (SqlExecuteException ex) {
+			throw new MigrationException("コードマイグレーションを登録できませんでした: " + versionKey(), ex);
 		}
 
 	}
@@ -253,12 +255,19 @@ public abstract class AbstractCodeMigration {
 	 */
 	private void warnIfRenamed (DB db) {
 
-		Data row = db.select(
-			"SELECT version FROM migration_code WHERE version LIKE ? AND version <> ?"
-			, versionYyyyMmDd() + "-%." + getClass().getSimpleName()
-			, versionKey());
+		Data row;
+		try {
+			row = db.select(
+				"SELECT version FROM migration_code WHERE version LIKE ? AND version <> ?"
+				, versionYyyyMmDd() + "-%." + getClass().getSimpleName()
+				, versionKey()).orElse(null);
+		} catch (SqlExecuteException ex) {
+			// 気づかせるための確かめなので、読めなければ黙って先へ進む（状態は上で読めている）
+			Log.warn("コードマイグレーションの改名の確かめができませんでした: " + ex.getMessage());
+			return;
+		}
 
-		if (db.isError() || row == null) {
+		if (row == null) {
 			return;
 		}
 

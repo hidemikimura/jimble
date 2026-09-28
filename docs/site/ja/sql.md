@@ -62,6 +62,10 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめます（1.5.0 �
 > **空の一覧（と `null`）は組み立て時に落ちます**——`IN ()` は壊れた SQL で、
 > `IN (NULL)` に潰すと**どの行にも当たらないまま 0 件が返る**ためです。
 
+> [!NOTE]
+> **`NULL` との比較は `is_null()` / `is_not_null()` で書きます。**
+> `eq(null)` / `not(null)` は組み立て時に `SqlBuildException` になります。`= NULL` はどの行にも当たらないためです。
+
 ## 結合
 
 ```java
@@ -80,7 +84,7 @@ SQL.select()
 ## 入れる・直す・消す
 
 ```java
-long id = db.insert(
+long id = db.insertKey(
 	SQL.insert(Post.instance())
 		.value(Post.title, title)
 		.value(Post.created_at, new Date())      // アプリ側の時計
@@ -109,8 +113,14 @@ int deleted = db.delete(
 > 台ごとに時計がずれていると、<b>あとから入れた行のほうが古い</b>ことが起こり、
 > 作成日時で並べた一覧が入れ替わります。
 
-`insert` は採番された ID を返します。ID が要らないときは
-`insertNoReturnKey` のほうが速いです。
+`insertKey` は採番された ID を返します（採番されなければ例外）。ID が要らないときは
+`insert` です（戻り値はありません）。件数が要る `INSERT ... SELECT` などは `execute(...)` で流します。
+
+`update` / `delete` は当たった件数を返します。**失敗はどれも `SqlExecuteException`** で、
+一意制約の違反だけ `DuplicateKeyException` です（[DB を使う](./db)）。
+
+> [!NOTE]
+> 現在時刻は `Dsl.now()` です。**文字列の `"now()"` はただの文字列として入ります**（1.x は現在時刻に置き換えていました）。
 
 送られた項目だけ直す、という書き方はこうなります。
 
@@ -294,14 +304,14 @@ List<Long>    ids    = db.insertBatch(builderList);    // 採番値のリスト
 
 **2つで戻り値が違います。**`executeBatch` は件数（`List<Integer>`）、
 `insertBatch` は採番値（`List<Long>`）です。
-件数のほうは `DB.isBatchSuccess(list)` で全部通ったか見られます。
+**失敗は例外です。**空の一覧を渡すと空のリストが返ります。
 
 > [!TRAP]
 > **積んだビルダーの SQL は、全部同じでなければなりません。**
 > 1本の文にパラメータだけを積み替えて流すためです。
 > `value()` を積む順が途中で変わると SQL も変わるので、
 > **ループの中で順を揃えてください**。
-> 揃っていなければ `DB_998` を立てて `null` が返ります
+> 揃っていなければ `DB_998` の `SqlExecuteException` になります
 > （直すまでは、例外も警告も無しに**値が横にずれて入っていました**）。
 
 ## 大きい結果

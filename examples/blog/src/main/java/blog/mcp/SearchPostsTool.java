@@ -6,6 +6,7 @@ import io.jimble.db.sql.SQL;
 import io.jimble.mcp.schema.JsonSchema;
 import io.jimble.mcp.tool.McpTool;
 import io.jimble.mcp.tool.ToolResult;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
 
@@ -71,15 +72,16 @@ public class SearchPostsTool implements McpTool {
 		int limit = arguments.containsKey("limit") ? arguments.getInt("limit") : 10;
 		limit = Math.clamp(limit, 1, MAX_LIMIT);
 
-		List<Data> rows = BlogExample.db().selectList(
-			SQL.select()
-				.from(Post.instance())
-				.where(Post.title.like("%" + keyword + "%"))
-				.orderByDesc(Post.created_at)
-				.limit(limit));
-
-		if (rows == null) {
-			// DB のエラーは戻り値で返る（要件 F-D-11）
+		List<Data> rows;
+		try {
+			rows = BlogExample.db().selectList(
+				SQL.select()
+					.from(Post.instance())
+					.where(Post.title.like("%" + keyword + "%"))
+					.orderByDesc(Post.created_at)
+					.limit(limit));
+		} catch (SqlExecuteException ex) {
+			// ツールの失敗として AI に返す（例外にすると会話ごと落ちる）
 			return ToolResult.error("記事を検索できませんでした");
 		}
 

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 2.0 への移行で書き換える呼び出しを見つける（要件 D-192）
+ * 2.0 への移行で書き換える呼び出しを見つける（要件 D-192 / D-198）
  *
  * <p>
  * 規則ごとに、見つけるものと<b>見つけないもの</b>（新しい書き方・似た名前の別物・コメントの中）を固める。
@@ -105,14 +105,12 @@ class JimbleMigrationCheckTest {
 	}
 
 	@Test
-	@DisplayName("J809 validate(db, データ) を文として捨てているのを見つける。受け取っているものは見つけない")
-	void validateIgnored (@TempDir Path root) throws IOException {
+	@DisplayName("D-198 J809 は 2.0 で外した（文として書く validate(...) が 2.0 の正しい書き方）")
+	void validateIsNotReported (@TempDir Path root) throws IOException {
 
-		assertEquals(List.of("J809:1"), run(root, """
+		assertEquals(List.of(), run(root, """
 			rules.validate(db, input);
-			Data errors = rules.validate(db, input);
-			executor.validate(context);
-			addErrors(rules.errors(db, input));""", false));
+			addErrors(rules.errors(db, input));""", true));
 
 	}
 
@@ -128,8 +126,8 @@ class JimbleMigrationCheckTest {
 	}
 
 	@Test
-	@DisplayName("J9xx は --target=2.0 のときだけ出す")
-	void target2Only (@TempDir Path root) throws IOException {
+	@DisplayName("D-198 2.0 の jimbleCheck は J9xx もいつも出す。Optional で受け取っている 2.0 の書き方は出さない")
+	void target2Always (@TempDir Path root) throws IOException {
 
 		String body = """
 			Data row = db.select(b);
@@ -137,10 +135,25 @@ class JimbleMigrationCheckTest {
 			if (db.isError()) { }
 			assertTrue(DBUtil.load(conf, A.class));
 			var r = RedisLock.tryLock("k", 1, 2);
-			Data one = db.selectOrThrow(b);""";
+			Data one = db.selectOrThrow(b);
+			context.session().data().put("a", "1");""";
 
-		assertEquals(List.of(), run(root, body, false));
-		assertEquals(List.of("J901:1", "J902:2", "J903:3", "J904:4", "J905:5", "J906:6"), run(root, body, true));
+		List<String> expected = List.of("J901:1", "J902:2", "J903:3", "J904:4", "J905:5", "J906:6", "J907:7");
+		assertEquals(expected, run(root, body, true));
+
+		// 既定（--target を付けない 3 引数版）も同じ
+		Path file = root.resolve("src/main/java/app/A.java");
+		assertEquals(expected.size(), JimbleChecker.check(root, root, "2.0.0").stream()
+			.filter(f -> f.rule().startsWith("J9")).count());
+		assertTrue(Files.exists(file));
+
+		// 2.0 の書き方は出さない
+		assertEquals(List.of(), run(root, """
+			Data row = db.select(b).orElse(null);
+			Data one = db.select(SQL.select().from(T.instance()).where(T.id.eq(1))).orElseThrow(() -> new HttpException(404, "x"));
+			boolean held = RedisLock.tryLock("k", 1, 2).isPresent();
+			Optional<RedisLockResult> lock = RedisLock.tryLock("k", 1, 2);
+			Data s = context.session().data();""", true));
 
 	}
 

@@ -85,14 +85,20 @@ public class IOUtil {
 	 *
 	 * @param is	入力ストリーム
 	 * @param os	出力ストリーム
-	 * @throws Exception	例外
+	 * @throws java.io.UncheckedIOException	読み書きできなかったとき（2.0。1.x は検査例外の Exception）
 	 */
-	public static void copy (InputStream is, OutputStream os) throws Exception {
+	public static void copy (InputStream is, OutputStream os){
 
-		byte[] buff = new byte[4096];
-		int len;
-		while ((len = is.read(buff, 0, buff.length)) > -1) {
-			os.write(buff, 0, len);
+		try {
+			byte[] buff = new byte[4096];
+			int len;
+			while ((len = is.read(buff, 0, buff.length)) > -1) {
+				os.write(buff, 0, len);
+			}
+
+	
+		} catch (Exception ex) {
+			throw io.jimble.util.internal.Unchecked.of("IO_001", "コピーできませんでした", ex);
 		}
 
 	}
@@ -103,21 +109,27 @@ public class IOUtil {
 	 * @param is		入力ストリーム
 	 * @param charset	文字コード
 	 * @return	文字一覧
-	 * @throws Exception	例外
+	 * @throws java.io.UncheckedIOException	読めなかったとき（2.0。1.x は検査例外の Exception）
 	 */
-	public static List<String> readLines (InputStream is, String charset) throws Exception {
+	public static List<String> readLines (InputStream is, String charset){
 
-		List<String> lines = new ArrayList<>();
+		try {
+			List<String> lines = new ArrayList<>();
 
-		InputStreamReader isr = new InputStreamReader(is, charset);
-		BufferedReader br = new BufferedReader(isr);
+			InputStreamReader isr = new InputStreamReader(is, charset);
+			BufferedReader br = new BufferedReader(isr);
 
-		String line;
-		while ((line = br.readLine()) != null) {
-			lines.add(line);
+			String line;
+			while ((line = br.readLine()) != null) {
+				lines.add(line);
+			}
+
+			return lines;
+
+	
+		} catch (Exception ex) {
+			throw io.jimble.util.internal.Unchecked.of("IO_001", "読み込めませんでした", ex);
 		}
-
-		return lines;
 
 	}
 

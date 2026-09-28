@@ -15,6 +15,13 @@ order: 8
 **自動保存はしません。** `save()` を呼ばなければ書かれません。
 「読んだだけのリクエストで毎回書き込む」を避けるためです。
 
+**変えるのは `session().put(...)` / `remove(...)` / `clear()` です。**
+`session().data()`（と `request().session()`）は**読み取り専用の写し**で、書き換えると `UnsupportedOperationException` になります。
+「変えた」印が付かずに保存されない、を起こさないためです。
+
+`session().destroy()` のあとに `put` / `remove` / `clear` すると `IllegalStateException` です（保存先が無いので残りません）。
+ログアウトのあとに入れたい値は、`destroy()` の前に入れるか、次のリクエストで入れてください。
+
 保存先は `application.conf` で選びます。
 
 ```conf
@@ -159,9 +166,9 @@ context.cookies().putSigned(new Cookie("user", id).path("/app").maxAge(3600));  
 context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));      // 署名しない（JavaScript に読ませる）
 ```
 
-> [!TRAP]
-> **`put(Cookie)` は署名しません**（`put(名前, 値)` は署名するのに）。`cookie.secret` を設定していると、
-> 書いた Cookie を次のリクエストの `get` が読めず `""` になります。1.5.0 で非推奨にし、2.0 で消します。
+1.x の `put(Cookie)` は署名しなかったので、2.0 で消しました（[2.0 への移行](./migrate-2)）。
+
+**応答を送ったあとに Cookie を書くと `IllegalStateException` です**（もう届きません）。`send()` より前に書いてください。
 
 **読むときは `context.cookies().get("名前")` か `context.request().cookie("名前")` です。**
 署名が合わなかった値はここに入りません（改ざんされた値がアプリに渡らないようにするためです）。

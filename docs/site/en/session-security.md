@@ -15,6 +15,13 @@ order: 8
 **Nothing is saved automatically.** Nothing is written unless you call `save()`.
 That is to avoid writing on every request that only ever read.
 
+**Change it with `session().put(...)` / `remove(...)` / `clear()`.**
+`session().data()` (and `request().session()`) is **a read-only copy**; writing to it throws `UnsupportedOperationException`.
+That keeps you from a change that is never marked as changed and so never saved.
+
+A `put` / `remove` / `clear` after `session().destroy()` throws `IllegalStateException` (there is nowhere left to save it).
+If you want a value in after logout, put it in before `destroy()`, or on the next request.
+
 Choose where it is stored in `application.conf`.
 
 ```conf
@@ -162,9 +169,9 @@ context.cookies().putSigned(new Cookie("user", id).path("/app").maxAge(3600));  
 context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));      // not signed (for JavaScript)
 ```
 
-> [!TRAP]
-> **`put(Cookie)` does not sign** (while `put(name, value)` does). With `cookie.secret` set, the next request's
-> `get` cannot read what you wrote and returns `""`. Deprecated in 1.5.0, removed in 2.0.
+The 1.x `put(Cookie)` did not sign, so 2.0 removed it ([Moving to 2.0](./migrate-2)).
+
+**Writing a cookie after the response has been sent throws `IllegalStateException`** (it would never arrive). Write it before `send()`.
 
 **Read it back with `context.cookies().get("a name")` or `context.request().cookie("a name")`.**
 A value whose signature did not check out never lands there — that is the point, so a tampered

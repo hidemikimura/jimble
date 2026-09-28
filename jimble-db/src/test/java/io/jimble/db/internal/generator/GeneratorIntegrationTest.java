@@ -64,9 +64,7 @@ class GeneratorIntegrationTest {
 	static void setUp () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), GeneratorIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), GeneratorIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 

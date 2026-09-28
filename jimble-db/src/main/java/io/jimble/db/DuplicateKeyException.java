@@ -7,8 +7,8 @@ import io.jimble.util.exception.CodeException;
  *
  * <p>
  * <b>DB のエラーのうち、呼んだ側がいちばん分岐したいもの</b>なので、型を分けた。
- * {@code ...OrThrow} 系と {@code insertKey} が投げる（{@link SqlExecuteException} の子なので、
- * これまでの {@code catch (SqlExecuteException e)} にもそのまま入る）。
+ * 2.0 では DB を触るメソッドすべてが投げうる（{@link SqlExecuteException} の子なので、
+ * {@code catch (SqlExecuteException e)} にもそのまま入る）。
  * </p>
  *
  * <pre>
@@ -20,8 +20,9 @@ import io.jimble.util.exception.CodeException;
  * </pre>
  *
  * <p>
- * 戻り値で見る書き方（{@code db.insert(...) < 0}）のときは {@link DB#isDuplicateKeyError()} で見分けられる。
  * 見分け方は、PostgreSQL は SQLSTATE {@code 23505}、MySQL はエラーコード {@code 1062}。
+ * 1.5 の {@code isDuplicateKeyError()} は、失敗が例外になったので 2.0 で消した。
+ * トランザクションの中で受け止めて続けても、その Tx の commit は断られる（{@code DB_004}）。
  * </p>
  *
  * @since 1.5.0

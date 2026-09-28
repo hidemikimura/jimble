@@ -54,7 +54,6 @@ final class PostgreSqlTableMetaReader implements TableMetaReader {
 			ORDER BY c.relname
 			""");
 
-		required(db, rows, "テーブル一覧");
 
 		for (Data row : rows) {
 			res.add(new Data()
@@ -95,7 +94,6 @@ final class PostgreSqlTableMetaReader implements TableMetaReader {
 			ORDER BY a.attnum
 			""", table);
 
-		required(db, rows, "列一覧: " + table);
 
 		for (Data row : rows) {
 
@@ -160,7 +158,6 @@ final class PostgreSqlTableMetaReader implements TableMetaReader {
 			ORDER BY ci.relname, k.ord
 			""", table);
 
-		required(db, rows, "インデックス一覧: " + table);
 
 		/*
 		 * 式（{@code lower(code)} など）を含むインデックスは<b>丸ごと捨てる</b>。
@@ -195,30 +192,6 @@ final class PostgreSqlTableMetaReader implements TableMetaReader {
 		}
 
 		return res;
-
-	}
-
-	/**
-	 * カタログを引けなかったら落とす
-	 *
-	 * <p>
-	 * {@code DB#selectList} は失敗しても例外ではなく null を返す。
-	 * <b>そのまま空として通すと、列も一意キーも無いクラスが生成される。</b>
-	 * 生成物は「テーブルが空だった」ようにしか見えないので、いちばん気づけない。
-	 * </p>
-	 *
-	 * @param db	DB
-	 * @param rows	結果
-	 * @param what	何を引いていたか
-	 * @throws GeneratorException	引けなかった場合
-	 */
-	private static void required (DB db, List<Data> rows, String what) {
-
-		if (rows != null) {
-			return;
-		}
-
-		throw new GeneratorException("テーブル定義を引けませんでした（%s）: %s".formatted(what, db.getError()));
 
 	}
 

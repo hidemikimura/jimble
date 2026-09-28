@@ -33,14 +33,12 @@ public final class ShowController {
 
 		long id = context.request().bodyAll().getLong("id");
 
+		// 0件は空の Optional、読めなかったときは例外（2.0）
 		Data row = ApprovalFormsExample.db().select(
 			SQL.select()
 				.from(Request.instance())
-				.where(Request.id.eq(id)));
-
-		if (row == null) {
-			throw new HttpException(404, "申請がありません: " + id);
-		}
+				.where(Request.id.eq(id)))
+			.orElseThrow(() -> new HttpException(404, "申請がありません: " + id));
 
 		/*
 		 * <b>結果はテーブル名でネストされている</b>（要件 F-D-02）ので、

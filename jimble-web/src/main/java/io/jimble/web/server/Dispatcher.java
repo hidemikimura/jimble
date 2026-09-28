@@ -379,6 +379,17 @@ public final class Dispatcher {
 		 * <b>JSON を求められていると {@code {}} が返って</b>いた——
 		 * 空の成功と見分けが付かない形である。
 		 */
+		/*
+		 * 検査に通らなかった（ValidationRules.validate の 422。要件 D-196）は、
+		 * ValidationExecutor と同じ形（入力値と、項目ごとのメッセージ）で返す。
+		 */
+		if (!stage.isDone() && cause instanceof io.jimble.web.validation.ValidationException invalid
+			&& !context.response().hasBody()) {
+			context.response().putForm(context.request().bodyAll());
+			context.response().json(io.jimble.web.validation.ValidationExecutor.RESPONSE_KEY
+				, io.jimble.web.validation.ValidationMessages.toMessages(invalid.errors()));
+		}
+
 		if (!stage.isDone()) {
 			context.response().errorBody(statusCode, HttpReasons.of(statusCode));
 		}

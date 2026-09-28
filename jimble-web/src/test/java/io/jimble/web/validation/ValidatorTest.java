@@ -44,7 +44,7 @@ class ValidatorTest {
 		ValidationRules rules = new ValidationRules()
 			.put(NAME, new ValidationRule().required());
 
-		Data errors = Validator.validate(null, new Data().putData(NAME, "たろう"), rules);
+		Data errors = Validator.errors(null, new Data().putData(NAME, "たろう"), rules);
 
 		assertNotNull(errors, "null が返っています（呼ぶ側が null 判定を書けてしまいます）");
 		assertTrue(errors.isEmpty(), "エラーが無いのに中身があります: " + errors);
@@ -59,7 +59,7 @@ class ValidatorTest {
 			.put(NAME, new ValidationRule().required())
 			.put(AGE, new ValidationRule().integer(0, 150));
 
-		Data errors = Validator.validate(null
+		Data errors = Validator.errors(null
 			, new Data().putData(NAME, "").putData(AGE, "999"), rules);
 
 		assertFalse(errors.isEmpty());
@@ -96,7 +96,7 @@ class ValidatorTest {
 		ValidationRules screen = new ValidationRules()
 			.put(AGE, new ValidationRule().integer(0, 150));
 
-		Data errors = Validator.validate(null
+		Data errors = Validator.errors(null
 			, new Data().putData(NAME, "").putData(AGE, "999"), common, screen);
 
 		assertEquals(2, errors.getData("item").size(), "束をまたいで集められていません: " + errors);
@@ -107,7 +107,7 @@ class ValidatorTest {
 	@DisplayName("束を1つも渡さなくても落ちない")
 	void noRulesIsNotAnError () {
 
-		Data errors = Validator.validate(null, new Data());
+		Data errors = Validator.errors(null, new Data());
 
 		assertNotNull(errors);
 		assertTrue(errors.isEmpty());

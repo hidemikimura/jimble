@@ -143,17 +143,12 @@ public class BlogApp extends JimbleApp {
 	 */
 	static Data findPost (long id) {
 
-		Data row = BlogExample.db().select(
+		// 0件は空の Optional、読めなかったときは例外（2.0）
+		return BlogExample.db().select(
 			SQL.select()
 				.from(Post.instance())
 				.where(Post.id.eq(id))
-		);
-
-		if (row == null) {
-			throw new HttpException(404, "記事がありません: " + id);
-		}
-
-		return row;
+		).orElseThrow(() -> new HttpException(404, "記事がありません: " + id));
 
 	}
 
@@ -205,7 +200,7 @@ public class BlogApp extends JimbleApp {
 	 */
 	static long insertComment (DB db, long postId, String name, String body) throws Exception {
 
-		return db.insert(
+		return db.insertKey(
 			SQL.insert(Comment.instance())
 				.value(Comment.post_id, postId)
 				.value(Comment.name, name)

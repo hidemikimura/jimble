@@ -23,8 +23,17 @@ import java.util.regex.Pattern;
 
 /**
  * リクエスト情報
+ *
+ * <p>
+ * <b>{@code Data} を継承しない</b>（2.0。要件 D-196）。1.x は {@code Data} の子だったので
+ * {@code request().getString("id")} と書けたが、中身は「request」「header」「body」などの区分だけで、
+ * <b>送られてきた値は入っていない</b>——いつも {@code null} だった。値は {@link #bodyAll()} / {@link #body()} などから読む。
+ * </p>
  */
-public final class Request extends Data {
+public final class Request {
+
+	/* 区分ごとの入れ物（request / header / cookie / body …）。1.x は Request 自身が Data だった */
+	private final Data store = new Data();
 
 	/* Context */
 	private final WebContext context;
@@ -79,83 +88,6 @@ public final class Request extends Data {
 	}
 
 
-	// region Data としての読み方（2.0 で消す）
-
-	/*
-	 * Request 自身の中身は「request」「header」「body」などの区分だけで、
-	 * <b>送られてきた値は入っていない</b>。request().getString("id") は、いつも null になる。
-	 * 値は body() / bodyAll() / query() から読む（要件 D-192。2.0 で Request は Data を継承しない）。
-	 */
-	private void warnReadAsData (String method, String key) {
-
-		if (key != null && containsKey(key)) {
-			return;
-		}
-		io.jimble.util.internal.WarnOnce.warn("request.read-as-data",
-			"request()." + method + "(\"" + key + "\") は送られてきた値を読みません（いつも無いと答えます）。"
-				+ "request().bodyAll()." + method + "(...) のように、body() / bodyAll() / query() から読んでください"
-				+ io.jimble.util.internal.Docs.see("request-response"));
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @deprecated {@code Request} 自身には送られてきた値が入っていない。{@link #bodyAll()} などから読む。2.0 で消す
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public String getString (String key) {
-
-		warnReadAsData("getString", key);
-		return super.getString(key);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @deprecated {@code Request} 自身には送られてきた値が入っていない。{@link #bodyAll()} などから読む。2.0 で消す
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public int getInt (String key) {
-
-		warnReadAsData("getInt", key);
-		return super.getInt(key);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @deprecated {@code Request} 自身には送られてきた値が入っていない。{@link #bodyAll()} などから読む。2.0 で消す
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public long getLong (String key) {
-
-		warnReadAsData("getLong", key);
-		return super.getLong(key);
-
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @deprecated {@code Request} 自身には送られてきた値が入っていない。{@link #bodyAll()} などから読む。2.0 で消す
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public boolean getBoolean (String key) {
-
-		warnReadAsData("getBoolean", key);
-		return super.getBoolean(key);
-
-	}
-
-	// endregion
-
 	// region リクエスト情報
 
 	/**
@@ -165,8 +97,8 @@ public final class Request extends Data {
 	 */
 	public Data request() {
 
-		if (!containsKey("request")) {
-			Data data = getDataOptional("request");
+		if (!store.containsKey("request")) {
+			Data data = store.getDataOptional("request");
 			if (source != null) {
 				data.put("address", address());
 				data.put("method", method());
@@ -186,7 +118,7 @@ public final class Request extends Data {
 			}
 		}
 
-		return getDataOptional("request");
+		return store.getDataOptional("request");
 
 	}
 
@@ -381,16 +313,16 @@ public final class Request extends Data {
 	}
 	public Data proxyHeader () {
 
-		if (!containsKey("proxy_header")) {
+		if (!store.containsKey("proxy_header")) {
 			header();
 		}
 
-		return getDataOptional("proxy_header");
+		return store.getDataOptional("proxy_header");
 
 	}
 	public void parseProxyHeader () {
 
-		Data data = getDataOptional("proxy_header");
+		Data data = store.getDataOptional("proxy_header");
 
 		if (source == null) {
 			return;
@@ -414,15 +346,15 @@ public final class Request extends Data {
 	 */
 	public Data header () {
 
-		if (!containsKey("header")) {
-			Data data = getDataOptional("header");
+		if (!store.containsKey("header")) {
+			Data data = store.getDataOptional("header");
 			if (context != null) {
 				data.putAll(source.headers());
 				parseProxyHeader();
 			}
 		}
 
-		return getDataOptional("header");
+		return store.getDataOptional("header");
 
 	}
 
@@ -608,7 +540,12 @@ public final class Request extends Data {
 	 */
 	public long contentLength () {
 
-		return header().getLong("content-length");
+		// 相手が送ってきた値なので、読めなくても止めない（0）
+		try {
+			return header().getLong("content-length");
+		} catch (io.jimble.util.data.DataConversionException ex) {
+			return 0;
+		}
 
 	}
 
@@ -777,12 +714,12 @@ public final class Request extends Data {
 	 */
 	private void parseCookie () {
 
-		if (containsKey("cookie")) {
+		if (store.containsKey("cookie")) {
 			return;
 		}
 
-		Data unsignCookie = getDataOptional("cookie_unsign");
-		Data cookie = getDataOptional("cookie");
+		Data unsignCookie = store.getDataOptional("cookie_unsign");
+		Data cookie = store.getDataOptional("cookie");
 
 		if (source == null) {
 			return;
@@ -813,7 +750,7 @@ public final class Request extends Data {
 
 		parseCookie();
 
-		return getDataOptional("cookie");
+		return store.getDataOptional("cookie");
 
 	}
 
@@ -838,7 +775,7 @@ public final class Request extends Data {
 
 		parseCookie();
 
-		return getDataOptional("cookie_unsign");
+		return store.getDataOptional("cookie_unsign");
 
 	}
 
@@ -899,7 +836,7 @@ public final class Request extends Data {
 
 		parseCookie();
 
-		return getDataOptional("flash");
+		return store.getDataOptional("flash");
 
 	}
 
@@ -923,11 +860,12 @@ public final class Request extends Data {
 	 * ボディ情報
 	 *
 	 * @return	ボディ情報
+	 * @throws io.jimble.web.http.HttpException	本文が JSON（{@code application/json}）なのに読めないとき 400（2.0。1.x は空の Data）
 	 */
 	public Data body () {
 
-		if (!containsKey("body")) {
-			Data body = getDataOptional("body");
+		if (!store.containsKey("body")) {
+			Data body = store.getDataOptional("body");
 			// パス
 			{
 				Data data = body.getDataOptional("path");
@@ -964,28 +902,24 @@ public final class Request extends Data {
 			// ボディ
 			if (source != null) {
 				if ("application/json".equalsIgnoreCase(contentType())) {
+					String text = null;
 					try {
-						String text = source.bodyText(StandardCharsets.UTF_8);
+						text = source.bodyText(StandardCharsets.UTF_8);
+					} catch (Exception ex) {
+						malformedJson = "本文を読めませんでした: " + ex.getMessage();
+					}
+					if (text != null) {
 						body.put("text", text);
-						Data json = Data.fromJsonString(text);
-						/*
-						 * 読み手は寛容で、途中で切れた JSON も例外なく「空の Data」を返す。
-						 * だから「空でない本文なのに、{} でもないのに、何も読めなかった」を壊れたとみなす。
-						 */
-						if (text != null && !text.isBlank()
-							&& (json == null || (json.isEmpty() && !text.strip().matches("\\{\\s*\\}")))) {
+						try {
+							body.put("json", Data.fromJsonString(text));
+						} catch (io.jimble.util.json.JsonParseException ex) {
 							/*
-							 * 壊れた JSON は空の Data として扱われる（要件 D-192）。
-							 * 黙っていると「送った値が全部無かった」ことになり、原因が見えない。
-							 * 2.0 では 400 にする。
+							 * 壊れた JSON は 400（2.0。要件 D-196）。1.x は空の Data として扱ったので、
+							 * 「送った値が全部無かった」ことになり、原因が見えなかった（1.5 は警告）。
 							 */
-							io.jimble.util.internal.WarnOnce.warn("request.malformed-json",
-								"本文の JSON を読めませんでした。bodyJson() は空の Data を返します（"
-									+ method() + " " + path() + "）。2.0 では 400 になります"
-									+ io.jimble.util.internal.Docs.see("request-response"));
+							malformedJson = ex.getMessage();
 						}
-						body.put("json", json);
-					} catch (Exception ignore) {}
+					}
 				} else if (contentType().toLowerCase().startsWith("text/")) {
 					try {
 						body.put("text", source.bodyText(StandardCharsets.UTF_8));
@@ -994,9 +928,17 @@ public final class Request extends Data {
 			}
 		}
 
-		return getDataOptional("body");
+		if (malformedJson != null) {
+			// 何度読んでも同じ答えにする（途中まで組んだ本文を返さない）
+			throw new io.jimble.web.http.HttpException(400, "本文の JSON を読めません（" + malformedJson + "）");
+		}
+
+		return store.getDataOptional("body");
 
 	}
+
+	/* 本文の JSON を読めなかった理由（読めたら null） */
+	private String malformedJson = null;
 
 	/**
 	 * path
@@ -1145,9 +1087,9 @@ public final class Request extends Data {
 	 *
 	 * @param per 取得件数
 	 * @return  ページング情報
+	 * @throws IllegalStateException	このリクエストで違う件数の paging をもう作っているとき
 	 */
 	public Paging paging (long per) {
-
 
 		if (paging == null) {
 			paging = new Paging();
@@ -1156,13 +1098,13 @@ public final class Request extends Data {
 			context.response().put("paging", paging);
 		} else if (per != 0 && per != pagingPer) {
 			/*
-			 * 1度作ったら使い回すので、2度目の per は効かない（要件 D-192）。
+			 * 1度作ったら使い回すので、2度目の per は効かない。例外にする（2.0。1.5 は警告。要件 D-196）。
 			 * 先に paging()（既定の件数）を呼んでいると、あとの paging(50) の 50 が黙って無視されていた。
 			 */
-			io.jimble.util.internal.WarnOnce.warn("request.paging-per",
+			throw new IllegalStateException(
 				"paging(" + per + ") の件数は効きません——このリクエストではもう paging("
 					+ (pagingPer == 0 ? "" : String.valueOf(pagingPer)) + ") で作ってあります。"
-					+ "件数を決めるなら最初の1回で渡してください（2.0 では違う件数で2度目を呼ぶと例外になります）"
+					+ "件数を決めるなら最初の1回で渡してください"
 					+ io.jimble.util.internal.Docs.see("request-response"));
 		}
 

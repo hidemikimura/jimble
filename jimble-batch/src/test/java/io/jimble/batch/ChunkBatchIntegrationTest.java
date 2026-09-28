@@ -201,8 +201,12 @@ class ChunkBatchIntegrationTest {
 
 		@Override
 		protected void write (List<Data> items, DB db) {
-			// 無い列。例外は投げられず、db.isError() が立つだけ
-			db.insert("INSERT INTO chunk_dst (id, nothing_here) VALUES (?, ?)", 1L, "x");
+			// 無い列。例外を握りつぶして続ける（1.x の「戻り値を見ない」と同じ形）
+			try {
+				db.insert("INSERT INTO chunk_dst (id, nothing_here) VALUES (?, ?)", 1L, "x");
+			} catch (io.jimble.db.SqlExecuteException ignore) {
+				// 握りつぶす
+			}
 		}
 
 	}
@@ -232,7 +236,7 @@ class ChunkBatchIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), ChunkBatchIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), ChunkBatchIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 
@@ -340,7 +344,7 @@ class ChunkBatchIntegrationTest {
 
 		return DBUtil.getMainDB().select(
 			"SELECT * FROM batch_history WHERE class_name = ? ORDER BY id DESC LIMIT 1"
-			, batchClass.getName());
+			, batchClass.getName()).orElse(null);
 
 	}
 
@@ -549,7 +553,7 @@ class ChunkBatchIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("例外を投げない SQL の失敗も拾ってチャンクを失敗させる")
+	@DisplayName("write の中で SQL の失敗を握りつぶしても、チャンクは確定せずに失敗する（DB_004）")
 	void silentSqlFailure () {
 
 		assertEquals(BatchResult.error, BatchExecutor.execute(args(SilentFailBatch.class)));
@@ -560,7 +564,7 @@ class ChunkBatchIntegrationTest {
 
 		assertEquals(0, info.getInt(AbstractChunkBatch.KEY_WRITTEN), info.toString());
 		assertTrue(info.getDataOptional("exception").getString("message")
-			.contains("チャンクの書き込みが失敗しています")
+			.contains("コミットしませんでした")
 			, info.getDataOptional("exception").toString());
 
 	}
@@ -675,7 +679,7 @@ class ChunkBatchIntegrationTest {
 			for (int i = 0; i < 100; i++) {
 
 				Data row = DBUtil.getMainDB().select(
-					"SELECT execute_info FROM batch_history WHERE id = ?", batch.batchId());
+					"SELECT execute_info FROM batch_history WHERE id = ?", batch.batchId()).orElse(null);
 
 				int written = row.getDataOptional("execute_info")
 					.getInt(AbstractChunkBatch.KEY_WRITTEN);
@@ -739,7 +743,7 @@ class ChunkBatchIntegrationTest {
 			assertTrue(wrote.await(10, TimeUnit.SECONDS), "2チャンク書かれるまで待てなかった");
 
 			Data row = DBUtil.getMainDB().select(
-				"SELECT execute_info FROM batch_history WHERE id = ?", batch.batchId());
+				"SELECT execute_info FROM batch_history WHERE id = ?", batch.batchId()).orElse(null);
 
 			assertEquals(0, row.getDataOptional("execute_info")
 				.getInt(AbstractChunkBatch.KEY_WRITTEN), row.getStringOptional("execute_info"));

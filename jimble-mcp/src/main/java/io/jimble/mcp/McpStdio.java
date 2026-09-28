@@ -205,10 +205,8 @@ public final class McpStdio {
 			 * 読めない行。<b>id が分からないので null で返す</b>（仕様どおり）。
 			 * 黙って捨てると、クライアントは応答を待ち続ける。
 			 *
-			 * <b>ここは実際にはほとんど通らない。</b>{@code Dson} は
-			 * 壊れた行でも例外にせず空の {@code Data} を返すので、
-			 * 「読めません」を出しているのは {@link McpDispatch} のほうである
-			 * （どちらも同じ {@code PARSE_ERROR} を返すので、外からは同じに見える）。
+			 * 2.0 の {@code Dson.decodes} は壊れた JSON を {@code JsonParseException} にする（要件 D-195）。
+			 * 1.x は空の {@code Data} を返したので、ここはほとんど通らなかった。
 			 */
 			write(McpErrors.of(null, McpErrors.PARSE_ERROR, "JSON として読めません"));
 			return;

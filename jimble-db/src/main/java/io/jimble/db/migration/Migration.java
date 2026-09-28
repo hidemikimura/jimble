@@ -3,6 +3,8 @@ package io.jimble.db.migration;
 import io.jimble.util.internal.Docs;
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
+import io.jimble.db.Tx;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Dialects;
@@ -149,7 +151,6 @@ public final class Migration {
 	 * @param fileList	SQL ファイル一覧（名前順に並べ替えてから使う）
 	 * @throws MigrationException	適用に失敗した場合
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public static void migrate (DBSource dbSource, List<MigrationInfo> fileList) {
 
 		createTables(dbSource);
@@ -165,33 +166,37 @@ public final class Migration {
 
 		// 複数インスタンスが同時に起動しても一度しか適用しない（要件 F-G-15。D-1 ロックテーブル方式）
 		DB lockDB = DBUtil.getDB(dbSource.name());
-		DBLock.create(lockDB, LOCK_KEY);
 
 		try (lockDB) {
 
-			lockDB.beginTransaction();
+			DBLock.create(lockDB, LOCK_KEY);
 
-			setLockTimeout(lockDB);
+			// 抜けたら巻き戻る（ロックも外れる）
+			try (Tx tx = lockDB.begin()) {
 
-			if (!DBLock.lock(lockDB, LOCK_KEY)) {
-				throw new MigrationException(
-					"マイグレーションのロックを取得できませんでした（%d 秒待機）。他のインスタンスが適用中の可能性があります。"
-						.formatted(MigrationConf.lockTimeout().toSeconds())
-				);
+				setLockTimeout(lockDB);
+
+				try {
+					DBLock.lock(lockDB, LOCK_KEY);
+				} catch (SqlExecuteException ex) {
+					throw new MigrationException(
+						"マイグレーションのロックを取得できませんでした（%d 秒待機）。他のインスタンスが適用中の可能性があります。"
+							.formatted(MigrationConf.lockTimeout().toSeconds()), ex
+					);
+				}
+
+				apply(dbSource, sorted, all);
+
+				tx.commit();
+
 			}
-
-			apply(dbSource, sorted, all);
-
-			lockDB.commitEndTransaction();
 
 		} catch (MigrationException ex) {
 
-			rollbackQuietly(lockDB);
 			throw ex;
 
 		} catch (Exception ex) {
 
-			rollbackQuietly(lockDB);
 			throw new MigrationException("マイグレーションに失敗しました: " + dbSource.name(), ex);
 
 		}
@@ -203,7 +208,7 @@ public final class Migration {
 	 *
 	 * <p>
 	 * このセッションにだけ効く。待ちきれなかったインスタンスは
-	 * {@link DBLock#lock} が false を返し、起動に失敗する（要件 F-G-19）。
+	 * {@link DBLock#lock} が例外になり、起動に失敗する（要件 F-G-19）。
 	 * </p>
 	 *
 	 * @param db	DB
@@ -211,22 +216,6 @@ public final class Migration {
 	private static void setLockTimeout (DB db) {
 
 		db.execute(db.dialect().setLockTimeoutSql((int) MigrationConf.lockTimeout().toSeconds()));
-
-	}
-
-	/**
-	 * ロールバックする（失敗しても握りつぶす）
-	 *
-	 * @param db	DB
-	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
-	private static void rollbackQuietly (DB db) {
-
-		try {
-			db.rollbackEndTransaction();
-		} catch (Exception ignore) {
-			// ロールバック自体の失敗は元の例外を隠さないよう黙る
-		}
 
 	}
 
@@ -610,10 +599,11 @@ public final class Migration {
 
 		for (String sql : list) {
 
-			db.execute(sql);
-
-			if (db.isError()) {
-				String errorMessage = db.getError().getMessage();
+			try {
+				db.execute(sql);
+			} catch (SqlExecuteException ex) {
+				// 元の SQL のエラー文（cause の CodeException が持つ）を履歴に残す
+				String errorMessage = ex.getCause() == null ? ex.getMessage() : ex.getCause().getMessage();
 				addHistory(db, name, kind, sql, errorMessage);
 				return errorMessage;
 			}

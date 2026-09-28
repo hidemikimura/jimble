@@ -43,7 +43,7 @@ cache.remove("top:posts");
 | メソッド | 返り |
 | --- | --- |
 | `getString(key)` | 文字列。無ければ `null`（メモリ実装だけ `""`） |
-| `get(key)` | `CacheData`（作成日時・種類つき）。**`isError()` を見る** |
+| `get(key)` | `CacheData`（作成日時・種類つき）。無ければ **`isError()` が true** |
 | `set(key, value, contentType[, group])` | 入ったら `true` |
 | `has(key, group)` / `remove(key)` / `removeGroup(group)` | |
 
@@ -75,7 +75,7 @@ sql_cache.enabled = true
 ```
 
 ```java
-Data customer = db.selectCached(
+Optional<Data> customer = db.selectCached(
 	SQL.select()
 		.from(Customer.instance())
 		.inner(Shop.instance()).on(Customer.shop_id.eq(Shop.id))
@@ -204,6 +204,7 @@ List<Data> posts = cache.get();
 | 期限 | `Duration` を渡さなければ**無期限** |
 | 他の台が `clear()` したとき | **1分に1回**だけ共有キャッシュを見に行って捨てる |
 | ローダーに渡る `DB` | 新しい接続（呼び出し元のトランザクションとは別） |
+| ローダーが失敗したとき | `get()` が非検査例外を投げる（元の例外は `getCause()`） |
 
 > [!TRAP]
 > **ローダーが `null` を返しても「読み込み済み」になります。**
@@ -219,21 +220,24 @@ List<Data> posts = cache.get();
 
 ```java
 // 100ms 待って取れなければあきらめる。取れたら 30 秒保持する
-try (RedisLockResult lock = RedisLock.tryLock("batch:daily", 100, 30000)) {
+Optional<RedisLockResult> lock = RedisLock.tryLock("batch:daily", 100, 30000);
+if (lock.isEmpty()) {
+	return;   // 誰かが動かしている
+}
 
-	if (lock.status() != RedisLockStatus.Success) {
-		return;   // 誰かが動かしている
-	}
-
+try (RedisLockResult held = lock.get()) {
 	// ここが1台だけになる
-
-} catch (IOException ignore) {
 }
 ```
 
-> [!WARN]
-> **取れなくても例外は飛びません。**`status()` を必ず見てください。
-> 見ないと「ロックしていないのに処理が進む」形になります。
+| | 取れなかったとき |
+| --- | --- |
+| `RedisLock.lock(key)` | **`RedisLockException`**（非検査） |
+| `RedisLock.tryLock(key, 待ち, 保持)` | 待っても取れなければ**空の `Optional`**。Redis に繋がらなければ `RedisLockException` |
+
+**取れないまま中へ進むことはありません。**
+1.x は `status()` が `Failed` になるだけで、見なければロック無しで進んでいました。
+`close()` は検査例外を投げないので、`catch (IOException e)` は要りません。
 
 > [!TRAP]
 > **同じスレッドからは同じキーを取れてしまいます**（再入できるロックのため）。
@@ -249,18 +253,26 @@ Redis を設定していないときは、**黙って成功させずに例外**�
 
 ### DB だけでロックする
 
-Redis が無い場所では `DBLock` を使えます。**トランザクションの中で**、
-先に行を作ってから取ります。
+Redis が無い場所では `DBLock` を使えます。先に行を作っておき、**トランザクションの中で**取ります。
 
 ```java
-DBLock.create(db, "daily");           // 1回だけ
+DBLock.create(db, "daily");           // 1回だけ（あれば何もしない）
 ...
-if (DBLock.lock(db, "daily")) {       // SELECT ... FOR UPDATE
+db.transaction(tx -> {
+	DBLock.lock(db, "daily");         // SELECT ... FOR UPDATE
 	// トランザクションが終わるまで1つだけ
-}
+});
 ```
 
-行が無ければ `false` です。解放は**トランザクションの終わり**で、明示的に外す口はありません。
+`create` も `lock` も戻り値はありません。**失敗は例外です。**
+
+| | どうなるか |
+| --- | --- |
+| トランザクションの外で `lock` を呼ぶ | `IllegalStateException`（`FOR UPDATE` の鍵は文の終わりで外れ、何も守らないため） |
+| `create` していないキーを `lock` する | `IllegalStateException` |
+| SQL が失敗した | `SqlExecuteException` |
+
+解放は**トランザクションの終わり**で、明示的に外す口はありません。
 
 ## 設定キー
 

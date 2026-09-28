@@ -2,6 +2,7 @@ package io.jimble.mq;
 
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
 import io.jimble.core.trace.Span;
@@ -35,12 +36,10 @@ import java.util.Date;
  * <h2>積むとき（要件 F-M-03）</h2>
  *
  * <pre>
- * try (DBTransaction transaction = new DBTransaction(db)) {
- *     transaction.beginTransaction();
+ * db.transaction(tx -&gt; {
  *     db.insert(...);                                  // 業務のデータ
  *     new SendMailExecutor().put(db, new Data()...);   // キュー
- *     transaction.commitEndTransaction();
- * }
+ * });
  * </pre>
  *
  * <p>
@@ -187,7 +186,9 @@ public abstract class MqExecutor {
 			span.attribute("messaging.destination.name", queueName());
 			span.attribute("messaging.operation.name", key());
 
-			long id = db.insert("""
+			long id;
+			try {
+				id = db.insertKey("""
 					INSERT INTO %s (
 						execute_type, mq_key, status, scheduled_at, retry_count, data, traceparent, created_at, updated_at
 					) VALUES (
@@ -200,16 +201,13 @@ public abstract class MqExecutor {
 				, scheduledAt
 				, data == null ? new Data() : data
 				, span.traceparent());
-
-			/*
-			 * <b>積めなかったら投げる（D-173）。</b>
-			 * かつては {@code -1} を返していたが、<b>戻り値を見ている呼び出しは1つも無かった</b>——
-			 * 「注文は入ったが、メールのキューだけ無い」が黙って起きる。
-			 * トランザクションの中なら、投げればそのまま巻き戻る。
-			 */
-			if (db.isError()) {
-				throw new MqException("キューに積めませんでした: %s（%s）"
-					.formatted(queueName(), db.getError() == null ? "理由不明" : db.getError().getMessage()));
+			} catch (SqlExecuteException ex) {
+				/*
+				 * <b>積めなかったら投げる（D-173）。</b>
+				 * 「注文は入ったが、メールのキューだけ無い」を黙って起こさない。
+				 * トランザクションの中なら、投げればそのまま巻き戻る。
+				 */
+				throw new MqException("キューに積めませんでした: %s（%s）".formatted(queueName(), ex.getMessage()), ex);
 			}
 
 			span.attribute("messaging.message.id", id);

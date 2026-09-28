@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>DB を使うバリデータは無いので通常の {@code build} で走る。</p>
  */
-class ValidationTest {
+public class ValidationTest {
 
 	// region テスト用のテーブル定義
 
@@ -172,7 +172,7 @@ class ValidationTest {
 		request.putData(Item.age, "999");
 
 		// エラーは最初の1件で止めず、全部集める（要件 F-V-03）
-		Data errors = rules.validate(null, request);
+		Data errors = rules.errors(null, request);
 
 		Data messages = ValidationMessages.toMessages(errors);
 		// docs:end
@@ -184,13 +184,16 @@ class ValidationTest {
 	}
 
 	@Test
-	@DisplayName("送られていない項目は検証しない")
-	void skipsAbsentColumn () {
+	@DisplayName("D-196 送られていない項目：必須（empty）なら失敗、必須でなければ見ない（1.x は必須でも素通り）")
+	void absentColumn () {
 
-		ValidationRules rules = new ValidationRules()
+		ValidationRules required = new ValidationRules()
 			.put(Item.name, new ValidationRule().empty());
+		assertFalse(required.errors(null, new Data()).isEmpty(), "キーが無いのに必須が通っている");
 
-		assertTrue(rules.validate(null, new Data()).isEmpty());
+		ValidationRules optional = new ValidationRules()
+			.put(Item.name, new ValidationRule().textLengthMax(10));
+		assertTrue(optional.errors(null, new Data()).isEmpty());
 
 	}
 
@@ -205,11 +208,11 @@ class ValidationTest {
 
 		Data update = new Data();
 		update.put("is_insert", false);
-		assertTrue(rules.validate(null, update).isEmpty(), "更新なのに必須になっている");
+		assertTrue(rules.errors(null, update).isEmpty(), "更新なのに必須になっている");
 
 		Data insert = new Data();
 		insert.put("is_insert", true);
-		assertFalse(rules.validate(null, insert).isEmpty(), "登録なのに必須になっていない");
+		assertFalse(rules.errors(null, insert).isEmpty(), "登録なのに必須になっていない");
 		// docs:end
 
 	}
@@ -230,7 +233,7 @@ class ValidationTest {
 		request.putData(Item.email, "");
 
 		for (int i = 0; i < 20; i++) {
-			Data messages = ValidationMessages.toMessages(rules.validate(null, request));
+			Data messages = ValidationMessages.toMessages(rules.errors(null, request));
 			assertEquals(List.of("name", "age", "email"), List.copyOf(messages.keySet()));
 		}
 
@@ -250,7 +253,7 @@ class ValidationTest {
 		Data ng = new Data();
 		ng.putData(Item.name, "");
 
-		List<Data> errors = rules.validate(null, List.of(ok, ng, ok));
+		List<Data> errors = rules.errors(null, List.of(ok, ng, ok));
 
 		assertEquals(1, errors.size());
 		assertEquals(2, errors.getFirst().getInt("index"), "行番号が違う");
@@ -274,7 +277,7 @@ class ValidationTest {
 		request.putData(Item.name, "");
 		request.putData(Item.age, "999");
 
-		Data messages = ValidationMessages.toMessages(rules.validate(null, request));
+		Data messages = ValidationMessages.toMessages(rules.errors(null, request));
 
 		assertEquals(List.of("入力してください"), messages.get("name"));
 		assertEquals(List.of("1 以上 120 以下の整数で入力してください"), messages.get("age"));
@@ -297,7 +300,7 @@ class ValidationTest {
 			request.putData(Item.name, "");
 
 			assertEquals(List.of("required"),
-				ValidationMessages.toMessages(rules.validate(null, request)).get("name"));
+				ValidationMessages.toMessages(rules.errors(null, request)).get("name"));
 			// docs:end
 
 		} finally {

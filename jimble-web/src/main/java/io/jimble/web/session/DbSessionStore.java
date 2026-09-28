@@ -96,7 +96,7 @@ public final class DbSessionStore implements SessionStore {
 				, DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true))
 			, sessionId
 			, timeoutMinutes
-		);
+		).orElse(null);
 
 		cleanupIfDue();
 

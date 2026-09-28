@@ -80,18 +80,6 @@ public class SelectValue implements ISelect {
 
 	/**
 	 * {@inheritDoc}
-	 */
-	@Override
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	@SuppressWarnings("removal")
-	public ISelect subtract(Object value) {
-
-		return divide(value);
-
-	}
-
-	/**
-	 * {@inheritDoc}
 	 *
 	 * <p>1.4 までは四則演算が全部 {@code null} を返していた（要件 D-190）。</p>
 	 */

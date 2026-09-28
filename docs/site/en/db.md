@@ -152,10 +152,7 @@ public static void main (String[] args) {
 
 	Migration.install();                                // startup migrations (if you want them; before DBUtil.load)
 
-	// false when it could not connect. Stop here
-	if (!DBUtil.load(Conf.conf().config(), App.class)) {
-		throw new IllegalStateException("could not load the DB (the reason is in the log just above)");
-	}
+	DBUtil.load(Conf.conf().config(), App.class);       // throws if it cannot connect. Startup stops here
 
 	JimbleServer.start(new App());
 
@@ -165,12 +162,12 @@ public static void main (String[] args) {
 The second argument to `DBUtil.load` is the **classpath anchor** — migration SQL is
 looked up from there. Pass a class of your own application.
 
-> [!TRAP]
-> **Do not throw the return value away.** `DBUtil.load` does not throw when it cannot
-> connect — it logs the reason and returns `false`. Throw that away and **the server
-> starts anyway**, then falls over on the first request that arrives.
-> `DBUtil.getMainDB()` fails saying the DB was never loaded, so you will not be lost,
-> but **noticing at startup is faster**.
+**When it cannot connect it throws `SqlExecuteException` (`DB_007`), and startup stops there.**
+There is no return value (`void`). Do not catch it; let it propagate out of `main`.
+
+> [!NOTE]
+> In 1.x, `DBUtil.load` only returned `false` when it could not connect, and throwing that away let the server start anyway.
+> 2.0 made it an exception ([Moving to 2.0](./migrate-2)).
 
 > [!TRAP]
 > **If your app has more than one entry point, put this sequence in one place.**
@@ -264,6 +261,10 @@ If you do not commit them, you cannot build in an environment with no DB.
 ```java snippet=select-nesting
 ```
 
+**`select` returns `Optional<Data>`.** It is empty when there are no rows
+(the `.orElseThrow()` above is how you take it out when the row must be there).
+When the row cannot be read you get an exception, not an empty result (see "Reading errors" below).
+
 **A SELECT result nests under the table name.**
 Join `post` and `comment` and the `id` on each side does not collide.
 
@@ -298,44 +299,47 @@ To get the JSON text itself, convert it in SQL: `CAST(col AS CHAR)` on MySQL, `c
 ```java snippet=db-error
 ```
 
-DB errors come back as return values, not exceptions.
-`select` returns `null`, `insert` returns `-1`, `update` / `delete` return `-1`.
-The reason is in `db.getError()`.
+**DB failures come back as exceptions.** When a statement fails or the connection cannot be made, you get `SqlExecuteException` (unchecked).
+Leave it uncaught and it travels up to a 500; inside a transaction, the transaction rolls back.
+The code is in `getCode()` (`DB_999` etc.), and the original JDBC exception is at `getCause().getCause()`.
 
-### Telling "no rows" apart from "could not read"
+**No rows is not a failure.** It comes back as an empty `Optional`, an empty list, or a count of 0.
 
-`null` from `select` has **two meanings**.
+| Method | Returns | With no rows |
+| --- | --- | --- |
+| `select` / `selectCached` | `Optional<Data>` | An empty `Optional` |
+| `selectList` / `selectListCached` / `selectListPerformance` | `List<Data>` (never `null`) | An empty list |
+| `insert` | Nothing (`void`) | —— |
+| `insertKey` | The generated key. `SqlExecuteException` if no key was generated | —— |
+| `update` / `delete` | The number of rows affected (`int`) | `0` |
+| `execute` | The number of rows affected (`int`). `0` for DDL and statements that return a result set | `0` |
+| `executeBatch` / `insertBatch` | A list of counts per statement / generated keys | An empty list for empty input |
+
+**`executeBatch` / `insertBatch` require every statement to be the same SQL.** A mix throws with `DB_998`.
+
+### "No rows" and "could not read"
+
+**They come back as different things.** An empty `Optional` means "no rows" and nothing else; a failure to read throws.
 
 ```java
-Data user = db.select(sql, id);
-if (user == null) { return nobody; }   // ← taken even when the DB cannot be read
+Optional<Data> user = db.select(sql, id);      // throws SqlExecuteException here if it cannot be read
+if (user.isEmpty()) { return nobody; }         // empty means "no rows", nothing else
+
+Data post = db.select(sql, id)
+	.orElseThrow(() -> new HttpException(404, "no such post"));
 ```
 
-Written this way, **the day the DB goes down your app answers "no such user".**
-No exception, nothing in the log (because `isError()` was never checked).
+The day the DB goes down, your app does not answer "no such user".
 
-There are two ways to tell them apart.
+> [!NOTE]
+> In 1.x, `select` returned `null` both for no rows and for a failure (you had to check `isError()` to tell them apart).
+> 2.0 separates them. `selectOrThrow` / `selectListOrThrow` now mean the same as `select` / `selectList`, so they are
+> deprecated (they go away during 2.x).
 
-```java
-// 1. Check isError(), as before
-Data user = db.select(sql, id);
-if (db.isError()) { throw ...; }
-if (user == null) { return nobody; }
+### Catching only unique-constraint violations
 
-// 2. Have it thrown for you (since 1.1)
-Data user = db.selectOrThrow(sql, id);
-if (user == null) { return nobody; }   // null means "no rows", nothing else
-```
-
-| Method | Returns |
-| --- | --- |
-| `selectOrThrow` | One row. **`null` means "no rows" only**. `SqlExecuteException` if it cannot be read |
-| `selectListOrThrow` | Rows. **Empty list for no rows**. `SqlExecuteException` if it cannot be read |
-| `insertKey` | **The generated key only**. `SqlExecuteException` if there is no generated column, or the insert failed |
-
-**A unique-constraint violation gets its own type** (since 1.5.0).
-The `...OrThrow` methods and `insertKey` throw `DuplicateKeyException` (a subclass of `SqlExecuteException`);
-with the return-value style, `db.isDuplicateKeyError()` tells it apart.
+The only failure you usually want to branch on is a unique-constraint violation. **That one has its own type.**
+Hitting a unique constraint throws `DuplicateKeyException` (a subclass of `SqlExecuteException`) — from `insert`, `insertKey`, `update` or any other statement.
 
 ```java
 try {
@@ -346,13 +350,25 @@ try {
 ```
 
 > [!TRAP]
-> **The return value of `insert` also carries two meanings.**
-> It is the generated key when one comes back, and **the number of rows inserted** when one does not.
-> Whether `1` means "inserted id=1" or "inserted 1 row"
-> **depends on whether the table has a generated column**——
-> **add one auto-increment column and the meaning changes without touching the caller.**
->
-> Use `insertKey` for the key and `insertNoReturnKey` for the count.
+> **Catch it inside a transaction and carry on, and that Tx can no longer commit.**
+> `tx.commit()` refuses with `TransactionException` (`DB_004`) and rolls everything back ([Transactions](./transaction)).
+> To use it as "update if it exists", catch it outside the transaction or write it in SQL
+> (`INSERT ... ON DUPLICATE KEY UPDATE` on MySQL, `INSERT ... ON CONFLICT` on PostgreSQL).
+
+### Generated keys and counts
+
+**`insert` returns nothing.** Use `insertKey` for the generated key, and `execute` when you need a count, as with `INSERT ... SELECT`.
+
+```java
+db.insert(SQL.insert(Tag.instance()).value(Tag.name, name));             // just insert
+long id = db.insertKey(SQL.insert(Post.instance()).value(...));          // the generated key
+int count = db.execute("INSERT INTO archive SELECT * FROM post WHERE ...");  // the count
+```
+
+> [!NOTE]
+> In 1.x, `insert` returned the generated key when there was one and the number of rows inserted when there was not
+> (adding one auto-increment column changed its meaning). 2.0 splits them.
+> `insertNoReturnKey` is deprecated (it goes away during 2.x); use `insert` or `execute`.
 
 
 ## Migrations

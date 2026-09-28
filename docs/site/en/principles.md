@@ -25,7 +25,7 @@ What we gave up to get that:
   Where one begins and ends lives outside the method
 
 Instead you write `new`. You write `install(AdminController::new)`.
-You write `try (DBTransaction transaction = ...)`. A few more lines.
+You write `db.transaction(tx -> { ... })`. A few more lines.
 
 ## 2. No classpath scanning at startup
 
@@ -54,17 +54,20 @@ For example:
 - The code snippets in these docs are extracted from the real code.
   Delete a marked region and **the site build fails**
 
-## 4. Where exceptions are not used
+## 4. Failures are exceptions
 
-DB errors come back as return values, not exceptions.
-`select` calls return `null`; update calls return `-1`.
+**A failure is an exception (unchecked).** jimble never reports a failure through a return value.
+Return values get thrown away, and a failure that was thrown away goes through in silence.
+
+- Zero rows is not a failure. `select` returns an empty `Optional`, `selectList` an empty list, `update` 0
+- A DB failure is a `SqlExecuteException`. About the only one you want to branch on is a unique violation, so catch just that as `DuplicateKeyException`
+- If you write nothing, it flies to the top and becomes a 500. Inside a transaction, it rolls back
 
 ```java snippet=db-error
 ```
 
-The reason: most DB errors are ones the caller wants to branch on.
-Make them exceptions and your only choices are wrapping in `try` or forgetting to
-and letting it fly to the top.
+The same goes for using an API the wrong way. **Things break only as a compile error or an exception**; nothing
+quietly does something else (what 2.0 rebuilt is listed in [Moving to 2.0](./migrate-2)).
 
 ## 5. One execution = one Context
 

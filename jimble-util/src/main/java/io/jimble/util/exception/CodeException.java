@@ -4,8 +4,14 @@ import io.jimble.util.data.Data;
 
 /**
  * コード付き例外
+ *
+ * <p>
+ * <b>非検査例外</b>（2.0。要件 D-197）。1.x は {@code Exception} の子だったので、
+ * 投げるメソッドをラムダの中で呼べず、呼ぶ側に毎回 {@code throws} か {@code catch} を書かせていた。
+ * {@code catch (CodeException e)} はそのまま書ける。
+ * </p>
  */
-public class CodeException extends Exception {
+public class CodeException extends RuntimeException {
 
 	/* エラーコード */
 	private String code;

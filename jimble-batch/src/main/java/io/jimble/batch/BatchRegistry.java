@@ -3,6 +3,7 @@ package io.jimble.batch;
 import io.jimble.util.internal.Docs;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.util.log.Log;
@@ -306,7 +307,8 @@ public final class BatchRegistry {
 
 		}
 
-		db.insertBatch("""
+		try {
+			db.insertBatch("""
 				INSERT INTO batch_master (
 					class_name
 					, name
@@ -327,11 +329,10 @@ public final class BatchRegistry {
 				, "name", "is_scheduler", "is_enable_scheduler", "default_cron"
 				, "default_settings", "default_allow_concurrent_execution", "created_at")
 			, paramsList);
-
-		if (db.isError()) {
-			Log.error("バッチマスタの更新に失敗しました: %s（テーブルが無いなら、BatchTables.install(db) を sync より前に呼んでいるか見てください）%s"
-				.formatted(db.getError(), Docs.see("batch")));
-			return 0;
+		} catch (SqlExecuteException ex) {
+			// 起動を止める（1.x はログだけ出して 0 を返し、マスタの無いまま動いていた）
+			throw new IllegalStateException("バッチマスタの更新に失敗しました: %s（テーブルが無いなら、BatchTables.install(db) を sync より前に呼んでいるか見てください）%s"
+				.formatted(ex.getMessage(), Docs.see("batch")), ex);
 		}
 
 		markDisappeared(db, batches);

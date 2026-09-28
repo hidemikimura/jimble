@@ -9,7 +9,8 @@ import io.jimble.core.context.BatchContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
 import io.jimble.db.dialect.SqlFunction;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.SqlExecuteException;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.lock.DBLock;
 import io.jimble.util.data.Data;
@@ -319,7 +320,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 */
 	private Data master (DB db) {
 
-		return db.select("SELECT * FROM batch_master WHERE class_name = ?", className());
+		return db.select("SELECT * FROM batch_master WHERE class_name = ?", className()).orElse(null);
 
 	}
 
@@ -358,41 +359,39 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * @param allowCount	同時実行可能数（0 以下なら上限なし）
 	 * @return	登録できた場合 = true
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private boolean registerExecuteInfo (DB db, BatchArgs args, int allowCount) {
 
 		if (allowCount <= 0) {
-			return insertExecuteInfo(db, args);
+			insertExecuteInfo(db, args);
+			return true;
 		}
 
 		String lockKey = "batch_ace_" + className();
 
-		DBLock.create(db, lockKey);
+		try {
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
+			DBLock.create(db, lockKey);
 
-			transaction.beginTransaction();
+			// 数えてから入れるまでを1つにする。return で抜けたら巻き戻る
+			try (Tx tx = db.begin()) {
 
-			DBLock.lock(db, lockKey);
+				DBLock.lock(db, lockKey);
 
-			if (runningCount(db) >= allowCount) {
-				transaction.rollbackEndTransaction();
-				return false;
+				if (runningCount(db) >= allowCount) {
+					return false;
+				}
+
+				if (!isMyTurn(db, args)) {
+					return false;
+				}
+
+				insertExecuteInfo(db, args);
+
+				tx.commit();
+
+				return true;
+
 			}
-
-			if (!isMyTurn(db, args)) {
-				transaction.rollbackEndTransaction();
-				return false;
-			}
-
-			if (!insertExecuteInfo(db, args)) {
-				transaction.rollbackEndTransaction();
-				return false;
-			}
-
-			transaction.commitEndTransaction();
-
-			return true;
 
 		} catch (Exception ex) {
 
@@ -421,7 +420,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					AND updated_at >= %s
 			""".formatted(db.dialect().intervalFromNow("SECOND", true))
 			, className()
-			, BatchConf.alive().toSeconds());
+			, BatchConf.alive().toSeconds()).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
 
@@ -465,7 +464,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 				, db.dialect().call(SqlFunction.RAND))
 			, BatchConf.alive().toSeconds());
 
-		if (rows == null || rows.isEmpty()) {
+		if (rows.isEmpty()) {
 			return true;
 		}
 
@@ -505,9 +504,9 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 *
 	 * @param db	DB
 	 * @param args	引数
-	 * @return	入れられた場合 = true
+	 * @throws io.jimble.db.SqlExecuteException	入れられなかったとき
 	 */
-	private boolean insertExecuteInfo (DB db, BatchArgs args) {
+	private void insertExecuteInfo (DB db, BatchArgs args) {
 
 		db.insert("""
 				INSERT INTO batch_execute_info (
@@ -519,8 +518,6 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			, args.uid()
 			, args.schedulerId()
 			, className());
-
-		return !db.isError();
 
 	}
 
@@ -730,11 +727,12 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * 履歴を作る
 	 *
 	 * @param db	DB
-	 * @return	履歴ID（作れなければ 0）
+	 * @return	履歴ID
+	 * @throws io.jimble.db.SqlExecuteException	作れなかったとき（バッチは error で終わる）
 	 */
 	private long insertHistory (DB db) {
 
-		long id = db.insert("""
+		return db.insertKey("""
 				INSERT INTO batch_history (
 					class_name, name, status, cancel_status, execute_info, starts_at
 				) VALUES (
@@ -745,8 +743,6 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			, batchName()
 			, BatchHistoryStatus.in_process.name()
 			, executeInfo);
-
-		return db.isError() ? 0 : id;
 
 	}
 
@@ -905,11 +901,13 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 				return cancelOrder;
 			}
 
-			Data row = DBUtil.getMainDB().select(
-				"SELECT cancel_status FROM batch_history WHERE id = ?", batchId);
-
-			if (row != null) {
-				cancelOrder = row.getBoolean("cancel_status");
+			try {
+				DBUtil.getMainDB().select(
+					"SELECT cancel_status FROM batch_history WHERE id = ?", batchId)
+					.ifPresent(row -> cancelOrder = row.getBoolean("cancel_status"));
+			} catch (SqlExecuteException ex) {
+				// 見に行けなかっただけでバッチは止めない。次の間隔でもう一度見る
+				Log.warn("中断の指示を読めませんでした: %s（%s）".formatted(className(), ex.getMessage()));
 			}
 
 			lastCancelCheck = System.currentTimeMillis();

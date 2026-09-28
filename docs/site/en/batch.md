@@ -148,7 +148,7 @@ so the admin screen shows how far along a running batch is.
 The `db` handed to `reader()` and the `db` handed to `write()` are **different instances**.
 **Use the one you are given.**
 
-Closing a `DBTransaction` returns the connection to the pool, so if you read through the same
+When a chunk's transaction (`Tx`) ends the connection goes back to the pool, so if you read through the same
 `DB`, **your open read dies the moment the first chunk commits.**
 
 > [!TIP]
@@ -162,9 +162,11 @@ rewritten while the batch runs.** If a full page comes back without the key adva
 better that than spinning forever in silence.
 
 > [!WARNING]
-> **`db.insert()` and friends do not throw when they fail.**
-> `db.isError()` only holds the result of **the statement just before it**.
-> If `write()` runs several statements, check after each one or throw yourself.
+> **When SQL inside `write()` fails, it throws `SqlExecuteException`.** That chunk is rolled back
+> and the batch fails (see "When it fails partway" above).
+> You do not need to check the result of each statement.
+> **Do not `catch` the failure and carry on.** Committing that chunk is then refused with
+> `TransactionException` (`DB_004`) and everything in it is rolled back.
 
 ## Double starts
 

@@ -126,7 +126,14 @@ final class Stage {
 				return;
 			}
 
-			executor.execute(context);
+			try {
+				executor.execute(context);
+			} catch (io.jimble.core.executor.ExecutorCanceled canceled) {
+				// cancel() で抜けた。ほかの Executor のものなら、ここでは受けない
+				if (canceled.executor() != executor) {
+					throw canceled;
+				}
+			}
 
 			if (context.response().isSent()) {
 				done = true;

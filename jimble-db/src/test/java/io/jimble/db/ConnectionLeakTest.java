@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,14 +45,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>開発用 DB が要る（要件 D-16）。</p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class ConnectionLeakTest {
 
 	@BeforeEach
 	void setUp () throws Exception {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), ConnectionLeakTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), ConnectionLeakTest.class);
 
 		try (DB setup = DBUtil.getMainDB()) {
 
@@ -93,15 +93,10 @@ class ConnectionLeakTest {
 
 				try {
 
-					/*
-					 * <b>DBTransaction を通さない。</b>
-					 * こちらの道は、拾う仕掛けが DBTransaction にあったころは
-					 * <b>誰も見ていなかった。</b>
-					 */
-					db.beginTransaction();
+					// 始めたまま、commit も rollback も close もしない
+					Tx leaked = db.begin();
 					db.insert("INSERT INTO conn_leak (name) VALUES (?)", "戻る行");
-
-					// commit も rollback も close もしない
+					assertTrue(db.isTransaction() && !leaked.isFinished());
 
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
@@ -137,7 +132,8 @@ class ConnectionLeakTest {
 					 * 登録を closeAfterQuery() の側だけに置くと、
 					 * ここは一度も通らないので拾えない。
 					 */
-					db.beginTransaction();
+					Tx leaked = db.begin();
+					assertFalse(leaked.isFinished());
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
 				}
@@ -213,7 +209,7 @@ class ConnectionLeakTest {
 				 * 長いバッチのループなら際限なく増えるので、そうしていない。
 				 */
 				for (int i = 0; i < 50; i++) {
-					assertNotNull(DBUtil.getMainDB().select("SELECT id FROM conn_leak ORDER BY id"));
+					assertTrue(DBUtil.getMainDB().select("SELECT id FROM conn_leak ORDER BY id").isPresent());
 				}
 
 			});
@@ -236,16 +232,15 @@ class ConnectionLeakTest {
 
 					// 普通の SQL（そもそも積まれない）
 					for (int i = 0; i < 20; i++) {
-						assertNotNull(DBUtil.getMainDB().select("SELECT id FROM conn_leak ORDER BY id"));
+						assertTrue(DBUtil.getMainDB().select("SELECT id FROM conn_leak ORDER BY id").isPresent());
 					}
 
 					// 畳んだトランザクション（積まれて、外れる）
 					for (int i = 0; i < 20; i++) {
 						try (DB db = DBUtil.getMainDB();
-							 DBTransaction transaction = new DBTransaction(db)) {
-							transaction.beginTransaction();
-							db.select("SELECT id FROM conn_leak ORDER BY id");
-							transaction.commitEndTransaction();
+							 Tx transaction = db.begin()) {
+							assertTrue(db.select("SELECT id FROM conn_leak ORDER BY id").isPresent());
+							transaction.commit();
 						}
 					}
 
@@ -291,11 +286,10 @@ class ConnectionLeakTest {
 			context.run(() -> {
 
 				try (DB db = DBUtil.getMainDB();
-					 DBTransaction transaction = new DBTransaction(db)) {
+					 Tx transaction = db.begin()) {
 
-					transaction.beginTransaction();
 					db.insert("INSERT INTO conn_leak (name) VALUES (?)", "残る行");
-					transaction.commitEndTransaction();
+					transaction.commit();
 
 				} catch (Exception ex) {
 					throw new IllegalStateException(ex);
@@ -322,11 +316,10 @@ class ConnectionLeakTest {
 		 * <b>拾う相手がいないので何もしない</b>——ここで例外にすると、
 		 * 起動そのものが止まる。
 		 */
-		try (DB db = DBUtil.getMainDB()) {
+		try (DB db = DBUtil.getMainDB(); Tx tx = db.begin()) {
 
-			db.beginTransaction();
 			db.insert("INSERT INTO conn_leak (name) VALUES (?)", "外の行");
-			db.rollbackEndTransaction();
+			tx.rollback();
 
 		} catch (Exception ex) {
 			throw new IllegalStateException(ex);
@@ -380,7 +373,7 @@ class ConnectionLeakTest {
 	 */
 	private static int count (DB db, String name) {
 
-		return db.select("SELECT COUNT(*) AS cnt FROM conn_leak WHERE name = ?", name).getInt("cnt");
+		return db.select("SELECT COUNT(*) AS cnt FROM conn_leak WHERE name = ?", name).orElseThrow().getInt("cnt");
 
 	}
 

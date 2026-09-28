@@ -6,15 +6,15 @@ import io.jimble.util.exception.CodeException;
  * SQL を実行できなかった
  *
  * <p>
- * <b>戻り値では「読めなかった」と「1件も無かった」を見分けられないので、
- * 見分けたい呼び方のためだけに用意した例外</b>である
- * （{@link DB#selectOrThrow(String, Object...)} ほか）。
+ * <b>2.0 で、DB の失敗はすべてこの例外になった</b>（要件 D-193）。1.x は {@code null} / {@code -1} / {@code false} を返し、
+ * {@code isError()} で見分ける作法だったので、「1件も無かった」と「読めなかった」が見分けられなかった。
+ * 0件は空（{@code Optional.empty()} / 空リスト / 件数 0）で返る。
  * </p>
  *
  * <p>
- * <b>既定の作法は変えていない。</b>{@link DB#select(String, Object...)} は
- * これまでどおり {@code null} を返し、{@link DB#isError()} で見分ける。
- * 投げるのは<b>こちらを選んだときだけ</b>である。
+ * 分岐したい失敗はたいてい一意制約だけなので、それは子の {@link DuplicateKeyException} で受ける。
+ * それ以外は書かなければ上まで飛んで 500 になり、トランザクションは巻き戻る。
+ * 元の例外は {@code getCause()}（{@link CodeException}）のさらに cause に残る。
  * </p>
  *
  * <p>
@@ -45,7 +45,7 @@ public class SqlExecuteException extends RuntimeException {
 	 * コンストラクタ
 	 *
 	 * @param message	内容
-	 * @param cause		{@link DB#getError()} が持っていたもの
+	 * @param cause		元のエラー（コードつき。そのさらに cause が JDBC の例外）
 	 */
 	public SqlExecuteException (String message, CodeException cause) {
 

@@ -7,13 +7,14 @@ order: 5
 
 # Error handling
 
-There are three paths by which an error reaches the surface. **They go through different places.**
+There are four paths by which an error reaches the surface. **They go through different places.**
 
 | What happened | Who catches it | What comes back by default |
 | --- | --- | --- |
 | Something threw | The `error(...)` hook | The status depends on the exception. The app builds the body |
 | No route matched | **The outermost** `error(...)` | 404 |
-| Validation failed | `ValidationExecutor` (`error` is not reached) | 422 and a `validation` JSON body |
+| `validate(...)` did not pass (`ValidationException`) | The `error(...)` hook | 422 and a `validation` JSON body |
+| `ValidationExecutor` validation failed | `ValidationExecutor` (`error` is not reached) | 422 and a `validation` JSON body |
 
 ## Writing an error handler
 
@@ -54,6 +55,7 @@ A request to `/admin/x` calls them inner first, then outer.
 | --- | --- |
 | `HttpException` | Whatever `statusCode()` says |
 | `NotFoundException` (a subclass of `HttpException`) | 404 |
+| `ValidationException` (a subclass of `HttpException`) | 422 |
 | Everything else | **500** |
 
 ```java snippet=error-http-status
@@ -66,7 +68,8 @@ Override it to assign codes to your own exceptions.
 
 > [!WARN]
 > `CodeException` (`io.jimble.util.exception.CodeException`) **has no effect on the HTTP status.**
-> It is the checked exception used for DB errors (`db.getError()`) and inside validators; throw it and you get a 500.
+> It is an unchecked exception (a subclass of `RuntimeException`) that carries a code; throw it and you get a 500.
+> DB failures (`SqlExecuteException`) and the like are also a 500 unless you do something (see "Exceptions the framework throws" below).
 
 ## Who builds the body
 
@@ -160,7 +163,23 @@ The failure is logged as `エラーハンドラで例外が発生しました`.
 
 An exception thrown inside `after` or `onComplete` is swallowed and logged the same way (the response still goes out).
 
-## Validation failures do not go through error
+## Validation failures
+
+### validate(...) answers with an exception
+
+`ValidationRules.validate(db, data)` / `Validator.validate(...)` throw a
+**`ValidationException`** (422, a subclass of `HttpException`) when the input does not pass.
+Like any other exception it goes through `error(...)`, and **if nobody builds a body** the framework
+answers in the shape below (the same as `ValidationExecutor`).
+
+```java
+rules.validate(db, data);   // leaves here with a 422 if it does not pass
+```
+
+When you want to handle the list yourself, take it with `errors(db, data)` (no exception).
+Checking a list of rows is `validate(db, List)` / `errors(db, List)`; the body is `{"rows": [...]}`.
+
+### ValidationExecutor does not go through error
 
 `ValidationExecutor` **does not throw.**
 It cancels itself, discards the executors behind it, and returns as-is.
@@ -182,8 +201,45 @@ This is the shape you get back. The input comes back with it, so you can rebuild
 ```
 
 > [!TRAP]
-> **Put your validation-error formatting in `error(...)` and it is never called.**
+> **For a `ValidationExecutor` failure, formatting you put in `error(...)` is never called.**
 > To change how a 422 looks, work on the `ValidationExecutor` side (`onCancel`).
+> A `ValidationException` from `validate(...)`, on the other hand, can be formatted in `error(...)`.
+
+## Exceptions the framework throws
+
+All of them are **unchecked**. Apart from the `HttpException` subclasses, each becomes a **500** unless you do something.
+
+| Exception | When | Parent |
+| --- | --- | --- |
+| `SqlExecuteException` | SQL failed. `getCode()` gives the code (table below) | `RuntimeException` |
+| `DuplicateKeyException` | A unique constraint was hit | `SqlExecuteException` |
+| `TransactionException` | A transaction could not be committed, begun or rolled back | `SqlExecuteException` |
+| `SqlBuildException` | The SQL cannot be built (`eq(null)` / `not(null)` and so on) | `RuntimeException` |
+| `RedisLockException` | `RedisLock.lock(...)` could not take the lock | `RuntimeException` |
+| `DataConversionException` | A Data value is there but cannot be read (`"abc"` through `getInt`, say) | `IllegalArgumentException` |
+| `JsonParseException` | Broken JSON handed to `Data.fromJsonString` / `Dson.decodes` | `IllegalArgumentException` |
+| `ValidationException` | `validate(...)` did not pass (**422**) | `HttpException` |
+| `CodeException` | A failure with a code (often found in another exception's `getCause()`) | `RuntimeException` |
+
+> [!NOTE]
+> When the body is `application/json` but cannot be read, `body()` / `bodyJson()` / `bodyAll()` throw a **400** `HttpException`.
+> It does not become a `JsonParseException` (500).
+
+These are the DB codes. The original JDBC exception is in `getCause().getCause()`.
+
+| Code | Exception | Meaning |
+| --- | --- | --- |
+| `DB_001` | `TransactionException` | The transaction could not be begun |
+| `DB_002` | `TransactionException` | It could not be rolled back |
+| `DB_003` | `TransactionException` | It could not be committed |
+| `DB_004` | `TransactionException` | SQL had failed inside the transaction, so it was not committed (everything was rolled back) |
+| `DB_005` | `TransactionException` | An inner, joined `Tx` asked for a rollback, so the outer one was not committed (everything was rolled back) |
+| `DB_006` | `TransactionException` | The body of `transaction(tx -> ...)` threw a checked exception (wrapped and rethrown) |
+| `DB_007` | `SqlExecuteException` | `DBUtil.load(...)` could not create the data source (startup stops) |
+| `DB_998` | `SqlExecuteException` | Different SQL was mixed into `executeBatch` / `insertBatch` |
+| `DB_999` | `SqlExecuteException` / `DuplicateKeyException` | Executing the SQL failed |
+
+For more, see [Using the DB](./db) and [Transactions](./transaction).
 
 ## What you can replace application-wide
 

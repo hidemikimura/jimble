@@ -82,7 +82,7 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	 *
 	 * <p>
 	 * キーは<b>このテーブルの列名</b>、値はそのまま入れる。{@code value(Data)} と違って
-	 * 包む形（{@code {"value": {"テーブル名": ...}}}）は要らず、<b>文字列 {@code "now()"} も変えない</b>
+	 * 包む形（{@code {"value": {"テーブル名": ...}}}）は要らない
 	 * （現在時刻は {@code Dsl.now()} を値に入れる）。値が {@code Data} / {@code Map}（入れ子）なら例外——
 	 * 結果の Data をそのまま渡して、テーブル名のキーを列だと思って入れる事故を止める。
 	 * </p>
@@ -108,44 +108,60 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	}
 
 	/**
-	 * VALUE句
+	 * {@code value} 句（リクエストの JSON から組む）
 	 *
-	 * @param value value JSON { value: { table_name: { column_name: value } } }
+	 * <p>
+	 * 形は {@code {"value": {"テーブル名": {"列名": 値}}}}。
+	 * <b>包むキーが無い・このテーブルの分が無い空でない Data は例外</b>（2.0。要件 D-194）——
+	 * 1.x は黙って何もしなかった。平らな行なら {@link #valueRow(Data)}。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>値はそのまま入れる。</b>1.x は文字列 {@code "now()"} を SQL の {@code NOW()} に変えていた
+	 * （利用者の入力 {@code "now()"} も現在時刻になった）。現在時刻は {@code Dsl.now()} を値に入れる。
+	 * </p>
+	 *
+	 * @param value {@code {"value": {"テーブル名": {"列名": 値}}}}
 	 * @return  InsertBuilder
+	 * @throws SqlBuildException	包むキーかテーブルの分が無い
 	 */
 	public InsertBuilder value (Data value) {
 
-		if (!value.containsKey("value")) {
-			if (!value.isEmpty()) {
-				io.jimble.util.internal.WarnOnce.warn("sql.value-data-unwrapped",
-					"value(Data) は {\"value\": {\"テーブル名\": {列: 値}}} の形を読みます。"
-						+ "\"value\" キーが無いので何もしませんでした（平らな行なら valueRow(Data) を使ってください）"
-						+ io.jimble.util.internal.Docs.see("sql"));
+		return valueFrom(value, true);
+
+	}
+
+	/**
+	 * {@code value} 句を Data から読む
+	 *
+	 * @param data		Data
+	 * @param strict	包むキーが無ければ例外にするか（{@code apply} は false）
+	 * @return	InsertBuilder
+	 */
+	private InsertBuilder valueFrom (Data data, boolean strict) {
+
+		if (strict) {
+			requireWrapped(data, "value", "value(Data)", "valueRow(Data)");
+		}
+
+		if (data == null || !data.containsKey("value")) {
+			return this;
+		}
+
+		Data wrapped = data.getData("value");
+
+		if (!wrapped.containsKey(table.name())) {
+			if (strict && !wrapped.isEmpty()) {
+				throw new SqlBuildException(
+					"value(Data) の \"value\" に、このテーブル（" + table.name() + "）の分がありません（キー: " + wrapped.keySet() + "）");
 			}
 			return this;
 		}
-		Data valueData = value.getData("value");
 
-		if (!valueData.containsKey(table.name())) {
-			return this;
-		}
-		Data tableData = valueData.getDataOptional(table.name());
+		Data tableData = wrapped.getDataOptional(table.name());
 
 		for (String columnName : tableData.keySet()) {
-			Object v = tableData.get(columnName);
-			if (v instanceof String stringValue) {
-				if ("now()".equals(stringValue)) {
-					io.jimble.util.internal.WarnOnce.warn("sql.now-string",
-						"value(Data) は文字列 \"now()\" を SQL の NOW() に変えます——利用者の入力 \"now()\" も現在時刻になります。"
-							+ "現在時刻は Dsl.now() で渡してください（2.0 ではこの変換をやめ、ただの文字列として入れます）"
-							+ io.jimble.util.internal.Docs.see("sql"));
-					value(new TemporaryColumn(table, columnName), Dsl.now());
-				} else {
-					value(new TemporaryColumn(table, columnName), stringValue);
-				}
-			} else {
-				value(new TemporaryColumn(table, columnName), v);
-			}
+			value(new TemporaryColumn(table, columnName), tableData.get(columnName));
 		}
 
 		return this;
@@ -368,7 +384,8 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	@Override
 	public InsertBuilder apply(Data data) {
 
-		value(data);
+		// まとめて読むので、無い句は無いまま（value(Data) の「包むキーが無ければ例外」は通さない）
+		valueFrom(data, false);
 		return this;
 
 	}

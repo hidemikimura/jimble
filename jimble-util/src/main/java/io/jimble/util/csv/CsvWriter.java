@@ -60,11 +60,10 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param outputFile    ファイル
-	 * @throws IOException  開けなかった場合
 	 */
-	public CsvWriter(File outputFile) throws IOException {
+	public CsvWriter(File outputFile) {
 
-		this.writer = new FileWriter(outputFile, Charset.forName(charset));
+		this.writer = openWriter(outputFile, charset);
 
 	}
 
@@ -73,12 +72,11 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 *
 	 * @param outputFile    ファイル
 	 * @param charset       文字コード
-	 * @throws IOException  例外
 	 */
-	public CsvWriter(File outputFile, String charset) throws IOException {
+	public CsvWriter(File outputFile, String charset) {
 
 		this.charset = charset;
-		this.writer = new FileWriter(outputFile, Charset.forName(charset));
+		this.writer = openWriter(outputFile, charset);
 
 	}
 
@@ -86,11 +84,10 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param outputStream  ストリーム
-	 * @throws IOException  例外
 	 */
-	public CsvWriter(OutputStream outputStream) throws IOException {
+	public CsvWriter(OutputStream outputStream) {
 
-		this.writer = new OutputStreamWriter(outputStream, charset);
+		this.writer = new OutputStreamWriter(outputStream, Charset.forName(charset));
 
 	}
 
@@ -99,12 +96,11 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 *
 	 * @param outputStream  ストリーム
 	 * @param charset       文字コード
-	 * @throws IOException  例外
 	 */
-	public CsvWriter(OutputStream outputStream, String charset) throws IOException {
+	public CsvWriter(OutputStream outputStream, String charset) {
 
 		this.charset = charset;
-		this.writer = new OutputStreamWriter(outputStream, charset);
+		this.writer = new OutputStreamWriter(outputStream, Charset.forName(charset));
 
 	}
 
@@ -112,9 +108,8 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 * コンストラクタ
 	 *
 	 * @param outputStreamWriter    ライター
-	 * @throws IOException          例外
 	 */
-	public CsvWriter(OutputStreamWriter outputStreamWriter) throws IOException {
+	public CsvWriter(OutputStreamWriter outputStreamWriter) {
 
 		this.writer = outputStreamWriter;
 
@@ -211,9 +206,8 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	/**
 	 * CSV出力を作成する
 	 *
-	 * @throws Exception 例外
 	 */
-	private void createCsvWriter () throws Exception {
+	private void createCsvWriter () {
 
 		if (csvWriter == null) {
 
@@ -233,7 +227,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 *
 	 * @param record 行
 	 */
-	public void writeLine (Object... record) throws Exception {
+	public void writeLine (Object... record) {
 
 		createCsvWriter();
 
@@ -293,12 +287,30 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void close () throws IOException {
+	public void close () {
 
 		if (csvWriter != null) {
-			csvWriter.flush();
-			csvWriter.close();
-			csvWriter = null;
+			try {
+				csvWriter.flush();
+				csvWriter.close();
+			} catch (IOException ex) {
+				throw new java.io.UncheckedIOException(ex);
+			} finally {
+				csvWriter = null;
+			}
+		}
+
+	}
+
+	/*
+	 * 書き出し先を開く（要件 D-197）
+	 */
+	private static Writer openWriter (File outputFile, String charset) {
+
+		try {
+			return new FileWriter(outputFile, Charset.forName(charset));
+		} catch (IOException ex) {
+			throw new java.io.UncheckedIOException("CSV を開けませんでした: " + outputFile, ex);
 		}
 
 	}

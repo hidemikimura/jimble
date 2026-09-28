@@ -218,7 +218,7 @@ class BatchIntegrationTest {
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), BatchIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), BatchIntegrationTest.class);
 
 		BatchTables.install(DBUtil.getMainDB());
 
@@ -287,7 +287,7 @@ class BatchIntegrationTest {
 
 		return DBUtil.getMainDB().select(
 			"SELECT * FROM batch_history WHERE class_name = ? ORDER BY id DESC LIMIT 1"
-			, batchClass.getName());
+			, batchClass.getName()).orElse(null);
 
 	}
 
@@ -320,8 +320,8 @@ class BatchIntegrationTest {
 		 */
 		register();
 
-		assertNotNull(DBUtil.getMainDB().select(
-			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName()));
+		assertTrue(DBUtil.getMainDB().select(
+			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName()).isPresent());
 
 		assertTrue(OkBatch.class.getName().contains("$"), OkBatch.class.getName());
 
@@ -358,9 +358,9 @@ class BatchIntegrationTest {
 		BatchRegistry.sync(DBUtil.getMainDB());
 
 		Data ok = DBUtil.getMainDB().select(
-			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName());
+			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName()).orElse(null);
 		Data gone = DBUtil.getMainDB().select(
-			"SELECT * FROM batch_master WHERE class_name = ?", NgBatch.class.getName());
+			"SELECT * FROM batch_master WHERE class_name = ?", NgBatch.class.getName()).orElse(null);
 
 		assertEquals(BatchMasterStatus.enable.name(), ok.getString("status"));
 		assertEquals(BatchMasterStatus.nothing.name(), gone.getString("status"), "行そのものは残す");
@@ -382,9 +382,9 @@ class BatchIntegrationTest {
 		BatchRegistry.sync(DBUtil.getMainDB());
 
 		Data ok = DBUtil.getMainDB().select(
-			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName());
+			"SELECT * FROM batch_master WHERE class_name = ?", OkBatch.class.getName()).orElse(null);
 		Data ng = DBUtil.getMainDB().select(
-			"SELECT * FROM batch_master WHERE class_name = ?", NgBatch.class.getName());
+			"SELECT * FROM batch_master WHERE class_name = ?", NgBatch.class.getName()).orElse(null);
 
 		assertEquals(BatchMasterStatus.nothing.name(), ok.getString("status"));
 		assertEquals(BatchMasterStatus.nothing.name(), ng.getString("status"));
@@ -449,7 +449,7 @@ class BatchIntegrationTest {
 
 		BatchExecutor.execute(args(OkBatch.class));
 
-		assertNull(DBUtil.getMainDB().select("SELECT uid FROM batch_execute_info LIMIT 1"));
+		assertTrue(DBUtil.getMainDB().select("SELECT uid FROM batch_execute_info LIMIT 1").isEmpty());
 
 	}
 

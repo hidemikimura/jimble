@@ -1,10 +1,7 @@
 package io.jimble.db.lock;
 
-import io.jimble.util.annotation.CheckReturnValue;
-
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
-import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.dialect.Sqls;
@@ -19,36 +16,38 @@ import java.util.List;
 public class DBLock {
 
 	/**
-	 * ロックキーを作成する
+	 * ロックキーを作成する（あれば何もしない）
+	 *
+	 * <p>
+	 * <b>失敗は例外</b>（2.0。要件 D-193）。1.x は {@code boolean} を返していた。
+	 * </p>
 	 *
 	 * @param db        DB
 	 * @param lockKey   ロックキー
-	 * @return  正常に終了した場合 = true
+	 * @throws io.jimble.db.SqlExecuteException	作れなかったとき
 	 */
-	@CheckReturnValue
-	public static boolean create (DB db, String...lockKey) {
+	public static void create (DB db, String...lockKey) {
 
 		if (lockKey == null || lockKey.length == 0) {
-			return true;
+			return;
 		}
 
 		List<Long> lockKeyHashes = createLockKeys(lockKey);
 		if (lockKeyHashes.isEmpty()) {
-			return true;
+			return;
 		}
 
 		List<List<Object>> paramsList = new ArrayList<>();
 		for (long key : lockKeyHashes) {
 			paramsList.add(new SQLParameterList(key));
 		}
-		List<Integer> results = db.executeBatch(
+		// 失敗は executeBatch が投げる
+		db.executeBatch(
 			Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.DB_LOCK)
 				+ " (lock_key) VALUES (?)"
 				+ Sqls.insertIgnoreTail(db.dialect())
 			, paramsList
 		);
-
-		return DB.isBatchSuccess(results);
 
 	}
 
@@ -82,32 +81,52 @@ public class DBLock {
 	}
 
 	/**
-	 * ロックする
+	 * ロックする（トランザクションの終わりまで、同じキーを持つ他の処理を待たせる）
+	 *
+	 * <pre>
+	 * db.transaction(tx -&gt; {
+	 *     DBLock.lock(db, "order:" + id);
+	 *     ...
+	 * });
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>トランザクションの外で呼ぶと例外</b>（2.0。要件 D-193）。{@code SELECT ... FOR UPDATE} の鍵は
+	 * 文の終わりで外れるので、1.x は外で呼んでも {@code true} を返し、<b>何も守らないまま先へ進んでいた</b>。
+	 * キーが無い（{@link #create} していない）ときと、SQL の失敗も例外。
+	 * </p>
 	 *
 	 * @param db        DB
 	 * @param lockKey   ロックキー
-	 * @return  正常にロックできた場合 = true
+	 * @throws IllegalStateException	トランザクションの外で呼んだとき、キーが無いとき
+	 * @throws io.jimble.db.SqlExecuteException	SQL が失敗したとき
 	 */
-	@CheckReturnValue
-	public static boolean lock (DB db, String...lockKey) {
+	public static void lock (DB db, String...lockKey) {
 
 		if (lockKey == null) {
-			return true;
+			return;
 		}
 
 		List<Long> lockKeyHashes = createLockKeys(lockKey);
 		if (lockKeyHashes.isEmpty()) {
-			return true;
+			return;
 		}
 
-		for (long key : lockKeyHashes) {
-			Data dbLock = db.select("SELECT * FROM db_lock WHERE lock_key = ? FOR UPDATE", key);
-			if (dbLock == null || db.isError()) {
-				return false;
+		if (!db.isTransaction()) {
+			throw new IllegalStateException(
+				"DBLock.lock はトランザクションの中で呼んでください（外では鍵が文の終わりで外れ、何も守りません）。"
+					+ "db.transaction(tx -> { DBLock.lock(db, ...); ... }) と書きます");
+		}
+
+		for (String key : lockKey) {
+			if (key == null || key.isEmpty()) {
+				continue;
+			}
+			if (db.select("SELECT * FROM db_lock WHERE lock_key = ? FOR UPDATE", Hash.sipHash(key)).isEmpty()) {
+				throw new IllegalStateException(
+					"ロックキーがありません（先に DBLock.create(db, キー) を呼んでください）: " + key);
 			}
 		}
-
-		return true;
 
 	}
 

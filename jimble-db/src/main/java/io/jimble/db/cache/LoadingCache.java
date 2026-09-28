@@ -81,8 +81,9 @@ public class LoadingCache<V> {
 	 * 取得する
 	 *
 	 * @return  値
+	 * @throws RuntimeException	読み込めなかったとき（元の例外は cause。2.0。1.x は検査例外の Exception）
 	 */
-	public V get () throws Exception {
+	public V get () {
 
 		V result = cache;
 		if (isUseCache(true)) {
@@ -98,7 +99,12 @@ public class LoadingCache<V> {
 
 			isLoading = true;
 
-			cache = loader.load(db());
+			try {
+				cache = loader.load(db());
+			} catch (Exception ex) {
+				// 検査例外は包む（2.0。1.x は throws Exception。要件 D-197）
+				throw io.jimble.util.internal.Unchecked.of("CACHE_001", "キャッシュを読み込めませんでした: " + key, ex);
+			}
 			cacheInstance().set(this.key, "1", "application/text");
 			lastGetAt = new Date();
 		} finally {

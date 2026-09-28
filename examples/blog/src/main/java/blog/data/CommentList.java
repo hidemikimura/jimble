@@ -91,11 +91,6 @@ public class CommentList extends AsyncList {
 				.orderBy(Comment.post_id, Comment.created_at)
 		);
 
-		if (rows == null) {
-			// 引けなかった。1つも読み込み済みにしないよう、例外にして個別読みへ落とす
-			throw new IllegalStateException("コメントを引けませんでした: " + BlogExample.db().getError());
-		}
-
 		Map<Object, List<Data>> byPost = new LinkedHashMap<>();
 
 		for (Data row : rows) {

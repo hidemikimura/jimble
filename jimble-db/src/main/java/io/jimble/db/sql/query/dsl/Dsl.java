@@ -376,68 +376,10 @@ public class Dsl {
 	// endregion
 
 
-	// region and
-
-	/**
-	 * AND（<b>直前の条件と</b>つなぐ）
-	 *
-	 * <p>
-	 * <b>まとめる関数ではない。</b>渡した条件そのものに「前と AND でつなぐ」印を付けて返す
-	 * （<b>引数が書き換わる</b>ので、同じ条件を別の所で使い回さないこと）。
-	 * 括弧でまとめるなら {@link #allOf(IWhere...)}。
-	 * </p>
-	 *
-	 * @param where	where（比較。素の列は渡せない）
-	 * @return	where
-	 *
-	 * @deprecated 括弧でまとめるなら {@link #allOf(IWhere...)}。「直前とつなぐ印」の形は 2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public static IWhere and(IWhere where) {
-
-		if (!(where instanceof WhereQuery whereQuery)) {
-			throw new io.jimble.db.sql.SqlBuildException(
-				"Dsl.and(...) には比較を渡してください（例: Dsl.and(列.eq(1))）。"
-					+ "いくつかをまとめるなら Dsl.allOf(...) です");
-		}
-		whereQuery.logicalOperator("AND");
-
-		return whereQuery;
-
-	}
-
-	// endregion
-
-	// region or
-
-	/**
-	 * OR（<b>直前の条件と</b>つなぐ）
-	 *
-	 * <p>
-	 * <b>まとめる関数ではない。</b>{@code where(a, Dsl.or(b))} は {@code a OR b} になる。
-	 * 渡した条件そのものに印を付けて返す（<b>引数が書き換わる</b>）。
-	 * {@code where(x, Dsl.or(a), ...)} のように前後に別の条件があると優先順位が読みにくいので、
-	 * 括弧でまとめる {@link #anyOf(IWhere...)} のほうを勧める。
-	 * </p>
-	 *
-	 * @param where	where（比較。素の列は渡せない）
-	 * @return	where
-	 *
-	 * @deprecated 括弧でまとめるなら {@link #anyOf(IWhere...)}。「直前とつなぐ印」の形は 2.0 で消す（要件 D-192）
-	 */
-	@Deprecated(since = "1.5.0", forRemoval = true)
-	public static IWhere or(IWhere where) {
-
-		if (!(where instanceof WhereQuery whereQuery)) {
-			throw new io.jimble.db.sql.SqlBuildException(
-				"Dsl.or(...) には比較を渡してください（例: Dsl.or(列.eq(1))）。"
-					+ "いくつかをまとめるなら Dsl.anyOf(...) です");
-		}
-		whereQuery.logicalOperator("OR");
-
-		return whereQuery;
-
-	}
+	// region and / or
+	//
+	// 1.x の Dsl.and(w) / Dsl.or(w) は「直前とつなぐ印」を引数に付けて返す（引数を書き換える）形だったので、
+	// 2.0 で消した（要件 D-194）。括弧でまとめる allOf / anyOf を使う。
 
 	// endregion
 

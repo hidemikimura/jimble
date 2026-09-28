@@ -37,10 +37,8 @@ public final class Bootstrap {
 
 		Migration.install();
 
-		if (!DBUtil.load(Conf.conf().config(), Bootstrap.class)) {
-			throw new IllegalStateException(
-				"DB を読み込めませんでした（このすぐ上のログに原因が出ています）");
-		}
+		// 繋がらなければ例外で止まる（2.0。1.x は false を返したので、見ないと起動してしまった）
+		DBUtil.load(Conf.conf().config(), Bootstrap.class);
 
 	}
 

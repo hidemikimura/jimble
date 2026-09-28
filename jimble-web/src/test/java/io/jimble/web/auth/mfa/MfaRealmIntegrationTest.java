@@ -56,7 +56,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p><b>開発用 DB が必要</b>（要件 D-16）。{@code ./gradlew :jimble-web:pgTest}</p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class MfaRealmIntegrationTest {
 
 	/** 2つの種別で同じ数字を持つ利用者 */
@@ -86,8 +85,7 @@ class MfaRealmIntegrationTest {
 			auth.mfa.secret_key = "%s"
 			""".formatted(SECRET_KEY)).withFallback(originalConf));
 
-		assertTrue(DBUtil.load(Conf.conf().config(), MfaRealmIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), MfaRealmIntegrationTest.class);
 
 	}
 
@@ -280,9 +278,10 @@ class MfaRealmIntegrationTest {
 		Mfa.Enrollment operator = enrollAndActivate(OPERATOR);
 
 		Router router = new Router();
-		Router ops = router.path("/ops");
-		ops.attribute(Auth.REALM, OPERATOR);
-		ops.post("/login/code", context -> { });
+		router.path("/ops", ops -> {
+			ops.attribute(Auth.REALM, OPERATOR);
+			ops.post("/login/code", context -> { });
+		});
 		router.seal();
 
 		try (WebContext context = Fakes.context("POST", "/ops/login/code")) {
@@ -401,7 +400,7 @@ class MfaRealmIntegrationTest {
 		assertFalse(Mfa.isActive(OPERATOR, USER_ID), "上げる前の登録が operator に見えています");
 
 		Data row = db.select("SELECT realm FROM %s WHERE user_id = ?"
-			.formatted(db.dialect().identifier(FrameworkTables.AUTH_MFA)), USER_ID);
+			.formatted(db.dialect().identifier(FrameworkTables.AUTH_MFA)), USER_ID).orElse(null);
 		assertEquals("", row.getString("realm"), "上げる前の行が種別なしになっていません");
 
 		String code = Totp.at(Totp.fromBase32(base32), Instant.now().getEpochSecond()
@@ -449,7 +448,7 @@ class MfaRealmIntegrationTest {
 		db.execute(db.dialect().setTableCommentSql(FrameworkTables.AUTH_MFA, "二要素認証:1"));
 		db.execute(db.dialect().setTableCommentSql(FrameworkTables.AUTH_MFA_RECOVERY, "二要素認証の回復コード:1"));
 
-		assertFalse(db.isError(), String.valueOf(db.getError()));
+		// 失敗は例外（2.0）
 
 	}
 

@@ -9,7 +9,8 @@ import io.jimble.batch.scheduler.mq.ReExecuteBatchExecutor;
 import io.jimble.batch.status.BatchHistoryStatus;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
+import io.jimble.mq.MqException;
 import io.jimble.db.DBUtil;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.data.SelectListResponse;
@@ -237,11 +238,6 @@ public final class BatchManagerController extends Controller {
 			""".formatted(where)
 			, all.toArray());
 
-		if (response == null) {
-			context.response().send(500);
-			return;
-		}
-
 		paging.set(response.list().size(), response.rowCount());
 
 		context.response().json("rows", response.list());
@@ -256,7 +252,7 @@ public final class BatchManagerController extends Controller {
 	private void historyDetail (WebContext context) {
 
 		Data row = DBUtil.getMainDB().select(
-			"SELECT * FROM batch_history WHERE id = ?", context.request().bodyAll().getLong("id"));
+			"SELECT * FROM batch_history WHERE id = ?", context.request().bodyAll().getLong("id")).orElse(null);
 
 		if (row == null) {
 			context.response().code(404).json("error", "履歴がありません");
@@ -272,47 +268,32 @@ public final class BatchManagerController extends Controller {
 	 *
 	 * @param context	コンテキスト
 	 */
-	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private void historyCancel (WebContext context) {
 
 		long id = context.request().bodyAll().getLong("id");
 
 		DB db = DBUtil.getMainDB();
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
+		// return で抜けたら巻き戻る。SQL の失敗は例外のまま上へ（500）
+		try (Tx tx = db.begin()) {
 
-			transaction.beginTransaction();
-
-			Data row = db.select("SELECT status FROM batch_history WHERE id = ? FOR UPDATE", id);
+			Data row = db.select("SELECT status FROM batch_history WHERE id = ? FOR UPDATE", id).orElse(null);
 
 			if (row == null) {
-				transaction.rollbackEndTransaction();
 				context.response().code(404).json("error", "履歴がありません");
 				return;
 			}
 
 			if (!BatchHistoryStatus.in_process.name().equals(row.getStringOptional("status"))) {
-				transaction.rollbackEndTransaction();
 				context.response().code(409).json("error", "実行中ではありません");
 				return;
 			}
 
 			db.update("UPDATE batch_history SET cancel_status = 1 WHERE id = ?", id);
 
-			if (db.isError()) {
-				transaction.rollbackEndTransaction();
-				context.response().code(500).json("error", "中断を指示できませんでした");
-				return;
-			}
-
-			transaction.commitEndTransaction();
+			tx.commit();
 
 			context.response().json("ok", true);
-
-		} catch (Exception ex) {
-
-			Log.error(ex, "中断の指示に失敗しました: id=%d".formatted(id));
-			context.response().code(500).json("error", "中断を指示できませんでした");
 
 		}
 
@@ -327,7 +308,7 @@ public final class BatchManagerController extends Controller {
 
 		long id = context.request().bodyAll().getLong("id");
 
-		Data row = DBUtil.getMainDB().select("SELECT id FROM batch_history WHERE id = ?", id);
+		Data row = DBUtil.getMainDB().select("SELECT id FROM batch_history WHERE id = ?", id).orElse(null);
 
 		if (row == null) {
 			context.response().code(404).json("error", "履歴がありません");
@@ -341,12 +322,12 @@ public final class BatchManagerController extends Controller {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			long queueId = new ReExecuteBatchExecutor().request(db, id);
+			new ReExecuteBatchExecutor().request(db, id);
 
-			if (queueId <= 0) {
-				context.response().code(500).json("error", queueError(db));
-				return;
-			}
+		} catch (MqException ex) {
+
+			context.response().code(500).json("error", queueError(ex));
+			return;
 
 		}
 
@@ -383,11 +364,6 @@ public final class BatchManagerController extends Controller {
 			, paging.per()
 			, paging.start() - 1);
 
-		if (response == null) {
-			context.response().send(500);
-			return;
-		}
-
 		paging.set(response.list().size(), response.rowCount());
 
 		context.response().json("rows", response.list());
@@ -402,7 +378,7 @@ public final class BatchManagerController extends Controller {
 	private void masterDetail (WebContext context) {
 
 		Data row = DBUtil.getMainDB().select("SELECT * FROM batch_master WHERE class_name = ?"
-			, context.request().bodyAll().getString("class_name"));
+			, context.request().bodyAll().getString("class_name")).orElse(null);
 
 		if (row == null) {
 			context.response().code(404).json("error", "バッチがありません");
@@ -435,15 +411,9 @@ public final class BatchManagerController extends Controller {
 			return;
 		}
 
-		DB db = DBUtil.getMainDB();
-
-		db.update("UPDATE batch_master SET cron = ?, settings = ? WHERE class_name = ?"
+		// 失敗は例外（500）
+		DBUtil.getMainDB().update("UPDATE batch_master SET cron = ?, settings = ? WHERE class_name = ?"
 			, cron, settings, className);
-
-		if (db.isError()) {
-			context.response().code(500).json("error", "保存できませんでした");
-			return;
-		}
 
 		context.response().json("ok", true);
 
@@ -473,15 +443,9 @@ public final class BatchManagerController extends Controller {
 
 		}
 
-		DB db = DBUtil.getMainDB();
-
-		int count = db.update("UPDATE batch_master SET status = ? WHERE class_name = ? AND status <> ?"
+		// 失敗は例外（500）
+		int count = DBUtil.getMainDB().update("UPDATE batch_master SET status = ? WHERE class_name = ? AND status <> ?"
 			, status, className, BatchMasterStatus.nothing.name());
-
-		if (db.isError()) {
-			context.response().code(500).json("error", "変更できませんでした");
-			return;
-		}
 
 		if (count <= 0) {
 			context.response().code(404).json("error", "バッチがありません");
@@ -501,7 +465,7 @@ public final class BatchManagerController extends Controller {
 
 		String className = context.request().bodyAll().getString("class_name");
 
-		Data row = DBUtil.getMainDB().select("SELECT class_name FROM batch_master WHERE class_name = ?", className);
+		Data row = DBUtil.getMainDB().select("SELECT class_name FROM batch_master WHERE class_name = ?", className).orElse(null);
 
 		if (row == null) {
 			context.response().code(404).json("error", "バッチがありません");
@@ -515,12 +479,12 @@ public final class BatchManagerController extends Controller {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			long queueId = new ExecuteBatchExecutor().request(db, className);
+			new ExecuteBatchExecutor().request(db, className);
 
-			if (queueId <= 0) {
-				context.response().code(500).json("error", queueError(db));
-				return;
-			}
+		} catch (MqException ex) {
+
+			context.response().code(500).json("error", queueError(ex));
+			return;
 
 		}
 
@@ -544,13 +508,17 @@ public final class BatchManagerController extends Controller {
 	 * 「スケジューラは動いている」と見えていても、まだ無いことがある。
 	 * </p>
 	 *
-	 * @param db	DB
+	 * @param ex	積めなかった例外
 	 * @return	理由
 	 */
-	private static String queueError (DB db) {
+	private static String queueError (MqException ex) {
 
-		String reason = db.isError() && db.getError() != null
-			? String.valueOf(db.getError().getMessage()) : "";
+		// DB の元のエラー文（MqException ← SqlExecuteException ← CodeException）を出す
+		Throwable root = ex;
+		while (root.getCause() != null && root.getCause() != root) {
+			root = root.getCause();
+		}
+		String reason = String.valueOf(root.getMessage());
 
 		Log.error("バッチの実行依頼を積めませんでした: キュー=%s / 理由=%s"
 			.formatted(SchedulerQueue.name(), reason.isEmpty() ? "不明" : reason));

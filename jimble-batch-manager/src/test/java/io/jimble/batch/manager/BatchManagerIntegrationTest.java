@@ -78,7 +78,7 @@ class BatchManagerIntegrationTest {
 	static void startAll () {
 
 		Conf.reload();
-		assertTrue(DBUtil.load(Conf.conf().config(), BatchManagerIntegrationTest.class), "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), BatchManagerIntegrationTest.class);
 
 		BatchTables.install(DBUtil.getMainDB());
 		SchedulerQueue.queue().install();
@@ -125,7 +125,7 @@ class BatchManagerIntegrationTest {
 		db.execute("TRUNCATE TABLE batch_master");
 		db.execute("TRUNCATE TABLE batch_history");
 		db.execute("TRUNCATE TABLE batch_execute_info");
-		db.execute("TRUNCATE TABLE `%s`".formatted(SchedulerQueue.name()));
+		db.execute("TRUNCATE TABLE %s".formatted(db.dialect().identifier(SchedulerQueue.name())));
 
 		BatchRegistry.clear();
 		BatchRegistry.add(SampleBatch::new);
@@ -187,7 +187,7 @@ class BatchManagerIntegrationTest {
 	private Data master () {
 
 		return DBUtil.getMainDB().select("SELECT * FROM batch_master WHERE class_name = ?"
-			, SampleBatch.class.getName());
+			, SampleBatch.class.getName()).orElse(null);
 
 	}
 
@@ -400,7 +400,7 @@ class BatchManagerIntegrationTest {
 	 */
 	private long insertHistory (BatchHistoryStatus status) {
 
-		return DBUtil.getMainDB().insert("""
+		return DBUtil.getMainDB().insertKey("""
 				INSERT INTO batch_history (class_name, name, status, cancel_status, execute_info, starts_at)
 				VALUES (?, ?, ?, 0, ?, NOW())
 			"""
@@ -457,7 +457,7 @@ class BatchManagerIntegrationTest {
 
 		assertEquals(200, request("POST", PATH + "/api/history/" + running + "/cancel", "{}").statusCode());
 
-		Data row = DBUtil.getMainDB().select("SELECT cancel_status FROM batch_history WHERE id = ?", running);
+		Data row = DBUtil.getMainDB().select("SELECT cancel_status FROM batch_history WHERE id = ?", running).orElse(null);
 
 		assertNotNull(row);
 		assertTrue(row.getBoolean("cancel_status"), "中断の指示が入っていない");

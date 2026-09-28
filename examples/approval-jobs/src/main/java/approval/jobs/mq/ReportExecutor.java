@@ -83,7 +83,7 @@ public class ReportExecutor extends MqExecutor {
 					request
 				WHERE
 					status = ?
-			""", status);
+			""", status).orElseThrow();       // COUNT は必ず1行返る
 
 		// 長い処理のつもり。ここでも中断は見る（見ないと止められない）
 		for (int i = 0; i < 10; i++) {

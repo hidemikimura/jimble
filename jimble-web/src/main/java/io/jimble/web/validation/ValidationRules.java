@@ -75,9 +75,7 @@ public class ValidationRules {
 	 * 検査して、エラーの一覧を返す
 	 *
 	 * <p>
-	 * {@link #validate(DB, Data)} と同じ。<b>名前が中身を言っている</b>ので、こちらを勧める——
-	 * 2.0 では {@code validate} が「失敗したら 422 の例外」に変わり、一覧が欲しいときはこちらを使う
-	 * （design-2.0.md 7 章。要件 D-191）。
+	 * <b>止めない。</b>一覧を見て自分で分岐したいときに使う。止めてよいなら {@link #validate(DB, Data)}（422 の例外）。
 	 * </p>
 	 *
 	 * @param db	DB
@@ -88,24 +86,6 @@ public class ValidationRules {
 	@CheckReturnValue
 	public Data errors (DB db, Data req) {
 
-		return validate(db, req);
-
-	}
-
-	/**
-	 * バリデーション
-	 *
-	 * <p>
-	 * <b>エラーを返すだけで、止めない。</b>戻り値を捨てると、エラーがあっても素通りする。
-	 * </p>
-	 *
-	 * @param db	DB
-	 * @param req	リクエスト情報
-	 * @return	エラー情報
-	 */
-	@CheckReturnValue
-	public Data validate (DB db, Data req) {
-
 		Data errorData = new Data();
 
 		boolean isInsertRequest = insertRequestChecker != null && insertRequestChecker.apply(req);
@@ -114,18 +94,30 @@ public class ValidationRules {
 
 			Column column = entry.getKey();
 			ValidationRule validationRule = entry.getValue();
-			if (!req.containsKey(column) && validationRule.hasRequiredCheck()
-				&& !(isInsertRequest && validationRule.isInsertRequired())) {
+			if (!req.containsKey(column) && validationRule.hasRequiredCheck() && !validationRule.isInsertRequired()) {
 				/*
-				 * 規則はキーがあるときだけ走る（要件 D-192）。required() を付けても、
-				 * キーごと送られてこなければ素通りする——「必須」と読めるのに効いていない。
-				 * 2.0 ではキーが無ければ失敗にする。
+				 * required() / empty() はキーが無ければ失敗（2.0。要件 D-196）。
+				 * 1.x の規則はキーがあるときだけ走ったので、キーごと送られてこなければ素通りしていた
+				 * （「必須」と読めるのに効いていない。1.5 は警告）。値が null のときと同じに扱う。
+				 * insertRequired() を付けた規則は、これまでどおり「登録のときだけ必須、更新は送られたときだけ見る」。
 				 */
-				io.jimble.util.internal.WarnOnce.warn("validation.required-missing-key",
-					"required() / empty() はキーが無いと検査しません（" + (column.table() == null ? "" : column.table().name() + ".") + column.name()
-						+ " が送られてきませんでした）。送られないことがあるなら insertRequired() と insertRequestChecker を使うか、"
-						+ "キーの有無を自分で見てください（2.0 ではキーが無ければ失敗になります）"
-						+ io.jimble.util.internal.Docs.see("validation"));
+				try {
+					ValidationResult missing = validationRule.validate(db, req, isInsertRequest, null);
+					if (missing.error()) {
+						errorData.putData(column, new Data()
+							.putData("validation_type", missing.validationError().errorType())
+							.putData("validation_setting", missing.validationError().settings())
+							.putData("input", null)
+						);
+					}
+				} catch (Exception ex) {
+					errorData.putData(column, new Data()
+						.putData("validation_type", ValidationErrorType.Error)
+						.putData("validation_setting", new Data())
+						.putData("input", null)
+					);
+				}
+				continue;
 			}
 			if (req.containsKey(column)
 				|| (isInsertRequest && validationRule.isInsertRequired())) {
@@ -195,6 +187,34 @@ public class ValidationRules {
 	}
 
 	/**
+	 * 検査して、通らなければ 422 の例外で止める
+	 *
+	 * <pre>
+	 * rules.validate(db, data);      // 通らなければここで 422。返りの本文に項目ごとのメッセージ
+	 * db.insert(...);
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>2.0 で意味を変えた</b>（要件 D-196）。1.x はエラーの一覧を返すだけだったので、
+	 * 文として {@code rules.validate(db, data);} と書くと<b>エラーがあっても素通り</b>していた。
+	 * 戻り値の型を {@code void} にしたので、{@code Data e = rules.validate(...)} はコンパイルが通らない——
+	 * 一覧が欲しいなら {@link #errors(DB, Data)}。
+	 * </p>
+	 *
+	 * @param db	DB
+	 * @param req	リクエスト情報
+	 * @throws ValidationException	通らなかったとき（422）
+	 */
+	public void validate (DB db, Data req) {
+
+		Data errors = errors(db, req);
+		if (!errors.isEmpty()) {
+			throw new ValidationException(errors);
+		}
+
+	}
+
+	/**
 	 * バリデーション（複数件）
 	 *
 	 * <p>
@@ -205,16 +225,17 @@ public class ValidationRules {
 	 * @param db	DB
 	 * @param list	データ一覧
 	 * @return	エラー情報一覧（エラーのある行だけ。{@code index} は 1 始まり）
+	 * @since 2.0.0
 	 */
 	@CheckReturnValue
-	public List<Data> validate (DB db, List<Data> list) {
+	public List<Data> errors (DB db, List<Data> list) {
 
 		List<Data> errorDataList = new ArrayList<>();
 
 		int rowNumber = 1;
 		for (Data req : list) {
 
-			Data errorData = validate(db, req);
+			Data errorData = errors(db, req);
 
 			if (!errorData.isEmpty()) {
 				errorData.putData("index", rowNumber);
@@ -226,6 +247,24 @@ public class ValidationRules {
 		}
 
 		return errorDataList;
+
+	}
+
+	/**
+	 * バリデーション（複数件）。通らない行があれば 422 の例外で止める
+	 *
+	 * <p>1.x は一覧を返していた。一覧が欲しいなら {@link #errors(DB, List)}（要件 D-196）。</p>
+	 *
+	 * @param db	DB
+	 * @param list	データ一覧
+	 * @throws ValidationException	通らない行があったとき（{@code errors()} は {@code {"rows": [...]}}）
+	 */
+	public void validate (DB db, List<Data> list) {
+
+		List<Data> errors = errors(db, list);
+		if (!errors.isEmpty()) {
+			throw new ValidationException(new Data().putData("rows", errors));
+		}
 
 	}
 

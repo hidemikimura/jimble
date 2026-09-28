@@ -7,13 +7,14 @@ order: 5
 
 # エラー処理
 
-エラーが表に出る道は3本あります。**通る場所が違います。**
+エラーが表に出る道は4本あります。**通る場所が違います。**
 
 | 何が起きたか | 誰が拾うか | 既定の返り |
 | --- | --- | --- |
 | 例外が投げられた | `error(...)` フック | ステータスは例外しだい。本文はアプリが作る |
 | ルートに当たらなかった | **いちばん外側の** `error(...)` | 404 |
-| 検証に失敗した | `ValidationExecutor`（`error` は通らない） | 422 と `validation` の JSON |
+| `validate(...)` が通らなかった（`ValidationException`） | `error(...)` フック | 422 と `validation` の JSON |
+| `ValidationExecutor` の検証に失敗した | `ValidationExecutor`（`error` は通らない） | 422 と `validation` の JSON |
 
 ## error の書き方
 
@@ -54,6 +55,7 @@ void handle (WebContext context, Throwable cause, int statusCode) throws Excepti
 | --- | --- |
 | `HttpException` | `statusCode()` の値 |
 | `NotFoundException`（`HttpException` の子） | 404 |
+| `ValidationException`（`HttpException` の子） | 422 |
 | そのほか全部 | **500** |
 
 ```java snippet=error-http-status
@@ -66,7 +68,8 @@ void handle (WebContext context, Throwable cause, int statusCode) throws Excepti
 
 > [!WARN]
 > `CodeException`（`io.jimble.util.exception.CodeException`）は **HTTP のステータスには効きません。**
-> DB のエラー（`db.getError()`）とバリデータの中で使う検査例外で、投げれば 500 です。
+> コードつきの非検査例外（`RuntimeException` の子）で、投げれば 500 です。
+> DB の失敗（`SqlExecuteException`）なども、何もしなければ 500 です（下の「枠組みが投げる例外」）。
 
 ## 本文は誰が作るか
 
@@ -161,7 +164,22 @@ Allow: GET
 
 `after` と `onComplete` の中で例外が出た場合も、握ってログに出します（レスポンスは返ります）。
 
-## 検証の失敗は error を通らない
+## 検証の失敗
+
+### validate(...) は例外で返る
+
+`ValidationRules.validate(db, data)` / `Validator.validate(...)` は、通らなければ
+**`ValidationException`**（422。`HttpException` の子）を投げます。
+ほかの例外と同じく `error(...)` を通り、**誰も本文を作らなければ**枠組みが次の形（`ValidationExecutor` と同じ）で返します。
+
+```java
+rules.validate(db, data);   // 通らなければここで抜けて 422
+```
+
+一覧を自分で扱いたいときは `errors(db, data)` で受け取ってください（例外にしません）。
+一覧の検査は `validate(db, List)` / `errors(db, List)` で、本文は `{"rows": [...]}` です。
+
+### ValidationExecutor は error を通らない
 
 `ValidationExecutor` は**例外を投げません。**
 自分をキャンセルして、後続の Executor を捨て、そのまま返します。
@@ -183,8 +201,45 @@ context.response().code(422);
 ```
 
 > [!TRAP]
-> **`error(...)` に検証エラーの整形を書いても呼ばれません。**
+> **`ValidationExecutor` の失敗は、`error(...)` に整形を書いても呼ばれません。**
 > 422 の見た目を変えたいときは `ValidationExecutor` 側（`onCancel`）を見てください。
+> `validate(...)` の `ValidationException` のほうは `error(...)` で組み立てられます。
+
+## 枠組みが投げる例外
+
+どれも**非検査例外**です。`HttpException` の子のほかは、何もしなければ **500** になります。
+
+| 例外 | いつ | 親 |
+| --- | --- | --- |
+| `SqlExecuteException` | SQL が失敗した。`getCode()` でコードが取れる（下の表） | `RuntimeException` |
+| `DuplicateKeyException` | 一意制約に当たった | `SqlExecuteException` |
+| `TransactionException` | トランザクションを確定・開始・巻き戻しできなかった | `SqlExecuteException` |
+| `SqlBuildException` | SQL を組めない（`eq(null)` / `not(null)` など） | `RuntimeException` |
+| `RedisLockException` | `RedisLock.lock(...)` でロックが取れなかった | `RuntimeException` |
+| `DataConversionException` | Data の値が、あるのに読めない（`getInt` に `"abc"` など） | `IllegalArgumentException` |
+| `JsonParseException` | `Data.fromJsonString` / `Dson.decodes` に壊れた JSON | `IllegalArgumentException` |
+| `ValidationException` | `validate(...)` が通らなかった（**422**） | `HttpException` |
+| `CodeException` | コードつきの失敗（ほかの例外の `getCause()` に入っていることが多い） | `RuntimeException` |
+
+> [!NOTE]
+> 本文が `application/json` なのに読めないときは、`body()` / `bodyJson()` / `bodyAll()` が **400** の `HttpException` を投げます。
+> `JsonParseException`（500）にはなりません。
+
+DB のコードはこうです。元の JDBC の例外は `getCause().getCause()` にあります。
+
+| コード | 例外 | 意味 |
+| --- | --- | --- |
+| `DB_001` | `TransactionException` | トランザクションを始められなかった |
+| `DB_002` | `TransactionException` | 巻き戻せなかった |
+| `DB_003` | `TransactionException` | コミットできなかった |
+| `DB_004` | `TransactionException` | トランザクションの中で SQL が失敗していたので、コミットしなかった（全部巻き戻した） |
+| `DB_005` | `TransactionException` | 合流した中の `Tx` が巻き戻しを求めたので、外をコミットしなかった（全部巻き戻した） |
+| `DB_006` | `TransactionException` | `transaction(tx -> ...)` の中身が検査例外を投げた（包んで投げ直した） |
+| `DB_007` | `SqlExecuteException` | `DBUtil.load(...)` がデータソースを作れなかった（起動が止まる） |
+| `DB_998` | `SqlExecuteException` | `executeBatch` / `insertBatch` に違う SQL が混ざっていた |
+| `DB_999` | `SqlExecuteException` / `DuplicateKeyException` | SQL の実行に失敗した |
+
+詳しくは [DB を使う](./db) と [トランザクション](./transaction) を見てください。
 
 ## アプリ全体で差し替えられるもの
 

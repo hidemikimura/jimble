@@ -146,7 +146,7 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 `reader()` に渡る `db` と `write()` に渡る `db` は**別のインスタンス**です。
 **渡されたものをそのまま使ってください。**
 
-`DBTransaction` を閉じるとコネクションがプールへ返るので、
+かたまりのトランザクション（`Tx`）が終わるとコネクションがプールへ返るので、
 同じ `DB` で読んでいると**最初のかたまりを確定した時点で読みかけが死にます。**
 
 > [!TIP]
@@ -159,9 +159,9 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 キーが進まないまま満杯のページが返ってきたときは例外になります（黙って無限に回るより落ちたほうがよいためです）。
 
 > [!WARNING]
-> **`db.insert()` などは失敗しても例外を投げません。**
-> `db.isError()` に**その直前の1文**の結果が入るだけです。
-> `write()` の中で複数の文を流すなら、1文ごとに見るか、自分で例外を投げてください。
+> **`write()` の中の SQL が失敗すると `SqlExecuteException` が飛びます。**そのかたまりは巻き戻り、バッチは失敗になります（上の「途中で落ちたとき」）。
+> 1文ごとに結果を確かめる必要はありません。
+> **失敗を `catch` して続けないでください。**そのかたまりの確定が `TransactionException`（`DB_004`）で断られ、全部巻き戻ります。
 
 ## 二重起動
 

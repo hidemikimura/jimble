@@ -41,16 +41,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </p>
  */
 @Tag("db")
-@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class DbIntegrationTest {
 
 	@BeforeAll
 	static void loadDataSource () {
 
 		Conf.reload();
-		assertTrue(
-			DBUtil.load(Conf.conf().config(), DbIntegrationTest.class)
-			, "DB に接続できませんでした。application.dbtest.conf を確認してください");
+		DBUtil.load(Conf.conf().config(), DbIntegrationTest.class);
 
 		DB db = DBUtil.getMainDB();
 
@@ -86,15 +83,20 @@ class DbIntegrationTest {
 	 */
 	private long insertSite (DB db, String name, long groupId) {
 
-		long id = db.insert(
+		long id = db.insertKey(
 			SQL.insert(TestSchema.Site.instance())
 				.value(TestSchema.Site.group_id, groupId)
 				.value(TestSchema.Site.name, name));
 
-		assertFalse(db.isError(), String.valueOf(db.getError()));
 		assertTrue(id > 0);
 
 		return id;
+
+	}
+
+	private static boolean hasRows (DB db) {
+
+		return db.select(SQL.select().from(TestSchema.Site.instance())).isPresent();
 
 	}
 
@@ -109,9 +111,8 @@ class DbIntegrationTest {
 		Data row = db.select(
 			SQL.select()
 				.from(TestSchema.Site.instance())
-				.where(TestSchema.Site.id.eq(id)));
+				.where(TestSchema.Site.id.eq(id))).orElseThrow();
 
-		assertNotNull(row);
 		assertEquals("俺的まとめ", row.getString(TestSchema.Site.name), "Column 版で取れること");
 		assertNull(row.getString("name"), "文字列キー版は null（テーブル名でネストしているため）");
 		assertEquals(id, row.getLong(TestSchema.Site.id));
@@ -119,37 +120,65 @@ class DbIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("F-D-11 該当0件の select は null を返す。エラーではない")
-	void selectNoRowReturnsNull () {
+	@DisplayName("D-193 該当0件の select は空の Optional。例外ではない")
+	void selectNoRowReturnsEmpty () {
 
 		DB db = DBUtil.getMainDB();
 
-		Data row = db.select(
+		assertTrue(db.select(
 			SQL.select()
 				.from(TestSchema.Site.instance())
-				.where(TestSchema.Site.id.eq(999999L)));
+				.where(TestSchema.Site.id.eq(999999L))).isEmpty());
 
-		assertNull(row);
-		assertFalse(db.isError(), "0件はエラーではない");
+		assertTrue(db.selectList(
+			SQL.select()
+				.from(TestSchema.Site.instance())
+				.where(TestSchema.Site.id.eq(999999L))).isEmpty(), "0件は空リスト");
 
 	}
 
 	@Test
-	@DisplayName("F-D-11 SQL エラーは例外ではなく戻り値で返る")
-	void sqlErrorIsReturnedNotThrown () {
+	@DisplayName("D-193 SQL の失敗は SqlExecuteException（1.x は null / -1 / false を返していた）")
+	void sqlErrorIsThrown () {
 
 		DB db = DBUtil.getMainDB();
 
-		List<Data> rows = db.selectList("SELECT * FROM not_exists_table");
+		SqlExecuteException e = assertThrows(SqlExecuteException.class, () -> db.selectList("SELECT * FROM not_exists_table"));
+		assertEquals("DB_999", e.getCode());
+		assertTrue(e.getCause() instanceof CodeException, "元の例外が cause に残る");
+		assertTrue(e.getCause().getCause() instanceof java.sql.SQLException, String.valueOf(e.getCause().getCause()));
 
-		assertNull(rows, "エラー時は null を返す");
-		assertTrue(db.isError(), "エラーが保持されていること");
-		assertNotNull(db.getError());
+		assertThrows(SqlExecuteException.class, () -> db.select("SELECT * FROM not_exists_table"));
+		assertThrows(SqlExecuteException.class, () -> db.update("UPDATE not_exists_table SET x = 1"));
+		assertThrows(SqlExecuteException.class, () -> db.delete("DELETE FROM not_exists_table"));
+		assertThrows(SqlExecuteException.class, () -> db.insert("INSERT INTO not_exists_table (x) VALUES (1)"));
+		assertThrows(SqlExecuteException.class, () -> db.execute("UPDATE not_exists_table SET x = 1"));
 
 	}
 
 	@Test
-	@DisplayName("UPDATE / DELETE と Dsl.now()")
+	@DisplayName("D-193 一意制約の違反だけは DuplicateKeyException で分けられる")
+	void duplicateKeyIsDistinguished () {
+
+		DB db = DBUtil.getMainDB();
+
+		long id = insertSite(db, "先", 1L);
+
+		DuplicateKeyException e = assertThrows(DuplicateKeyException.class, () -> db.insert(
+			SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.id, id)
+				.value(TestSchema.Site.group_id, 1L)
+				.value(TestSchema.Site.name, "後")));
+		assertTrue(e.getMessage().contains("一意制約"), e.getMessage());
+
+		// 一意制約でない失敗は親の型のまま
+		SqlExecuteException other = assertThrows(SqlExecuteException.class, () -> db.update("UPDATE site SET そんな列は無い = 1"));
+		assertFalse(other instanceof DuplicateKeyException);
+
+	}
+
+	@Test
+	@DisplayName("UPDATE / DELETE は件数を返す。execute も件数（DDL は 0）")
 	void updateAndDelete () {
 
 		DB db = DBUtil.getMainDB();
@@ -163,13 +192,16 @@ class DbIntegrationTest {
 				.where(TestSchema.Site.id.eq(id)));
 
 		assertEquals(1, updated);
-		assertFalse(db.isError());
 
 		Data row = db.select(
-			SQL.select().from(TestSchema.Site.instance()).where(TestSchema.Site.id.eq(id)));
+			SQL.select().from(TestSchema.Site.instance()).where(TestSchema.Site.id.eq(id))).orElseThrow();
 
 		assertEquals("新名", row.getString(TestSchema.Site.name));
 		assertNotNull(row.getDate(TestSchema.Site.deleted_at), "Dsl.now() が反映されること");
+
+		insertSite(db, "もう1件", 1L);
+		assertEquals(2, db.execute("UPDATE site SET group_id = 3"), "execute は当たった件数");
+		assertEquals(0, db.execute("UPDATE site SET group_id = 3 WHERE id = -1"));
 
 		assertEquals(1, db.delete(
 			SQL.delete(TestSchema.Site.instance()).where(TestSchema.Site.id.eq(id))));
@@ -178,142 +210,119 @@ class DbIntegrationTest {
 
 	@Test
 	@DisplayName("トランザクションをロールバックできる")
-	void transactionRollback () throws Exception {
+	void transactionRollback () {
 
 		DB db = DBUtil.getMainDB();
 
-		db.beginTransaction();
-		try {
+		try (Tx tx = db.begin()) {
 			insertSite(db, "巻き戻される", 1L);
-			db.rollbackEndTransaction();
-		} catch (Exception ex) {
-			db.rollbackEndTransaction();
-			throw ex;
+			tx.rollback();
 		}
 
-		assertNull(
-			db.select(SQL.select().from(TestSchema.Site.instance()))
-			, "ロールバックされていること");
+		assertFalse(hasRows(db), "ロールバックされていること");
 
 	}
 
 	@Test
 	@DisplayName("トランザクションをコミットできる")
-	void transactionCommit () throws Exception {
+	void transactionCommit () {
 
 		DB db = DBUtil.getMainDB();
 
-		db.beginTransaction();
-		insertSite(db, "残る", 1L);
-		db.commitEndTransaction();
+		try (Tx tx = db.begin()) {
+			insertSite(db, "残る", 1L);
+			tx.commit();
+		}
 
-		assertNotNull(db.select(SQL.select().from(TestSchema.Site.instance())));
+		assertTrue(hasRows(db));
 
 	}
 
-	// region トランザクションと、戻り値で返るエラー（D-155 / D-156）
+	// region トランザクションと、受け止めた失敗（D-155 / D-156）
 
 	@Test
-	@DisplayName("D-155 中でエラーが出たら、コミットしない")
-	void transactionRefusesToCommitAfterAnError () throws Exception {
+	@DisplayName("D-155 中の SQL の失敗を受け止めて続けても、コミットしない")
+	void transactionRefusesToCommitAfterACaughtError () {
 
 		/*
-		 * <b>ここが素通りしていた。</b>
-		 *
-		 * jimble の DB は<b>エラーを戻り値で返す</b>（原則4）ので、
-		 * 中の書き込みが -1 を返しても<b>処理は正常に終わったように見える</b>——
-		 * `DBTransaction.transaction(...)` はそのまま commit していた。
+		 * 2.0 で失敗は例外になったが、<b>受け止めて続ける</b>と 1.x の -1 と同じ形になる。
+		 * そのまま commit まで進めると、失敗した文の前後だけが入る（部分コミット）。
 		 */
 		DB db = DBUtil.getMainDB();
 
-		assertThrows(CodeException.class, () -> DBTransaction.transaction(db, transaction -> {
+		TransactionException e = assertThrows(TransactionException.class, () -> db.transaction(tx -> {
 
 			insertSite(db, "先に入れるほう", 1L);
 
-			// 無い列を触って失敗させる（例外にはならず -1 が返る）
-			db.update("UPDATE site SET そんな列は無い = 1");
+			try {
+				db.update("UPDATE site SET そんな列は無い = 1");
+			} catch (SqlExecuteException ignore) {
+				// 受け止めて続ける
+			}
 
 		}), "エラーが出ているのにコミットしています");
 
-		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
-			, "拒んだのに入っています");
+		assertEquals("DB_004", e.getCode(), e.getMessage());
+		assertFalse(hasRows(db), "拒んだのに入っています");
 
 	}
 
 	@Test
 	@DisplayName("D-156 失敗のあとに何を書いても、コミットまで進めなければ何も残らない")
-	void nothingSurvivesAFailedTransaction () throws Exception {
+	void nothingSurvivesAFailedTransaction () {
 
 		/*
 		 * <b>失敗のあとの文が通るかどうかは、製品によって違う。</b>
-		 *
-		 * - PostgreSQL：<b>ROLLBACK するまで以降を全部断る</b>
-		 *   （{@code current transaction is aborted, commands ignored until end of transaction block}）
-		 * - MySQL：<b>そのまま通る</b>（1文の失敗でトランザクションを中断しない）
-		 *
-		 * <b>この違いは CI が教えてくれた。</b>「PostgreSQL では通らない」を決まりとして書いたら、
-		 * MySQL の dbTest で落ちた——<b>手元に MariaDB が無く、確かめずに書いていた</b>。
-		 *
-		 * <b>なので、ここで固定するのは「両方で同じこと」だけにする。</b>
-		 * すなわち<b>コミットが拒まれ、1行も残らない</b>。
-		 * 途中で何本通ったかは<b>製品の都合</b>であって、jimble の約束ではない。
-		 *
+		 * PostgreSQL は ROLLBACK するまで以降を全部断り、MySQL はそのまま通す。
+		 * ここで固定するのは「両方で同じこと」だけ——<b>コミットが拒まれ、1行も残らない</b>。
 		 * <b>MySQL 側でこそ守りが要る。</b>あちらは失敗のあとの文が本当に通るので、
-		 * {@code commit()} の守りが無ければ<b>それがそのままコミットされる</b>——
-		 * これが D-155 で塞いだ部分コミットである。
+		 * commit の守りが無ければそれがそのままコミットされる（D-155）。
 		 */
 		DB db = DBUtil.getMainDB();
 
-		db.beginTransaction();
+		try (Tx tx = db.begin()) {
 
-		insertSite(db, "失敗より前", 1L);
+			insertSite(db, "失敗より前", 1L);
 
-		db.update("UPDATE site SET そんな列は無い = 1");
-		assertTrue(db.isError(), "失敗していない（テストの前提が崩れています）");
+			assertThrows(SqlExecuteException.class, () -> db.update("UPDATE site SET そんな列は無い = 1"));
 
-		// 通るか通らないかは製品による。どちらでもよい
-		db.insert(SQL.insert(TestSchema.Site.instance())
-			.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "失敗より後"));
+			// 通るか通らないかは製品による。どちらでもよい
+			try {
+				db.insert(SQL.insert(TestSchema.Site.instance())
+					.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "失敗より後"));
+			} catch (SqlExecuteException ignore) {
+				// PostgreSQL
+			}
 
-		assertThrows(CodeException.class, db::commitEndTransaction
-			, "エラーが出ているのにコミットしています");
+			assertThrows(TransactionException.class, tx::commit, "エラーが出ているのにコミットしています");
 
-		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
-			, "拒んだのに残っています（部分コミット）");
+		}
+
+		assertFalse(hasRows(db), "拒んだのに残っています（部分コミット）");
 
 	}
 
 	@Test
-	@DisplayName("D-156 rollback すれば、そこから書き直して続けられる")
-	void rollbackLetsYouCarryOn () throws Exception {
+	@DisplayName("D-156 巻き戻せば、新しい Tx で書き直して続けられる")
+	void rollbackLetsYouCarryOn () {
 
 		/*
-		 * <b>呼んだ側が分岐して続けられること。</b>
-		 *
-		 * SQL → commit → SQL（失敗）→ rollback → SQL → commit と書ける。
-		 * <b>rollback がエラーの持ち越しも畳む</b>ので、
-		 * 最後の commit は「まだエラーが出ている」と言って断られない。
+		 * 巻き戻しがエラーの持ち越しも畳むので、次の Tx の commit は「まだエラーが出ている」と言って断られない。
 		 */
 		DB db = DBUtil.getMainDB();
 
-		db.beginTransaction();
-
-		try {
-
+		try (Tx tx = db.begin()) {
 			insertSite(db, "1つめ", 1L);
-			db.commit();                       // ここで確定。トランザクションは続く
+			tx.checkpoint();                    // ここで確定。トランザクションは続く
 
-			db.update("UPDATE site SET そんな列は無い = 1");
-			assertTrue(db.isError(), "失敗していない（テストの前提が崩れています）");
+			assertThrows(SqlExecuteException.class, () -> db.update("UPDATE site SET そんな列は無い = 1"));
 
-			db.rollback();                     // 呼んだ側が決着を付ける
+			tx.rollback();                      // 呼んだ側が決着を付ける
+		}
 
+		try (Tx tx = db.begin()) {
 			insertSite(db, "2つめ", 1L);
-			db.commitEndTransaction();         // 断られないこと
-
-		} catch (Exception ex) {
-			db.rollbackEndTransaction();
-			throw ex;
+			tx.commit();                        // 断られないこと
 		}
 
 		List<Data> rows = db.selectList(SQL.select().from(TestSchema.Site.instance()));
@@ -323,69 +332,31 @@ class DbIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("D-156 DBTransaction を通さなくても、コミットは拒む")
-	void rawTransactionAlsoRefuses () throws Exception {
+	@DisplayName("D-155 エラーが無ければ、これまでどおりコミットする")
+	void transactionStillCommits () {
 
-		/*
-		 * <b>枠組み自身が4か所、DBTransaction を通さずに直に書いている</b>
-		 * （`DbRateLimitStore` / `DbSqlCacheStore` / `Migration` / `CodeMigration`）。
-		 * 守りが `DBTransaction` にしか無いと、この道だけ部分コミットに戻る。
-		 */
 		DB db = DBUtil.getMainDB();
 
-		db.beginTransaction();
+		db.transaction(tx -> insertSite(db, "ふつうに入る", 1L));
 
-		insertSite(db, "直に書いた道", 1L);
-
-		db.update("UPDATE site SET そんな列は無い = 1");
-
-		assertThrows(CodeException.class, db::commitEndTransaction
-			, "DBTransaction を通さない道だけ素通りしています");
-
-		assertNull(db.select(SQL.select().from(TestSchema.Site.instance()))
-			, "拒んだのに入っています");
+		assertTrue(hasRows(db));
 
 	}
+
+	// endregion
 
 	@Test
-	@DisplayName("D-155 エラーが無ければ、これまでどおりコミットする")
-	void transactionStillCommits () throws Exception {
+	@DisplayName("D-193 空の一覧の insertBatch / executeBatch は空リスト（1.x は null）")
+	void emptyBatchReturnsEmptyList () {
 
 		DB db = DBUtil.getMainDB();
 
-		DBTransaction.transaction(db, transaction -> insertSite(db, "ふつうに入る", 1L));
-
-		assertNotNull(db.select(SQL.select().from(TestSchema.Site.instance())));
+		assertEquals(List.of(), db.insertBatch(List.of()));
+		assertEquals(List.of(), db.executeBatch(List.of()));
+		assertEquals(List.of(), db.executeBatch("UPDATE site SET name = ?", List.of()));
+		assertEquals(List.of(), db.insertBatch("INSERT INTO site (group_id) VALUES (?)", List.of()));
 
 	}
-
-	// region ここで固定していないこと（トランザクション）
-
-	/*
-	 * <b>失敗のあとに何本通るかは、ここでは固定していない。</b>
-	 * PostgreSQL は断り、MySQL は通す——<b>製品の都合</b>であって jimble の約束ではない。
-	 * 固定しているのは「コミットが拒まれ、1行も残らない」ほうである。
-	 *
-	 * <b>ミューテーションのうち2つは、PostgreSQL では落とせない。</b>
-	 *
-	 * - <b>{@code commit()} の守り</b>（{@code requireNoErrorSinceTransaction}）
-	 * - <b>守りが投げる前に巻き戻すこと</b>
-	 *
-	 * PostgreSQL は<b>中断したトランザクションへの COMMIT を ROLLBACK として扱う</b>ので、
-	 * 守りが無くても結果が同じになる。加えて {@code endTransaction()} が
-	 * 最後の文のエラーを投げ直すので、例外も出てしまう。
-	 *
-	 * <b>MySQL では効く。</b>あちらは失敗のあとの文がそのまま通るので、
-	 * 守りが無ければ<b>それがコミットされる</b>——部分コミットが戻る。
-	 * <b>この前提は CI（dbTest / MySQL）が確かめた</b>：
-	 * 「PostgreSQL では通らない」と決め打ちした版が、MySQL で落ちた。
-	 *
-	 * <b>だから両方残す。</b>「PostgreSQL がたまたま助けてくれる」に頼らない。
-	 */
-
-	// endregion
-
-	// endregion
 
 	@Test
 	@DisplayName("insertBatch でまとめて登録できる")
@@ -402,7 +373,6 @@ class DbIntegrationTest {
 				.value(TestSchema.Site.group_id, 2L).value(TestSchema.Site.name, "C")
 		));
 
-		assertNotNull(ids, String.valueOf(db.getError()));
 		assertEquals(3, ids.size());
 
 		List<Data> rows = db.selectList(
@@ -427,16 +397,14 @@ class DbIntegrationTest {
 		 * 2件目は group_id に "B" を、name に 1 を入れようとする——
 		 * 型が合えば<b>例外も警告も無しに値が入れ替わって入る</b>。
 		 */
-		List<Long> ids = db.insertBatch(List.of(
+		SqlExecuteException e = assertThrows(SqlExecuteException.class, () -> db.insertBatch(List.of(
 			SQL.insert(TestSchema.Site.instance())
 				.value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "A")
 			, SQL.insert(TestSchema.Site.instance())
 				.value(TestSchema.Site.name, "B").value(TestSchema.Site.group_id, 1L)
-		));
+		)), "SQL が違うのに通っている");
 
-		assertNull(ids, "SQL が違うのに通っている");
-		assertTrue(db.isError(), "エラーが立っていない");
-		assertEquals("DB_998", db.getError().getCode(), String.valueOf(db.getError()));
+		assertEquals("DB_998", e.getCode(), e.getMessage());
 
 		// 1件も入っていない（まとめて止めるので、途中まで入ることもない）
 		assertEquals(0, db.selectList(SQL.select().from(TestSchema.Site.instance())).size());
@@ -464,7 +432,7 @@ class DbIntegrationTest {
 		Data count = db.select(
 			SQL.select(Dsl.count(TestSchema.Site.id).as("cnt"))
 				.from(TestSchema.Site.instance())
-				.where(TestSchema.Site.group_id.eq(2L)));
+				.where(TestSchema.Site.group_id.eq(2L))).orElseThrow();
 
 		assertEquals(2, count.getInt("cnt"), count.toString());
 
@@ -499,7 +467,7 @@ class DbIntegrationTest {
 		long id = insertSite(db, "俺的まとめ速報＠あ｜ア", 1L);
 
 		Data row = db.select(
-			SQL.select().from(TestSchema.Site.instance()).where(TestSchema.Site.id.eq(id)));
+			SQL.select().from(TestSchema.Site.instance()).where(TestSchema.Site.id.eq(id))).orElseThrow();
 
 		assertEquals("俺的まとめ速報＠あ｜ア", row.getString(TestSchema.Site.name));
 

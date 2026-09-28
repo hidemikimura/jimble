@@ -48,9 +48,9 @@ public final class Convertor {
 	 * @param src         変換前オブジェクト
 	 * @param destClasses 変換希望クラス([0]=変換希望クラス、[1...]=型パラメータ)
 	 * @return 変換後オブジェクト
-	 * @throws Exception 例外
+	 * @throws RuntimeException 変換できなかったとき（2.0。1.x は検査例外の Exception。要件 D-197）
 	 */
-	public static <T> T convert (Configration conf, Object src, Class<?>... destClasses) throws Exception {
+	public static <T> T convert (Configration conf, Object src, Class<?>... destClasses) {
 
 		return convert(conf, src, true, destClasses);
 	}
@@ -65,10 +65,10 @@ public final class Convertor {
 	 * @param useCustom   カスタム変換オブジェクト使用判定
 	 * @param destClasses 変換希望クラス([0]=変換希望クラス、[1...]=型パラメータ)
 	 * @return 変換後オブジェクト
-	 * @throws Exception 例外
+	 * @throws RuntimeException 変換できなかったとき（2.0。1.x は検査例外の Exception。要件 D-197）
 	 */
 	@SuppressWarnings("unchecked")
-	public static <T> T convert (Configration conf, Object src, boolean useCustom, Class<?>... destClasses) throws Exception {
+	public static <T> T convert (Configration conf, Object src, boolean useCustom, Class<?>... destClasses) {
 
 		if (src == null) {
 			return null;
@@ -89,7 +89,12 @@ public final class Convertor {
 			}
 		}
 
-		return (T) getConvertor(conf, useCustom, destClasses[0]).convert(conf, src, destClasses);
+		try {
+			return (T) getConvertor(conf, useCustom, destClasses[0]).convert(conf, src, destClasses);
+		} catch (Exception ex) {
+			// 検査例外は包む（2.0。1.x は throws Exception で、呼ぶ側に毎回 catch を書かせていた。要件 D-197）
+			throw io.jimble.util.internal.Unchecked.of("CONVERT_001", "変換できませんでした", ex);
+		}
 	}
 
 	/**

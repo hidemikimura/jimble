@@ -54,6 +54,20 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 				Object value = tableData.getObject(columnQuery);
 
 				String[] querys = columnQuery.split(Pattern.quote("|"));
+
+				/*
+				 * 空の値は例外（要件 D-194）。1.x は {@code = NULL} になって黙って0件だった——
+				 * 画面の検索欄を空で送ると「該当なし」になる。空なら条件ごと入れないこと。
+				 */
+				String op = querys.length == 1 ? "eq" : querys[1];
+				if (!"is_null".equals(op) && !"is_not_null".equals(op) && !"between".equals(op)
+					&& !"in".equals(op) && !"not_in".equals(op) && singleValue(value) == null) {
+					throw new SqlBuildException(
+						"where の %s.%s が空です（空の値との比較はどの行にも当たりません）。"
+							.formatted(tableName, columnQuery)
+							+ "条件にしないならキーごと入れない、NULL を探すなら \"%s|is_null\": true と書いてください"
+							.formatted(querys[0]));
+				}
 				if (querys.length == 1) {
 					res.add(new TemporaryColumn(
 							table
@@ -235,6 +249,35 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 		}
 
 		return res;
+
+	}
+
+	/**
+	 * 包む形か確かめる（要件 D-194）
+	 *
+	 * <p>
+	 * {@code where(Data)} / {@code set(Data)} / {@code value(Data)} は
+	 * {@code {"where": ...}} / {@code {"set": ...}} / {@code {"value": ...}} の形を読む。
+	 * 1.x は包むキーが無いと<b>黙って何もしなかった</b>——{@code where} なら条件が付かずに全件、
+	 * {@code set} なら何も更新されない。空でない Data で包むキーが無ければ例外にする。
+	 * {@code apply(Data)} はいくつかの句をまとめて読むので、ここを通らない。
+	 * </p>
+	 *
+	 * @param data		渡された Data
+	 * @param key		包むキー
+	 * @param method	呼ばれたメソッド（エラーに出す）
+	 * @param flat		平らな形で渡したいときの書き方（無ければ null）
+	 */
+	protected static void requireWrapped (Data data, String key, String method, String flat) {
+
+		if (data == null || data.isEmpty() || data.containsKey(key)) {
+			return;
+		}
+
+		throw new SqlBuildException(
+			"%s は {\"%s\": {\"テーブル名\": {...}}} の形を読みます。\"%s\" キーがありません（キー: %s）%s"
+				.formatted(method, key, key, data.keySet(), flat == null ? "" : "。平らな行なら " + flat + " を使ってください")
+				+ io.jimble.util.internal.Docs.see("sql"));
 
 	}
 

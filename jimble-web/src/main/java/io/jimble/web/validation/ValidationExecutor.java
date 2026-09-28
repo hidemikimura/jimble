@@ -122,7 +122,7 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 	/**
 	 * {@link ValidationRules} の結果をまとめて足す
 	 *
-	 * @param validationErrors	{@link ValidationRules#validate} の戻り
+	 * @param validationErrors	{@link ValidationRules#errors} の戻り
 	 */
 	protected void addErrors (Data validationErrors) {
 

@@ -68,8 +68,7 @@ class MfaIntegrationTest {
 			auth.mfa.secret_key = "0123456789abcdef0123456789abcdef"
 			""").withFallback(originalConf));
 
-		assertTrue(DBUtil.load(Conf.conf().config(), MfaIntegrationTest.class)
-			, "DB に接続できませんでした");
+		DBUtil.load(Conf.conf().config(), MfaIntegrationTest.class);
 
 	}
 
@@ -119,7 +118,7 @@ class MfaIntegrationTest {
 		Mfa.Enrollment enrollment = Mfa.enroll(USER_ID, "member1@example.com");
 
 		Data row = DBUtil.getMainDB().select("SELECT secret FROM %s WHERE user_id = ?"
-			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa")), USER_ID);
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa")), USER_ID).orElse(null);
 
 		/*
 		 * <b>ここが平文だと、DB が漏れた時点で全員の2要素が無効になる。</b>
@@ -139,7 +138,7 @@ class MfaIntegrationTest {
 		String first = enrollment.recoveryCodes().get(0);
 
 		Data row = DBUtil.getMainDB().select("SELECT count(*) as cnt FROM %s WHERE user_id = ? AND code_hash = ?"
-			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa_recovery")), USER_ID, first);
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa_recovery")), USER_ID, first).orElse(null);
 
 		assertEquals(0, row.getInt("cnt"), "回復コードが平文で入っている");
 
