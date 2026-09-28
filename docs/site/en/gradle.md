@@ -329,7 +329,11 @@ how to fix it is left out). Any `ERROR` fails the task; `WARN` alone does not.
 | J304 | WARN | codegen is in use but MQ tables (`mq_scheduler` …) are missing from `codegen.exclude_tables` |
 | J401 | ERROR | An outer `before(Auth::guard)` with `Remember.restore` inside an `Auth.REALM` block (401 every time despite remember-me) |
 | J501 | WARN | The skills are not from the jimble version you use (run `jimbleSkills`) |
-| J701 | WARN | An empty `catch` in a file that uses `DBTransaction` (reports success when nothing was committed) |
+| J701 | WARN | An empty `catch` in a file that uses transactions (`DBTransaction` / `db.begin()` / `db.transaction(...)`) (reports success when nothing was committed) |
+| J801–J810 | WARN | Ways of writing deprecated in 1.5.0, and ones that throw in 2.0 (`DBTransaction`, `Router x = router.path("/x")`, `Dsl.or`, `eq(null)` …). The replacement is already in 1.5 ([Moving to 2.0](./migrate-2)) |
+
+**`./gradlew jimbleCheck --target=2.0`** also lists calls whose type or meaning changes in 2.0 (J901–J906: `Data row = db.select(...)`, `db.isError()` …).
+They are still correct on 1.5, so they are not listed by default.
 
 > [!NOTE]
 > Java is not parsed into a syntax tree; comments and strings are blanked out first. **Silence a false positive

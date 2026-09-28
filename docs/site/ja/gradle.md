@@ -321,7 +321,11 @@ jimbleRun {
 | J304 | WARN | codegen を使っているのに、MQ の表（`mq_scheduler` など）を `codegen.exclude_tables` に書いていない |
 | J401 | ERROR | 外側の `before(Auth::guard)` と、`Auth.REALM` のブロックの中の `Remember.restore`（覚えていても毎回 401） |
 | J501 | WARN | skill が使っている jimble の版のものではない（`jimbleSkills` で揃える） |
-| J701 | WARN | `DBTransaction` を使うファイルの空の `catch`（コミットされていないのに成功を返す） |
+| J701 | WARN | トランザクション（`DBTransaction` / `db.begin()` / `db.transaction(...)`）を使うファイルの空の `catch`（コミットされていないのに成功を返す） |
+| J801〜J810 | WARN | 1.5.0 で非推奨になった書き方と、2.0 で例外になる書き方（`DBTransaction`・`Router x = router.path("/x")`・`Dsl.or`・`eq(null)` など）。置き換え先は 1.5 にある（[2.0 への移行](./migrate-2)） |
+
+**`./gradlew jimbleCheck --target=2.0`** にすると、2.0 で型や意味が変わる呼び出し（J901〜J906：`Data row = db.select(...)`・`db.isError()` など）も出します。
+1.5 では正しい書き方でもあるので、既定では出しません。
 
 > [!NOTE]
 > Java は構文木にせず、コメントと文字列を除いてから読んでいます。**誤検知は、その行か前の行に
