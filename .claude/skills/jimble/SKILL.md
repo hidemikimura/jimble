@@ -110,6 +110,8 @@ int updated = db.update(SQL.update(Request.instance())   // update / delete は�
 **失敗は例外（`SqlExecuteException`、非検査）。**`isError()` は無い。
 書かなければ上まで飛んで 500、トランザクションの中なら巻き戻る。
 分けたいのは一意制約くらいなので、それだけ `catch (DuplicateKeyException e)` で受ける。
+**非検査なのでコンパイラは catch を求めない。**利用者の入力を一意制約のある列に入れるところ（メールアドレス・ログイン ID など）では
+必ず `DuplicateKeyException` を受けて 409 などにする。どこで何を受けるかの表は `jimble-db` の skill の「catch するところ」。
 
 **列は静的フィールドで、名前は DB のまま**（`Request.decided_by`。camelCase ではない）。
 

@@ -359,6 +359,31 @@ class DbIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-193 executeBatch / insertBatch の失敗は例外。一意制約は DuplicateKeyException（1.x は null を返して isError）")
+	void batchFailureThrows () {
+
+		DB db = DBUtil.getMainDB();
+
+		// 文字列版：DB が受け付けない文
+		SqlExecuteException bad = assertThrows(SqlExecuteException.class,
+			() -> db.executeBatch("UPDATE site SET そんな列は無い = ?", List.of(List.of(1))));
+		assertFalse(bad instanceof DuplicateKeyException);
+
+		// ビルダー版：一意制約の違反は子の型で分かれる（バッチの例外は getNextException の先に元がある）
+		long id = insertSite(db, "先", 1L);
+		assertThrows(DuplicateKeyException.class, () -> db.executeBatch(List.of(
+			SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.id, id).value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "後"))));
+		assertThrows(DuplicateKeyException.class, () -> db.insertBatch(List.of(
+			SQL.insert(TestSchema.Site.instance())
+				.value(TestSchema.Site.id, id).value(TestSchema.Site.group_id, 1L).value(TestSchema.Site.name, "後"))));
+
+		// 失敗したバッチは何も残さない（先に入れた1件だけ）
+		assertEquals(1, db.selectList(SQL.select().from(TestSchema.Site.instance())).size());
+
+	}
+
+	@Test
 	@DisplayName("insertBatch でまとめて登録できる")
 	void insertBatch () {
 

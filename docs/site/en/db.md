@@ -355,6 +355,20 @@ try {
 > To use it as "update if it exists", catch it outside the transaction or write it in SQL
 > (`INSERT ... ON DUPLICATE KEY UPDATE` on MySQL, `INSERT ... ON CONFLICT` on PostgreSQL).
 
+### Where to catch
+
+**DB exceptions are unchecked, so the compiler never asks you to catch them.** Decide where to catch with the table below. Anything not in it is left alone: the framework replies 500 and rolls back.
+
+| When you | Catch | Reply with |
+| --- | --- | --- |
+| Insert or change user input in a column with a unique constraint (UNIQUE or primary key) — email address, login ID and the like | `DuplicateKeyException` | "Already taken" (409 or similar) |
+| Take `RedisLock.lock(...)` for a user action | `RedisLockException` | "Already in progress" (409 or similar; or branch on an empty `tryLock(...)`) |
+| Anything else (`SqlExecuteException` / `TransactionException`) | Nothing | The framework replies 500 and logs it |
+
+- **Checking with `select` first does not let you skip the catch.** If two requests arrive together, both pass the check and one hits the constraint
+- **Catch outside the transaction** (see the TRAP above)
+- Write one test that inserts the same value twice; a forgotten catch shows up there as a 500
+
 ### Generated keys and counts
 
 **`insert` returns nothing.** Use `insertKey` for the generated key, and `execute` when you need a count, as with `INSERT ... SELECT`.

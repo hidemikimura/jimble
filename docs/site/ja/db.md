@@ -347,6 +347,20 @@ try {
 > 「あれば更新」に使うなら、トランザクションの外で受け止めるか、
 > SQL で書いてください（MySQL は `INSERT ... ON DUPLICATE KEY UPDATE`、PostgreSQL は `INSERT ... ON CONFLICT`）。
 
+### どこで catch するか
+
+**DB の例外は非検査なので、コンパイラは catch を求めません。**受けるところは、次の表で決めてください。表に無いものは受けずに、500 と巻き戻しに任せます。
+
+| こう書くとき | 受ける例外 | 返すもの |
+| --- | --- | --- |
+| 利用者の入力を、一意制約（UNIQUE・主キー）のある列に入れる・変える（メールアドレス・ログイン ID など） | `DuplicateKeyException` | 409 などの「もう使われています」 |
+| 利用者の操作で `RedisLock.lock(...)` を取る | `RedisLockException` | 409 などの「処理中です」（`tryLock(...)` の空で分けてもよい） |
+| それ以外（`SqlExecuteException` / `TransactionException`） | 受けない | 枠組みが 500 を返し、ログに出す |
+
+- **先に `select` で「まだ無い」と確かめても、catch は省けません。**同時に2つ来れば、両方が確かめを通って片方が一意制約に当たります
+- **受けるのはトランザクションの外です**（上の TRAP）
+- 同じ値を2回入れるテストを1本書いておくと、catch を忘れたところが 500 で見つかります
+
 ### 採番値と件数
 
 **`insert` は何も返しません。**採番値が要るなら `insertKey`、件数が要る `INSERT ... SELECT` などは `execute` です。

@@ -157,6 +157,37 @@ try {
 **書かなければ上まで飛んで 500、トランザクションの中なら巻き戻る。**
 `catch (Exception e)` で握りつぶさない。組み立ての誤り（`eq(null)` など）は `SqlBuildException` で、DB に投げる前に落ちる。
 
+### catch するところ（非検査なので、コンパイラは教えない。ここで決める）
+
+**書く前に、この表で決める。表に無いものは catch しない。**
+
+| こう書くとき | 受ける例外 | どうする |
+| --- | --- | --- |
+| **利用者の入力を、一意制約（UNIQUE・主キー）のある列に `insert` / `insertKey` / `update` する**（メールアドレス・ログイン ID・コード・スラッグなど） | `DuplicateKeyException` | 409 などの「もう使われています」を返す |
+| 利用者の操作で `RedisLock.lock(...)` を取る | `RedisLockException` | 409 などの「処理中です」を返す（`tryLock(...)` の `isEmpty()` で分けてもよい） |
+| それ以外の DB の失敗（`SqlExecuteException` / `TransactionException`） | 受けない | 500 と巻き戻しに任せる |
+| `ValidationException` / `HttpException` | 受けない | 枠組みが 422 / 指定の状態で返す |
+
+- **一意制約の列かどうかは、マイグレーションの DDL（`UNIQUE` / `PRIMARY KEY` / `CREATE UNIQUE INDEX`）で確かめる。**推測しない
+- **先に `select` で「まだ無い」を確かめても、catch は省けない。**同時に2人が来れば、両方が確かめを通って片方が一意制約に当たる
+- **受けるのはトランザクションの外**（`db.transaction(...)` を囲む）。中で受けて続けると `commit()` が `DB_004` で断る
+- テストでは、同じ値を2回入れて 409 になることを1本書く（catch を忘れると 500 になるので、ここで見つかる）
+
+```java
+try {
+	long id = db.transactionResult(tx -> {          // トランザクションを使うなら、try はその外
+		long memberId = db.insertKey(SQL.insert(Member.instance())
+			.value(Member.email, email)
+			.value(Member.created_at, Dsl.now()));
+		db.insert(SQL.insert(MemberProfile.instance()).value(MemberProfile.member_id, memberId));
+		return memberId;
+	});
+	...
+} catch (DuplicateKeyException e) {
+	throw new HttpException(409, "そのメールアドレスは使われています");
+}
+```
+
 ## 入れる・直す・消す
 
 ```java
