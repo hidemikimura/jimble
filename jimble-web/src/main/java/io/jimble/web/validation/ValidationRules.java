@@ -114,6 +114,19 @@ public class ValidationRules {
 
 			Column column = entry.getKey();
 			ValidationRule validationRule = entry.getValue();
+			if (!req.containsKey(column) && validationRule.hasRequiredCheck()
+				&& !(isInsertRequest && validationRule.isInsertRequired())) {
+				/*
+				 * 規則はキーがあるときだけ走る（要件 D-192）。required() を付けても、
+				 * キーごと送られてこなければ素通りする——「必須」と読めるのに効いていない。
+				 * 2.0 ではキーが無ければ失敗にする。
+				 */
+				io.jimble.util.internal.WarnOnce.warn("validation.required-missing-key",
+					"required() / empty() はキーが無いと検査しません（" + (column.table() == null ? "" : column.table().name() + ".") + column.name()
+						+ " が送られてきませんでした）。送られないことがあるなら insertRequired() と insertRequestChecker を使うか、"
+						+ "キーの有無を自分で見てください（2.0 ではキーが無ければ失敗になります）"
+						+ io.jimble.util.internal.Docs.see("validation"));
+			}
 			if (req.containsKey(column)
 				|| (isInsertRequest && validationRule.isInsertRequired())) {
 				Object input = req.getObject(column);

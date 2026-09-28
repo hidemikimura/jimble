@@ -106,6 +106,7 @@ public final class CodeMigration {
 	 *
 	 * @throws MigrationException	実行に失敗した場合
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public static void execute () {
 
 		if (!DBUtil.isUseDB() || MIGRATIONS.isEmpty()) {
@@ -150,6 +151,7 @@ public final class CodeMigration {
 	 *
 	 * @param db	DB
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private static void rollbackQuietly (DB db) {
 
 		try {

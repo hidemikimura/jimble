@@ -193,7 +193,7 @@ public abstract class Controller {
 
 		Objects.requireNonNull(body, "body");
 
-		scopes.push(scope().path(path));
+		scopes.push(scope().child(path));
 		try {
 			body.run();
 		} finally {

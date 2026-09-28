@@ -9,7 +9,8 @@ import db.blog_example.table.comment.Comment;
 import db.blog_example.table.post.Post;
 import io.jimble.batch.manager.BatchManagerController;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.SqlExecuteException;
+import io.jimble.db.Tx;
 import io.jimble.db.sql.SQL;
 import io.jimble.util.data.Data;
 import io.jimble.web.cors.Cors;
@@ -231,29 +232,27 @@ public class BlogApp extends JimbleApp {
 		DB db = BlogExample.db();
 
 // docs:begin transaction-mq
-		try (DBTransaction transaction = new DBTransaction(db)) {
+		try (Tx tx = db.begin()) {
 
-			transaction.beginTransaction();
-
-			long id = db.insert(
-				SQL.insert(Post.instance())
-					.value(Post.title, request.getString("title"))
-					.value(Post.body, request.getString("body"))
-					.value(Post.image_name, request.getStringOptional("image_name"))
-					.value(Post.published, request.getBoolean("published"))
-					.value(Post.created_at, new Date())
-			);
-
-			if (id <= 0) {
-				transaction.rollbackEndTransaction();
-				return -1;
+			long id;
+			try {
+				id = db.insertKey(
+					SQL.insert(Post.instance())
+						.value(Post.title, request.getString("title"))
+						.value(Post.body, request.getString("body"))
+						.value(Post.image_name, request.getStringOptional("image_name"))
+						.value(Post.published, request.getBoolean("published"))
+						.value(Post.created_at, new Date())
+				);
+			} catch (SqlExecuteException ex) {
+				return -1;                   // tx.commit() まで来ないので、抜けたら巻き戻る
 			}
 
 			new NoticeExecutor().put(db, new Data()
 				.putData("post_id", id)
 				.putData("title", request.getString("title")));
 
-			transaction.commitEndTransaction();
+			tx.commit();                     // 記事とキューを一緒に確定して終わる
 
 			/*
 			 * コミットしてから流す。

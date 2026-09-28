@@ -2540,8 +2540,20 @@ public class DB implements Closeable, AutoCloseable {
 	 * {@code closeAfterQuery()} の側だけに置くと、
 	 * 開始してすぐ抜けたときに登録されない。
 	 * </p>
+	 *
+	 * @deprecated {@link #begin()} を使う（{@link #transaction(TxBody)} ならもっと短い）。2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void beginTransaction() throws Exception {
+
+		txBegin();
+
+	}
+
+	/*
+	 * beginTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で beginTransaction を消したあとも残る）
+	 */
+	void txBegin() throws Exception {
 
 		if (connection == null) {
 			getWriteConnection();
@@ -2585,7 +2597,7 @@ public class DB implements Closeable, AutoCloseable {
 		}
 
 		try {
-			beginTransaction();
+			txBegin();
 		} catch (Exception ex) {
 			throw new TransactionException("トランザクションの開始に失敗しました: " + ex.getMessage(),
 				new CodeException("DB_001", ex.getMessage(), ex));
@@ -2710,8 +2722,20 @@ public class DB implements Closeable, AutoCloseable {
 
 	/**
 	 * トランザクションをコミットする
+	 *
+	 * @deprecated {@link Tx#checkpoint()}（続ける）か {@link Tx#commit()}（終わる）を使う。2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void commit() throws Exception {
+
+		txCommit();
+
+	}
+
+	/*
+	 * commit の中身（要件 D-192。Tx から呼ぶ。2.0 で commit を消したあとも残る）
+	 */
+	void txCommit() throws Exception {
 
 		if (connection == null) {
 			return;
@@ -2736,13 +2760,25 @@ public class DB implements Closeable, AutoCloseable {
 
 	/**
 	 * トランザクションをコミットし終了する
+	 *
+	 * @deprecated {@link Tx#commit()} を使う。2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void commitEndTransaction() throws Exception {
 
+		txCommitEnd();
+
+	}
+
+	/*
+	 * commitEndTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で commitEndTransaction を消したあとも残る）
+	 */
+	void txCommitEnd() throws Exception {
+
 		try {
-			commit();
+			txCommit();
 		} finally {
-			endTransaction();
+			txEnd();
 		}
 
 	}
@@ -2815,7 +2851,22 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
+	/**
+	 * トランザクションをロールバックする（終わらせない）
+	 *
+	 * @deprecated {@link Tx#rollback()} を使う。2.0 で消す（要件 D-192）
+	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void rollback() throws Exception {
+
+		txRollback();
+
+	}
+
+	/*
+	 * rollback の中身（要件 D-192。Tx から呼ぶ。2.0 で rollback を消したあとも残る）
+	 */
+	void txRollback() throws Exception {
 
 		if (connection == null) {
 			return;
@@ -2843,21 +2894,45 @@ public class DB implements Closeable, AutoCloseable {
 
 	/**
 	 * トランザクションをロールバックし終了する
+	 *
+	 * @deprecated {@link Tx#rollback()} を使う。2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void rollbackEndTransaction() throws Exception {
 
+		txRollbackEnd();
+
+	}
+
+	/*
+	 * rollbackEndTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で rollbackEndTransaction を消したあとも残る）
+	 */
+	void txRollbackEnd() throws Exception {
+
 		try {
-			rollback();
+			txRollback();
 		} finally {
-			endTransaction();
+			txEnd();
 		}
 
 	}
 
 	/**
 	 * トランザクションを終了する
+	 *
+	 * @deprecated {@link Tx#close()}（try-with-resources）を使う。2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public void endTransaction() throws Exception {
+
+		txEnd();
+
+	}
+
+	/*
+	 * endTransaction の中身（要件 D-192。Tx から呼ぶ。2.0 で endTransaction を消したあとも残る）
+	 */
+	void txEnd() throws Exception {
 
 		if (connection == null) {
 			return;
@@ -2909,7 +2984,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		try {
 			if (isTransaction()) {
-				rollback();
+				txRollback();
 				connection.setAutoCommit(true);
 			}
 		} catch (Exception ex) {

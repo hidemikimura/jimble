@@ -266,8 +266,11 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code and(...)} する。2.0 で消す（要件 D-192）
 	 */
 	@Override
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public IWhere and(IWhere where) {
 
 		/*
@@ -281,8 +284,11 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @deprecated 列そのものは条件ではない（呼ぶと例外）。比較を作ってから {@code or(...)} する。2.0 で消す（要件 D-192）
 	 */
 	@Override
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public IWhere or(IWhere where) {
 
 		/*

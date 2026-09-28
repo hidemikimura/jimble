@@ -75,6 +75,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public void put (String key, Set<String> tags, String value, Duration ttl) throws Exception {
 
 		if (tags.isEmpty()) {

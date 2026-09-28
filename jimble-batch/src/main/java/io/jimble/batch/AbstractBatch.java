@@ -358,6 +358,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * @param allowCount	同時実行可能数（0 以下なら上限なし）
 	 * @return	登録できた場合 = true
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private boolean registerExecuteInfo (DB db, BatchArgs args, int allowCount) {
 
 		if (allowCount <= 0) {

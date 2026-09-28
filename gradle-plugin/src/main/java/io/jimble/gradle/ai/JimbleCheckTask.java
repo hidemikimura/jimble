@@ -3,6 +3,8 @@ package io.jimble.gradle.ai;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.options.Option;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.UntrackedTask;
@@ -49,15 +51,35 @@ public abstract class JimbleCheckTask extends DefaultTask {
 	public abstract DirectoryProperty getProjectDir ();
 
 	/**
+	 * どの版への移行を見るか（{@code --target=2.0}）
+	 *
+	 * <p>
+	 * {@code 2.0} にすると、2.0 で型や意味が変わる呼び出し（J9xx）も出す。
+	 * 1.5 では正しい書き方でもあるので、既定では出さない（要件 D-192）。
+	 * </p>
+	 *
+	 * @return	版
+	 */
+	@Internal
+	@Option(option = "target", description = "2.0 にすると、2.0 で型や意味が変わる呼び出し（J9xx）も出す")
+	public abstract Property<String> getTarget ();
+
+	/**
 	 * 見る
 	 */
 	@TaskAction
 	public void check () {
 
+		String target = getTarget().getOrElse("");
+		if (!target.isEmpty() && !"2.0".equals(target)) {
+			throw new GradleException("jimbleCheck: --target に書けるのは 2.0 だけです: " + target);
+		}
+
 		List<JimbleChecker.Finding> findings = JimbleChecker.check(
 			getRootDir().get().getAsFile().toPath()
 			, getProjectDir().get().getAsFile().toPath()
-			, AiResources.version());
+			, AiResources.version()
+			, "2.0".equals(target));
 
 		if (findings.isEmpty()) {
 			getLogger().lifecycle("jimbleCheck: 見つかりませんでした（jimble %s の既知の落とし穴）".formatted(AiResources.version()));

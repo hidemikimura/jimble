@@ -354,6 +354,12 @@ public final class Cookies {
 	 */
 	public void put (Cookie cookie, String plainValue) {
 
+		if (flushed) {
+			io.jimble.util.internal.WarnOnce.warn("cookie.put-after-send",
+				"応答を送ったあとに Cookie " + cookie.name() + " を書いても届きません（send() より前に書いてください）"
+					+ io.jimble.util.internal.Docs.see("session-security"));
+		}
+
 		pending.put(cookie.name(), cookie);
 
 		if (cookie.value() == null) {

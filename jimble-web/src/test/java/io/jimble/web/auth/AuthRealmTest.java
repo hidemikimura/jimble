@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * セッションは、リクエストをまたいで中身を持ち越すメモリの保存先（{@link MemoryStore}）で持つ。DB は要らない。
  * </p>
  */
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class AuthRealmTest {
 
 	/** 運用者の種別 */

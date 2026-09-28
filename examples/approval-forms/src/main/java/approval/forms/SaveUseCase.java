@@ -7,7 +7,7 @@ import db.approval_forms_example.table.request_item.RequestItem;
 
 import io.jimble.core.executor.AbstractExecutor;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.sql.SQL;
 import io.jimble.util.convertor.UploadFile;
 import io.jimble.util.data.Data;
@@ -114,11 +114,9 @@ public class SaveUseCase extends AbstractExecutor<WebContext> {
 		 */
 		DB db = ApprovalFormsExample.db();
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
+		try (Tx tx = db.begin()) {
 
-			transaction.beginTransaction();
-
-			long id = db.insert(
+			long id = db.insertKey(
 				SQL.insert(Request.instance())
 					.value(Request.kind, data.kind())
 					.value(Request.amount, data.amount())
@@ -130,7 +128,11 @@ public class SaveUseCase extends AbstractExecutor<WebContext> {
 			insertItems(db, id, items);
 			insertAttachment(db, id, context);
 
-			transaction.commitEndTransaction();
+			/*
+			 * 確定して終わる。明細の1件でも入っていなければ、確定せずに
+			 * TransactionException（DB_004）——申請だけが残ることはない。
+			 */
+			tx.commit();
 
 			return id;
 

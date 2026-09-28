@@ -214,17 +214,13 @@ public class NoticeExecutor extends MqExecutor {
 ### 積むのはトランザクションの中
 
 ```java
-try (DBTransaction transaction = new DBTransaction(db)) {
+db.transaction(tx -> {
 
-	transaction.beginTransaction();
+	long id = db.insertKey(SQL.insert(Post.instance()) ... );
 
-	long id = db.insert(SQL.insert(Post.instance()) ... );
+	new NoticeExecutor().put(db, data);       // ← 中で積む（積めなければ MqException で巻き戻る）
 
-	new NoticeExecutor().put(db, data);       // ← 中で積む
-
-	transaction.commitEndTransaction();
-
-}
+});                                          // 例外なく終われば、記事とキューを一緒に確定
 ```
 
 **ここが要点。**同じ DB なので、ロールバックすれば積んだものも消える——

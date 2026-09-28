@@ -26,7 +26,11 @@ import java.io.IOException;
  *       <b>{@code db.beginTransaction()} を直に呼んだときに拾えない</b>ので、
  *       コネクションを握る当人（{@code DB}）へ下ろした</li>
  * </ol>
+ *
+ * @deprecated {@link DB#transaction(DB.TxBody)} / {@link DB#begin()}（{@link Tx}）を使う。
+ *             検査例外を投げず、{@code Tx.commit()} は確定して終わる。2.0 で消す（要件 D-192）
  */
+@Deprecated(since = "1.5.0", forRemoval = true)
 public class DBTransaction implements Closeable, AutoCloseable {
 
 	/* DB */
@@ -83,7 +87,7 @@ public class DBTransaction implements Closeable, AutoCloseable {
 
 		try {
 			// 実行の終わりに拾ってもらう登録は DB の側で行う（要件 F-D-16）
-			db.beginTransaction();
+			db.txBegin();
 		} catch (Exception ex) {
 			throw new CodeException("DB_001", "トランザクションの開始に失敗しました: " + ex.getMessage(), ex);
 		}
@@ -105,7 +109,7 @@ public class DBTransaction implements Closeable, AutoCloseable {
 		}
 
 		try {
-			db.rollback();
+			db.txRollback();
 		} catch (Exception ex) {
 			throw new CodeException("DB_002", "トランザクションのロールバックに失敗しました: " + ex.getMessage(), ex);
 		}
@@ -127,7 +131,7 @@ public class DBTransaction implements Closeable, AutoCloseable {
 		}
 
 		try {
-			db.rollbackEndTransaction();
+			db.txRollbackEnd();
 		} catch (Exception ex) {
 			throw new CodeException("DB_002", "トランザクションのロールバックに失敗しました: " + ex.getMessage(), ex);
 		}
@@ -154,7 +158,7 @@ public class DBTransaction implements Closeable, AutoCloseable {
 
 		try {
 			// 終わらせない。終わらせるのは commitEndTransaction()
-			db.commit();
+			db.txCommit();
 		} catch (CodeException ex) {
 			throw ex;
 		} catch (Exception ex) {
@@ -178,7 +182,7 @@ public class DBTransaction implements Closeable, AutoCloseable {
 		}
 
 		try {
-			db.commitEndTransaction();
+			db.txCommitEnd();
 		} catch (CodeException ex) {
 			/*
 			 * <b>包み直さない。</b>「エラーが出ているのでコミットしなかった」（DB_004 / DB_005）は

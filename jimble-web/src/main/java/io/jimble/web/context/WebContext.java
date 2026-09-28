@@ -277,6 +277,9 @@ public final class WebContext extends Context<WebContext> {
 
 	}
 
+	/* Cookie を作る前に書き出しが済んだか（要件 D-192） */
+	private boolean cookiesFlushed = false;
+
 	/**
 	 * Cookie
 	 *
@@ -299,6 +302,10 @@ public final class WebContext extends Context<WebContext> {
 
 		if (cookies == null) {
 			cookies = new Cookies(source);
+			if (cookiesFlushed) {
+				// 送ったあとに初めて触られた。空のまま書き出し済みにしておく（put したら警告が出る）
+				cookies.flush(null);
+			}
 		}
 
 		return cookies;
@@ -408,6 +415,8 @@ public final class WebContext extends Context<WebContext> {
 		}
 
 		if (cookies == null) {
+			// 書く Cookie は無かった。あとから作られたら「送ったあと」と分かるように覚えておく（要件 D-192）
+			cookiesFlushed = true;
 			return;
 		}
 

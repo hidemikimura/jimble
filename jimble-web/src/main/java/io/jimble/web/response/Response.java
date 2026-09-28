@@ -791,6 +791,48 @@ public final class Response extends Data {
 
 	// region レスポンスヘッダ
 
+	/*
+	 * 返し方が2つ以上積まれていたら知らせる（要件 D-192）。
+	 *
+	 * send() は JSON → JSONL → 文字 → キャッシュ → 画面 → リダイレクト → ダウンロード の順に
+	 * <b>最初の1つだけ</b>を返し、残りは黙って捨てる。json(...) のあとに redirect(...) すると
+	 * 「本文つきの 302、Location なし」になっていた。2.0 では2つ目を積んだ時点で例外にする。
+	 */
+	private void warnConflictingBodies () {
+
+		List<String> kinds = new ArrayList<>();
+		if (isResponseJson) {
+			kinds.add("json");
+		}
+		if (isResponseJsonL) {
+			kinds.add("jsonl");
+		}
+		if (responseText != null) {
+			kinds.add("text");
+		}
+		if (cacheResponse != null) {
+			kinds.add("cache");
+		}
+		if (modelAndViewResponse != null) {
+			kinds.add("view");
+		}
+		if (redirectResponse != null) {
+			kinds.add("redirect");
+		}
+		if (downloadFileResponse != null) {
+			kinds.add("download");
+		}
+
+		if (kinds.size() > 1) {
+			io.jimble.util.internal.WarnOnce.warn("response.conflicting-bodies",
+				"返し方が2つ以上積まれています: " + kinds + "。返るのは " + kinds.getFirst()
+					+ " だけで、残りは捨てられます（" + request.method() + " " + request.path() + "）。"
+					+ "1つにしてください（2.0 では2つ目を積んだ時点で例外になります）"
+					+ io.jimble.util.internal.Docs.see("request-response"));
+		}
+
+	}
+
 	/**
 	 * レスポンスヘッダを設定する
 	 *
@@ -801,6 +843,9 @@ public final class Response extends Data {
 	public Response setResponseHeader (String name, String value) {
 
 		if (sink.isSent()) {
+			io.jimble.util.internal.WarnOnce.warn("response.header-after-send",
+				"送ったあとにヘッダ " + name + " を足しても届きません（send() より前に書いてください）"
+					+ io.jimble.util.internal.Docs.see("request-response"));
 			return this;
 		}
 
@@ -1136,6 +1181,8 @@ public final class Response extends Data {
 		if (sink.isSent()) {
 			return this;
 		}
+
+		warnConflictingBodies();
 
 		flushCookies();
 		applyDefaultCacheControl();

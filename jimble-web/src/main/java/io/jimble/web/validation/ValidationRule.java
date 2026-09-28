@@ -99,6 +99,17 @@ public class ValidationRule {
 
 	// endregion
 
+	/**
+	 * 必須の検査（{@link #required()} / {@link #empty()}）を含むか
+	 *
+	 * @return	含めば true
+	 */
+	boolean hasRequiredCheck () {
+
+		return validatorList.stream().anyMatch(v -> v instanceof io.jimble.web.validation.validator.EmptyValidator);
+
+	}
+
 	// region 空チェック
 
 	/**

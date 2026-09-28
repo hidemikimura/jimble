@@ -200,7 +200,7 @@ class JimbleCheckerTest {
 
 		List<Finding> findings = check(root);
 
-		assertEquals(List.of("J701:6"), rules(findings));
+		assertEquals(List.of("J701:6", "J801:3"), rules(findings));
 		assertEquals(Level.WARN, findings.get(0).level());
 
 	}

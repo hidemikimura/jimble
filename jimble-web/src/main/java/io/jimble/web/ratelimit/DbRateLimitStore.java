@@ -41,6 +41,7 @@ public final class DbRateLimitStore implements RateLimitStore {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public RateLimitResult consume (String key, long limit, Duration duration) throws Exception {
 
 		initialize();

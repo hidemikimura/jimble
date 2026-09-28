@@ -330,6 +330,7 @@ public final class MqQueue {
 	 * @param type	実行種別
 	 * @return	行（無ければ null）
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private Data claim (DB db, MqExecuteType type) {
 
 		try (DBTransaction transaction = new DBTransaction(db)) {

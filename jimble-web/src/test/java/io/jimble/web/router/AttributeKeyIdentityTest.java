@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 気づくのは<b>入れてはいけない人が入ったあと</b>である。
  * </p>
  */
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class AttributeKeyIdentityTest {
 
 	@Test

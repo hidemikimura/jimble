@@ -44,6 +44,9 @@ public final class Session {
 	/* 保存したか */
 	private boolean saved = false;
 
+	/* 破棄したか（要件 D-192） */
+	private boolean destroyed = false;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -162,6 +165,7 @@ public final class Session {
 
 		dirty = false;
 		saved = true;
+		destroyed = true;
 
 	}
 
@@ -279,6 +283,30 @@ public final class Session {
 
 	// endregion
 
+	/*
+	 * 変えた印を付ける（要件 D-192）。
+	 *
+	 * 1.4 までは、save() のあとに変えると<b>黙って捨てていた</b>——save() は1リクエストに1回で、
+	 * 2度目は何もしなかったからである。Auth.login(...) も中で save() するので、
+	 * ログインの直後に入れた値が消えていた。
+	 * いまは「保存済み」を戻すので、もう一度 save() すれば保存され、
+	 * 呼ばなければ終わりに「save() が呼ばれていません」と警告が出る。
+	 * destroy() のあとは保存先が無いので、警告だけ出して入れない側に倒す。
+	 */
+	private void markDirty () {
+
+		if (destroyed) {
+			io.jimble.util.internal.WarnOnce.warn("session.change-after-destroy",
+				"destroy() のあとにセッションを変えても保存されません（ログアウトのあとに値を入れていませんか）"
+					+ io.jimble.util.internal.Docs.see("session-security"));
+			return;
+		}
+
+		dirty = true;
+		saved = false;
+
+	}
+
 	// region 設定
 
 	/**
@@ -290,8 +318,12 @@ public final class Session {
 	public void put (String key, String value) {
 
 		load();
+		if (destroyed) {
+			markDirty();
+			return;
+		}
 		entry.data().put(key, value);
-		dirty = true;
+		markDirty();
 
 	}
 
@@ -339,8 +371,12 @@ public final class Session {
 	public void remove (String key) {
 
 		load();
+		if (destroyed) {
+			markDirty();
+			return;
+		}
 		entry.data().remove(key);
-		dirty = true;
+		markDirty();
 
 	}
 
@@ -352,8 +388,12 @@ public final class Session {
 	public void clear () {
 
 		load();
+		if (destroyed) {
+			markDirty();
+			return;
+		}
 		entry.data().clear();
-		dirty = true;
+		markDirty();
 
 	}
 

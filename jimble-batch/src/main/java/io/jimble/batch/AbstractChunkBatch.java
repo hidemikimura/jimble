@@ -341,6 +341,7 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 	 * @param items	書くもの
 	 * @throws Exception	エラー
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private void writeChunk (DB db, List<T> items) throws Exception {
 
 		/*

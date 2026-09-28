@@ -10,7 +10,7 @@ description: jimble で DB を扱うときに使う。SQL ビルダー、結果�
 
 ```java
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;
@@ -186,7 +186,7 @@ try (Tx tx = db.begin()) {
 - 中身の検査例外は `TransactionException`（`DB_006`）に包まれる。非検査例外はそのまま
 - 一意制約は `DuplicateKeyException`（`insertKey` / `...OrThrow`）か `db.isDuplicateKeyError()` で分ける
 
-1.4 までの書き方（`DBTransaction`）は次のとおり。
+1.4 までの書き方（`DBTransaction`）は次のとおり。**1.5.0 で非推奨、2.0 で消える**（`jimbleCheck` の J801 / J802 が書き換える行を出す）。
 
 ```java
 try (DBTransaction transaction = new DBTransaction(db)) {
@@ -233,14 +233,15 @@ DBTransaction.transaction(db, transaction -> {
 枠組みが約束するのは「コミットは拒まれ、1行も残らない」ところまで。
 
 ```java
-db.beginTransaction();
-insert(...);  db.commit();          // ここまで確定。トランザクションは続く
-update(...);                        // 失敗
-if (db.isError()) {
-	db.rollback();                  // 決着を付ける（持ち越しも畳まれる）
-	insertFallback(...);
+try (Tx tx = db.begin()) {
+	insert(...);  tx.checkpoint();  // ここまで確定。トランザクションは続く
+	update(...);                    // 失敗
+	if (db.isError()) {
+		// 決着を付けて続けるなら 1.4 までの db.rollback()。Tx では外へ投げて巻き戻すほうが素直
+		throw new HttpException(500, "更新できませんでした");
+	}
+	tx.commit();
 }
-db.commitEndTransaction();
 ```
 
 | | |

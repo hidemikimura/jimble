@@ -54,7 +54,7 @@ import io.jimble.web.http.HttpException;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;                    // トランザクション（db.begin()）
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;      // now() など
 import io.jimble.util.data.Data;
@@ -74,7 +74,7 @@ Web だけでなくバッチや MQ も含めた「一つの実行」のほう。
 | --- | --- |
 | `@RestController` / `@GetMapping` | `get("/path", Controller::method)` を初期化ブロックに書く |
 | `@Autowired` / コンストラクタ注入 | `new` する。`install(AdminController::new)` |
-| `@Transactional` | `try (DBTransaction transaction = new DBTransaction(db)) { ... }`（メソッドに `throws Exception`） |
+| `@Transactional` | `db.transaction(tx -> { ... })`（例外なら巻き戻す。検査例外は要らない） |
 | `@Value("${x}")` | `Conf.conf().getString("x", "既定")` |
 | `@PreAuthorize("hasRole('X')")` | `.attribute(Auth.ROLE, "X")` をルートに付ける |
 | `JpaRepository` / エンティティ | `SQL.select().from(Post.instance())`。テーブルクラスは codegen が作る |
@@ -110,21 +110,20 @@ db.update(SQL.update(Request.instance())
 トランザクションはこう書く。
 
 ```java
-try (DBTransaction transaction = new DBTransaction(db)) {
-
-	transaction.beginTransaction();
+try (Tx tx = db.begin()) {
 
 	// ... db.insert / db.update ...
 
 	if (db.isError()) {
-		transaction.rollbackEndTransaction();
-		throw new HttpException(500, "更新できませんでした");
+		throw new HttpException(500, "更新できませんでした");   // 抜けたら巻き戻る
 	}
 
-	transaction.commitEndTransaction();
+	tx.commit();           // 確定して終わる（中で失敗があれば TransactionException）
 
 }
 ```
+
+短くするなら `db.transaction(tx -> { ... });`。`DBTransaction` は 1.5.0 で非推奨（2.0 で消える）。
 
 ## 守っている5つの決めごと
 
@@ -146,8 +145,8 @@ try (DBTransaction transaction = new DBTransaction(db)) {
 - **文字列の SQL（`db.select("SELECT ...")`）の結果はネストしない。**平らな Data が返り、
   `row.getData(Staff.instance())` は `null`。結合すると同じ名前の列（`id` など）は**黙ってあとの値で上書き**される。
   別名を付けるか、`テーブル__列` の別名でネストさせる（`jimble-db` の skill）
-- **`DBTransaction` は検査例外を投げる**（`CodeException` / `IOException`）。
-  トランザクションを書くメソッドには `throws Exception` を付ける。`catch` で黙らせない
+- **トランザクションは `db.transaction(...)` / `db.begin()` で書く**（1.5.0 から）。`DBTransaction` は検査例外
+  （`CodeException` / `IOException`）を投げ、`commit()` が終わらない——1.5.0 で非推奨。どちらでも `catch` で黙らせない
 - **JSON の列（MySQL の `JSON` / PostgreSQL の `json`・`jsonb`）は読んだ時点で `Data` / `List` になっている。**
   配列の列を `getString` すると**先頭の要素だけ**が返る（JSON の文字ではない）。配列は `getStringList` / `getDataList`、
   文字のまま欲しいなら `CAST(列 AS CHAR)`（MySQL）/ `列::text`（PostgreSQL）で読む
@@ -206,6 +205,7 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 
 ```bash
 ./gradlew jimbleCheck     # jimble の既知の落とし穴を見つける（直し方と引き先つき）
+./gradlew jimbleCheck --target=2.0   # 2.0 で型や意味が変わる呼び出しも出す（移行するとき）
 ./gradlew jimbleSkills    # jimble の版を上げたら、この skill をその版に揃える
 ```
 
@@ -213,6 +213,9 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
   誤検知なら、その行か前の行に `// jimble-check:ignore J101` と書く
 - **アプリ固有の決まりは skill を直さず、プロジェクトの根の `AGENTS.md` に書く。**skill を直すと `jimbleSkills` で揃えられなくなる
 - jimble が出す例外や警告の多くには **`詳しく: https://jimble.io/ja/〜.md`** が付いている。そのページを取って読む
+- **非推奨（`[removal]` の警告）は書き換える。**置き換え先は 1.5 にある（J801〜J810 と https://jimble.io/ja/migrate-2.md）。
+  **新しく書くコードで非推奨の API を使わない**——`DBTransaction` ではなく `db.transaction(...)` / `db.begin()`、
+  `router.path("/x")` ではなく `router.path("/x", x -> {...})`、`Dsl.or` ではなく `Dsl.anyOf`
 - **`@CheckReturnValue`（`io.jimble.util.annotation`）が付いたメソッドの戻り値は捨てない。**
   値を返すだけ（`Column.as(...)`・`Router.path("/x")`）か、失敗を戻り値でしか言わない（`db.update(...)` の -1・`validate(...)` のエラー一覧）。
   Error Prone と IntelliJ は捨てた行を指摘する

@@ -149,6 +149,7 @@ public final class Migration {
 	 * @param fileList	SQL ファイル一覧（名前順に並べ替えてから使う）
 	 * @throws MigrationException	適用に失敗した場合
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	public static void migrate (DBSource dbSource, List<MigrationInfo> fileList) {
 
 		createTables(dbSource);
@@ -218,6 +219,7 @@ public final class Migration {
 	 *
 	 * @param db	DB
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private static void rollbackQuietly (DB db) {
 
 		try {

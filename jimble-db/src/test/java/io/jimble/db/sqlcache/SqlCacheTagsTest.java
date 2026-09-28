@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>DB は要らない。</b>ビルダーと結果の形だけで決まる。
  * </p>
  */
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class SqlCacheTagsTest {
 
 	/** データベース名（タグの前に付く） */

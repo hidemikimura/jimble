@@ -4,7 +4,8 @@ import db.approval_data_example.ApprovalDataExample;
 import db.approval_data_example.table.rate.Rate;
 
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.TransactionException;
+import io.jimble.db.Tx;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.ICache;
 import io.jimble.db.lock.DBLock;
@@ -132,13 +133,10 @@ public final class RateController {
 		// ロックの行を作っておく。無いと lock() が取れない
 		DBLock.create(db, LOCK_KEY);
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+		try (Tx tx = db.begin()) {
 
 			if (!DBLock.lock(db, LOCK_KEY)) {
-				transaction.rollbackEndTransaction();
-				throw new HttpException(409, "ほかで書き換え中です");
+				throw new HttpException(409, "ほかで書き換え中です");     // 抜けたら巻き戻る
 			}
 
 			int updated = db.update(SQL.update(Rate.instance())
@@ -147,17 +145,12 @@ public final class RateController {
 				.where(Rate.code.eq(code)));
 
 			if (updated == 0) {
-				transaction.rollbackEndTransaction();
 				throw new HttpException(404, "そのレートはありません: " + code);
 			}
 
-			transaction.commitEndTransaction();
+			tx.commit();
 
-		} catch (HttpException ex) {
-
-			throw ex;
-
-		} catch (Exception ex) {
+		} catch (TransactionException ex) {
 
 			Log.error(ex, "レートを書き換えられませんでした: %s".formatted(code));
 			throw new HttpException(500, "書き換えられませんでした");

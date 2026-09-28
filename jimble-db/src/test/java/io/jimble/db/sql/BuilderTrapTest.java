@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 組み上がった SQL の字面とパラメータで固定する。
  * </p>
  */
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class BuilderTrapTest {
 
 	private static final Column SITE_ID = TestSchema.Site.id;

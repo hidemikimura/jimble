@@ -100,7 +100,7 @@ public final class Tx implements AutoCloseable {
 		}
 
 		try {
-			db.commitEndTransaction();
+			db.txCommitEnd();
 		} catch (CodeException ex) {
 			throw new TransactionException(ex.getMessage(), ex);
 		} catch (Exception ex) {
@@ -130,7 +130,7 @@ public final class Tx implements AutoCloseable {
 		}
 
 		try {
-			db.commit();
+			db.txCommit();
 		} catch (CodeException ex) {
 			// DB_004 は DB の側で巻き戻し済み。トランザクションは続いている
 			throw new TransactionException(ex.getMessage(), ex);
@@ -160,7 +160,7 @@ public final class Tx implements AutoCloseable {
 		}
 
 		try {
-			db.rollbackEndTransaction();
+			db.txRollbackEnd();
 		} catch (Exception ex) {
 			throw new TransactionException("トランザクションのロールバックに失敗しました: " + ex.getMessage(),
 				new CodeException("DB_002", ex.getMessage(), ex));
@@ -193,7 +193,7 @@ public final class Tx implements AutoCloseable {
 		}
 
 		try {
-			db.rollbackEndTransaction();
+			db.txRollbackEnd();
 		} catch (Exception ex) {
 			throw new TransactionException("トランザクションのロールバックに失敗しました: " + ex.getMessage(),
 				new CodeException("DB_002", ex.getMessage(), ex));

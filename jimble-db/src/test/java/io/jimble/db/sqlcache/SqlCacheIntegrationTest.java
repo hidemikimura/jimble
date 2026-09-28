@@ -43,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </p>
  */
 @Tag("db")
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class SqlCacheIntegrationTest {
 
 	@BeforeAll

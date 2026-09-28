@@ -44,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>開発用 DB が要る（要件 D-16）。</p>
  */
 @Tag("db")
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class ConnectionLeakTest {
 
 	@BeforeEach

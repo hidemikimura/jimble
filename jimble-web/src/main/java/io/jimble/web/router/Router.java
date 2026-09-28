@@ -201,9 +201,21 @@ public final class Router {
 	 *
 	 * @param path	パス
 	 * @return	配下のルーター
+	 *
+	 * @deprecated {@link #path(String, java.util.function.Consumer)} を使う。2.0 で消す（要件 D-192）
 	 */
 	@CheckReturnValue
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public Router path (String path) {
+
+		return child(path);
+
+	}
+
+	/*
+	 * 配下のルーター（Controller のブロックと path(パス, ブロック) から使う。2.0 で path(パス) を消したあとも残る）
+	 */
+	Router child (String path) {
 
 		return new Router(tree.node(PathSegments.ofPattern(path)), rootTree, scope.child());
 
@@ -231,7 +243,7 @@ public final class Router {
 	public void path (String path, java.util.function.Consumer<Router> body) {
 
 		Objects.requireNonNull(body, "body");
-		body.accept(path(path));
+		body.accept(child(path));
 
 	}
 

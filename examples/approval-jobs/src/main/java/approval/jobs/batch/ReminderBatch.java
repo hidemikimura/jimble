@@ -5,7 +5,9 @@ import approval.jobs.mq.NoticeExecutor;
 import io.jimble.batch.AbstractBatch;
 import io.jimble.batch.BatchArgs;
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.TransactionException;
+import io.jimble.db.Tx;
+import io.jimble.mq.MqException;
 import io.jimble.db.DBUtil;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
@@ -165,31 +167,21 @@ public class ReminderBatch extends AbstractBatch {
 	 */
 	private boolean queue (DB db, Data target) {
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
+		try (Tx tx = db.begin()) {
 
-			transaction.beginTransaction();
-
-			long id = new NoticeExecutor().put(db, new Data()
+			// 積めなければ MqException（例外）。-1 を返していたのは 1.0 より前
+			new NoticeExecutor().put(db, new Data()
 				.putData("request_id", target.getLong("id"))
 				.putData("to_staff_id", target.getLong("staff_id"))
 				.putData("kind", NoticeExecutor.KIND_DUE_SOON));
 
-			/*
-			 * put() は失敗すると -1 を返す（例外は投げない）。
-			 * 見ないと「積んだつもりで積んでいない」が残る。
-			 */
-			if (id < 0) {
-				transaction.rollbackEndTransaction();
-				Log.error("通知を積めませんでした: request_id=%d".formatted(target.getLong("id")));
-				return false;
-			}
-
-			transaction.commitEndTransaction();
+			tx.commit();
 
 			return true;
 
-		} catch (Exception ex) {
+		} catch (MqException | TransactionException ex) {
 
+			// 抜けたときに巻き戻っている。1件の失敗でバッチ全体は止めない
 			Log.error(ex, "通知を積めませんでした: request_id=%d".formatted(target.getLong("id")));
 			return false;
 

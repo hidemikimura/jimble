@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ここは<b>サーバーを立てずに決まること</b>だけを固定する。
  * </p>
  */
+@SuppressWarnings("removal")  // 1.x の書き方も確かめている（2.0 で消す。要件 D-192）
 class AuthGuardTest {
 
 	// region 既定は閉じている

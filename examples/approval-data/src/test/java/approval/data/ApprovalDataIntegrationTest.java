@@ -5,7 +5,7 @@ import db.approval_data_example.ApprovalDataExample;
 import db.approval_data_example.table.rate.Rate;
 
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.ICache;
@@ -178,9 +178,7 @@ class ApprovalDataIntegrationTest {
 		 * ここを取り違えると、<b>片方だけ入る</b>事故になる。
 		 * jimble は分散トランザクションをやらない。
 		 */
-		try (DBTransaction transaction = new DBTransaction(main)) {
-
-			transaction.beginTransaction();
+		try (Tx tx = main.begin()) {
 
 			main.execute("insert into rate (code, value, updated_at) values ('TMP', 1, now())");
 
@@ -188,7 +186,7 @@ class ApprovalDataIntegrationTest {
 			assertNull(scratch.select("SELECT id FROM rate WHERE code = 'TMP'")
 				, "サブ DB から未確定の行が見えている（接続を共有している）");
 
-			transaction.rollbackEndTransaction();
+			tx.rollback();
 
 		}
 
@@ -339,13 +337,7 @@ class ApprovalDataIntegrationTest {
 
 				DB db = ApprovalDataExample.db();
 
-				DBTransaction transaction = new DBTransaction(db);
-
-				try {
-					transaction.beginTransaction();
-				} catch (Exception ex) {
-					throw new IllegalStateException(ex);
-				}
+				Tx tx = db.begin();     // try-with-resources を使わない
 
 				db.execute("insert into rate (code, value, updated_at) values ('LEAK', 1, now())");
 

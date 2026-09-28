@@ -5,8 +5,10 @@ import approval.jobs.mq.MailExecutor;
 import approval.jobs.mq.NoticeExecutor;
 
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.TransactionException;
+import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
+import io.jimble.mq.MqException;
 import io.jimble.mq.MqQueue;
 import io.jimble.mq.status.MqStatus;
 import io.jimble.util.data.Data;
@@ -97,9 +99,7 @@ public final class JobsController {
 
 		DB db = DBUtil.getMainDB();
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
-
-			transaction.beginTransaction();
+		try (Tx tx = db.begin()) {
 
 			long id = switch (kind) {
 
@@ -116,20 +116,11 @@ public final class JobsController {
 
 			};
 
-			if (id < 0) {
-				transaction.rollbackEndTransaction();
-				throw new HttpException(500, "積めませんでした");
-			}
-
-			transaction.commitEndTransaction();
+			tx.commit();
 
 			context.response().json("id", id);
 
-		} catch (HttpException ex) {
-
-			throw ex;
-
-		} catch (Exception ex) {
+		} catch (MqException | TransactionException ex) {
 
 			Log.error(ex, "通知を積めませんでした");
 			throw new HttpException(500, "積めませんでした");

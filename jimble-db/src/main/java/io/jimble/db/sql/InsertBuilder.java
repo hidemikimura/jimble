@@ -71,6 +71,43 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	}
 
 	/**
+	 * 平らな行で入れる（要件 D-192）
+	 *
+	 * <pre>
+	 * Data row = new Data();
+	 * row.put("title", title);
+	 * row.put("status", "draft");
+	 * SQL.insert(Post.instance()).valueRow(row)...
+	 * </pre>
+	 *
+	 * <p>
+	 * キーは<b>このテーブルの列名</b>、値はそのまま入れる。{@code value(Data)} と違って
+	 * 包む形（{@code {"value": {"テーブル名": ...}}}）は要らず、<b>文字列 {@code "now()"} も変えない</b>
+	 * （現在時刻は {@code Dsl.now()} を値に入れる）。値が {@code Data} / {@code Map}（入れ子）なら例外——
+	 * 結果の Data をそのまま渡して、テーブル名のキーを列だと思って入れる事故を止める。
+	 * </p>
+	 *
+	 * @param row	列名 → 値
+	 * @return	InsertBuilder
+	 * @throws SqlBuildException	値に入れ子がある
+	 * @since 1.5.0
+	 */
+	public InsertBuilder valueRow (Data row) {
+
+		java.util.Objects.requireNonNull(row, "row");
+		for (java.util.Map.Entry<String, Object> entry : row.entrySet()) {
+			if (entry.getValue() instanceof java.util.Map<?, ?>) {
+				throw new SqlBuildException(
+					"valueRow(Data) には平らな行を渡してください（" + entry.getKey() + " の値が入れ子です。"
+						+ "結果の Data なら getData(テーブル) か flattenTable(テーブル) で平らにしてから）");
+			}
+			value(new TemporaryColumn(table, entry.getKey()), entry.getValue());
+		}
+		return this;
+
+	}
+
+	/**
 	 * VALUE句
 	 *
 	 * @param value value JSON { value: { table_name: { column_name: value } } }
@@ -79,6 +116,12 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	public InsertBuilder value (Data value) {
 
 		if (!value.containsKey("value")) {
+			if (!value.isEmpty()) {
+				io.jimble.util.internal.WarnOnce.warn("sql.value-data-unwrapped",
+					"value(Data) は {\"value\": {\"テーブル名\": {列: 値}}} の形を読みます。"
+						+ "\"value\" キーが無いので何もしませんでした（平らな行なら valueRow(Data) を使ってください）"
+						+ io.jimble.util.internal.Docs.see("sql"));
+			}
 			return this;
 		}
 		Data valueData = value.getData("value");
@@ -92,6 +135,10 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 			Object v = tableData.get(columnName);
 			if (v instanceof String stringValue) {
 				if ("now()".equals(stringValue)) {
+					io.jimble.util.internal.WarnOnce.warn("sql.now-string",
+						"value(Data) は文字列 \"now()\" を SQL の NOW() に変えます——利用者の入力 \"now()\" も現在時刻になります。"
+							+ "現在時刻は Dsl.now() で渡してください（2.0 ではこの変換をやめ、ただの文字列として入れます）"
+							+ io.jimble.util.internal.Docs.see("sql"));
 					value(new TemporaryColumn(table, columnName), Dsl.now());
 				} else {
 					value(new TemporaryColumn(table, columnName), stringValue);

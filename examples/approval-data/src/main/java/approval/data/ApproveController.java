@@ -7,7 +7,8 @@ import db.approval_data_example.table.notice.Notice;
 import db.approval_data_example.table.request.Request;
 
 import io.jimble.db.DB;
-import io.jimble.db.DBTransaction;
+import io.jimble.db.TransactionException;
+import io.jimble.db.Tx;
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;
 import io.jimble.util.data.Data;
@@ -50,7 +51,12 @@ public final class ApproveController {
 
 		DB db = ApprovalDataExample.db();
 
-		try (DBTransaction transaction = new DBTransaction(db)) {
+		/*
+		 * <b>例外で抜けたら巻き戻る。</b>{@code tx.commit()} まで来なければ、
+		 * try を出るときに {@code close()} がロールバックする——
+		 * 途中で 404 / 409 を投げるのに、自分で巻き戻しを書かなくてよい。
+		 */
+		try (Tx tx = db.begin()) {
 
 			/*
 			 * <b>先にトランザクションを始める。</b>
@@ -60,20 +66,16 @@ public final class ApproveController {
 			 * 始める前に引いた forUpdate は<b>レプリカでロックを取る</b>ことになる——
 			 * それは誰も止めない。
 			 */
-			transaction.beginTransaction();
-
 			Data request = db.select(SQL.select()
 				.from(Request.instance())
 				.where(Request.id.eq(id))
 				.forUpdate());
 
 			if (request == null) {
-				transaction.rollbackEndTransaction();
 				throw new HttpException(404, "申請がありません: " + id);
 			}
 
 			if (!"pending".equals(request.getString(Request.status))) {
-				transaction.rollbackEndTransaction();
 				throw new HttpException(409, "もう決まっています: " + request.getString(Request.status));
 			}
 
@@ -84,7 +86,6 @@ public final class ApproveController {
 				.where(Request.id.eq(id)));
 
 			if (db.isError()) {
-				transaction.rollbackEndTransaction();
 				throw new HttpException(500, "更新できませんでした");
 			}
 
@@ -95,17 +96,12 @@ public final class ApproveController {
 				.value(Notice.created_at, Dsl.now()));
 
 			if (db.isError()) {
-				transaction.rollbackEndTransaction();
 				throw new HttpException(500, "通知を作れませんでした");
 			}
 
-			transaction.commitEndTransaction();
+			tx.commit();       // 確定して終わる（中でエラーが出ていたら TransactionException）
 
-		} catch (HttpException ex) {
-
-			throw ex;
-
-		} catch (Exception ex) {
+		} catch (TransactionException ex) {
 
 			Log.error(ex, "承認に失敗しました: id=%d".formatted(id));
 			throw new HttpException(500, "承認に失敗しました");

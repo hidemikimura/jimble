@@ -272,6 +272,7 @@ public final class BatchManagerController extends Controller {
 	 *
 	 * @param context	コンテキスト
 	 */
+	@SuppressWarnings("removal")  // 2.0 で Tx へ移す（要件 D-192）
 	private void historyCancel (WebContext context) {
 
 		long id = context.request().bodyAll().getLong("id");

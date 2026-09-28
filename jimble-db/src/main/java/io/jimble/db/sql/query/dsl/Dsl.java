@@ -389,7 +389,10 @@ public class Dsl {
 	 *
 	 * @param where	where（比較。素の列は渡せない）
 	 * @return	where
+	 *
+	 * @deprecated 括弧でまとめるなら {@link #allOf(IWhere...)}。「直前とつなぐ印」の形は 2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public static IWhere and(IWhere where) {
 
 		if (!(where instanceof WhereQuery whereQuery)) {
@@ -419,7 +422,10 @@ public class Dsl {
 	 *
 	 * @param where	where（比較。素の列は渡せない）
 	 * @return	where
+	 *
+	 * @deprecated 括弧でまとめるなら {@link #anyOf(IWhere...)}。「直前とつなぐ印」の形は 2.0 で消す（要件 D-192）
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	public static IWhere or(IWhere where) {
 
 		if (!(where instanceof WhereQuery whereQuery)) {
