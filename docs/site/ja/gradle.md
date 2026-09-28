@@ -272,3 +272,57 @@ jimbleRun {
 > ビルドは `gradlew` を**子プロセスで**叩きます（動いているビルドの中から
 > 同じプロジェクトのタスクは呼べないため）。
 > `gradlew` が壊れていたら、理由を出して PATH の `gradle` に逃がします。
+
+## AI 向けのタスク
+
+**どの jimble のプラグイン（`io.jimble.jte` / `io.jimble.run` / `io.jimble.db`）を当てても付きます。**
+
+| タスク | すること |
+| --- | --- |
+| `./gradlew jimbleSkills` | `.claude/skills/` を、**使っている jimble の版の skill** に揃える。`AGENTS.md` / `CLAUDE.md` が無ければ置く |
+| `./gradlew jimbleCheck` | jimble の**既知の落とし穴**をソースと設定から見つける。見つけたものには直し方と引き先を付ける |
+
+### jimbleSkills
+
+`jimble new` は skill を**写して**置くので、jimble の版を上げても写しは古いままです。
+アプリの AI は古い jimble の説明を読み続けます。**版を上げたら流してください。**
+
+```bash
+./gradlew jimbleSkills
+./gradlew jimbleSkills --overwrite   # 手で直したもの・控えの無いものも入れ替える
+```
+
+- **手で直した skill は上書きしません。**置いたときの中身のハッシュを `.claude/jimble-skills.properties` に控えていて、
+  控えと同じ（jimble が置いたまま）なら入れ替え、違えば触りません
+- **控えの無い skill**（控えを書くようになる前の `jimble new` で置いたもの）も、直したかどうか分からないので触りません。
+  直していなければ `--overwrite` で入れ替えてください
+- **アプリ固有の決まりは skill ではなく `AGENTS.md` に書きます。**skill を直すと、次の版に揃えられなくなります
+- `AGENTS.md` / `CLAUDE.md` は**無ければ置き、あれば触りません**（`CLAUDE.md` は `@AGENTS.md` と書いて読み込むだけ）
+
+### jimbleCheck
+
+**動かしても黙って間違えるもの**だけを見ます（起動時に落ちて直し方を言うものは見ません）。
+`ERROR` が1つでもあれば落ち、`WARN` だけなら落ちません。
+
+```
+[J101 ERROR] src/main/java/demo/App.java:83  context.request().get〜(...) で読んでいる。Request の中身は空なので、コンパイルは通って null / 空を返す
+    直し方: 送られてきた値は context.request().bodyAll().getString("x")（クエリだけなら bodyQuery()、JSON だけなら bodyJson()）
+    詳しく: https://jimble.io/ja/request-response.md
+```
+
+| 規則 | 重さ | 見るもの |
+| --- | --- | --- |
+| J101 | ERROR | `context.request().getString(...)` など（`Request` の中身は空。`bodyAll()` を通す） |
+| J201 | WARN | 設定の `${ENV}` に `?` が無い（環境変数が無い環境で起動時に落ちる） |
+| J202 | ERROR | `${?ENV}` の行のあとで同じキーを書き直している（環境変数が効かない） |
+| J301 | ERROR | `Migration.install()` が `DBUtil.load(...)` のあと（マイグレーションが流れない） |
+| J302 | ERROR | `BatchRegistry.sync` はあるのに `BatchTables.install` がどこにも無い |
+| J303 | ERROR | `BatchRegistry.sync` が `BatchRegistry.add` より前（全部のバッチが `nothing` になる） |
+| J304 | WARN | codegen を使っているのに、MQ の表（`mq_scheduler` など）を `codegen.exclude_tables` に書いていない |
+| J401 | ERROR | 外側の `before(Auth::guard)` と、`Auth.REALM` のブロックの中の `Remember.restore`（覚えていても毎回 401） |
+| J501 | WARN | skill が使っている jimble の版のものではない（`jimbleSkills` で揃える） |
+| J701 | WARN | `DBTransaction` を使うファイルの空の `catch`（コミットされていないのに成功を返す） |
+
+> [!NOTE]
+> Java は構文木にせず、コメントと文字列を除いてから読んでいます。**誤検知は、その行か前の行に
+> `// jimble-check:ignore J101` と書けば出なくなります**（設定ファイルは `# jimble-check:ignore J201`）。

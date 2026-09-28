@@ -1,5 +1,6 @@
 package io.jimble.web.auth;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.FrameworkTables;
@@ -214,6 +215,7 @@ public final class Remember {
 		}
 
 		register(realm);
+		RESTORED_REALMS.add(realm);
 
 		return context -> restore(context, realm, lookup);
 
@@ -258,6 +260,9 @@ public final class Remember {
 		if (!sameRealm(context, realm)) {
 			return;
 		}
+
+		// 思い出そうとした印（guard が「restore より先に走った」を見分けるため。D-189）
+		context.attribute(triedKey(realm), Boolean.TRUE);
 
 		String cookie = context.cookies().get(cookieName(realm));
 
@@ -318,7 +323,7 @@ public final class Remember {
 
 		if (!sameRealm(context, realm)) {
 			throw new IllegalStateException(("remember-me の種別（%s）が、ルートのログインの種別 Auth.REALM（%s）と違います。"
-				+ "ログアウトで記憶を消せなくなるので、同じ名前にしてください").formatted(realmLabel(realm), sessionRealm));
+				+ "ログアウトで記憶を消せなくなるので、同じ名前にしてください").formatted(realmLabel(realm), sessionRealm) + Docs.see("auth"));
 		}
 
 	}
@@ -935,6 +940,73 @@ public final class Remember {
 	 * @param realm	種別
 	 * @return	名前
 	 */
+	/* restore を置いた種別（種別なしは空文字）。置いていない種別では、guard の順番を言わない */
+	private static final Set<String> RESTORED_REALMS = ConcurrentHashMap.newKeySet();
+
+	/* restore より先に guard が走ったことを、1度だけ言うための印 */
+	private static final java.util.concurrent.atomic.AtomicBoolean GUARD_FIRST_WARNED = new java.util.concurrent.atomic.AtomicBoolean();
+
+	/**
+	 * 「guard が先に走った」をもう一度言えるようにする（テスト用）
+	 */
+	static void resetGuardWarning () {
+
+		GUARD_FIRST_WARNED.set(false);
+
+	}
+
+	/**
+	 * 思い出そうとした印のキー
+	 *
+	 * @param realm	種別
+	 * @return	キー
+	 */
+	private static String triedKey (String realm) {
+
+		return "jimble.remember.tried:" + realm;
+
+	}
+
+	/**
+	 * guard が 401 を返す前に呼ぶ（要件 D-189）
+	 *
+	 * <p>
+	 * <b>覚えている Cookie が来ているのに、その種別の restore がまだ走っていない</b>なら、
+	 * {@code before} の順番が逆である（アプリ全体の guard が、種別のブロックの restore より先に走る）。
+	 * 覚えていても毎回ログインを求めることになるのに、何も言われない。1度だけ言う。
+	 * 401 を返すことは変えない。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		ルートのログインの種別
+	 */
+	static void warnIfGuardRanFirst (WebContext context, String realm) {
+
+		if (!RememberConf.enabled() || !RESTORED_REALMS.contains(realm)) {
+			return;
+		}
+
+		if (Boolean.TRUE.equals(context.attribute(triedKey(realm)))) {
+			return;
+		}
+
+		String cookie = context.cookies().get(cookieName(realm));
+
+		if (cookie == null || cookie.isEmpty()) {
+			return;
+		}
+
+		if (GUARD_FIRST_WARNED.compareAndSet(false, true)) {
+			Log.warn("""
+				remember-me の Cookie（%s）が来ているのに、Remember.restore より先に Auth.guard が走って 401 になりました（%s %s）。
+				  before(Remember.restore(...)) は before(Auth::guard) より先に置いてください。
+				  ログインの種別（Auth.REALM）を付けたブロックでは、restore と guard の両方をブロックの中に置きます
+				  （アプリ全体の before は、ブロックの before より先に走ります）。
+				  詳しく: %s""".formatted(cookieName(realm), context.request().method(), context.request().path(), Docs.url("auth")));
+		}
+
+	}
+
 	static String cookieName (String realm) {
 
 		String base = RememberConf.cookieName();

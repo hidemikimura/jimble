@@ -74,6 +74,9 @@ public class JimbleRunPlugin implements Plugin<Project> {
 	@Override
 	public void apply (Project project) {
 
+		// AI 向けのタスク（要件 D-187）。どのプラグインからでも1度だけ登録される
+		io.jimble.gradle.ai.JimbleAiSupport.register(project);
+
 		JimbleRunExtension extension =
 			project.getExtensions().create(EXTENSION_NAME, JimbleRunExtension.class);
 

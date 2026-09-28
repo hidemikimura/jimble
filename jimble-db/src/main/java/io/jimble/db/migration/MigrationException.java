@@ -1,5 +1,7 @@
 package io.jimble.db.migration;
 
+import io.jimble.util.internal.Docs;
+
 /**
  * マイグレーション失敗
  *
@@ -19,7 +21,7 @@ public class MigrationException extends RuntimeException {
 	 */
 	public MigrationException (String message) {
 
-		super(message);
+		super(message + Docs.see("codegen"));
 
 	}
 
@@ -31,7 +33,7 @@ public class MigrationException extends RuntimeException {
 	 */
 	public MigrationException (String message, Throwable cause) {
 
-		super(message, cause);
+		super(message + Docs.see("codegen"), cause);
 
 	}
 

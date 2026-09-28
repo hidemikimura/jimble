@@ -1,5 +1,6 @@
 package io.jimble.web.server;
 
+import io.jimble.util.internal.Docs;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http1.Http1Config;
 import io.helidon.webserver.http.ServerRequest;
@@ -697,7 +698,8 @@ public final class JimbleServer {
 			ローカルは http なので、ブラウザは Cookie を送り返しません。
 			セッション・CSRF・Flash が黙って効かなくなります。
 			application.conf に次を足してください。
-			  cookie { secure = false }""");
+			  cookie { secure = false }
+			詳しく: %s""".formatted(Docs.url("session-security")));
 
 	}
 

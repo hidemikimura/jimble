@@ -68,6 +68,9 @@ public class JimbleJtePlugin implements Plugin<Project> {
 	@Override
 	public void apply (Project project) {
 
+		// AI 向けのタスク（要件 D-187）。どのプラグインからでも1度だけ登録される
+		io.jimble.gradle.ai.JimbleAiSupport.register(project);
+
 		project.getPluginManager().apply(JavaPlugin.class);
 
 		JimbleJteExtension extension = project.getExtensions()

@@ -91,7 +91,18 @@ my-blog/
 	conf/application.conf
 	conf/logback.xml
 	conf/migration/my_blog/001_create_note.sql.example
+	AGENTS.md
+	CLAUDE.md
+	.claude/skills/jimble/SKILL.md
+	.claude/skills/jimble-db/SKILL.md
+	.claude/skills/jimble-web/SKILL.md
+	.claude/skills/jimble-batch/SKILL.md
+	.claude/jimble-skills.properties
 ```
+
+**AI への案内も置きます**（`AGENTS.md` と、それを読み込むだけの `CLAUDE.md`、`.claude/skills/` の skill）。
+`.claude/jimble-skills.properties` は置いた skill の控えで、jimble の版を上げたときに
+`./gradlew jimbleSkills` が「手で直していないもの」だけを入れ替えるのに使います（[Gradle プラグイン](./gradle)）。
 
 **空のディレクトリは作りません。** 使う段になってから作ってください。
 `.example` が付いているものは、名前を変えれば有効になります。

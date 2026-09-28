@@ -73,7 +73,12 @@ public class ResultSetConverter {
 					String jsonString = resultSet.getString(i + 1);
 					if (jsonString != null) {
 						if (jsonString.startsWith("[")) {
-							value = Dson.decodes(jsonString, List.class);
+							/*
+							 * 印を付けて入れる（D-189）。getString すると先頭の要素だけが返るので、
+							 * そうしたときに Data が1度だけ言えるようにする
+							 */
+							List<?> list = Dson.decodes(jsonString, List.class);
+							value = list == null ? null : new io.jimble.util.internal.JsonArrayList(list);
 						} else {
 							value = Dson.decodes(jsonString, Data.class);
 						}

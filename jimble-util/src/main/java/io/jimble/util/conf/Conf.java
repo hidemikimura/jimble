@@ -1,5 +1,6 @@
 package io.jimble.util.conf;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.util.log.Log;
 
 import com.typesafe.config.Config;
@@ -640,7 +641,7 @@ public final class Conf {
 		 */
 		throw new IllegalStateException(
 			"設定 %s は%sなので、単位を値に書いてください（例: %s）。いまの値: %s"
-				.formatted(key, what, examples, config.getValue(key).unwrapped()));
+				.formatted(key, what, examples, config.getValue(key).unwrapped()) + Docs.see("config"));
 
 	}
 
@@ -786,7 +787,7 @@ public final class Conf {
 	private void require (String key) {
 
 		if (!has(key)) {
-			throw new IllegalStateException("設定 %s が見つかりません（環境: %s）".formatted(key, env));
+			throw new IllegalStateException("設定 %s が見つかりません（環境: %s）".formatted(key, env) + Docs.see("config"));
 		}
 	}
 
@@ -913,8 +914,9 @@ public final class Conf {
 				  （略記 dev・development / stg・stage / prod・prd も同じものとして扱います）。
 				  テスト用など自分で名前を付けた環境なら、application.%s.conf を置いてください。
 				  置けばこの警告は出なくなります。
+				  詳しく: %s
 				"""
-				.formatted(env, env, env));
+				.formatted(env, env, env, Docs.url("config")));
 		}
 
 		return resolved;

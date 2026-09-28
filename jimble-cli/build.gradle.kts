@@ -26,9 +26,19 @@ dependencies {
 val skeletonSkills = layout.buildDirectory.dir("generated/skeleton")
 
 val copySkills by tasks.registering(Copy::class) {
-	from(rootProject.layout.projectDirectory.dir(".claude/skills"))
-	// リソースの根から見た置き場所に合わせる（Skeleton.BASE + "skills/"）
-	into(skeletonSkills.map { it.dir("io/jimble/cli/skeleton/skills") })
+	from(rootProject.layout.projectDirectory.dir(".claude/skills")) {
+		// リソースの根から見た置き場所に合わせる（Skeleton.BASE + "skills/"）
+		into("skills")
+	}
+	/*
+	 * AI への案内（AGENTS.md / CLAUDE.md。要件 D-187）。
+	 * 正は Gradle プラグインの中の1か所（./gradlew jimbleSkills も同じものを置く）。
+	 */
+	from(rootProject.layout.projectDirectory.dir("gradle-plugin/src/main/resources/io/jimble/gradle/ai")) {
+		include("AGENTS.md", "CLAUDE.md")
+		into("ai")
+	}
+	into(skeletonSkills.map { it.dir("io/jimble/cli/skeleton") })
 }
 
 sourceSets.main {

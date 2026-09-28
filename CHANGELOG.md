@@ -4,6 +4,30 @@
 
 ---
 
+## 未リリース
+
+**AI が jimble を正しく使えるようにした。**skill を古くしない、落とし穴を機械的に見つける、エラーから説明へ辿れる、の3つ。
+既存の API は変えていません（足しただけです）。返り値や例外も変えていません（警告が増えただけです）。
+
+### 足したこと（D-187 / D-188 / D-189）
+
+| | |
+|---|---|
+| **`./gradlew jimbleSkills`：skill を、使っている jimble の版に揃えます**（D-187） | `jimble new` は skill を写して置くので、版を上げても**アプリの AI は古い説明を読み続けていました**。jimble のどのプラグインを当てても付くタスクで、`.claude/skills/` をそのプラグインの版（= アプリが使っている jimble の版）の skill に揃えます。**手で直した skill は上書きしません**（置いたときのハッシュを `.claude/jimble-skills.properties` に控え、同じものだけ入れ替えます）。控えの無いもの（これまでの `jimble new` で置いたもの）は `--overwrite` を付けたときだけ入れ替えます |
+| **`jimble new` と `jimbleSkills` が `AGENTS.md` / `CLAUDE.md` を置きます**（D-187） | ツールをまたいで読まれる `AGENTS.md` に「skill を読む・推測しない・`jimbleCheck` で確かめる・アプリの決まりはここに書く」を書き、`CLAUDE.md` はそれを読み込むだけにしました。**あれば触りません** |
+| **`./gradlew jimbleCheck`：既知の落とし穴を見つけます**（D-188） | **動かしても黙って間違えるもの**を、ソースと設定から見つけます（`request().getString`・`${?X}` のあとの書き直し・`DBUtil.load` のあとの `Migration.install`・`BatchTables.install` の呼び忘れ・`sync` と `add` の順番・種別のブロックと外側の guard・MQ の表の codegen・古い skill・トランザクションの空の catch）。見つけたものには**直し方と jimble.io の引き先**を付けます。誤検知は `// jimble-check:ignore J101` で消せます |
+| **例外と警告に引き先を付けました**（D-189） | 設定の単位・見つからないキー・知らない環境・DB が読めていない・知らない db のキー・コミットしなかった（`DB_004`）・閉じ忘れのトランザクション・`cookie.secure`・ルートの確定後・ログインの種別・マイグレーションの失敗・バッチマスタの更新の失敗に、`詳しく: https://jimble.io/ja/〜.md` を付けました（Markdown のまま取れるページです） |
+| **黙って間違えていた3つを、言うようにしました**（D-189） | (1) `Migration.install()` を `DBUtil.load(...)` のあとに呼ぶと WARN（そのままでは流れない）。(2) remember-me の Cookie が来ているのに `Remember.restore` より先に `Auth.guard` が走って 401 になったら、1度だけ WARN（`before` の順番の取り違え）。(3) JSON の**配列**の列を `getString` したら、1度だけ WARN（先頭の要素だけが返っている）。**どれも返り値・例外は変えていません** |
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **既存のアプリの skill は、1度 `--overwrite` で入れ替えてください** | これまでの `jimble new` は控えを書いていないので、`./gradlew jimbleSkills` だけでは「直したかどうか分からない」として触りません。skill を直していなければ `./gradlew jimbleSkills --overwrite`。アプリ固有の書き足しは先に `AGENTS.md` へ移してください |
+| **JSON の配列の列の値の型が `JsonArrayList`（`ArrayList` の子）になります** | `List` / `ArrayList` として扱う分には何も変わりません。`getClass() == ArrayList.class` で比べていたら通らなくなります |
+
+---
+
 ## 1.4.2（2026-09-28）
 
 **skill だけを直した版。**コードは変えていません（`jimble new` が置く skill と、CLI に入る skill が新しくなります）。

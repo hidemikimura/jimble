@@ -171,4 +171,34 @@ class JimbleNewSkillsTest {
 
 	}
 
+
+	@Test
+	@DisplayName("D-187 AGENTS.md / CLAUDE.md を置き、置いた skill の控えを書く（jimbleSkills が読む形）")
+	void writesAgentsAndRecord (@TempDir Path dir) throws IOException {
+
+		Path root = NewCommand.run("my-blog", dir);
+
+		String agents = Files.readString(root.resolve("AGENTS.md"), StandardCharsets.UTF_8);
+		assertTrue(agents.contains(".claude/skills/jimble/SKILL.md"), agents);
+		assertTrue(agents.contains("jimbleSkills") && agents.contains("jimbleCheck"), agents);
+		assertEquals("@AGENTS.md", Files.readString(root.resolve("CLAUDE.md"), StandardCharsets.UTF_8).trim());
+
+		java.util.Properties record = new java.util.Properties();
+		try (var reader = Files.newBufferedReader(root.resolve(".claude/" + NewCommand.SKILLS_RECORD), StandardCharsets.UTF_8)) {
+			record.load(reader);
+		}
+
+		assertEquals(Version.current(), record.getProperty("version"));
+
+		for (String name : names()) {
+			String key = "skills/%s/SKILL.md".formatted(name);
+			byte[] written = Files.readAllBytes(root.resolve(".claude/" + key));
+			assertEquals(NewCommand.sha256(written), record.getProperty(key), key + " の控えが置いた中身と合いません");
+		}
+
+		// 控えに skill 以外（AGENTS.md など）は載せない。載せると jimbleSkills が「無くなった skill」と言い出す
+		assertEquals(names().size() + 1, record.size(), record.toString());
+
+	}
+
 }

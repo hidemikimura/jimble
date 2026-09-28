@@ -56,6 +56,54 @@ tasks.withType<JavaCompile>().configureEach {
 		"-Xlint:all", "-Xlint:-serial", "-Xlint:-this-escape", "-Werror", "-parameters"))
 }
 
+/*
+ * skill と版をプラグインに入れる（要件 D-187。./gradlew jimbleSkills が配る）。
+ *
+ * <b>正はリポジトリの .claude/skills/ の1か所だけ。</b>jimble-cli と同じく、ビルドで写す。
+ * jar の中は一覧を引けないので、索引（skills.txt）も一緒に作る。
+ * 版（version.txt）は、このプラグインの版 = アプリが使っている jimble の版である。
+ */
+val aiResourcesDir = layout.buildDirectory.dir("generated/ai")
+val skillsSourceDir = layout.projectDirectory.dir("../.claude/skills")
+val pluginVersionText = version.toString()
+
+val generateAiResources by tasks.registering {
+
+	inputs.dir(skillsSourceDir)
+	inputs.property("version", pluginVersionText)
+	outputs.dir(aiResourcesDir)
+
+	doLast {
+
+		val base = aiResourcesDir.get().dir("io/jimble/gradle/ai").asFile
+		base.deleteRecursively()
+
+		val source = skillsSourceDir.asFile
+		val index = source.walkTopDown()
+			.filter { it.isFile && it.name == "SKILL.md" }
+			.map { it.relativeTo(source).invariantSeparatorsPath }
+			.sorted()
+			.toList()
+
+		check(index.isNotEmpty()) { "skill がありません: $source" }
+
+		for (path in index) {
+			val target = base.resolve("skills/$path")
+			target.parentFile.mkdirs()
+			source.resolve(path).copyTo(target, overwrite = true)
+		}
+
+		base.resolve("skills.txt").writeText(index.joinToString("\n", postfix = "\n"))
+		base.resolve("version.txt").writeText(pluginVersionText + "\n")
+
+	}
+
+}
+
+sourceSets.main {
+	resources.srcDir(generateAiResources.map { aiResourcesDir })
+}
+
 dependencies {
 	/*
 	 * jte のコンパイラ本体。ここ（Gradle デーモンの中）でだけ使う。

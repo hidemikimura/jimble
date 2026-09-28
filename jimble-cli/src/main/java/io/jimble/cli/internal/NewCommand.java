@@ -41,7 +41,29 @@ final class NewCommand {
 	/** 置き換えるもの */
 	private static final String KEY_VERSION = "__JIMBLE_VERSION__";
 
+	/* skill を置く場所 */
+	private static final String SKILLS_DIR = ".claude/skills/";
+
+	/* 置いた skill の控え（.claude/ の下） */
+	static final String SKILLS_RECORD = "jimble-skills.properties";
+
 	private NewCommand () {}
+
+	/**
+	 * SHA-256（16 進の小文字。Gradle プラグインの控えと同じ形）
+	 *
+	 * @param bytes	中身
+	 * @return	ハッシュ
+	 */
+	static String sha256 (byte[] bytes) {
+
+		try {
+			return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+		} catch (java.security.NoSuchAlgorithmException ex) {
+			throw new IllegalStateException(ex);
+		}
+
+	}
 
 	/**
 	 * 作る
@@ -67,14 +89,34 @@ final class NewCommand {
 
 		Map<String, String> values = values(project);
 
+		/*
+		 * 置いた skill の控え（要件 D-187）。./gradlew jimbleSkills がこれを見て、
+		 * 「jimble が置いたまま」のものだけを新しい版に入れ替える。
+		 * 書式は Gradle プラグインの SkillsInstaller と同じ
+		 */
+		StringBuilder record = new StringBuilder();
+		record.append("# jimble が置いた skill の控え（./gradlew jimbleSkills が読み書きする。手で直さない）\n");
+
+		java.util.TreeMap<String, String> hashes = new java.util.TreeMap<>();
+
 		for (Skeleton.Entry entry : Skeleton.ENTRIES) {
 
 			Path target = root.resolve(replace(entry.target(), values));
+			String text = replace(read(entry), values);
 
 			Files.createDirectories(target.getParent());
-			Files.writeString(target, replace(read(entry), values), StandardCharsets.UTF_8);
+			Files.writeString(target, text, StandardCharsets.UTF_8);
+
+			if (entry.target().startsWith(SKILLS_DIR)) {
+				hashes.put("skills/" + entry.target().substring(SKILLS_DIR.length()), sha256(text.getBytes(StandardCharsets.UTF_8)));
+			}
 
 		}
+
+		hashes.forEach((key, hash) -> record.append(key).append('=').append(hash).append('\n'));
+		record.append("version=").append(Version.current()).append('\n');
+
+		Files.writeString(root.resolve(".claude/" + SKILLS_RECORD), record.toString(), StandardCharsets.UTF_8);
 
 		return root;
 

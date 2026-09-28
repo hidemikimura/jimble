@@ -1,5 +1,6 @@
 package io.jimble.web.auth;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.util.hash.PasswordUtil;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.internal.AuthSlots;
@@ -221,7 +222,7 @@ public final class Auth {
 		}
 
 		if (!realm.isEmpty() && !REALM_PATTERN.matcher(realm).matches()) {
-			throw new IllegalArgumentException("ログインの種別に使えない文字があります（英数字・_・- の 64 文字まで）: " + realm);
+			throw new IllegalArgumentException("ログインの種別に使えない文字があります（英数字・_・- の 64 文字まで）: " + realm + Docs.see("auth"));
 		}
 
 	}
@@ -265,6 +266,8 @@ public final class Auth {
 		Principal principal = principal(context);
 
 		if (!principal.isAuthenticated()) {
+			// 覚えているのに restore より先に来ていたら言う（順番の取り違え。D-189）
+			Remember.warnIfGuardRanFirst(context, realmOf(context));
 			throw new HttpException(401, "ログインしてください");
 		}
 

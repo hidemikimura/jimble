@@ -102,7 +102,18 @@ my-blog/
 	conf/application.conf
 	conf/logback.xml
 	conf/migration/my_blog/001_create_note.sql.example
+	AGENTS.md
+	CLAUDE.md
+	.claude/skills/jimble/SKILL.md
+	.claude/skills/jimble-db/SKILL.md
+	.claude/skills/jimble-web/SKILL.md
+	.claude/skills/jimble-batch/SKILL.md
+	.claude/jimble-skills.properties
 ```
+
+**It also places guidance for AI assistants** (`AGENTS.md`, a `CLAUDE.md` that only loads it, and the skills under
+`.claude/skills/`). `.claude/jimble-skills.properties` records what was placed, so that after you upgrade jimble,
+`./gradlew jimbleSkills` only replaces the skills nobody edited ([Gradle plugins](./gradle)).
 
 **It does not create empty directories.** Create them when you need them.
 Anything ending in `.example` becomes live once you rename it.

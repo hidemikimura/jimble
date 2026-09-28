@@ -271,6 +271,63 @@ class AuthRealmTest {
 	}
 
 	@Test
+	@DisplayName("D-189 覚えている Cookie があるのに restore より先に guard が走ったら、1度だけ言う（401 は変えない）")
+	void warnsWhenGuardRunsBeforeRestore () {
+
+		java.util.List<String> warns = new java.util.concurrent.CopyOnWriteArrayList<>();
+		io.jimble.util.log.Log.sink((loggerName, level, message, data, throwable) -> {
+			if (level.toInt() >= org.slf4j.event.Level.WARN.toInt()) {
+				warns.add(message);
+			}
+		});
+
+		Remember.resetGuardWarning();
+
+		try {
+
+			// operator の restore を置いたアプリ（置いていない種別では言わない）
+			Remember.restore(OPERATOR, id -> Principal.of(id, "運用 一郎", "ops"));
+
+			for (String path : new String[] { "/admin/me", "/ops/me", "/ops/me" }) {
+
+				Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", path);
+				source.cookie("remember_" + (path.startsWith("/ops") ? OPERATOR : MEMBER), "abc:def");
+
+				try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+					context.route(router.match("GET", path));
+					context.sessionStore(store);
+					HttpException e = assertThrows(HttpException.class, () -> Auth.guard(context));
+					assertEquals(401, e.statusCode());
+				}
+
+			}
+
+			assertEquals(1, warns.stream().filter(message -> message.contains("Remember.restore より先に Auth.guard")).count(), warns.toString());
+			assertTrue(warns.stream().anyMatch(message -> message.contains("remember_operator") && message.contains("auth.md")), warns.toString());
+
+			// restore が先に走っていれば（思い出せなかっただけなら）言わない
+			Remember.resetGuardWarning();
+			warns.clear();
+
+			Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/ops/me");
+			source.cookie("remember_" + OPERATOR, "abc:def");
+
+			try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+				context.route(router.match("GET", "/ops/me"));
+				context.sessionStore(store);
+				Remember.restore(context, OPERATOR, id -> null);
+				assertThrows(HttpException.class, () -> Auth.guard(context));
+			}
+
+			assertTrue(warns.stream().noneMatch(message -> message.contains("Remember.restore より先に Auth.guard")), warns.toString());
+
+		} finally {
+			io.jimble.util.log.Log.resetSink();
+		}
+
+	}
+
+	@Test
 	@DisplayName("D-185 種別に使えない文字は断る")
 	void invalidRealm () {
 

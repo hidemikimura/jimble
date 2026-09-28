@@ -53,3 +53,15 @@ tasks.register<JavaExec>("site") {
 
 	outputs.upToDateWhen { false }
 }
+
+/*
+ * ApiSurfaceTest と DocsLinkTest は、<b>リポジトリの各モジュールのソースと docs を読む</b>。
+ * 入力に書かないと、ソースや文書だけを直したときに「最新」とみなされて流れず、
+ * 壊れた案内（D-189）や表に無いパッケージ（NF-C-04）を手元で見落とす。
+ */
+tasks.named<Test>("test") {
+	inputs.files(fileTree(rootDir) {
+		include("*/src/main/java/**/*.java", "docs/site/*/*.md", "docs/api-packages.txt")
+		exclude("**/build/**")
+	}).withPropertyName("repositorySources").withPathSensitivity(PathSensitivity.RELATIVE)
+}

@@ -1,5 +1,6 @@
 package io.jimble.db;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.util.io.IOUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.data.ResultSetFetcher;
@@ -2389,7 +2390,8 @@ public class DB implements Closeable, AutoCloseable {
 			  最後のエラー: %s
 			  エラーを見て続けたいなら、いったん rollback() してから書き直してください
 			  （SQL → commit → SQL（失敗）→ rollback → SQL → commit と書けます）。
-			""".formatted(cause == null ? "（直前の文は成功。それより前で出ています）" : cause.getMessage()));
+			  詳しく: %s
+			""".formatted(cause == null ? "（直前の文は成功。それより前で出ています）" : cause.getMessage(), Docs.url("transaction")));
 
 	}
 
@@ -2585,7 +2587,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		if (isTransaction()) {
 			return "コミットもロールバックもされていないトランザクションが残っていました。"
-				+ "ロールバックして閉じます: " + name;
+				+ "ロールバックして閉じます: " + name + Docs.see("transaction");
 		}
 
 		return "閉じられていない DB が残っていました。閉じます: " + name

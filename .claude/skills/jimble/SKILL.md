@@ -202,6 +202,18 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 | `jimble-web` | ルーティングとフィルタの効く範囲・入力と出力・セッション / CSRF・エラー処理・認証 |
 | `jimble-batch` | バッチ（登録の順序・中断・チャンク）と MQ（DB のテーブルがキュー） |
 
+## 書いたら確かめる
+
+```bash
+./gradlew jimbleCheck     # jimble の既知の落とし穴を見つける（直し方と引き先つき）
+./gradlew jimbleSkills    # jimble の版を上げたら、この skill をその版に揃える
+```
+
+- **`jimbleCheck` が `ERROR` を出したら直す。**出力にある「直し方」と「詳しく」の URL を見る（推測で直さない）。
+  誤検知なら、その行か前の行に `// jimble-check:ignore J101` と書く
+- **アプリ固有の決まりは skill を直さず、プロジェクトの根の `AGENTS.md` に書く。**skill を直すと `jimbleSkills` で揃えられなくなる
+- jimble が出す例外や警告の多くには **`詳しく: https://jimble.io/ja/〜.md`** が付いている。そのページを取って読む
+
 ## 詳しいことは引く
 
 **推測で書かない。**全ページが Markdown でそのまま取れる。

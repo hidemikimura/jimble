@@ -60,6 +60,13 @@ final class Skeleton {
 		, new Entry("skills/jimble-db/SKILL.md", ".claude/skills/jimble-db/SKILL.md")
 		, new Entry("skills/jimble-web/SKILL.md", ".claude/skills/jimble-web/SKILL.md")
 		, new Entry("skills/jimble-batch/SKILL.md", ".claude/skills/jimble-batch/SKILL.md")
+		/*
+		 * AI への案内（要件 D-187）。AGENTS.md はツールをまたいで読まれる決まりのファイルで、
+		 * CLAUDE.md は Claude Code 向けにそれを読み込むだけ（@AGENTS.md）。
+		 * アプリの決まりは AGENTS.md に書き足してもらう（skill を直させない）
+		 */
+		, new Entry("ai/AGENTS.md", "AGENTS.md")
+		, new Entry("ai/CLAUDE.md", "CLAUDE.md")
 	);
 
 	private Skeleton () {}

@@ -1,5 +1,6 @@
 package io.jimble.db.migration;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
 import io.jimble.db.DBSource;
@@ -90,6 +91,19 @@ public final class Migration {
 	 * @return	登録した場合 = true
 	 */
 	public static boolean install () {
+
+		/*
+		 * <b>DBUtil.load(...) のあとに呼ばれたら言う</b>（要件 D-189）。
+		 * 登録した処理は load の中で走るので、あとから登録しても<b>黙って1つも流れない</b>。
+		 * 投げはしない——マイグレーションを別に（./gradlew migrate で）当てているアプリでは、
+		 * この呼び出しは何もしていなかっただけで、上げた途端に起動しなくなるのは困る。
+		 */
+		if (!DBUtil.getDataSourceList().isEmpty()) {
+			Log.warn("""
+				Migration.install() が DBUtil.load(...) のあとに呼ばれました。マイグレーションはこのままでは流れません。
+				  流れるのは DBUtil.load(...) の中なので、Migration.install() をその前に移してください。
+				  詳しく: %s""".formatted(Docs.url("codegen")));
+		}
 
 		if (!MigrationConf.isOnStartup()) {
 			Log.info("起動時マイグレーションは無効です（" + MigrationConf.KEY_ON_STARTUP + "）");

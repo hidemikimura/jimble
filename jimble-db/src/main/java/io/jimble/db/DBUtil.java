@@ -1,5 +1,6 @@
 package io.jimble.db;
 
+import io.jimble.util.internal.Docs;
 import com.typesafe.config.Config;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -193,7 +194,7 @@ public class DBUtil {
 		throw new IllegalStateException(
 			("DB「%s」が読み込めていません。DBUtil.load が失敗しています"
 				+ "（このすぐ上のログに原因が出ています。設定は db.%s）")
-				.formatted(name, name));
+				.formatted(name, name) + Docs.see("db"));
 
 	}
 
@@ -991,7 +992,7 @@ public class DBUtil {
 		throw new IllegalStateException(
 			"db の設定に知らないキーがあります: %s。書けるのは %s です"
 				.formatted(String.join(", ", unknown)
-					, String.join(", ", new TreeSet<>(KNOWN_KEYS))));
+					, String.join(", ", new TreeSet<>(KNOWN_KEYS))) + Docs.see("db"));
 
 	}
 

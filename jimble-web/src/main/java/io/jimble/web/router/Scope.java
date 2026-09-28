@@ -1,5 +1,6 @@
 package io.jimble.web.router;
 
+import io.jimble.util.internal.Docs;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -388,7 +389,8 @@ final class Scope {
 				ルートの確定後に %s を追加することはできません。
 				  フックは起動時（最初のマッチ）に確定します。
 				  ルート定義はコントローラの初期化ブロックの中で完結させてください。
-				""".formatted(what));
+				  詳しく: %s
+				""".formatted(what, Docs.url("routing")));
 		}
 
 	}

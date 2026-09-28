@@ -1923,12 +1923,33 @@ public class Data extends LinkedHashMap<String, Object> {
 				return (String) object;
 			}
 
+			if (object instanceof io.jimble.util.internal.JsonArrayList) {
+				warnJsonArray(key);
+			}
+
 			return Convertor.convert(null, object, String.class);
 
 		} catch (Exception ex) {
 
 			return null;
 
+		}
+
+	}
+
+	/**
+	 * JSON の配列の列を getString したと言う（1度だけ。要件 D-189）
+	 *
+	 * @param key	キー
+	 */
+	private static void warnJsonArray (String key) {
+
+		if (io.jimble.util.internal.JsonArrayList.firstGetString()) {
+			io.jimble.util.log.Log.warn("""
+				JSON の配列の列 %s を getString しています。配列の先頭の要素だけが返ります（JSON の文字ではありません）。
+				  配列のまま取るなら getStringList / getDataList、JSON の文字のまま欲しいなら
+				  SQL で CAST(列 AS CHAR)（MySQL）/ 列::text（PostgreSQL）として読んでください。
+				  詳しく: %s""".formatted(key, io.jimble.util.internal.Docs.url("db")));
 		}
 
 	}

@@ -1,5 +1,6 @@
 package io.jimble.batch;
 
+import io.jimble.util.internal.Docs;
 import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
@@ -328,7 +329,8 @@ public final class BatchRegistry {
 			, paramsList);
 
 		if (db.isError()) {
-			Log.error("バッチマスタの更新に失敗しました: %s".formatted(db.getError()));
+			Log.error("バッチマスタの更新に失敗しました: %s（テーブルが無いなら、BatchTables.install(db) を sync より前に呼んでいるか見てください）%s"
+				.formatted(db.getError(), Docs.see("batch")));
 			return 0;
 		}
 

@@ -285,3 +285,52 @@ Fix it, save, reload, and you carry on.
 > The build calls `gradlew` **in a child process** (a running build cannot invoke
 > a task of the same project from inside itself).
 > If `gradlew` is broken, it says why and falls back to `gradle` from your PATH.
+
+## Tasks for AI assistants
+
+**Every jimble plugin (`io.jimble.jte` / `io.jimble.run` / `io.jimble.db`) adds them.**
+
+| Task | What it does |
+| --- | --- |
+| `./gradlew jimbleSkills` | Brings `.claude/skills/` in line with **the skills of the jimble version you use**. Places `AGENTS.md` / `CLAUDE.md` if they are missing |
+| `./gradlew jimbleCheck` | Finds jimble's **known pitfalls** in your source and configuration, each with a fix and a link to read |
+
+### jimbleSkills
+
+`jimble new` **copies** the skills in, so upgrading jimble leaves the copies behind and your
+application's AI keeps reading the old version's explanations. **Run it after you upgrade.**
+
+```bash
+./gradlew jimbleSkills
+./gradlew jimbleSkills --overwrite   # also replace hand-edited skills and ones with no record
+```
+
+- **Hand-edited skills are never overwritten.** The hash of what was placed is recorded in
+  `.claude/jimble-skills.properties`; a file that still matches (untouched since jimble placed it) is replaced,
+  anything else is left alone
+- **Skills with no record** (placed by a `jimble new` from before the record existed) are left alone too, since there is
+  no telling whether they were edited. If you did not edit them, use `--overwrite`
+- **Put your application's own rules in `AGENTS.md`, not in the skills.** An edited skill can no longer be brought up to date
+- `AGENTS.md` / `CLAUDE.md` are **placed only if missing, never touched otherwise** (`CLAUDE.md` just says `@AGENTS.md`)
+
+### jimbleCheck
+
+It only looks for things that **go wrong silently at run time** (anything that fails at startup and tells you
+how to fix it is left out). Any `ERROR` fails the task; `WARN` alone does not.
+
+| Rule | Level | What it looks for |
+| --- | --- | --- |
+| J101 | ERROR | `context.request().getString(...)` and friends (`Request` itself is empty; go through `bodyAll()`) |
+| J201 | WARN | `${ENV}` without `?` in configuration (fails at startup wherever the variable is not set) |
+| J202 | ERROR | The same key written again after its `${?ENV}` line (the environment variable never wins) |
+| J301 | ERROR | `Migration.install()` after `DBUtil.load(...)` (migrations never run) |
+| J302 | ERROR | `BatchRegistry.sync` is used but `BatchTables.install` is called nowhere |
+| J303 | ERROR | `BatchRegistry.sync` before `BatchRegistry.add` (every batch becomes `nothing`) |
+| J304 | WARN | codegen is in use but MQ tables (`mq_scheduler` …) are missing from `codegen.exclude_tables` |
+| J401 | ERROR | An outer `before(Auth::guard)` with `Remember.restore` inside an `Auth.REALM` block (401 every time despite remember-me) |
+| J501 | WARN | The skills are not from the jimble version you use (run `jimbleSkills`) |
+| J701 | WARN | An empty `catch` in a file that uses `DBTransaction` (reports success when nothing was committed) |
+
+> [!NOTE]
+> Java is not parsed into a syntax tree; comments and strings are blanked out first. **Silence a false positive
+> with `// jimble-check:ignore J101` on that line or the one above** (`# jimble-check:ignore J201` in configuration).

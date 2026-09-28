@@ -104,6 +104,7 @@ row.getStringList("tags");                 // ["a", "b"]  ← 配列はこちら
 row.getData("options");                    // オブジェクトの列は Data で取る
 ```
 
+- 配列の列を `getString` すると、**1度だけ WARN**（「JSON の配列の列 〜 を getString しています」）が出る。見たらここを直す
 - **`getString` で JSON の文字を取ろうとしない。**オブジェクトの列は JSON の文字になるが
   （キーの間の空白などは元のとおりではない）、**配列の列は先頭の要素しか返らない**。
   それを `Dson.decodes(..., List.class)` に渡すと、JSON ではないので **`null`**
