@@ -229,9 +229,21 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@Deprecated(since = "1.5.0", forRemoval = true)
+	@SuppressWarnings("removal")
 	public ISelect subtract(Object value) {
 
-		return new SelectQuery().select(this).subtract(value);
+		return divide(value);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public ISelect divide(Object value) {
+
+		return new SelectQuery().select(this).divide(value);
 
 	}
 
@@ -255,7 +267,12 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	@Override
 	public IWhere and(IWhere where) {
 
-		return null;
+		/*
+		 * 列そのものは条件ではない。1.4 までは null を返していたので、
+		 * where(...) に null が入って<b>離れた所で NPE</b> になっていた（要件 D-190）。
+		 */
+		throw new io.jimble.db.sql.SqlBuildException(
+			"列に直接 and(...) は付けられません。先に比較を作ってください（例: col.eq(1).and(other.eq(2))）");
 
 	}
 
@@ -265,7 +282,12 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	@Override
 	public IWhere or(IWhere where) {
 
-		return null;
+		/*
+		 * 列そのものは条件ではない。1.4 までは null を返していたので、
+		 * where(...) に null が入って<b>離れた所で NPE</b> になっていた（要件 D-190）。
+		 */
+		throw new io.jimble.db.sql.SqlBuildException(
+			"列に直接 or(...) は付けられません。先に比較を作ってください（例: col.eq(1).or(other.eq(2))）");
 
 	}
 

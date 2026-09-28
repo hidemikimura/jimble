@@ -82,12 +82,34 @@ public class SelectQuery implements ISelect {
 	 */
 	public boolean hasDecoration () {
 
-		return as != null || plus != null || minus != null || multiply != null || subtract != null;
+		return as != null || !operations.isEmpty();
 
 	}
 
-	/* plus */
-	private Object plus = null;
+	/*
+	 * 四則演算（書いた順）。
+	 *
+	 * <b>1.4 までは種類ごとに1つずつ持ち、else-if で最初の1つだけを出していた</b>ので、
+	 * {@code col.plus(1).multiply(2)} は<b>黙って {@code col + ?} になり、2 は捨てられていた</b>。
+	 * 同じ種類を2度書くと、前のが上書きされていた（要件 D-190）。
+	 */
+	private record Operation (String operator, Object operand) {}
+
+	private final List<Operation> operations = new ArrayList<>();
+
+	/**
+	 * 演算を足す
+	 *
+	 * @param operator	演算子
+	 * @param value		値
+	 * @return	ISelect
+	 */
+	private ISelect operation (String operator, Object value) {
+
+		this.operations.add(new Operation(operator, value));
+		return this;
+
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -95,13 +117,9 @@ public class SelectQuery implements ISelect {
 	@Override
 	public ISelect plus(Object value) {
 
-		this.plus = value;
-		return this;
+		return operation(" + ", value);
 
 	}
-
-	/* minus */
-	private Object minus = null;
 
 	/**
 	 * {@inheritDoc}
@@ -109,13 +127,9 @@ public class SelectQuery implements ISelect {
 	@Override
 	public ISelect minus(Object value) {
 
-		this.minus = value;
-		return this;
+		return operation(" - ", value);
 
 	}
-
-	/* multiply */
-	private Object multiply = null;
 
 	/**
 	 * {@inheritDoc}
@@ -123,30 +137,48 @@ public class SelectQuery implements ISelect {
 	@Override
 	public ISelect multiply(Object value) {
 
-		this.multiply = value;
-		return this;
+		return operation(" * ", value);
 
 	}
-
-	/* subtract */
-	private Object subtract = null;
 
 	/**
 	 * {@inheritDoc}
 	 */
 	@Override
-	public ISelect subtract(Object value) {
+	public ISelect divide(Object value) {
 
-		this.subtract = value;
-		return this;
+		return operation(" / ", value);
 
 	}
 
 	/**
 	 * {@inheritDoc}
+	 */
+	@Override
+	@Deprecated(since = "1.5.0", forRemoval = true)
+	@SuppressWarnings("removal")
+	public ISelect subtract(Object value) {
+
+		return divide(value);
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * 演算が2つ以上あるときは、<b>書いた順に左から括弧でくくる</b>——
+	 * {@code col.plus(1).multiply(2)} は {@code (col + ?) * ?}。
+	 * SQL の優先順位（掛け算が先）に任せると、書いた順と違う値になる。
+	 * 1つだけのときは括弧を付けない（1.4 と同じ字面。結果キャッシュの鍵が変わらない）。
+	 * </p>
 	 */
 	@Override
 	public void selectSql (SqlWriter sb) {
+
+		for (int i = 1; i < operations.size(); i++) {
+			sb.append("(");
+		}
 
 		if (this.dsl == null) {
 			this.select.selectSql(sb);
@@ -154,26 +186,18 @@ public class SelectQuery implements ISelect {
 			this.dsl.dslSql(sb);
 		}
 
-		Object basicCalcOperation = null;
-		if (plus != null) {
-			sb.append(" + ");
-			basicCalcOperation = plus;
-		} else if (minus != null) {
-			sb.append(" - ");
-			basicCalcOperation = minus;
-		} else if (multiply != null) {
-			sb.append(" * ");
-			basicCalcOperation = multiply;
-		} else if (subtract != null) {
-			sb.append(" / ");
-			basicCalcOperation = subtract;
-		}
-		if (basicCalcOperation != null) {
-			if (basicCalcOperation instanceof IColumn column) {
+		for (int i = 0; i < operations.size(); i++) {
+			if (i > 0) {
+				sb.append(")");
+			}
+			Operation operation = operations.get(i);
+			sb.append(operation.operator());
+			Object operand = operation.operand();
+			if (operand instanceof IColumn column) {
 				sb.qualified(column);
-			} else if (basicCalcOperation instanceof IDsl d) {
+			} else if (operand instanceof IDsl d) {
 				d.dslSql(sb);
-			} else if (basicCalcOperation instanceof ISelect s) {
+			} else if (operand instanceof ISelect s) {
 				s.selectSql(sb);
 			} else {
 				sb.append("?");
@@ -204,14 +228,8 @@ public class SelectQuery implements ISelect {
 		}
 
 		List<Object> params = new ArrayList<>();
-		if (this.plus != null) {
-			addParam(params, this.plus);
-		} else if (this.minus != null) {
-			addParam(params, this.minus);
-		} else if (this.multiply != null) {
-			addParam(params, this.multiply);
-		} else if (this.subtract != null) {
-			addParam(params, this.subtract);
+		for (Operation operation : operations) {
+			addParam(params, operation.operand());
 		}
 
 		return !params.isEmpty();
@@ -235,14 +253,8 @@ public class SelectQuery implements ISelect {
 			}
 		}
 
-		if (this.plus != null) {
-			addParam(params, this.plus);
-		} else if (this.minus != null) {
-			addParam(params, this.minus);
-		} else if (this.multiply != null) {
-			addParam(params, this.multiply);
-		} else if (this.subtract != null) {
-			addParam(params, this.subtract);
+		for (Operation operation : operations) {
+			addParam(params, operation.operand());
 		}
 
 		return params;

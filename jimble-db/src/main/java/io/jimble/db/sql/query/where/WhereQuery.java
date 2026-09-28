@@ -446,6 +446,29 @@ public class WhereQuery implements IWhere {
 		}
 
 		/**
+		 * 比較を置く
+		 *
+		 * <p>
+		 * <b>2つ目の比較は例外にする（要件 D-190）。</b>
+		 * 1.4 までは上書きしていたので、{@code col.ge(1).le(9)} は
+		 * <b>黙って {@code col <= 9} だけになっていた</b>。
+		 * 範囲は {@code between}、別の条件は {@code and(...)} で書く。
+		 * </p>
+		 *
+		 * @param condition	比較
+		 */
+		private void setRight (Object condition) {
+
+			if (this.right != null) {
+				throw new io.jimble.db.sql.SqlBuildException(
+					"1つの条件に比較は1つだけです（2つ目が前のを上書きしていました）。"
+						+ "範囲は between(a, b)、別の条件は and(列.比較(...)) で書いてください");
+			}
+			this.right = condition;
+
+		}
+
+		/**
 		 * {@inheritDoc}
 		 */
 		@Override
@@ -473,7 +496,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere eq(Object value) {
 
-			this.right = new Eq(value);
+			setRight(new Eq(value));
 			return this;
 
 		}
@@ -484,7 +507,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere not(Object value) {
 
-			this.right = new Not(value);
+			setRight(new Not(value));
 			return this;
 
 		}
@@ -495,7 +518,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere gt(Object value) {
 
-			this.right = new Gt(value);
+			setRight(new Gt(value));
 			return this;
 
 		}
@@ -506,7 +529,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere lt(Object value) {
 
-			this.right = new Lt(value);
+			setRight(new Lt(value));
 			return this;
 
 		}
@@ -517,7 +540,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere ge(Object value) {
 
-			this.right = new Ge(value);
+			setRight(new Ge(value));
 			return this;
 
 		}
@@ -528,7 +551,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere le(Object value) {
 
-			this.right = new Le(value);
+			setRight(new Le(value));
 			return this;
 
 		}
@@ -539,7 +562,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere is_null() {
 
-			this.right = new IsNull();
+			setRight(new IsNull());
 			return this;
 
 		}
@@ -550,7 +573,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere is_not_null() {
 
-			this.right = new IsNotNull();
+			setRight(new IsNotNull());
 			return this;
 
 		}
@@ -561,7 +584,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere between(Object value1, Object value2) {
 
-			this.right = new BetWeen(value1, value2);
+			setRight(new BetWeen(value1, value2));
 			return this;
 
 		}
@@ -572,7 +595,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere like(Object value) {
 
-			this.right = new Like(value);
+			setRight(new Like(value));
 			return this;
 
 		}
@@ -583,7 +606,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere not_like(Object value) {
 
-			this.right = new NotLike(value);
+			setRight(new NotLike(value));
 			return this;
 
 		}
@@ -594,7 +617,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere contains(Object value) {
 
-			this.right = new Contains(value);
+			setRight(new Contains(value));
 			return this;
 
 		}
@@ -605,7 +628,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere starts_with(Object value) {
 
-			this.right = new StartsWith(value);
+			setRight(new StartsWith(value));
 			return this;
 
 		}
@@ -616,7 +639,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere ends_with(Object value) {
 
-			this.right = new EndsWith(value);
+			setRight(new EndsWith(value));
 			return this;
 
 		}
@@ -627,7 +650,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere in(Object value) {
 
-			this.right = new In(value);
+			setRight(new In(value));
 			return this;
 
 		}
@@ -638,7 +661,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere not_in(Object value) {
 
-			this.right = new NotIn(value);
+			setRight(new NotIn(value));
 			return this;
 
 		}
@@ -649,7 +672,7 @@ public class WhereQuery implements IWhere {
 		@Override
 		public IWhere exists(Object value) {
 
-			this.right = new Exists(value);
+			setRight(new Exists(value));
 			return this;
 
 		}

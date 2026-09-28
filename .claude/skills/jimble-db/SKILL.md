@@ -43,7 +43,17 @@ Data post = db.select(SQL.select().from(Post.instance()).where(Post.id.eq(id)));
 .where(Post.id.in(List.of(1L, 2L, 3L)))
 ```
 
+OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる（1.5.0 から。`Dsl.or(x)` は「直前と OR でつなぐ印」で、引数を書き換える）。
+
+```java
+.where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))
+```
+
+**1つの条件に比較は1つ。**`Post.id.ge(1).le(9)` は組み立てで落ちる（1.4 までは後ろだけが黙って残った）。
+範囲は `between(a, b)`、別の条件は `.and(Post.id.le(9))`。列に直接 `.and(...)` も落ちる。
+
 結合は `left(...)` / `inner(...)` と `on(...)`。`on()` は**直前の結合に付く**。
+結合の無いところの `on()` は落ちる。2度呼ぶと AND。
 
 ## 結果は Data。テーブル名でネストしている
 
@@ -218,6 +228,10 @@ db.commitEndTransaction();
 | `rollbackEndTransaction()` | 戻して終わる |
 
 **`commit()` で終わったつもりにしない。**続いているので、そこから先も同じ中にいる。
+
+**入れ子は外に合流する。**中の `commit` / `commitEndTransaction` は何もしない（確定させるのは外）。
+**中で `rollback` したり、commit せずに抜けたりすると、外の `commitEndTransaction()` が `DB_005` で断り、全部巻き戻る**
+（1.5.0 から。1.4 までは中の rollback が黙って無視され、外がコミットしていた）。
 
 **外へ出すものと DB に積むものは、コミットの逆側。**
 

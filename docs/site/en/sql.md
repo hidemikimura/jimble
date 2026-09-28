@@ -39,6 +39,19 @@ SQL.select(Post.id, Post.title).from(Post.instance())
 
 Call `where` more than once and the conditions are joined with AND.
 
+For OR and parentheses, group with `Dsl.anyOf(...)` / `Dsl.allOf(...)` (since 1.5.0).
+
+```java
+.where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))
+// WHERE (shop_id = ?) AND ( status = ? OR status = ?)
+```
+
+> [!TRAP]
+> **One condition holds one comparison.** `Post.id.ge(1).le(9)` fails when the SQL is built —
+> up to 1.4 **only the last `le(9)` survived, with no exception**. Use `between(a, b)` for a range
+> and `.and(Post.id.le(9))` for a second condition.
+> Calling `and(...)` / `or(...)` directly on a column also fails (up to 1.4 it returned `null`).
+
 > [!NOTE]
 > **`contains`, `starts_with` and `ends_with` look for the text you passed, literally.**
 > A `50%` typed into a search box is looked up as the string **`50%`**, not as "anything starting with 50",
@@ -60,6 +73,8 @@ SQL.select()
 ```
 
 Inner joins are `inner(...)`. An `on()` attaches to the join right before it.
+Calling it twice joins the conditions with AND. **Calling `on()` where there is no join fails**
+(up to 1.4, when `from` was still a plain table, **the ON was silently dropped**).
 
 The result nests under the table name, so you get it with `row.getData("comment")`.
 

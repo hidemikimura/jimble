@@ -76,8 +76,18 @@ public abstract class AbstractDsl implements IDsl, ISelect, IWhere, IOrderBy {
 	 * {@inheritDoc}
 	 */
 	@Override
+	@Deprecated(since = "1.5.0", forRemoval = true)
+	@SuppressWarnings("removal")
 	public ISelect subtract(Object value) {
-		return select.subtract(value);
+		return divide(value);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public ISelect divide(Object value) {
+		return select.divide(value);
 	}
 
 	// endregion

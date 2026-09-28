@@ -145,6 +145,32 @@ public class DB implements Closeable, AutoCloseable {
 	void clearErrorSinceTransaction () {
 
 		this.errorSinceTransaction = false;
+		this.rollbackOnlyReason = null;
+
+	}
+
+	/*
+	 * 中に合流したトランザクションが「巻き戻したい」と言った理由（要件 D-190）。
+	 * 立っていれば、外の commit は断る。
+	 */
+	private String rollbackOnlyReason = null;
+
+	/**
+	 * 巻き戻し専用にする
+	 *
+	 * <p>
+	 * 外のトランザクションに合流した {@code DBTransaction} が {@code rollback()} したとき、
+	 * または commit せずに閉じたときに呼ぶ。<b>外の {@link #commit()} は DB_005 で断る</b>。
+	 * 1.4 までは合流した側の rollback が<b>黙って何もせず、外がそのまま commit していた</b>。
+	 * </p>
+	 *
+	 * @param reason	理由（エラーに出す）
+	 */
+	void markRollbackOnly (String reason) {
+
+		if (this.rollbackOnlyReason == null) {
+			this.rollbackOnlyReason = reason;
+		}
 
 	}
 
@@ -298,7 +324,7 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 読み取りコネクションを取得する
 	 */
-	private void getReadConnection() {
+	private void getReadConnection() throws SQLException {
 
 		if (connection != null) {
 			return;
@@ -319,9 +345,13 @@ public class DB implements Closeable, AutoCloseable {
 			connection = dbSource.getReadDataSource().getConnection();
 			connectionStart = System.currentTimeMillis();
 
+		} catch (SQLException ex) {
+
+			throw ex;
+
 		} catch (Exception ex) {
 
-			Log.error(ex);
+			throw new SQLException("コネクションを取れませんでした: " + ex.getMessage(), ex);
 
 		}
 
@@ -330,7 +360,7 @@ public class DB implements Closeable, AutoCloseable {
 	/**
 	 * 書き込みコネクションを取得する
 	 */
-	private void getWriteConnection() {
+	private void getWriteConnection() throws SQLException {
 
 		if (connection != null) {
 			return;
@@ -339,8 +369,10 @@ public class DB implements Closeable, AutoCloseable {
 		try {
 			connection = dbSource.getWriteDataSource().getConnection();
 			connectionStart = System.currentTimeMillis();
+		} catch (SQLException ex) {
+			throw ex;
 		} catch (Exception ex) {
-			Log.error(ex);
+			throw new SQLException("コネクションを取れませんでした: " + ex.getMessage(), ex);
 		}
 
 	}
@@ -961,15 +993,21 @@ public class DB implements Closeable, AutoCloseable {
 			idTable.add(data.getLong(pkColumn));
 		}
 
-		builder.clearWhere();
-		builder.clearHaving();
-		builder.offset(-1);
-		builder.limit(-1);
-		builder.where(
+		/*
+		 * 写しに組み直す（要件 D-190）。1.4 までは<b>渡された builder をそのまま書き換えていた</b>ので、
+		 * 呼んだあとに同じ builder で件数を数えたり次のページを読んだりすると、
+		 * WHERE が「今回の id の IN」にすり替わっていた。
+		 */
+		SelectBuilder byPk = builder.copy();
+		byPk.clearWhere();
+		byPk.clearHaving();
+		byPk.offset(-1);
+		byPk.limit(-1);
+		byPk.where(
 			pkColumn.in(idTable)
 		);
 
-		return selectList(builder);
+		return selectList(byPk);
 
 	}
 
@@ -986,11 +1024,17 @@ public class DB implements Closeable, AutoCloseable {
 	public SelectListResponse selectListWithRowCount (SelectBuilder builder) {
 
 		List<Data> list = selectList(builder);
+		if (list == null) {
+			return new SelectListResponse(null, 0, null);
+		}
 
 		long rowCount = 0;
 		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
 		if (data != null) {
 			rowCount = data.getLong("cnt");
+		} else if (isError()) {
+			// 件数の失敗を 0 件に化けさせない（要件 D-190）。list() が null ならエラー、に揃える
+			return new SelectListResponse(null, 0, null);
 		}
 
 		Paging paging = null;
@@ -1016,10 +1060,20 @@ public class DB implements Closeable, AutoCloseable {
 		long rowCount = 0;
 
 		{
-			String _sql = sql.toUpperCase();
-			int indexOrderBy = _sql.lastIndexOf("ORDER");
-			int indexLimit = _sql.lastIndexOf("LIMIT");
-			int indexFrom = _sql.indexOf("FROM");
+			/*
+			 * 語として探す（要件 D-190）。1.4 までは indexOf("FROM") だったので、
+			 * {@code from_date} のような列名や {@code order_no} に当たって、<b>黙って違う件数</b>を数えていた。
+			 */
+			int indexOrderBy = lastKeyword(sql, "ORDER\\s+BY");
+			int indexLimit = lastKeyword(sql, "LIMIT");
+			int indexFrom = firstKeyword(sql, "FROM");
+			if (list == null) {
+				return new SelectListResponse(null, 0, null);
+			}
+			if (indexFrom < 0) {
+				setError(new CodeException("DB_999", "selectListWithRowCount: FROM が見つかりません: " + sql));
+				return new SelectListResponse(null, 0, null);
+			}
 
 			/*
 			 * ORDER も LIMIT も無い SQL では lastIndexOf が -1 を返し、
@@ -1048,11 +1102,20 @@ public class DB implements Closeable, AutoCloseable {
 				}
 			}
 
+			/*
+			 * 捨てた部分の ? の分だけ、<b>前と後ろの両方から</b>パラメータを捨てる（要件 D-190）。
+			 * 1.4 までは後ろからしか捨てなかったので、{@code SELECT ? AS tag, ... WHERE x = ?} では
+			 * <b>WHERE に SELECT 句の値が入り、黙って違う件数</b>になっていた。
+			 */
+			int leading = countPlaceholders(sql, 0, indexFrom);
 			List<Object> newParams;
 			if (params == null) {
 				newParams = new ArrayList<>();
 			} else {
-				newParams = Parameter.flatten(new SQLParameterList(params));
+				newParams = new ArrayList<>(Parameter.flatten(new SQLParameterList(params)));
+				for (int i = 0; i < leading && !newParams.isEmpty(); i++) {
+					newParams.removeFirst();
+				}
 				while (newParams.size() > paramCount) {
 					newParams.removeLast();
 				}
@@ -1061,10 +1124,51 @@ public class DB implements Closeable, AutoCloseable {
 			Data data = select(sb.toString(), newParams);
 			if (data != null) {
 				rowCount = data.getLong("cnt");
+			} else if (isError()) {
+				return new SelectListResponse(null, 0, null);
 			}
 		}
 
 		return new SelectListResponse(list, rowCount, null);
+
+	}
+
+	private static final java.util.Map<String, java.util.regex.Pattern> KEYWORDS = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private static java.util.regex.Matcher keyword (String sql, String word) {
+
+		return KEYWORDS.computeIfAbsent(word,
+			w -> java.util.regex.Pattern.compile("(?i)(?<![A-Za-z0-9_`\"])" + w + "(?![A-Za-z0-9_`\"])")).matcher(sql);
+
+	}
+
+	private static int countPlaceholders (String sql, int from, int to) {
+
+		int count = 0;
+		for (int i = from; i < to; i++) {
+			if (sql.charAt(i) == '?') {
+				count++;
+			}
+		}
+		return count;
+
+	}
+
+	private static int firstKeyword (String sql, String word) {
+
+		java.util.regex.Matcher m = keyword(sql, word);
+		return m.find() ? m.start() : -1;
+
+	}
+
+	private static int lastKeyword (String sql, String word) {
+
+		java.util.regex.Matcher m = keyword(sql, word);
+		int last = -1;
+		while (m.find()) {
+			last = m.start();
+		}
+		return last;
 
 	}
 
@@ -1086,13 +1190,16 @@ public class DB implements Closeable, AutoCloseable {
 		Data data = select(builder.rowCountSql(dialect()), builder.rowCountParams());
 		if (data != null) {
 			rowCount = data.getLong("cnt");
+		} else if (isError()) {
+			return new SelectListResponse(null, 0, null);
 		}
 
 		{
 			// メインテーブルのPK列のみ取得する
 			List<Data> _list = selectList(builder.simpleSql(dialect()), builder.params());
 			if (_list == null) {
-				return null;
+				// 1.4 までは応答ごと null を返していた。兄弟（list() が null）に揃える（要件 D-190）
+				return new SelectListResponse(null, 0, null);
 			}
 
 			// PK列を条件にする
@@ -1103,15 +1210,17 @@ public class DB implements Closeable, AutoCloseable {
 				idTable.add(d.getLong(pkColumn));
 			}
 
-			builder.clearWhere();
-			builder.clearHaving();
-			builder.offset(-1);
-			builder.limit(-1);
-			builder.where(
+			// 写しに組み直す（渡された builder は書き換えない。要件 D-190）
+			SelectBuilder byPk = builder.copy();
+			byPk.clearWhere();
+			byPk.clearHaving();
+			byPk.offset(-1);
+			byPk.limit(-1);
+			byPk.where(
 				pkColumn.in(idTable)
 			);
 
-			list = selectList(builder);
+			list = selectList(byPk);
 		}
 
 		Paging paging = null;
@@ -1151,13 +1260,18 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 読み取りコネクションを取得する
-		getReadConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		ResultSet rs = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getReadConnection();
 
 			// SQLステートメントを作成する
 			if (fetchSizeLimit) {
@@ -1316,13 +1430,18 @@ public class DB implements Closeable, AutoCloseable {
 		this.error = null;
 		this.insertReturnedKey = false;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		ResultSet rs = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
@@ -1493,12 +1612,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql);
@@ -1580,12 +1704,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql);
@@ -1667,12 +1796,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql);
@@ -1749,12 +1883,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			// SQLステートメントを作成する
 			st = connection.prepareStatement(sql);
@@ -1847,12 +1986,17 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			List<Integer> res = new ArrayList<>();
 
@@ -1994,13 +2138,18 @@ public class DB implements Closeable, AutoCloseable {
 
 		this.error = null;
 
-		// 書き込みコネクションを取得する
-		getWriteConnection();
 
 		// SQLを実行する
 		PreparedStatement st = null;
 		ResultSet rs = null;
 		try {
+
+			/*
+			 * コネクションは try の中で取る（要件 D-190）。
+			 * 外で取っていたころは、取れなくてもログだけ出して先へ進み、
+			 * <b>エラーが「connection is null」の NPE になっていた</b>——プールの満杯も接続拒否も同じ顔だった。
+			 */
+			getWriteConnection();
 
 			List<Long> res = new ArrayList<>();
 
@@ -2372,6 +2521,27 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	private void requireNoErrorSinceTransaction () throws Exception {
 
+		if (rollbackOnlyReason != null) {
+
+			String reason = rollbackOnlyReason;
+
+			if (isTransaction()) {
+				connection.rollback();
+			}
+			discardCache();
+			clearErrorSinceTransaction();
+
+			throw new CodeException("DB_005"
+				, """
+				中のトランザクションが巻き戻しを求めたので、コミットしませんでした（全部巻き戻しました）。
+				  理由: %s
+				  中で rollback() した、または commit せずに閉じた DBTransaction があります。
+				  外で続けたいなら、外で rollback() してから書き直してください。
+				  詳しく: %s
+				""".formatted(reason, Docs.url("transaction")));
+
+		}
+
 		if (!errorSinceTransaction) {
 			return;
 		}
@@ -2443,12 +2613,21 @@ public class DB implements Closeable, AutoCloseable {
 			return;
 		}
 
+		/*
+		 * <b>ここで起きたエラーだけを投げる</b>（要件 D-190）。
+		 * 1.4 までは最後に {@code this.error} をそのまま投げていたので、
+		 * 失敗した文のあと<b>巻き戻しに成功しても</b>、その文の古いエラーがここから出ていた——
+		 * {@code DBTransaction} はそれを「ロールバックに失敗しました」（DB_002）に包み直し、
+		 * {@code commitEndTransaction()} では DB_004 の丁寧な説明を上書きしていた。
+		 */
+		CodeException before = this.error;
+
 		try {
 			if (isTransaction()) {
 				connection.setAutoCommit(true);
 			}
 		} catch (Exception ex) {
-			setError(new CodeException("DB_999", ex.getMessage()));
+			setError(new CodeException("DB_999", ex.getMessage(), ex));
 		} finally {
 			/*
 			 * コミットせずに終わった。消す予定は捨てる（要件 F-D-28）。
@@ -2457,7 +2636,7 @@ public class DB implements Closeable, AutoCloseable {
 			discardCache();
 			clearErrorSinceTransaction();
 			close();
-			if (this.error != null) {
+			if (this.error != null && this.error != before) {
 				throw this.error;
 			}
 		}

@@ -53,10 +53,32 @@ public interface ISelect {
 	/**
 	 * 割り算
 	 *
+	 * <p>
+	 * <b>名前が間違っている</b>——英語の subtract は引き算だが、これは<b>割り算</b>（{@code /}）を出す。
+	 * {@link #divide(Object)} を使うこと。振る舞いは黙って変えない（変えると、いま割り算として
+	 * 使っているアプリの値が黙って変わる）。2.0 で消す（要件 D-190）。
+	 * </p>
+	 *
 	 * @param value	値
 	 * @return	ISelect
+	 * @deprecated {@link #divide(Object)} を使う
 	 */
+	@Deprecated(since = "1.5.0", forRemoval = true)
 	ISelect subtract(Object value);
+
+	/**
+	 * 割り算（{@code /}）
+	 *
+	 * @param value	値
+	 * @return	ISelect
+	 * @since 1.5.0
+	 */
+	@SuppressWarnings("removal")
+	default ISelect divide(Object value) {
+
+		return subtract(value);
+
+	}
 
 	/**
 	 * SQLを出力する

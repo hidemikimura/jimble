@@ -144,7 +144,13 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 	/**
 	 * WHERE句
 	 *
-	 * @param data data JSON { q: { table_name.column_name|condition: value } }
+	 * <p>
+ * 形は {@code {"where": {"テーブル名": {"列名|条件": 値}}}}。条件を省くと {@code eq}。
+ * <b>1.4 までの Javadoc は {@code q} と書いていたが、読むのは {@code where} である</b>——
+ * {@code q} で書くと条件が1つも付かない（要件 D-190）。
+ * </p>
+ *
+ * @param data 条件（{@code where} キーの下）
 	 * @return  UpdateBuilder
 	 */
 	public UpdateBuilder where (Data data) {

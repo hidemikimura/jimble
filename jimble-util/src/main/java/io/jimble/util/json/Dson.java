@@ -582,6 +582,28 @@ public final class Dson {
 	 * @param encoder	書き出し
 	 * @return	JSON 文字列（失敗したら空文字）
 	 */
+	private static void reportStream (java.util.function.Consumer<Dson> encoder) {
+
+		/*
+		 * 流す版も失敗を読む（要件 D-190）。1.4 までは String 版だけを D-173 で直していて、
+		 * <b>Response.send(Data) が使う流す版は、失敗を誰も読んでいなかった</b>——
+		 * 200 のまま本文が途中で切れ、ログにも何も出なかった。
+		 * 書き先の失敗（相手が切った）は珍しくないので警告に留める。
+		 */
+		Dson dson = new Dson();
+		encoder.accept(dson);
+
+		if (dson.isError()) {
+			Exception e = dson.getErrorException();
+			if (e instanceof java.io.IOException || (e != null && e.getCause() instanceof java.io.IOException)) {
+				Log.warn("JSON を書き出している途中で書き先が失敗しました（相手が切った可能性があります）: " + e.getMessage());
+			} else {
+				Log.error(e, "JSON に書き出せませんでした（本文が途中で切れています）");
+			}
+		}
+
+	}
+
 	private static String encodeAndReport (Dson dson, java.util.function.Function<Dson, String> encoder) {
 
 		String result = encoder.apply(dson);
@@ -604,7 +626,7 @@ public final class Dson {
 	 */
 	public static void encodes (Object json, OutputStream stream, String charset) {
 
-		new Dson().encode(json, stream, charset);
+		reportStream(dson -> dson.encode(json, stream, charset));
 	}
 
 	/**
@@ -618,7 +640,7 @@ public final class Dson {
 	 */
 	public static void encodes (Configration conf, Object json, OutputStream stream, String charset) {
 
-		new Dson().encode(conf, json, stream, charset);
+		reportStream(dson -> dson.encode(conf, json, stream, charset));
 	}
 
 	/**
@@ -630,7 +652,7 @@ public final class Dson {
 	 */
 	public static void encodes (Object json, Writer writer) {
 
-		new Dson().encode(new Configration(), json, writer);
+		reportStream(dson -> dson.encode(new Configration(), json, writer));
 	}
 
 	/**
@@ -643,7 +665,7 @@ public final class Dson {
 	 */
 	public static void encodes (Configration conf, Object json, Writer writer) {
 
-		new Dson().encode(conf, json, writer);
+		reportStream(dson -> dson.encode(conf, json, writer));
 	}
 
 	/**

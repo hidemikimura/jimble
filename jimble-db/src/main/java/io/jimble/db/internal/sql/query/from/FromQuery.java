@@ -1,6 +1,7 @@
 package io.jimble.db.internal.sql.query.from;
 
 import io.jimble.db.dialect.SqlWriter;
+import io.jimble.db.sql.SqlBuildException;
 import io.jimble.util.data.definition.ITable;
 import io.jimble.db.sql.query.where.IWhere;
 import io.jimble.db.sql.query.where.WhereTerms;
@@ -55,6 +56,15 @@ public class FromQuery implements IFrom {
 	@Override
 	public IFrom on(IWhere...where) {
 
+		/*
+		 * JOIN の無いところに ON は付けられない（要件 D-190）。
+		 * 付けていたころは「FROM a ON (...)」という壊れた SQL になるか、
+		 * SelectBuilder が戻り値を捨てて ON が黙って消えていた。
+		 */
+		if (!(this.fromList.getLast() instanceof FromQueryInner inner) || !inner.isJoin()) {
+			throw new SqlBuildException(
+				"ON の前に inner(...) か left(...) が要ります（JOIN の無いところに ON は付けられません）");
+		}
 		this.fromList.getLast().on(where);
 		return this;
 
@@ -190,8 +200,29 @@ public class FromQuery implements IFrom {
 		@Override
 		public IFrom on(IWhere...where) {
 
-			this.where = where;
+			/* 2度呼んだら足す。上書きしていたころは、先の条件が黙って消えていた（要件 D-190） */
+			if (where == null || where.length == 0) {
+				return this;
+			}
+			if (this.where == null || this.where.length == 0) {
+				this.where = where.clone();
+			} else {
+				IWhere[] merged = java.util.Arrays.copyOf(this.where, this.where.length + where.length);
+				System.arraycopy(where, 0, merged, this.where.length, where.length);
+				this.where = merged;
+			}
 			return this;
+
+		}
+
+		/**
+		 * JOIN か（FROM の先頭ではないか）
+		 *
+		 * @return	JOIN なら true
+		 */
+		boolean isJoin () {
+
+			return this.from == null && this.join != null;
 
 		}
 

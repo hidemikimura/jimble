@@ -376,14 +376,24 @@ public class Dsl {
 	// region and
 
 	/**
-	 * AND
+	 * AND（<b>直前の条件と</b>つなぐ）
 	 *
-	 * @param where	where
+	 * <p>
+	 * <b>まとめる関数ではない。</b>渡した条件そのものに「前と AND でつなぐ」印を付けて返す
+	 * （<b>引数が書き換わる</b>ので、同じ条件を別の所で使い回さないこと）。
+	 * 括弧でまとめるなら {@link #allOf(IWhere...)}。
+	 * </p>
+	 *
+	 * @param where	where（比較。素の列は渡せない）
 	 * @return	where
 	 */
 	public static IWhere and(IWhere where) {
 
-		WhereQuery whereQuery = (WhereQuery) where;
+		if (!(where instanceof WhereQuery whereQuery)) {
+			throw new io.jimble.db.sql.SqlBuildException(
+				"Dsl.and(...) には比較を渡してください（例: Dsl.and(列.eq(1))）。"
+					+ "いくつかをまとめるなら Dsl.allOf(...) です");
+		}
 		whereQuery.logicalOperator("AND");
 
 		return whereQuery;
@@ -395,14 +405,25 @@ public class Dsl {
 	// region or
 
 	/**
-	 * OR
+	 * OR（<b>直前の条件と</b>つなぐ）
 	 *
-	 * @param where	where
+	 * <p>
+	 * <b>まとめる関数ではない。</b>{@code where(a, Dsl.or(b))} は {@code a OR b} になる。
+	 * 渡した条件そのものに印を付けて返す（<b>引数が書き換わる</b>）。
+	 * {@code where(x, Dsl.or(a), ...)} のように前後に別の条件があると優先順位が読みにくいので、
+	 * 括弧でまとめる {@link #anyOf(IWhere...)} のほうを勧める。
+	 * </p>
+	 *
+	 * @param where	where（比較。素の列は渡せない）
 	 * @return	where
 	 */
 	public static IWhere or(IWhere where) {
 
-		WhereQuery whereQuery = (WhereQuery) where;
+		if (!(where instanceof WhereQuery whereQuery)) {
+			throw new io.jimble.db.sql.SqlBuildException(
+				"Dsl.or(...) には比較を渡してください（例: Dsl.or(列.eq(1))）。"
+					+ "いくつかをまとめるなら Dsl.anyOf(...) です");
+		}
 		whereQuery.logicalOperator("OR");
 
 		return whereQuery;
@@ -411,6 +432,69 @@ public class Dsl {
 
 	// endregion
 
+
+	// region allOf / anyOf
+
+	/**
+	 * どれも満たす（{@code (a AND b AND ...)}）
+	 *
+	 * <p>
+	 * <b>新しいまとまりを返す</b>——引数は書き換えない（要件 D-190）。
+	 * </p>
+	 *
+	 * @param wheres	条件（1つ以上）
+	 * @return	括弧でくくった条件
+	 * @since 1.5.0
+	 */
+	public static IWhere allOf (IWhere... wheres) {
+
+		return group("AND", "allOf", wheres);
+
+	}
+
+	/**
+	 * どれかを満たす（{@code (a OR b OR ...)}）
+	 *
+	 * <p>
+	 * <b>新しいまとまりを返す</b>——引数は書き換えない。
+	 * {@code where(shopId.eq(1), Dsl.anyOf(status.eq("a"), status.eq("b")))} は
+	 * {@code shop_id = ? AND (status = ? OR status = ?)} になる。
+	 * </p>
+	 *
+	 * @param wheres	条件（1つ以上）
+	 * @return	括弧でくくった条件
+	 * @since 1.5.0
+	 */
+	public static IWhere anyOf (IWhere... wheres) {
+
+		return group("OR", "anyOf", wheres);
+
+	}
+
+	private static IWhere group (String operator, String name, IWhere... wheres) {
+
+		if (wheres == null || wheres.length == 0) {
+			throw new io.jimble.db.sql.SqlBuildException("Dsl." + name + "() に条件がありません");
+		}
+		for (IWhere w : wheres) {
+			if (w == null) {
+				throw new io.jimble.db.sql.SqlBuildException("Dsl." + name + "(...) に null が入っています");
+			}
+		}
+
+		WhereQuery group = new WhereQuery(wheres[0]);
+		for (int i = 1; i < wheres.length; i++) {
+			if ("OR".equals(operator)) {
+				group.or(wheres[i]);
+			} else {
+				group.and(wheres[i]);
+			}
+		}
+		return group;
+
+	}
+
+	// endregion
 
 	// region 何秒前
 

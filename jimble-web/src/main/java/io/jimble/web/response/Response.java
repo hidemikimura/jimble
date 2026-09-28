@@ -1734,6 +1734,16 @@ public final class Response extends Data {
 			return this;
 		}
 
+		/*
+		 * 書き始める前に確かめる（要件 D-190）。1.4 までは、無いファイルでも
+		 * <b>Content-Length: 0 と状態コードを先に送り、開けなかった例外を握りつぶしていた</b>——
+		 * 200 の空の応答になり、ログにも何も出なかった。
+		 */
+		if (file == null || !file.isFile() || !file.canRead()) {
+			throw new io.jimble.web.http.HttpException(404,
+				"送るファイルがありません（または読めません）: " + (file == null ? "null" : file.getPath()));
+		}
+
 		flushCookies();
 		applyDefaultCacheControl();
 
@@ -1752,7 +1762,10 @@ public final class Response extends Data {
 			BufferedInputStream bis = new BufferedInputStream(fis, getIoBufferSize())
 		) {
 			sink.send(bis);
-		} catch (Exception ex) {}
+		} catch (Exception ex) {
+			// 書き始めたあとなので状態コードは変えられない。せめてログに出す
+			Log.error("ファイルの送信に失敗しました: " + file.getPath(), ex);
+		}
 
 		afterResponse();
 

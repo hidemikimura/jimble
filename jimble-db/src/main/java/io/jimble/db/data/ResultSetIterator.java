@@ -1,5 +1,8 @@
 package io.jimble.db.data;
 
+import io.jimble.db.SqlExecuteException;
+import io.jimble.util.exception.CodeException;
+
 import io.jimble.util.data.Data;
 import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.Dialects;
@@ -164,7 +167,13 @@ class ResultSetIterator implements Iterator<Data> {
 				try {
 					isHasNext = resultSet.next();
 				} catch (Exception ex) {
+					/*
+					 * 1.4 までは false にして「最後まで読んだ」扱いにしていた（要件 D-190）。
+					 * 途中で接続が切れると、<b>結果が黙って途中までになっていた</b>。
+					 */
 					isHasNext = false;
+					throw new SqlExecuteException("結果を読んでいる途中で失敗しました: " + ex.getMessage(),
+						new CodeException("DB_999", ex.getMessage(), ex));
 				}
 			}
 
@@ -210,7 +219,11 @@ class ResultSetIterator implements Iterator<Data> {
 							}
 						}
 						isKeyGot = true;
-					} catch (Exception ex) {}
+					} catch (Exception ex) {
+						// 1.4 までは握りつぶして、<b>キーの無い空の行</b>を返していた（要件 D-190）
+						throw new SqlExecuteException("結果の列を読めませんでした: " + ex.getMessage(),
+							new CodeException("DB_999", ex.getMessage(), ex));
+					}
 				}
 
 				// データを変換して保持する

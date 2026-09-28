@@ -1432,9 +1432,11 @@ public class Data extends LinkedHashMap<String, Object> {
 	 * このメソッドを上書きしている派生クラスは無い（生成される Data も含めて）。
 	 */
 	@SafeVarargs
+	@SuppressWarnings("varargs")
 	public final <T> List<T> getObjectListOptional (String key, Class<T>...types) {
 
-		List<T> res = getObjectList(key);
+		// 1.4 までは types を渡し忘れていて、要素の型が変換されなかった（要件 D-190）
+		List<T> res = getObjectList(key, types);
 		if (res == null) {
 			res = new ArrayList<>();
 		}

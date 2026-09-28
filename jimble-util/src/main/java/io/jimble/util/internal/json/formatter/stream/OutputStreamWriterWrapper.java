@@ -213,7 +213,11 @@ public class OutputStreamWriterWrapper implements Closeable {
 	@Override
 	public String toString () {
 
-		flush();
+		try {
+			flush();
+		} catch (IOException e) {
+			throw new java.io.UncheckedIOException(e);
+		}
 		return this.writer.toString();
 
 	}
@@ -221,16 +225,17 @@ public class OutputStreamWriterWrapper implements Closeable {
 	/**
 	 * フラッシュ.
 	 */
-	public void flush () {
+	public void flush () throws IOException {
 
-		try {
-			if (this.offset > 0) {
-				this.writer.write(this.buff, 0, this.offset);
-				this.offset = 0;
-			}
-			this.writer.flush();
-		} catch (Exception e) {
+		/*
+		 * 握りつぶさない（要件 D-190）。小さい本文は<b>ここで初めて書き先へ出る</b>ので、
+		 * ここで捨てると、書き先の失敗がどこにも出なかった。
+		 */
+		if (this.offset > 0) {
+			this.writer.write(this.buff, 0, this.offset);
+			this.offset = 0;
 		}
+		this.writer.flush();
 
 	}
 
@@ -258,12 +263,15 @@ public class OutputStreamWriterWrapper implements Closeable {
 
 		try {
 			flush();
-			if (isAutoClose) {
-				this.writer.close();
+		} finally {
+			try {
+				if (isAutoClose) {
+					this.writer.close();
+				}
+			} finally {
+				buff = null;
 			}
-		} catch (Exception e) {
 		}
-		buff = null;
 
 	}
 

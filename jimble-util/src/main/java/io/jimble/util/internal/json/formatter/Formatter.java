@@ -121,6 +121,8 @@ public final class Formatter {
 		) {
 			format(writer, src, useCustom, conf);
 		} catch (Exception ex) {
+			// 握りつぶさない（要件 D-190）。受けた Encoder が記録し、Dson.encodes がログに出す
+			throw ex;
 		}
 
 	}
@@ -163,6 +165,8 @@ public final class Formatter {
 		) {
 			format(writer, src, useCustom, conf);
 		} catch (Exception ex) {
+			// 握りつぶさない（要件 D-190）。受けた Encoder が記録し、Dson.encodes がログに出す
+			throw ex;
 		}
 
 	}

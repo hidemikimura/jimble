@@ -93,6 +93,37 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 	// endregion
 
+	/**
+	 * 写しを作る
+	 *
+	 * <p>
+	 * 句の並び（SELECT / WHERE / GROUP BY / HAVING / ORDER BY）は<b>別のリスト</b>になるので、
+	 * 写しに {@code where(...)} や {@code clearWhere()} をしても元は変わらない。
+	 * 中の条件や FROM の部品は共有する（どちらも組み立てたあとは触らない前提）。
+	 * </p>
+	 *
+	 * @return	写し
+	 * @since 1.5.0
+	 */
+	public SelectBuilder copy () {
+
+		SelectBuilder copy = new SelectBuilder();
+		copy.selectList.addAll(this.selectList);
+		copy.from = this.from;
+		copy.whereList.addAll(this.whereList);
+		copy.groupByList.addAll(this.groupByList);
+		copy.havingList.addAll(this.havingList);
+		copy.orderByList.addAll(this.orderByList);
+		copy.limit = this.limit;
+		copy.offset = this.offset;
+		copy.paging = this.paging;
+		copy.forUpdate = this.forUpdate;
+		copy.forUpdateNoWait = this.forUpdateNoWait;
+		copy.forUpdateSkipLocked = this.forUpdateSkipLocked;
+		return copy;
+
+	}
+
 	// region FROM
 
 	/* FROM句 */
@@ -175,16 +206,27 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * ON
 	 *
+	 * <p>
+	 * <b>直前の {@code inner(...)} / {@code left(...)} に付く。</b>
+	 * JOIN が無いところで呼ぶと {@link SqlBuildException}。2度呼ぶと AND でつながる。
+	 * </p>
+	 *
 	 * @param where	IWhere
 	 * @return	SelectBuilder
+	 * @throws SqlBuildException	from も JOIN も無いとき
 	 */
 	public SelectBuilder on(IWhere where) {
 
+		/*
+		 * 1.4 までは、from がまだ素の Table だと Table.on() が返す新しい FromQuery を捨てていて、
+		 * <b>ON が黙って消えていた</b>。from が無いときも黙って何もしなかった（要件 D-190）。
+		 */
 		if (this.from == null) {
-			return this;
+			throw new SqlBuildException(
+				"on(...) の前に from(...) と inner(...) / left(...) が要ります");
 		}
 
-		this.from.on(where);
+		this.from = this.from.on(where);
 		return this;
 
 	}
@@ -228,7 +270,13 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * WHERE句
 	 *
-	 * @param where where JSON { q: { table_name.column_name|condition(|option): value } }
+	 * <p>
+ * 形は {@code {"where": {"テーブル名": {"列名|条件": 値}}}}。条件を省くと {@code eq}。
+ * <b>1.4 までの Javadoc は {@code q} と書いていたが、読むのは {@code where} である</b>——
+ * {@code q} で書くと条件が1つも付かない（要件 D-190）。
+ * </p>
+ *
+ * @param where 条件（{@code where} キーの下）
 	 * @return  SelectBuilder
 	 */
 	public SelectBuilder where (Data where) {
@@ -353,10 +401,18 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 				TemporaryColumn column = new TemporaryColumn(table, columnName);
 				String orderBy = tableData.getString(columnName);
 
-				if ("desc".equalsIgnoreCase(orderBy)) {
+				/*
+				 * asc / desc 以外は例外（要件 D-190）。
+				 * 1.4 までは desc 以外を全部 ASC にしていたので、"DESC " や "descending" の綴り違いが
+				 * <b>黙って逆順</b>になっていた。空は ASC（省略とみなす）。
+				 */
+				if (orderBy == null || orderBy.isEmpty() || "asc".equalsIgnoreCase(orderBy)) {
+					orderBy(column.asc());
+				} else if ("desc".equalsIgnoreCase(orderBy)) {
 					orderBy(column.desc());
 				} else {
-					orderBy(column.asc());
+					throw new SqlBuildException(
+						"order の向きは asc か desc です: " + tableName + "." + columnName + " = " + orderBy);
 				}
 
 			}
@@ -630,6 +686,17 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 * @return  SQL
 	 */
 	public String simpleSql (io.jimble.db.dialect.Dialect dialect) {
+
+		/*
+		 * 写しで組む（要件 D-190）。1.4 までは自分の SELECT 句に PK 列を足していたので、
+		 * <b>呼ぶたびに PK 列が1本ずつ増え</b>、そのあとの sql() にも混ざっていた。
+		 */
+		SelectBuilder target = copy();
+		return target.simpleSqlOnSelf(dialect);
+
+	}
+
+	private String simpleSqlOnSelf (io.jimble.db.dialect.Dialect dialect) {
 
 		SqlWriter sb = new SqlWriter(dialect);
 

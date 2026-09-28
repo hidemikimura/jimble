@@ -16,7 +16,7 @@ There are no annotations. **What you wrapped is the transaction.**
 
 | Method | What it does |
 | --- | --- |
-| `beginTransaction()` | Starts one. Does nothing if one is already open |
+| `beginTransaction()` | Starts one. If one is already open, **joins it** (see "Nesting" below) |
 | `commit()` | Commits. **The transaction continues** |
 | `commitEndTransaction()` | Commits and ends |
 | `rollback()` | Rolls back. The transaction continues |
@@ -27,6 +27,25 @@ Watch the difference between `commit()` and `commitEndTransaction()`.
 `commit()` means "settle what has happened so far, and carry on".
 In the code this was ported from, `commit()` ended the transaction internally, which
 left a hole: **everything after it silently became auto-commit.** jimble fixes that.
+
+## Nesting (joining)
+
+Starting a `DBTransaction` while one is already open **does not start a new one; it joins the outer one.**
+
+| What the inner one does | What happens |
+| --- | --- |
+| `commit()` / `commitEndTransaction()` | Nothing. The outer one commits |
+| `rollback()` / `rollbackEndTransaction()` | **Marks the outer one rollback-only** |
+| Closed without committing (left by an exception) | **Marks the outer one rollback-only** |
+
+A rollback-only outer `commitEndTransaction()` rolls everything back and throws `CodeException` (`DB_005`).
+To carry on in the outer one, call `rollback()` there and write again.
+
+> [!TRAP]
+> **Up to 1.4, the inner `rollback()` silently did nothing and the outer one committed anyway.**
+> Rows the inner code meant to undo went in with the outer commit.
+> Whether it had joined was also decided **only when it was constructed**, so if the outer one started
+> afterwards, the inner `commitEndTransaction()` **ended the outer transaction**.
 
 ## Forgetting to close
 

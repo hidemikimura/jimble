@@ -64,7 +64,15 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 					switch (querys[1]) {
 						case "between":
 							List<Object> arrayValue = arrayValue(value);
-							if (arrayValue != null && arrayValue.size() >= 2) {
+							/*
+							 * 2つ揃わなければ例外（要件 D-190）。1.4 までは条件ごと黙って捨てていたので、
+							 * SELECT は<b>全件</b>を返していた。
+							 */
+							if (arrayValue == null || arrayValue.size() != 2) {
+								throw new SqlBuildException(
+									columnQuery + " には [開始, 終了] の2つを渡してください: " + value);
+							}
+							{
 								res.add(new TemporaryColumn(
 										table
 										, querys[0]

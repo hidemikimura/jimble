@@ -38,6 +38,19 @@ SQL.select(Post.id, Post.title).from(Post.instance())
 
 `where` を複数回呼ぶと AND で繋がります。
 
+OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめます（1.5.0 から）。
+
+```java
+.where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))
+// WHERE (shop_id = ?) AND ( status = ? OR status = ?)
+```
+
+> [!TRAP]
+> **1つの条件に比較は1つだけです。**`Post.id.ge(1).le(9)` は組み立て時に落ちます——
+> 1.4 までは**後ろの `le(9)` だけが残り、例外も出ませんでした**。範囲は `between(a, b)`、
+> 別の条件は `.and(Post.id.le(9))` で書きます。
+> 列に直接 `and(...)` / `or(...)` を付けるのも落ちます（1.4 までは `null` が返っていました）。
+
 > [!NOTE]
 > **`contains` / `starts_with` / `ends_with` は、渡した文字を「文字として」探します。**
 > 検索欄に打たれた `50%` は「50 で始まる何か」ではなく **`50%` という文字列**として探し、
@@ -59,6 +72,8 @@ SQL.select()
 ```
 
 内部結合は `inner(...)` です。`on()` は直前の結合に付きます。
+2度呼ぶと AND で繋がります。**結合の無いところで `on()` を呼ぶと落ちます**
+（1.4 までは、`from` がまだ素のテーブルのとき**ON が黙って消えていました**）。
 
 結果はテーブル名でネストするので、`row.getData("comment")` で取れます。
 

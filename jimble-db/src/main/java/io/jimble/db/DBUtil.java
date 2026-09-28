@@ -107,7 +107,12 @@ public class DBUtil {
 					return false;
 				}
 			} catch (Throwable ex) {
+				/*
+				 * 1.4 までは、ここでログだけ出してループを続け、<b>最後に true（健康）を返していた</b>
+				 * （要件 D-190）。落ちた DB を「健康」と答える死活監視になっていた。
+				 */
 				Log.error("DB health check failed: " + dbSource.name(), ex);
+				return false;
 			}
 		}
 
