@@ -328,6 +328,7 @@ how to fix it is left out). Any `ERROR` fails the task; `WARN` alone does not.
 | J303 | ERROR | `BatchRegistry.sync` before `BatchRegistry.add` (every batch becomes `nothing`) |
 | J304 | WARN | codegen is in use but MQ tables (`mq_scheduler` …) are missing from `codegen.exclude_tables` |
 | J401 | ERROR | An outer `before(Auth::guard)` with `Remember.restore` inside an `Auth.REALM` block (401 every time despite remember-me) |
+| J402 | WARN | `Remember.forgetAll(...)` with no `Auth.revoke` / `revokeOthers` in the same file (sessions on other devices stay logged in) |
 | J501 | WARN | The skills are not from the jimble version you use (run `jimbleSkills`) |
 | J701 | WARN | An empty `catch` in a file that uses transactions (`db.begin()` / `db.transaction(...)` / `TransactionException`) (reports success when nothing was committed) |
 

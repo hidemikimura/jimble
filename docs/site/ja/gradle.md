@@ -320,6 +320,7 @@ jimbleRun {
 | J303 | ERROR | `BatchRegistry.sync` が `BatchRegistry.add` より前（全部のバッチが `nothing` になる） |
 | J304 | WARN | codegen を使っているのに、MQ の表（`mq_scheduler` など）を `codegen.exclude_tables` に書いていない |
 | J401 | ERROR | 外側の `before(Auth::guard)` と、`Auth.REALM` のブロックの中の `Remember.restore`（覚えていても毎回 401） |
+| J402 | WARN | `Remember.forgetAll(...)` があって、同じファイルに `Auth.revoke` / `revokeOthers` が無い（ほかの端末のセッションが残る） |
 | J501 | WARN | skill が使っている jimble の版のものではない（`jimbleSkills` で揃える） |
 | J701 | WARN | トランザクション（`db.begin()` / `db.transaction(...)` / `TransactionException`）を使うファイルの空の `catch`（確定していないのに成功を返す） |
 

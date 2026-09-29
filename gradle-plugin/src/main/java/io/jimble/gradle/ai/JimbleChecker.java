@@ -372,6 +372,16 @@ public final class JimbleChecker {
 			checkGuardOrder(code, rawLines, file, findings);
 		}
 
+		// J402: forgetAll だけでは、ほかの端末のセッションが残る（F-W-33）
+		if (!code.contains("Auth.revoke")) {
+			for (int at = code.indexOf("Remember.forgetAll("); at >= 0; at = code.indexOf("Remember.forgetAll(", at + 1)) {
+				add(findings, rawLines, "J402", Level.WARN, file, lineOf(code, at)
+					, "Remember.forgetAll(...) は remember-me の記憶を消すだけで、ほかの端末でいまログインしているセッションはそのまま入れる"
+					, "パスワードを変えたあとなら Auth.revokeOthers(context)、管理画面から締め出すなら Auth.revoke(id)（どちらも中で forgetAll を呼ぶ）"
+					, DOCS + "auth.md");
+			}
+		}
+
 		// J701: トランザクションを使うファイルの空の catch
 		if (code.contains("DBTransaction") || code.contains(".begin()") || code.contains(".transaction(")
 			|| code.contains("TransactionException")) {

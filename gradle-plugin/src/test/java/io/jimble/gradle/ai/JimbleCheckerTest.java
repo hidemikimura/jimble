@@ -177,6 +177,37 @@ class JimbleCheckerTest {
 	}
 
 	@Test
+	@DisplayName("J402 forgetAll だけでは、ほかの端末のセッションが残る。revoke があれば出さない・コメントの中は出さない")
+	void forgetAllWithoutRevoke (@TempDir Path root) throws IOException {
+
+		write(root, "src/main/java/app/Password.java", """
+			class Password {
+				static void change (WebContext context) {
+					Remember.forgetAll(Auth.principal(context).id());
+				}
+			}
+			""");
+		write(root, "src/main/java/app/Good.java", """
+			class Good {
+				static void change (WebContext context) {
+					Auth.revokeOthers(context);
+					Remember.forgetAll("operator", 1);
+				}
+				// Remember.forgetAll(id) だけでは足りない
+			}
+			""");
+		write(root, "src/main/java/app/Comment.java", """
+			class Comment {
+				// Remember.forgetAll(id) だけでは足りない
+				/* Remember.forgetAll(id) */
+			}
+			""");
+
+		assertEquals(List.of("J402:3"), rules(check(root)));
+
+	}
+
+	@Test
 	@DisplayName("J701 DBTransaction を使うファイルの空の catch（WARN）")
 	void emptyCatch (@TempDir Path root) throws IOException {
 

@@ -91,6 +91,9 @@ public final class FrameworkTables {
 	/** 二要素認証の回復コード（要件 F-W-32） */
 	public static final String AUTH_MFA_RECOVERY = "auth_mfa_recovery";
 
+	/** 利用者ごとの失効の世代（要件 F-W-33） */
+	public static final String AUTH_REVOCATION = "auth_revocation";
+
 	/**
 	 * 全部
 	 *
@@ -120,6 +123,7 @@ public final class FrameworkTables {
 		, AUTH_REMEMBER
 		, AUTH_MFA
 		, AUTH_MFA_RECOVERY
+		, AUTH_REVOCATION
 	);
 
 	private FrameworkTables () {}
