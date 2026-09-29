@@ -136,6 +136,17 @@ public final class MySqlDialect implements Dialect {
 	@Override
 	public void datePart (StringBuilder sb, DatePart part, Runnable value) {
 
+		/*
+		 * YEAR(x) は結果の列の型が YEAR になり、Connector/J は既定（yearIsDateType=true）で
+		 * java.sql.Date（2026-01-01）として返す。数で読めないので EXTRACT を使う（BIGINT が返る）
+		 */
+		if (part == DatePart.YEAR) {
+			sb.append("EXTRACT(YEAR FROM ");
+			value.run();
+			sb.append(')');
+			return;
+		}
+
 		sb.append(switch (part) {
 			case YEAR -> "YEAR";
 			case MONTH -> "MONTH";

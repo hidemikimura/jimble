@@ -124,7 +124,8 @@ public sealed interface Dialect permits MySqlDialect, PostgreSqlDialect {
 	 * 日時から一部を取り出す（要件 F-D-31）
 	 *
 	 * <p>
-	 * MySQL は {@code YEAR(x)}、PostgreSQL は {@code EXTRACT(YEAR FROM x)}。
+	 * MySQL は {@code MONTH(x)}、PostgreSQL は {@code EXTRACT(MONTH FROM x)}。
+	 * 年だけは MySQL も {@code EXTRACT(YEAR FROM x)}（{@code YEAR(x)} は日付で返るため）。
 	 * <b>返る値まで揃える</b>（曜日の起点など）。
 	 * </p>
 	 *

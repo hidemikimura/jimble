@@ -36,6 +36,12 @@
 |---|---|
 | **`long id = db.insertKey(SQL.insert(...))` を J810 で出していました** | 呼び出し元を読む正規表現が引数の中まで入り、`SQL.insert(` を戻り値の無くなった `db.insert(` と取り違えていました。呼び出し元は識別子と空の `()` だけを `.` でつないだものとして読みます。同じ読み方をしていた J803 / J901 / J902 も直しました（`cache.get(SQL.select(...))` などを出さない） |
 
+### 直したこと（DB）
+
+| | |
+|---|---|
+| **MySQL で `Dsl.year(...)` を `getInt` すると `DataConversionException` になっていました** | `YEAR(x)` は結果の列の型が `YEAR` になり、Connector/J が既定で `java.sql.Date`（`2026-01-01`）として返します。1.x は読めない値が黙って 0 になっていたので見えず、2.0.0 で D-195 により例外として表に出ました。MySQL でも `EXTRACT(YEAR FROM x)` を出し、PostgreSQL と同じく数で返します |
+
 ---
 
 ## 2.0.0（2026-09-28）
