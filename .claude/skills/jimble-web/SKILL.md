@@ -229,7 +229,11 @@ before(Auth::guard);                            // これを「いちばん最�
 
 // ログインの種別が複数ある（別の表から ID を引く）なら、remember-me も種別を渡す（D-183）
 // before(Remember.restore("operator", Ops::findStaff));
-// Remember.issue(context, principal, "operator");  /  Remember.forgetAll("operator", id);
+// Remember.issue(context, principal, "operator");
+
+// 締め出す（2.1。F-W-33）。remember-me の記憶も一緒に消える
+// Auth.revokeOthers(context);          // パスワードを変えたあと：いまの端末だけ残す
+// Auth.revoke(id);  Auth.revoke("operator", id);   // 管理画面・バッチから：全部終わらせる
 
 get("/requests", RequestController::list);                              // 既定で要ログイン
 get("/approvals", Approval::list).attribute(Auth.ROLE, "approver");     // 役割つき
@@ -329,6 +333,10 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
   ルート定義は初期化ブロックの中で完結させる
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず
   セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）
+- **パスワードを変えたら `Auth.revokeOthers(context)`。`Remember.forgetAll` だけではほかの端末のセッションが残る**
+  （消えるのは remember-me の記憶だけ）。管理画面から止めるなら `Auth.revoke(id)`。**これからのログインは止めない**ので、
+  盗まれたアカウントは先にパスワードを変えるか止めてから。**役割を剥奪したときも `revoke`**（役割はログイン時にセッションへ写すので残る）。
+  複数台ではほかの台で効くまで最大 5 秒（`auth.revocation.cache_ttl`）。張りっぱなしの WebSocket は切れない
 - **同じブラウザで別々にログインさせたいなら、ブロックに `Auth.REALM` を付ける**（1.4.0。D-185）。
   ログイン・コード・ログアウトの口も同じブロックに置く。remember-me の種別も同じ名前にする（`issue` は違うと例外、`restore` は違うと何もしない。ブロックには同じ名前の `restore` と `Auth::guard` をブロックの中に置く。アプリ全体の guard はブロックの restore より先に走る）
 - **`AssetHandler` は `.js` / `.css` / `.woff` / `.woff2` を1年キャッシュさせる**（`public,max-age=31536000,immutable`）。

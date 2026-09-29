@@ -166,6 +166,47 @@ is **still there for the next person** (which matters on a shared machine).
 
 On a route with `Auth.REALM`, only **that kind of login** ends (below).
 
+## Locking someone out (logging them out everywhere else)
+
+```java
+// After a password change: keep this device, end every other login
+Auth.revokeOthers(context);
+
+// From an admin screen, a batch or MQ: end all of that person's logins (no WebContext needed)
+Auth.revoke(staffId);
+Auth.revoke("operator", staffId);   // with a realm
+```
+
+**On its next request, a locked-out device is turned away by `Auth.guard`.** That kind of login
+is cleared, and an ordinary route answers 401. **Remember-me memories go too**, so the cookie
+cannot bring them back.
+
+Nothing hunts down sessions and deletes them. **Each person has a number (a generation); locking
+them out bumps it, and sessions that logged in with an older number are no longer believed.**
+That is why it works **even with cookie sessions**, whose contents live in the user's browser.
+
+| | |
+| --- | --- |
+| Where it applies | Requests that go through `Auth.guard`. **Even on `Auth.PUBLIC` routes** a locked-out person no longer looks logged in (`Auth.NO_SESSION` routes do not read the session, so they do not check) |
+| Delay | Immediate on the server that called it. **With several servers, up to 5 seconds on the others** (`auth.revocation.cache_ttl`; `0s` reads the DB every time) |
+| Where it lives | The `auth_revocation` table (created the first time it is needed). **Only people who have been locked out** get a row |
+| Realms | `revoke` with a realm ends **only that kind of login**. Other kinds of login in the same session stay |
+| Upgrading | Sessions from before the upgrade keep working unless you lock someone out (**nobody is logged out on upgrade day**) |
+| Without a DB | `revoke` throws `IllegalStateException`. `guard` does not check |
+| Failures | `revoke` throws if it cannot write, `guard` throws if it cannot read (**so a locked-out person is never let through**) |
+| Settings | `auth.revocation.*` ([Configuration](./config)) |
+
+> [!TRAP]
+> **It does not stop future logins.** Someone who knows the password can log in again after being
+> locked out. To stop a stolen account, **change the password or disable the account first**, then call `revoke`.
+
+> [!NOTE]
+> **Call `revoke` after changing someone's role.** The role is copied into the session at login,
+> so until the next login they keep the old one.
+>
+> **Open WebSocket connections are not closed.** Your app holds the list of connections, so close
+> them from there ([WebSocket](./websocket)). Open SSE streams always end at their lifetime cap (5 minutes by default).
+
 ## Separate sessions per kind of login
 
 When one browser should be able to log in to both, say, an operator console and a member admin
@@ -321,13 +362,14 @@ leave **the real user locked out and the thief still in.**
 | Expiry | 30 days since last use, **and** 90 days since it was issued (it always expires eventually, however much you use it) |
 | Grace | For 60 seconds after a rotation the old one still works, so **parallel requests do not log people out** |
 | Logout | `Auth.logout` deletes it |
-| Password change | **Call `Remember.forgetAll(userId)`** (below) |
+| Password change | **Call `Auth.revokeOthers(context)`** (below; [Locking someone out](#locking-someone-out-logging-them-out-everywhere-else)) |
 | Settings | `auth.remember.*` ([Configuration](./config)) |
 
 > [!TRAP]
-> **Call `Remember.forgetAll(userId)` when the password changes.** Without it **a stolen
-> cookie still works** — which is the whole point of changing the password. It is also
-> what "log out everywhere" is.
+> **Call `Auth.revokeOthers(context)` when the password changes.** Without it **a stolen
+> cookie and a stolen session still work** — which is the whole point of changing the password.
+> **`Remember.forgetAll(userId)` alone is not enough:** it only removes remember-me memories, and
+> sessions that are logged in on other devices right now keep working (`revokeOthers` calls `forgetAll` for you).
 
 ### More than one kind of login
 
@@ -343,7 +385,7 @@ path("/ops", () -> {
 });
 
 Remember.issue(context, principal, "operator");   // at login
-Remember.forgetAll("operator", staffId);          // when the password changes
+Auth.revoke("operator", staffId);                 // to lock them out (memories go too)
 ```
 
 - **The cookie name is split per realm** (`remember_operator`: the configured name + `_` + realm),

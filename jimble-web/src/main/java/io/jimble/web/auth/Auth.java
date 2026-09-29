@@ -4,6 +4,7 @@ import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.util.internal.Docs;
 import io.jimble.util.hash.PasswordUtil;
+import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.internal.AuthSlots;
 import io.jimble.web.http.HttpException;
@@ -176,6 +177,12 @@ public final class Auth {
 	/** セッションに入れる鍵：パスワードを入れて入ったか */
 	private static final String KEY_FULL = "__auth_full";
 
+	/** セッションに入れる鍵：ログインしたときの失効の世代（F-W-33。無ければ 0） */
+	private static final String KEY_GEN = "__auth_gen";
+
+	/* ログインの鍵すべて（ログアウト・締め出しで消す） */
+	private static final String[] LOGIN_KEYS = { KEY_ID, KEY_NAME, KEY_ROLE, KEY_FULL, KEY_GEN };
+
 	/** 種別の書式（英数字・_・- の 64 文字まで） */
 	private static final java.util.regex.Pattern REALM_PATTERN = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
@@ -259,6 +266,13 @@ public final class Auth {
 
 		if (context.route().route().attribute(NO_SESSION)) {
 			context.sessionStore(SessionStores.none());
+		} else {
+			/*
+			 * <b>PUBLIC を見る前に比べる</b>（F-W-33）。公開のルートでも、ログインしている人の名前を出したり、
+			 * ログインしていれば振る舞いを変えたりする。締め出された人をそこで「ログイン中」に見せない。
+			 * NO_SESSION のルートはセッションを読まないので比べない。
+			 */
+			endIfRevoked(context, realmOf(context));
 		}
 
 		if (context.route().route().attribute(PUBLIC)) {
@@ -323,7 +337,7 @@ public final class Auth {
 	 */
 	public static void login (WebContext context, Principal principal) {
 
-		store(context, principal, true, realmOf(context));
+		login(context, principal, realmOf(context));
 
 	}
 
@@ -342,8 +356,9 @@ public final class Auth {
 	public static void login (WebContext context, Principal principal, String realm) {
 
 		checkRealm(realm);
+		checkPrincipal(principal);
 
-		store(context, principal, true, realm);
+		store(context, principal, true, realm, Revocations.forLogin(realm, principal.id()));
 
 	}
 
@@ -359,9 +374,35 @@ public final class Auth {
 	 * @param context	コンテキスト
 	 * @param principal	ログインする人
 	 */
-	static void loginWithoutPassword (WebContext context, Principal principal) {
+	static void loginWithoutPassword (WebContext context, Principal principal, long generation) {
 
-		store(context, principal, false, realmOf(context));
+		store(context, principal, false, realmOf(context), generation);
+
+	}
+
+	/**
+	 * ログインのときに入れる世代（{@link Remember} が、記憶を確かめる前に引くため）
+	 *
+	 * @param context	コンテキスト
+	 * @param userId	利用者 ID
+	 * @return	世代
+	 */
+	static long generationForLogin (WebContext context, long userId) {
+
+		return Revocations.forLogin(realmOf(context), userId);
+
+	}
+
+	/**
+	 * ログインさせる相手がいるか
+	 *
+	 * @param principal	ログインする人
+	 */
+	private static void checkPrincipal (Principal principal) {
+
+		if (principal == null || !principal.isAuthenticated()) {
+			throw new IllegalArgumentException("ログインさせる相手がいません（id が 0 です）");
+		}
 
 	}
 
@@ -372,12 +413,11 @@ public final class Auth {
 	 * @param principal	ログインする人
 	 * @param fullAuth	パスワードを入れて入ったか
 	 * @param realm		種別
+	 * @param generation	失効の世代（F-W-33）
 	 */
-	private static void store (WebContext context, Principal principal, boolean fullAuth, String realm) {
+	private static void store (WebContext context, Principal principal, boolean fullAuth, String realm, long generation) {
 
-		if (principal == null || !principal.isAuthenticated()) {
-			throw new IllegalArgumentException("ログインさせる相手がいません（id が 0 です）");
-		}
+		checkPrincipal(principal);
 
 		/*
 		 * <b>振り直しは中身を持ち越す</b>ので、ほかの種別のログインはそのまま残る（D-185）。
@@ -389,6 +429,7 @@ public final class Auth {
 		context.session().put(sessionKey(KEY_NAME, realm), principal.name());
 		context.session().put(sessionKey(KEY_ROLE, realm), principal.role());
 		context.session().put(sessionKey(KEY_FULL, realm), fullAuth);
+		context.session().put(sessionKey(KEY_GEN, realm), generation);
 
 		context.session().save();
 
@@ -471,7 +512,25 @@ public final class Auth {
 		// セッションより先に remember を消す（logoutAll と同じ理由）
 		Remember.forget(context, realm);
 
-		for (String key : new String[] { KEY_ID, KEY_NAME, KEY_ROLE, KEY_FULL }) {
+		endLogin(context, realm);
+
+	}
+
+	/**
+	 * その種別のログインを終える（remember-me の Cookie は呼ぶ側が消す）
+	 *
+	 * <ul>
+	 *   <li>その種別のログイン・二要素認証の途中の状態を消す</li>
+	 *   <li>ほかの種別にログインが残っていれば、セッション ID を振り直して残りを保つ</li>
+	 *   <li>残っていなければ、セッションを丸ごと捨てる</li>
+	 * </ul>
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別
+	 */
+	private static void endLogin (WebContext context, String realm) {
+
+		for (String key : LOGIN_KEYS) {
 			context.session().remove(sessionKey(key, realm));
 		}
 
@@ -527,6 +586,149 @@ public final class Auth {
 		return false;
 
 	}
+
+	// endregion
+
+	// region 締め出す（要件 F-W-33）
+
+	/**
+	 * その人のログインを、ほかの端末も含めて全部終わらせる（種別なし）
+	 *
+	 * <p>
+	 * 管理画面・バッチ・MQ から呼べる（{@link WebContext} は要らない）。
+	 * <b>セッションを探して消すのではない。</b>その人の世代を1つ上げ、
+	 * 古い世代でログインしたセッションを {@link #guard} が次のリクエストで弾く。
+	 * Cookie セッションでも効く。
+	 * </p>
+	 *
+	 * <ul>
+	 *   <li><b>remember-me の記憶も消す</b>（{@link Remember#forgetAll}）。残すと次のリクエストでまた入る</li>
+	 *   <li><b>これからのログインは止めない。</b>止めたいなら、先にパスワードを変えるかアカウントを止めてから呼ぶ</li>
+	 *   <li><b>複数台では、ほかの台で効くまで最大 {@code auth.revocation.cache_ttl}（既定 5 秒）遅れる</b>。呼んだ台では即座に効く</li>
+	 *   <li>張りっぱなしの WebSocket は切らない（接続の一覧はアプリが持つ。F-W-22）</li>
+	 * </ul>
+	 *
+	 * @param userId	利用者 ID
+	 * @throws IllegalStateException	締め出せなかった場合（DB が無い・{@code auth.revocation.enabled = false}・書けない）
+	 */
+	public static void revoke (long userId) {
+
+		revoke("", userId);
+
+	}
+
+	/**
+	 * 種別を決めて、その人のログインを全部終わらせる
+	 *
+	 * <p>同じ ID の別の種別の人は、別の人なので残る（D-183 / D-185）。</p>
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param userId	利用者 ID
+	 * @throws IllegalStateException	締め出せなかった場合
+	 */
+	public static void revoke (String realm, long userId) {
+
+		checkRealm(realm);
+
+		if (userId <= 0) {
+			throw new IllegalArgumentException("締め出す相手がいません（id が 0 です）");
+		}
+
+		/*
+		 * <b>記憶を消してから世代を上げる。</b>逆だと、上げたあと・消す前に remember-me で思い出した人が
+		 * <b>新しい世代をもらって生き残る</b>（D-199）。
+		 */
+		Remember.forgetAll(realm, userId);
+
+		Revocations.bump(realm, userId);
+
+	}
+
+	/**
+	 * いまの端末だけ残して、その人のほかのログインを全部終わらせる（パスワードを変えたあとに呼ぶ）
+	 *
+	 * <p>
+	 * いまのルートの種別（{@link #REALM}）で見る。いまの端末の remember-me の記憶も消える
+	 * （パスワードを変えた本人はいまログインしているので困らない）。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @throws IllegalStateException	ログインしていない・締め出せなかった場合
+	 */
+	public static void revokeOthers (WebContext context) {
+
+		revokeOthers(context, realmOf(context));
+
+	}
+
+	/**
+	 * 種別を決めて、いまの端末だけ残して終わらせる
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別。空文字なら種別なし
+	 * @throws IllegalStateException	その種別でログインしていない・締め出せなかった場合
+	 */
+	public static void revokeOthers (WebContext context, String realm) {
+
+		checkRealm(realm);
+
+		long userId = context.session().getLong(sessionKey(KEY_ID, realm));
+
+		if (userId <= 0) {
+			throw new IllegalStateException("ログインしていないので、ほかの端末を締め出せません（締め出す相手の ID がありません）");
+		}
+
+		Remember.forgetAll(realm, userId);
+
+		/*
+		 * <b>上げたあとの世代を、いまのセッションに書き直す。</b>
+		 * ほかの台の控えが古いままでも、比べるのは「セッション &lt; 表」なので弾かれない。
+		 */
+		long generation = Revocations.bump(realm, userId);
+
+		context.session().put(sessionKey(KEY_GEN, realm), generation);
+		context.session().save();
+
+	}
+
+	/**
+	 * その種別のログインが締め出されていれば終える（{@link #guard} から）
+	 *
+	 * @param context	コンテキスト
+	 * @param realm		種別
+	 */
+	private static void endIfRevoked (WebContext context, String realm) {
+
+		long userId = context.session().getLong(sessionKey(KEY_ID, realm));
+
+		if (userId <= 0) {
+			// ログインしていない人のリクエストは何も増やさない
+			return;
+		}
+
+		long generation = context.session().getLong(sessionKey(KEY_GEN, realm));
+
+		if (!Revocations.isRevoked(realm, userId, generation)) {
+			return;
+		}
+
+		Log.info("締め出されたログインを終えました: realm=%s user_id=%d generation=%d"
+			.formatted(realm.isEmpty() ? "(なし)" : realm, userId, generation));
+
+		// 記憶の行は revoke が消している。Cookie だけ残っているので消す
+		Remember.forget(context, realm);
+
+		/*
+		 * <b>セッションは丸ごと捨てない</b>（ほかの種別のログインが同じセッションにいる。D-185）。
+		 * その種別のぶんだけ消し、誰も残っていなければ捨てる——logout(context, realm) と同じ消し方。
+		 */
+		endLogin(context, realm);
+
+	}
+
+	// endregion
+
+	// region いまの人
 
 	/**
 	 * いまログインしている人
