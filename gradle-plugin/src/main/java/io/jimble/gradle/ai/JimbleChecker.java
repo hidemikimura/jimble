@@ -162,6 +162,12 @@ public final class JimbleChecker {
 
 	private static final String MIGRATE = DOCS + "migrate-2.md";
 
+	/*
+	 * 呼び出し元（db. / ctx.db(). / this.db. など）。識別子か空の () を . でつないだもので、末尾の . まで。
+	 * 引数の中へは入らない——[\w.()]* だと db.insertKey(SQL.insert( の SQL.insert( に当たっていた。
+	 */
+	private static final String RECEIVER = "(?:\\w+(?:\\s*\\(\\s*\\))?\\s*\\.\\s*)+";
+
 	private static final List<MigrationRule> MIGRATION_RULES = List.of(
 		new MigrationRule("J801", Pattern.compile("\\bnew\\s+DBTransaction\\s*\\(|\\bDBTransaction\\s*\\.\\s*transaction\\s*\\("), false
 			, "DBTransaction は 2.0 で消えた（1.5.0 で非推奨。検査例外を投げ、commit() が終わらなかった）"
@@ -169,7 +175,7 @@ public final class JimbleChecker {
 		new MigrationRule("J802", Pattern.compile("\\.\\s*(?:beginTransaction|commitEndTransaction|rollbackEndTransaction|endTransaction)\\s*\\(\\s*\\)"), false
 			, "DB のトランザクション操作（beginTransaction など）は 2.0 で消えた（1.5.0 で非推奨）"
 			, "try (Tx tx = db.begin()) { ...; tx.commit(); }（抜けたら巻き戻る）か db.transaction(tx -> { ... })"),
-		new MigrationRule("J803", Pattern.compile("\\bRouter\\s+\\w+\\s*=\\s*[\\w.()]*\\.\\s*path\\s*\\(\\s*\"[^\"]*\"\\s*\\)"), false
+		new MigrationRule("J803", Pattern.compile("\\bRouter\\s+\\w+\\s*=\\s*" + RECEIVER + "path\\s*\\(\\s*\"[^\"]*\"\\s*\\)"), false
 			, "Router.path(パス) は 2.0 で消えた（配下のルーターを返すだけで、受け取り忘れると親に登録していた）"
 			, "router.path(\"/admin\", admin -> { admin.get(...); }) のブロックで書く"),
 		new MigrationRule("J804", Pattern.compile("\\b[A-Z]\\w*\\.[a-z_]\\w*\\.\\s*subtract\\s*\\("), false
@@ -184,13 +190,13 @@ public final class JimbleChecker {
 		new MigrationRule("J807", Pattern.compile("\\.\\s*(?:eq|not)\\s*\\(\\s*null\\s*\\)"), false
 			, "eq(null) / not(null) は 2.0 で例外になった（「= NULL」はどの行にも当たらない）"
 			, "is_null() / is_not_null() を使う"),
-		new MigrationRule("J810", Pattern.compile("\\blong\\s+\\w+\\s*=\\s*[\\w.()]*\\.\\s*insert\\s*\\("), false
+		new MigrationRule("J810", Pattern.compile("\\blong\\s+\\w+\\s*=\\s*" + RECEIVER + "insert\\s*\\("), false
 			, "insert(...) は 2.0 で値を返さなくなった（1.x は「採番値か件数のどちらか」で、採番列の有無で決まっていた）"
 			, "採番値が欲しいなら insertKey(...)（無ければ例外）、件数が欲しいなら execute(...)"),
-		new MigrationRule("J901", Pattern.compile("\\bData\\s+\\w+\\s*=\\s*[\\w.()]*?\\.\\s*select(?:Cached)?\\s*\\("), true
+		new MigrationRule("J901", Pattern.compile("\\bData\\s+\\w+\\s*=\\s*" + RECEIVER + "select(?:Cached)?\\s*\\("), true
 			, "select(...) は 2.0 で Optional<Data> を返し、失敗は例外になった（この行はコンパイルが通らない）"
 			, "db.select(...).orElseThrow(() -> new HttpException(404, ...)) か .orElse(null)（null は「0件」だけ）"),
-		new MigrationRule("J902", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*)[\\w.()]*\\.\\s*execute\\s*\\("), true
+		new MigrationRule("J902", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*)" + RECEIVER + "execute\\s*\\("), true
 			, "execute(...) は 2.0 で件数（int）を返し、失敗は例外になった（この行はコンパイルが通らない）"
 			, "失敗は例外で受ける。db.transaction(...) の中なら何も書かなくてよい"),
 		new MigrationRule("J903", Pattern.compile("\\.\\s*isError\\s*\\(\\s*\\)"), true

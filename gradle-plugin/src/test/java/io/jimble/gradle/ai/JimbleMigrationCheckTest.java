@@ -126,6 +126,25 @@ class JimbleMigrationCheckTest {
 	}
 
 	@Test
+	@DisplayName("J803 / J810 / J901 / J902 呼び出し元は引数の中まで読まない（insertKey(SQL.insert(...)) を insert と取り違えない）")
+	void receiverStopsAtArguments (@TempDir Path root) throws IOException {
+
+		assertEquals(List.of(), run(root, """
+			long id = db.insertKey(SQL.insert(Post.instance()).value(Post.title, t));
+			long n = counter.count(SQL.insert(Post.instance()));
+			Data row = cache.get(SQL.select().from(Post.instance()));
+			boolean ok = check(db.execute("x"));
+			Router r = wrap(router.path("/x"));""", true));
+
+		assertEquals(List.of("J803:4", "J810:1", "J901:2", "J902:3"), run(root, """
+			long id = ctx.db().insert(SQL.insert(Post.instance()));
+			Data row = this.db.select(SQL.select().from(Post.instance()));
+			if (!ctx.db().execute("x")) { }
+			Router r = app.router().path("/x");""", true));
+
+	}
+
+	@Test
 	@DisplayName("D-198 2.0 の jimbleCheck は J9xx もいつも出す。Optional で受け取っている 2.0 の書き方は出さない")
 	void target2Always (@TempDir Path root) throws IOException {
 
