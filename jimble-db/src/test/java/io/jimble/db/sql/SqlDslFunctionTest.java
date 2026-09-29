@@ -206,7 +206,9 @@ class SqlDslFunctionTest {
 	@DisplayName("日付の一部を取り出す書き方は製品でまるで違う")
 	void datePart () {
 
-		assertEquals("YEAR(`site`.`deleted_at`)", sql(MYSQL, Dsl.year(TestSchema.Site.deleted_at)));
+		// YEAR(x) は列の型が YEAR になり、Connector/J が日付で返すので EXTRACT を使う
+		assertEquals("EXTRACT(YEAR FROM `site`.`deleted_at`)", sql(MYSQL, Dsl.year(TestSchema.Site.deleted_at)));
+		assertEquals("MONTH(`site`.`deleted_at`)", sql(MYSQL, Dsl.month(TestSchema.Site.deleted_at)));
 		assertEquals("(EXTRACT(YEAR FROM \"site\".\"deleted_at\"))::int"
 			, sql(POSTGRESQL, Dsl.year(TestSchema.Site.deleted_at)));
 

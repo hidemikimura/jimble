@@ -4,7 +4,7 @@ package io.jimble.db.dialect;
  * 日時から取り出す部分（要件 F-D-31）
  *
  * <p>
- * MySQL は {@code YEAR(x)} のような専用の関数、
+ * MySQL は {@code MONTH(x)} のような専用の関数（年だけは {@code EXTRACT}）、
  * PostgreSQL は {@code EXTRACT(YEAR FROM x)}。
  * <b>返る値まで揃える</b>ので、曜日のように起点が違うものはここで合わせる。
  * </p>
