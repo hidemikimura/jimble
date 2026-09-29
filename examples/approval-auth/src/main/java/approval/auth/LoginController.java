@@ -189,12 +189,13 @@ public final class LoginController {
 		Csrf.verify(context);
 
 		/*
-		 * <b>パスワードを変えたら、覚えているものを全部消す</b>（要件 F-W-30）。
-		 * 消さないと、<b>盗まれた Cookie はそのまま使える</b>——変えた意味が無い。
+		 * <b>パスワードを変えたら、いまの端末以外のログインを全部終わらせる</b>（要件 F-W-33）。
+		 * remember-me の記憶も一緒に消える。{@code Remember.forgetAll} だけだと
+		 * <b>ほかの端末のセッションはそのまま入れる</b>——盗まれたセッションが生き残り、変えた意味が無い。
 		 */
-		int forgotten = Remember.forgetAll(Auth.principal(context).id());
+		Auth.revokeOthers(context);
 
-		context.response().json("forgotten", forgotten);
+		context.response().json("revoked", true);
 
 	}
 

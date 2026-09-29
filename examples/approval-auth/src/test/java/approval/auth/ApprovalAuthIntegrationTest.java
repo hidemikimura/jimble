@@ -492,10 +492,10 @@ class ApprovalAuthIntegrationTest {
 			assertEquals(200, allowed.statusCode(), allowed.body());
 
 			/*
-			 * <b>パスワードを変えたら、覚えているものは全部消える</b>（要件 F-W-30）。
-			 * 消さないと、盗まれた Cookie はそのまま使える——変えた意味が無い。
+			 * <b>パスワードを変えたら、ほかの端末のログインと覚えているものは全部消える</b>（要件 F-W-33）。
+			 * 消さないと、盗まれたセッションと Cookie はそのまま使える——変えた意味が無い。
 			 */
-			assertEquals("{\"forgotten\":1}", allowed.body());
+			assertEquals("{\"revoked\":true}", allowed.body());
 
 			// 思い出して入り直した人は、同じことができない
 			HttpClient restored = newClient();
@@ -510,6 +510,35 @@ class ApprovalAuthIntegrationTest {
 			 */
 			assertEquals(401, post(restored, "/password").statusCode()
 				, "思い出しただけの人がパスワードを変えられてしまう");
+
+		} finally {
+			forget();
+		}
+
+	}
+
+	@Test
+	@DisplayName("F-W-33 パスワードを変えると、ほかの端末のセッションは 401 になる（変えた端末は残る）")
+	void changingThePasswordEndsOtherSessions () throws Exception {
+
+		try {
+
+			HttpClient pc = newClient();
+			HttpClient phone = newClient();
+
+			login(pc, "member1", PASSWORD);
+			login(phone, "member1", PASSWORD);
+
+			assertEquals(200, get(phone, "/me").statusCode());
+
+			assertEquals(200, post(pc, "/password").statusCode());
+
+			/*
+			 * <b>Remember.forgetAll だけではここが 200 のまま</b>だった——記憶は消えても、
+			 * 生きているセッションは誰も切っていない。
+			 */
+			assertEquals(401, get(phone, "/me").statusCode(), "パスワードを変えたのに、ほかの端末のセッションで入れます");
+			assertEquals(200, get(pc, "/me").statusCode(), "パスワードを変えた端末まで締め出しています");
 
 		} finally {
 			forget();

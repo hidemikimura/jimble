@@ -457,12 +457,16 @@ public final class Remember {
 	 * その人のぶんを全部忘れる
 	 *
 	 * <p>
-	 * <b>パスワードを変えたら必ず呼ぶこと。</b>
-	 * 呼ばないと、<b>パスワードを変えても盗まれた Cookie はそのまま使える</b>——
+	 * <b>パスワードを変えたら、これではなく {@link Auth#revokeOthers} を呼ぶこと</b>（中でこれも呼ぶ）。
+	 * 呼ばないと、<b>パスワードを変えても盗まれた Cookie とセッションはそのまま使える</b>——
 	 * 変えた意味が無い。
 	 * </p>
 	 *
-	 * <p>「全端末からログアウト」もこれである。</p>
+	 * <p>
+	 * <b>生きているセッションは切らない</b>——消えるのは remember-me の記憶だけで、
+	 * いまログインしている端末はそのまま入れる。<b>「全端末からログアウト」は {@link Auth#revoke}</b>
+	 * （パスワードを変えたあとなら {@link Auth#revokeOthers}）で、どちらも中でこれを呼ぶ（F-W-33）。
+	 * </p>
 	 *
 	 * <p>
 	 * <b>消せなかったら投げる（D-173）。</b>かつては DB が落ちていても {@code 0} を返していた——
@@ -488,7 +492,7 @@ public final class Remember {
 	/**
 	 * その人のぶんを全部忘れる（種別つき。D-183）
 	 *
-	 * <p><b>パスワードを変えたら必ず呼ぶこと。</b>消えるのはこの種別のこの人の記憶だけ。</p>
+	 * <p><b>パスワードを変えたら、これではなく {@link Auth#revokeOthers} を呼ぶこと。</b>消えるのはこの種別のこの人の記憶だけで、セッションは切らない。</p>
 	 *
 	 * @param realm		種別。空文字なら種別なし
 	 * @param userId	利用者 ID
@@ -653,6 +657,19 @@ public final class Remember {
 			return;
 		}
 
+		/*
+		 * <b>世代を引いてから、記憶がまだあるかをもう一度見る</b>（F-W-33 / D-199）。
+		 * Auth.revoke は「記憶を消す → 世代を上げる」の順なので、
+		 * 世代を引いたあとで記憶が残っていれば、その世代は上がる前のもの——入れても次の guard で弾かれる。
+		 * 見直さないと、確かめた直後に締め出されたとき、<b>上がったあとの世代をもらって生き残る</b>。
+		 */
+		long generation = Auth.generationForLogin(context, userId);
+
+		if (row(selector) == null) {
+			context.cookies().remove(cookieName(realm));
+			return;
+		}
+
 		if (matched) {
 			rotate(context, realm, selector, row);
 		} else {
@@ -663,7 +680,7 @@ public final class Remember {
 			touch(selector);
 		}
 
-		Auth.loginWithoutPassword(context, principal);
+		Auth.loginWithoutPassword(context, principal, generation);
 
 	}
 
