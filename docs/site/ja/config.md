@@ -252,8 +252,8 @@ auth {
 			# jwks_uri               = "..."
 
 			scopes        = "openid email profile"
-			clock_skew    = 60      # 秒。時計のずれをどこまで許すか
-			discovery_ttl = 3600    # 秒。discovery と JWKS を持つ時間
+			clock_skew    = 60s     # 時計のずれをどこまで許すか
+			discovery_ttl = 1h      # discovery と JWKS を持つ時間
 		}
 	}
 }
