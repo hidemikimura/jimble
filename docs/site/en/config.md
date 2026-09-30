@@ -448,7 +448,7 @@ mcp {
 }
 
 jimble {
-	io.buffer_size       = 256KiB   # read/write unit when sending files
+	io.buffer_size       = 64KiB    # chunk size when sending files and streams / cap for buffering JSON
 	read_only_container  = false    # running in a container you cannot write to
 
 	# server.port also takes -Djimble.server.port=8080 (the system property wins)

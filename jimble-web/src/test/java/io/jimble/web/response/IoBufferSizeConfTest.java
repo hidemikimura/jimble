@@ -89,10 +89,10 @@ class IoBufferSizeConfTest {
 	}
 
 	@Test
-	@DisplayName("書かなければ 256KiB")
+	@DisplayName("書かなければ 64KiB")
 	void defaultValue () {
 
-		assertEquals(Response.DEFAULT_IO_BUFFER_SIZE, Response.configuredIoBufferSize());
+		assertEquals(64 * 1024, Response.configuredIoBufferSize());
 
 	}
 
