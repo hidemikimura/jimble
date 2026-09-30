@@ -735,7 +735,14 @@ public class DBUtil {
 					.metricsEnabled(true)
 					.connectionPoolConfiguration(cp -> {
 							cp
-								.connectionValidator(AgroalConnectionPoolConfiguration.ConnectionValidator.defaultValidator())
+								/*
+								 * <b>生存確認の SQL は validator に渡す。</b>かつては initialSql（接続直後に1度だけ流す SQL）に
+								 * 入れていたので生存確認には使われず、しかも connection_init_sql を押しのけていた。
+								 */
+								.connectionValidator(dbConf.connectionTestQuery() != null && !dbConf.connectionTestQuery().isEmpty()
+									? AgroalConnectionPoolConfiguration.ConnectionValidator.sqlValidator(dbConf.connectionTestQuery(), 5)
+									: AgroalConnectionPoolConfiguration.ConnectionValidator.defaultValidator())
+								.validateOnBorrow(dbConf.validateOnBorrow())
 								.connectionFactoryConfiguration(cf -> {
 										cf
 											.autoCommit(true)
@@ -761,9 +768,7 @@ public class DBUtil {
 										if (dbConf.connectionTimeout() > 0) {
 											cf.loginTimeout(Duration.ofMillis(dbConf.connectionTimeout()));
 										}
-										if (dbConf.connectionTestQuery() != null && !dbConf.connectionTestQuery().isEmpty()) {
-											cf.initialSql(dbConf.connectionTestQuery());
-										} else if (dbConf.connectionInitSql() != null && !dbConf.connectionInitSql().isEmpty()) {
+										if (dbConf.connectionInitSql() != null && !dbConf.connectionInitSql().isEmpty()) {
 											cf.initialSql(dbConf.connectionInitSql());
 										}
 										return cf;
@@ -780,8 +785,18 @@ public class DBUtil {
 							if (dbConf.connectionTimeout() > 0) {
 								cp.acquisitionTimeout(Duration.ofMillis(dbConf.connectionTimeout() + 1000));
 							}
+							/*
+							 * <b>keepalive_time は keepalive_time の値で渡す。</b>かつては idleValidationTimeout に
+							 * idle_timeout（既定 10 分）を入れていた。HikariCP の keepaliveTime に当たるのは
+							 * 裏の定期確認（validationTimeout）で、あわせて「それより長く寝ていた接続は渡す前に確かめる」
+							 * （idleValidationTimeout）にも同じ値を使う
+							 */
 							if (dbConf.keepaliveTime() > 0) {
-								cp.idleValidationTimeout(Duration.ofMillis(dbConf.idleTimeout()));
+								cp.validationTimeout(Duration.ofMillis(dbConf.keepaliveTime()));
+								cp.idleValidationTimeout(Duration.ofMillis(dbConf.keepaliveTime()));
+							}
+							if (dbConf.leakTimeout() > 0) {
+								cp.leakTimeout(Duration.ofMillis(dbConf.leakTimeout()));
 							}
 							if (dbConf.idleTimeout() > 0) {
 								cp.reapTimeout(Duration.ofMillis(dbConf.idleTimeout()));
@@ -793,7 +808,13 @@ public class DBUtil {
 						}
 					)
 				);
-			} catch (Exception ignore) {}
+			} catch (Exception ex) {
+				/*
+				 * <b>黙って HikariCP に切り替えない。</b>かつては catch して捨てていたので、
+				 * agroal と書いたのに、何も言わずに別のプールで動いていた。
+				 */
+				throw new IllegalStateException("Agroal の接続プールを作れませんでした: " + ex.getMessage(), ex);
+			}
 		}
 
 		HikariConfig hikariConfig = new HikariConfig();
@@ -833,6 +854,9 @@ public class DBUtil {
 		if (dbConf.keepaliveTime() > 0) {
 			hikariConfig.setKeepaliveTime(dbConf.keepaliveTime());
 		}
+		if (dbConf.leakTimeout() > 0) {
+			hikariConfig.setLeakDetectionThreshold(dbConf.leakTimeout());
+		}
 
 		return new HikariDataSource(hikariConfig);
 
@@ -869,6 +893,7 @@ public class DBUtil {
 		dbConf.maxLifetime(millis(innerConf, config, "max_lifetime", dbConf.maxLifetime()));
 		dbConf.connectionTimeout(millis(innerConf, config, "connection_timeout", dbConf.connectionTimeout()));
 		dbConf.keepaliveTime(millis(innerConf, config, "keepalive_time", dbConf.keepaliveTime()));
+		dbConf.leakTimeout(millis(innerConf, config, "leak_timeout", dbConf.leakTimeout()));
 		dbConf.longConnectionTime(millis(innerConf, config, "long_connection_time", dbConf.longConnectionTime()));
 
 		dbConf.connectionInitSql(string(innerConf, config, "connection_init_sql", dbConf.connectionInitSql()));
@@ -884,6 +909,9 @@ public class DBUtil {
 
 		if (has(config, "long_connection_log")) {
 			dbConf.longConnectionLog(innerConf.getBoolean(spelling(config, "long_connection_log")));
+		}
+		if (has(config, "validate_on_borrow")) {
+			dbConf.validateOnBorrow(innerConf.getBoolean(spelling(config, "validate_on_borrow")));
 		}
 
 	}
@@ -920,7 +948,8 @@ public class DBUtil {
 	private static final Set<String> KNOWN_KEYS = Set.of(
 		"driver", "url", "username", "password"
 		, "maximum_pool_size", "minimum_idle", "fetch_size"
-		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time"
+		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
+		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
 		, "schema", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"

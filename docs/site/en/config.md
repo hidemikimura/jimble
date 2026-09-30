@@ -339,7 +339,9 @@ db {
 		idle_timeout          = 10m        # how long an unused connection is kept
 		max_lifetime          = 30m        # how long one connection lives
 		connection_timeout    = 30s        # cap on waiting for a connection
-		keepalive_time        = 30s        # liveness check interval
+		keepalive_time        = 30s        # liveness check interval (Agroal: background checks, and a check before handing out a connection idle longer than this)
+		leak_timeout          = 0s         # warn about a connection held longer than this as a possible leak; 0s turns it off
+		validate_on_borrow    = false      # check every connection as it is handed out (Agroal only; HikariCP always checks)
 		connection_init_sql   = ""         # SQL run right after connecting
 		connection_test_query = ""         # SQL used for the liveness check
 		connection_pool_type  = "hikari"   # hikari | agroal

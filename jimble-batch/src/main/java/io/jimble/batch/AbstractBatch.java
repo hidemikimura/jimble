@@ -550,8 +550,18 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 			while (!heartbeatStopped) {
 
-				DBUtil.getMainDB().update(
-					"UPDATE batch_execute_info SET updated_at = NOW() WHERE uid = ?", args.uid());
+				/*
+				 * <b>失敗してもループを続ける。</b>2.0 から DB の失敗は例外なので、受け止めないと
+				 * <b>1回の失敗でこのスレッドが終わり、二度と打たない</b>。心拍が途切れると
+				 * alive を過ぎて同時実行数から外れ（<b>同じバッチがもう1本起動できる</b>）、
+				 * その3倍で実行情報が掃除される。次の間隔で打ち直せば元に戻る。
+				 */
+				try {
+					DBUtil.getMainDB().update(
+						"UPDATE batch_execute_info SET updated_at = NOW() WHERE uid = ?", args.uid());
+				} catch (RuntimeException ex) {
+					Log.error(ex, "バッチの心拍を打てませんでした。次の間隔で打ち直します: " + args.uid());
+				}
 
 				try {
 					// 止められたらここが解ける

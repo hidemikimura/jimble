@@ -53,6 +53,12 @@ public final class DBConf {
 	/** 生存確認の間隔（ミリ秒） */
 	private long keepaliveTime = 30000;
 
+	/** これより長く握られた接続をリークの疑いとして警告する（ミリ秒。0 なら見ない） */
+	private long leakTimeout = 0;
+
+	/** 取り出すたびに生存確認するか（Agroal だけ。HikariCP はいつも確かめる） */
+	private boolean validateOnBorrow = false;
+
 	/** 1回に取り寄せる行数 */
 	private int fetchSize = 100;
 
@@ -195,6 +201,28 @@ public final class DBConf {
 	public String connectionTestQuery () {
 
 		return connectionTestQuery;
+
+	}
+
+	/**
+	 * リークの疑いとみなすまでの時間（ミリ秒。0 なら見ない）
+	 *
+	 * @return	ミリ秒
+	 */
+	public long leakTimeout () {
+
+		return leakTimeout;
+
+	}
+
+	/**
+	 * 取り出すたびに生存確認するか（Agroal だけ）
+	 *
+	 * @return	確かめる場合 = true
+	 */
+	public boolean validateOnBorrow () {
+
+		return validateOnBorrow;
 
 	}
 
@@ -430,6 +458,28 @@ public final class DBConf {
 	}
 
 	/**
+	 * リークの疑いとみなすまでの時間（ミリ秒） を決める
+	 *
+	 * @param leakTimeout	ミリ秒。0 なら見ない
+	 */
+	void leakTimeout (long leakTimeout) {
+
+		this.leakTimeout = leakTimeout;
+
+	}
+
+	/**
+	 * 取り出すたびに生存確認するか を決める
+	 *
+	 * @param validateOnBorrow	確かめる場合 = true
+	 */
+	void validateOnBorrow (boolean validateOnBorrow) {
+
+		this.validateOnBorrow = validateOnBorrow;
+
+	}
+
+	/**
 	 * 1回に取り寄せる行数 を決める
 	 *
 	 * @param fetchSize	1回に取り寄せる行数
@@ -541,6 +591,8 @@ public final class DBConf {
 		conf.connectionInitSql = from.connectionInitSql;
 		conf.connectionTestQuery = from.connectionTestQuery;
 		conf.keepaliveTime = from.keepaliveTime;
+		conf.leakTimeout = from.leakTimeout;
+		conf.validateOnBorrow = from.validateOnBorrow;
 		conf.fetchSize = from.fetchSize;
 		conf.schema = from.schema;
 		conf.product = from.product;
