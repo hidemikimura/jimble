@@ -4,7 +4,9 @@
 
 ---
 
-## 2.2.0（未公開）
+## 2.2.0（2026-10-01）
+
+**`ReverseProxy` で nginx の `proxy_set_header`・`proxy_redirect` などと同じことをできるようにした版**。あわせて `jimble.io.buffer_size` の使い方を見直し、既定を 256KiB から 64KiB にしました。
 
 ### 上げる前に見るところ（ReverseProxy）
 
