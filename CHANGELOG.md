@@ -23,6 +23,7 @@
 | **バッチの心拍が、DB の失敗1回で途切れていました** | 心拍のスレッドが例外で終わり、二度と `updated_at` を打ちませんでした。途切れると alive を過ぎて同時実行数から外れ（**同じバッチがもう1本起動できる**）、その3倍で実行情報が掃除されます。失敗はログに出して、次の間隔で打ち直します |
 | **トランザクションを始められなかったとき、接続がプールへ戻らないことがありました** | `setAutoCommit(false)` が失敗すると、取った接続を握ったまま抜けていました。`DBUtil.getMainDB().transaction(...)` のように DB を使い捨てにする書き方で漏れます。その場で返します |
 | **Agroal の `keepalive_time` に `idle_timeout` の値が入っていました** | `idleValidationTimeout` に `idle_timeout`（既定 10 分）を渡していました。`keepalive_time` を、裏の定期確認と「それより長く寝ていた接続を渡す前の確認」に渡します |
+| **同時に起動したバッチが、最初だけ 5 秒ほど待たされていました（macOS）** | 既定の `batch.scheduler_id` に使うホスト名を `InetAddress.getLocalHost()` で取っていたためです。あれはホスト名を名前解決するので、ホスト名が `/etc/hosts` に無い macOS では mDNS の時間切れまで止まります。プロセスで最初の `BatchExecutor.parseArgs` がこれを踏み、同時に起動したバッチは全員そこで待っていました。名前解決をしない取り方（Linux は `/proc/sys/kernel/hostname`、ほかは `hostname` コマンド）を先に使います。どれも OS のホスト名そのものなので、**scheduler_id の値は変わりません**（これまで名前解決に失敗して `unknown` になっていた環境だけは、ホスト名になります） |
 
 ### DB の接続を借りるスレッドを減らした
 
