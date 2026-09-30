@@ -9,11 +9,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,8 +34,13 @@ import java.util.function.Supplier;
  * <b>移送元は生の TCP を素通ししていた。</b>HTTP を解さないので、
  * 再起動時に Keep-Alive の接続を切るために連番を進める仕掛けが要り、
  * <b>接続ごとに 100ms ポーリングのスレッドを2本</b>立てて後始末していた。
- * ここは HTTP のレベルで扱う。接続の管理は {@link HttpServer} と
- * {@link HttpClient} に任せる。
+ * ここは HTTP のレベルで扱う。受け口の接続は {@link HttpServer} に任せる。
+ * </p>
+ *
+ * <p>
+ * <b>アプリへは {@link AppConnection} で送る</b>（{@code java.net.http.HttpClient} ではない）。
+ * {@code HttpClient} は {@code Host} を付け直すので、<b>ブラウザが叩いたホストがアプリに届かなかった</b>。
+ * いまは {@code Host} をそのまま引き継ぐ。
  * </p>
  */
 final class DevProxy {
@@ -47,11 +51,17 @@ final class DevProxy {
 	/** 作り直しに時間がかかるので、応答待ちは長めに取る */
 	private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(5);
 
+	/** 繋ぐまでの待ち */
+	private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+
+	/** アプリの待ち受け先のホスト */
+	private static final String APP_HOST = "127.0.0.1";
+
 	/* 受け口 */
 	private final HttpServer server;
 
-	/* 転送に使うもの */
-	private final HttpClient client;
+	/* アプリのポート */
+	private final int appPort;
 
 	/* 受け口のスレッド */
 	private final ExecutorService executor;
@@ -70,13 +80,8 @@ final class DevProxy {
 	 */
 	DevProxy (int port, int appPort, Supplier<BuildOutcome> beforeRequest, RunLog log) throws IOException {
 
-		this.appBaseUrl = "http://127.0.0.1:" + appPort;
-
-		this.client = HttpClient.newBuilder()
-			.connectTimeout(Duration.ofSeconds(5))
-			// アプリが返すリダイレクトはブラウザに返す。勝手に追わない
-			.followRedirects(HttpClient.Redirect.NEVER)
-			.build();
+		this.appPort = appPort;
+		this.appBaseUrl = "http://" + APP_HOST + ":" + appPort;
 
 		this.executor = Executors.newCachedThreadPool(runnable -> {
 			Thread thread = new Thread(runnable, "jimble-run-proxy");
@@ -118,7 +123,29 @@ final class DevProxy {
 	 */
 	private void handle (HttpExchange exchange, Supplier<BuildOutcome> beforeRequest, RunLog log) {
 
-		try (exchange) {
+		/*
+		 * <b>閉じるのは catch のあと。</b>try (exchange) { ... } catch にすると、
+		 * catch に入る前に exchange が閉じられ、<b>502 / 500 の画面が1度も届かなかった</b>
+		 * （アプリが止まっていると、ブラウザには空の応答だけが返っていた）。
+		 */
+		try {
+			handleOpen(exchange, beforeRequest, log);
+		} finally {
+			exchange.close();
+		}
+
+	}
+
+	/**
+	 * 1件受ける（exchange はまだ開いている）
+	 *
+	 * @param exchange		やりとり
+	 * @param beforeRequest	転送の前に呼ぶもの
+	 * @param log			ログ
+	 */
+	private void handleOpen (HttpExchange exchange, Supplier<BuildOutcome> beforeRequest, RunLog log) {
+
+		try {
 
 			BuildOutcome outcome = beforeRequest.get();
 
@@ -173,31 +200,49 @@ final class DevProxy {
 	private void forward (HttpExchange exchange) throws IOException, InterruptedException {
 
 		String method = exchange.getRequestMethod();
+		Headers requestHeaders = exchange.getRequestHeaders();
 
-		HttpRequest.Builder builder = HttpRequest.newBuilder(targetUri(exchange))
-			.timeout(REQUEST_TIMEOUT)
-			.method(method, bodyPublisher(exchange, method));
+		Map<String, List<String>> headers = new LinkedHashMap<>();
 
-		for (Map.Entry<String, List<String>> entry : exchange.getRequestHeaders().entrySet()) {
+		for (Map.Entry<String, List<String>> entry : requestHeaders.entrySet()) {
 
-			if (!HopByHopHeaders.isForwardable(entry.getKey())) {
-				continue;
-			}
-
-			for (String value : entry.getValue()) {
-				try {
-					builder.header(entry.getKey(), value);
-				} catch (IllegalArgumentException ignore) {
-					// JDK が拒否するヘッダ。転送しないだけでよい
-				}
+			if (HopByHopHeaders.isForwardable(entry.getKey())) {
+				headers.put(entry.getKey(), new ArrayList<>(entry.getValue()));
 			}
 
 		}
 
-		HttpResponse<InputStream> response =
-			client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+		/*
+		 * <b>Host はブラウザが送ってきたものを引き継ぐ</b>（HopByHopHeaders は Host を落とさない）。
+		 * 無いのは HTTP/1.0 くらいで、そのときだけアプリの待ち受け先を入れる（HTTP/1.1 では必須）。
+		 */
+		if (requestHeaders.getFirst("Host") == null) {
+			headers.put("Host", List.of(APP_HOST + ":" + appPort));
+		}
 
-		sendResponse(exchange, response);
+		InputStream body = null;
+		long contentLength = -1;
+
+		if (!BODYLESS_METHODS.contains(method)) {
+
+			body = exchange.getRequestBody();
+
+			String length = requestHeaders.getFirst("Content-Length");
+			String transferEncoding = requestHeaders.getFirst("Transfer-Encoding");
+
+			if (length != null) {
+				contentLength = Long.parseLong(length.trim());
+			} else if (transferEncoding == null) {
+				// 長さも chunked も無い = 本文なし。POST に長さが無いと断るアプリもあるので 0 と書く
+				contentLength = 0;
+			}
+
+		}
+
+		try (AppConnection response = AppConnection.send(APP_HOST, appPort, CONNECT_TIMEOUT, REQUEST_TIMEOUT
+				, method, target(exchange), headers, body, contentLength)) {
+			sendResponse(exchange, response);
+		}
 
 	}
 
@@ -208,11 +253,11 @@ final class DevProxy {
 	 * @param response	アプリの応答
 	 * @throws IOException	送信に失敗した場合
 	 */
-	private static void sendResponse (HttpExchange exchange, HttpResponse<InputStream> response) throws IOException {
+	private static void sendResponse (HttpExchange exchange, AppConnection response) throws IOException {
 
 		Headers headers = exchange.getResponseHeaders();
 
-		for (Map.Entry<String, List<String>> entry : response.headers().map().entrySet()) {
+		for (Map.Entry<String, List<String>> entry : response.headers().entrySet()) {
 
 			if (!HopByHopHeaders.isForwardable(entry.getKey())) {
 				continue;
@@ -222,7 +267,7 @@ final class DevProxy {
 
 		}
 
-		int code = response.statusCode();
+		int code = response.status();
 
 		/*
 		 * 本文を持てないステータスに 0 を渡すと HttpServer が
@@ -245,37 +290,19 @@ final class DevProxy {
 	}
 
 	/**
-	 * 本文
-	 *
-	 * @param exchange	やりとり
-	 * @param method	メソッド
-	 * @return	本文
-	 */
-	private static HttpRequest.BodyPublisher bodyPublisher (HttpExchange exchange, String method) {
-
-		if (BODYLESS_METHODS.contains(method)) {
-			return HttpRequest.BodyPublishers.noBody();
-		}
-
-		// 読み切らずに流す
-		return HttpRequest.BodyPublishers.ofInputStream(exchange::getRequestBody);
-
-	}
-
-	/**
-	 * 転送先
+	 * 転送先（パスとクエリ。受け取ったバイトのまま）
 	 *
 	 * @param exchange	やりとり
 	 * @return	転送先
 	 */
-	private URI targetUri (HttpExchange exchange) {
+	private static String target (HttpExchange exchange) {
 
 		URI uri = exchange.getRequestURI();
 
-		String path = uri.getRawPath() == null ? "/" : uri.getRawPath();
+		String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
 		String query = uri.getRawQuery();
 
-		return URI.create(appBaseUrl + path + (query == null || query.isEmpty() ? "" : "?" + query));
+		return path + (query == null || query.isEmpty() ? "" : "?" + query);
 
 	}
 

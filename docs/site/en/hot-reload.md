@@ -26,6 +26,10 @@ browser ──▶ proxy (9000) ──▶ application (9100, same JVM as Gradle)
 **It does not build the moment you save.** It waits for a request.
 That is so a run of quick saves does not kick off build after build.
 
+**The `Host` header the browser sent reaches the application unchanged.** Open `tenant1.localhost:9000`
+and the application receives `Host: tenant1.localhost:9000`: `request().host()` is `tenant1.localhost` and `port()` is `9000`
+(not the application's own `127.0.0.1:9100`, so an application that routes by host behaves the same in development).
+
 ## It runs in the same JVM as Gradle
 
 **The application runs inside the same process as Gradle.**
