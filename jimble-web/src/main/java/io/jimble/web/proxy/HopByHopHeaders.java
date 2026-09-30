@@ -19,7 +19,8 @@ import java.util.Set;
  * <ul>
  *   <li>{@code Content-Length} をそのまま返すと、本文の長さが変わったときに<b>応答が壊れる</b></li>
  *   <li>{@code Transfer-Encoding: chunked} を返すと、<b>二重にチャンク化される</b></li>
- *   <li>{@code Host} を渡すと、転送先が名前ベースの仮想ホストのときに<b>別のサイトが返る</b></li>
+ *   <li>{@code Host} を渡すと、転送先が名前ベースの仮想ホストのときに<b>別のサイトが返る</b>
+ *       （既定は転送先の Host。元の Host を渡すなら {@link ReverseProxy#preserveHost()}）</li>
  *   <li>{@code Connection} を渡すと、転送先との接続の扱いをクライアントが決めることになる</li>
  * </ul>
  */
@@ -35,9 +36,13 @@ public final class HopByHopHeaders {
 		, "trailer"
 		, "transfer-encoding"
 		, "upgrade"
-		// 本体を張り替えるので、長さと符号化は自分で決める
+		// 本体を張り替えるので、長さは自分で決める
 		, "content-length"
-		, "content-encoding"
+		/*
+		 * content-encoding は<b>落とさない</b>。転送先が gzip で返した本文をそのまま流すので、
+		 * 落とすと「圧縮されている」ことが伝わらない。しかも jimble（Helidon）がもう一度 gzip をかけ、
+		 * ブラウザには1回解いても gzip のままの本文が届いていた。付いていれば Helidon は圧縮し直さない
+		 */
 		// 転送先には転送先向けの Host を送る
 		, "host"
 		// 送信側が勝手に決めるとおかしくなる

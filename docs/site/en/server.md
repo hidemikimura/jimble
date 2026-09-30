@@ -240,3 +240,26 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` is **appended to the existing value** (not overwritten).
 The timeouts are `proxy.connect_timeout` (5 seconds) and `proxy.request_timeout` (30 seconds),
 and a forward that fails returns **502**.
+
+### The equivalents of nginx's proxy_set_header and friends
+
+Pass a configured proxy to `mount`. **Finish the configuration before `mount`** (changing it after it has handled a request throws).
+
+```java
+install(() -> ReverseProxy.mount("/shop", new ReverseProxy("http://shop:9000")
+	.preserveHost()                                     // proxy_set_header Host $http_host
+	.setHeader("X-App", "front")                        // proxy_set_header X-App front
+	.setHeader("X-User", context -> userId(context))    // value built from the request (null: not sent)
+	.removeHeader("Cookie")                             // proxy_set_header Cookie ""
+	.hideResponseHeader("X-Powered-By")                 // proxy_hide_header X-Powered-By
+	.redirect("http://shop.internal/", "/shop/")        // proxy_redirect http://shop.internal/ /shop/
+	.cookieDomain("shop.internal", "example.com")       // proxy_cookie_domain shop.internal example.com
+	.cookiePath("/", "/shop/")));                       // proxy_cookie_path / /shop/
+```
+
+| | The same defaults as nginx |
+| --- | --- |
+| `Host` | **The upstream's** is sent (`proxy_set_header Host $proxy_host`). The original `Host` goes in `X-Forwarded-Host` / `X-Forwarded-Port`. If the upstream **routes by host**, add `preserveHost()` |
+| `Location` / `Refresh` | **Values starting with the upstream URL are rewritten to the path the browser sees** (`proxy_redirect default`: `http://backend:8080/moved` → `/api/moved`). Relative values (`/moved`) are left alone. Turn it off with `noRedirectRewrite()` |
+| Upstream connection | Closed after each request (no keepalive). For `https://` upstreams the certificate's host name is checked |
+| Compression | A gzip body from the upstream is passed through as is (not compressed a second time) |

@@ -20,7 +20,7 @@ class HopByHopHeadersTest {
 		for (String name : List.of(
 			"Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization"
 			, "TE", "Trailer", "Transfer-Encoding", "Upgrade"
-			, "Content-Length", "Content-Encoding", "Host", "Expect")) {
+			, "Content-Length", "Host", "Expect")) {
 
 			assertFalse(HopByHopHeaders.isForwardable(name), name);
 
@@ -45,6 +45,12 @@ class HopByHopHeadersTest {
 		for (String name : List.of("Content-Type", "Accept", "Authorization", "Cookie", "X-Request-Id")) {
 			assertTrue(HopByHopHeaders.isForwardable(name), name);
 		}
+
+		/*
+		 * Content-Encoding は渡す。本文をそのまま流すので、落とすと「圧縮されている」ことが伝わらず、
+		 * jimble がもう一度 gzip をかけて、ブラウザには解けない本文が届いていた
+		 */
+		assertTrue(HopByHopHeaders.isForwardable("Content-Encoding"));
 
 	}
 

@@ -7,11 +7,11 @@ import io.jimble.web.router.Handler;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -26,11 +26,32 @@ import java.util.function.Function;
  * <pre>
  * // /api/** を http://backend:8080/** に流す
  * install(() -&gt; ReverseProxy.mount("/api", "http://backend:8080"));
+ *
+ * // nginx の proxy_set_header / proxy_hide_header / proxy_redirect / proxy_cookie_* に当たるもの
+ * install(() -&gt; ReverseProxy.mount("/shop", new ReverseProxy("http://shop:9000")
+ *     .preserveHost()                                     // proxy_set_header Host $http_host
+ *     .setHeader("X-App", "front")                        // proxy_set_header X-App front
+ *     .setHeader("X-User", context -&gt; userId(context))  // 値をリクエストから作る
+ *     .removeHeader("Cookie")                             // proxy_set_header Cookie ""
+ *     .hideResponseHeader("X-Powered-By")                 // proxy_hide_header X-Powered-By
+ *     .redirect("http://shop.internal/", "/shop/")        // proxy_redirect http://shop.internal/ /shop/
+ *     .cookieDomain("shop.internal", "example.com")       // proxy_cookie_domain
+ *     .cookiePath("/", "/shop/")));                       // proxy_cookie_path
  * </pre>
  *
  * <p>
  * <b>全メソッドを1回で登録する</b>（要件 F-R-21）。移送元は 14 回手書きしていた。
  * </p>
+ *
+ * <h2>nginx と同じにしたところ</h2>
+ * <ul>
+ *   <li><b>{@code Host} は既定で転送先のもの</b>（{@code proxy_set_header Host $proxy_host}）。
+ *       元の {@code Host} は {@code X-Forwarded-Host} で渡す。そのまま渡すなら {@link #preserveHost()}</li>
+ *   <li><b>{@code Location} / {@code Refresh} は既定で書き換える</b>（{@code proxy_redirect default}）。
+ *       転送先の URL で始まるものを、ブラウザから見えるパスに直す。切るなら {@link #noRedirectRewrite()}</li>
+ *   <li><b>転送先との接続は1回ごとに切る</b>（nginx の既定。keepalive は持たない）</li>
+ *   <li><b>{@code Content-Encoding} はそのまま渡す</b>（圧縮した本文を、もう一度圧縮しない）</li>
+ * </ul>
  *
  * <h2>移送元から直したところ</h2>
  * <ol>
@@ -45,6 +66,12 @@ import java.util.function.Function;
  *       既存の値があれば後ろに足す</li>
  *   <li><b>タイムアウトが無かった。</b>転送先が応答しないとスレッドが張り付く</li>
  * </ol>
+ *
+ * <h2>組み立ては使う前に</h2>
+ * <p>
+ * 設定（{@link #preserveHost()} など）は {@code mount} の前に済ませる。<b>1度でもリクエストを受けたあとに変えると例外</b>——
+ * 1つのインスタンスを全リクエストで使い回すので、途中で変えると、どのリクエストにどちらが効いたか分からなくなる。
+ * </p>
  */
 public final class ReverseProxy implements Handler {
 
@@ -57,11 +84,41 @@ public final class ReverseProxy implements Handler {
 	/* 転送先のベース URL */
 	private final String forwardBaseUrl;
 
-	/* HTTP クライアント */
-	private final HttpClient client;
+	/* 転送先（分解したもの） */
+	private final URI forwardUri;
+
+	/* 繋ぐまでの待ち */
+	private final Duration connectTimeout;
 
 	/* 応答待ちの上限 */
 	private final Duration requestTimeout;
+
+	/* 元の Host をそのまま渡すか */
+	private boolean preserveHost = false;
+
+	/* 足す・上書きするリクエストヘッダ（名前 → 値を作るもの。null を返したら送らない） */
+	private final Map<String, Function<WebContext, String>> setHeaders = new LinkedHashMap<>();
+
+	/* 送らないリクエストヘッダ（小文字） */
+	private final List<String> removeHeaders = new ArrayList<>();
+
+	/* 返さない応答ヘッダ（小文字） */
+	private final List<String> hideResponseHeaders = new ArrayList<>();
+
+	/* Location / Refresh の書き換え（前から順に、最初に当たったもの） */
+	private final List<String[]> redirects = new ArrayList<>();
+
+	/* 転送先の URL で始まるものを書き換えるか（proxy_redirect default） */
+	private boolean redirectDefault = true;
+
+	/* Set-Cookie の Domain の書き換え */
+	private final List<String[]> cookieDomains = new ArrayList<>();
+
+	/* Set-Cookie の Path の書き換え */
+	private final List<String[]> cookiePaths = new ArrayList<>();
+
+	/* 1度でも使ったか（使ったあとは設定を変えさせない） */
+	private volatile boolean used = false;
 
 	/**
 	 * コンストラクタ
@@ -84,34 +141,253 @@ public final class ReverseProxy implements Handler {
 	public ReverseProxy (String forwardBaseUrl, Duration connectTimeout, Duration requestTimeout) {
 
 		this.forwardBaseUrl = trimTrailingSlash(forwardBaseUrl);
+		this.forwardUri = URI.create(this.forwardBaseUrl.isEmpty() ? "http://invalid" : this.forwardBaseUrl);
+		this.connectTimeout = connectTimeout;
 		this.requestTimeout = requestTimeout;
-		this.client = HttpClient.newBuilder()
-			.connectTimeout(connectTimeout)
-			// 転送先のリダイレクトはクライアントに返す。勝手に追わない
-			.followRedirects(HttpClient.Redirect.NEVER)
-			.build();
+
+		String scheme = forwardUri.getScheme() == null ? "" : forwardUri.getScheme().toLowerCase(Locale.ROOT);
+
+		if (!"http".equals(scheme) && !"https".equals(scheme)) {
+			throw new IllegalArgumentException("転送先は http:// か https:// で書いてください: " + forwardBaseUrl);
+		}
+
+	}
+
+	// region 設定（nginx の proxy_set_header ほか）
+
+	/**
+	 * 元の {@code Host} をそのまま渡す（{@code proxy_set_header Host $http_host}）
+	 *
+	 * <p>
+	 * 既定では転送先の {@code Host}（{@code backend:8080}）を送る。転送先が <b>Host で振り分ける</b>
+	 * （ドメインでショップを決める、など）なら、これを付ける。
+	 * </p>
+	 *
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy preserveHost () {
+
+		refuseAfterUse("preserveHost");
+		this.preserveHost = true;
+		return this;
 
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * リクエストヘッダを足す・上書きする（{@code proxy_set_header 名前 値}）
+	 *
+	 * <p>{@code Host} も決められる。元のリクエストに同じ名前があれば置き換える。</p>
+	 *
+	 * @param name	ヘッダ名
+	 * @param value	値
+	 * @return	ReverseProxy
 	 */
+	public ReverseProxy setHeader (String name, String value) {
+
+		return setHeader(name, context -> value);
+
+	}
+
+	/**
+	 * リクエストヘッダを、リクエストから作った値で足す・上書きする
+	 *
+	 * <p>{@code null} か空文字を返したら、そのヘッダは送らない（nginx の空の値と同じ）。</p>
+	 *
+	 * @param name	ヘッダ名
+	 * @param value	値を作るもの
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy setHeader (String name, Function<WebContext, String> value) {
+
+		refuseAfterUse("setHeader");
+		checkHeaderName(name);
+		this.setHeaders.put(name, value);
+		return this;
+
+	}
+
+	/**
+	 * リクエストヘッダを送らない（{@code proxy_set_header 名前 ""}）
+	 *
+	 * @param name	ヘッダ名
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy removeHeader (String name) {
+
+		refuseAfterUse("removeHeader");
+		checkHeaderName(name);
+		this.removeHeaders.add(name.toLowerCase(Locale.ROOT));
+		return this;
+
+	}
+
+	/**
+	 * 転送先の応答ヘッダを返さない（{@code proxy_hide_header 名前}）
+	 *
+	 * @param name	ヘッダ名
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy hideResponseHeader (String name) {
+
+		refuseAfterUse("hideResponseHeader");
+		checkHeaderName(name);
+		this.hideResponseHeaders.add(name.toLowerCase(Locale.ROOT));
+		return this;
+
+	}
+
+	/**
+	 * {@code Location} / {@code Refresh} の書き換えを足す（{@code proxy_redirect 元 先}）
+	 *
+	 * <p>
+	 * {@code from} で始まる値を、{@code to} で始まるように置き換える。足した順に見て、最初に当たったものを使う。
+	 * 既定の書き換え（{@link #noRedirectRewrite()} で切れる）より先に見る。
+	 * </p>
+	 *
+	 * @param from	元（例 {@code http://shop.internal/}）
+	 * @param to	先（例 {@code /shop/}）
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy redirect (String from, String to) {
+
+		refuseAfterUse("redirect");
+		requireNonEmpty(from, "redirect の元");
+		this.redirects.add(new String[]{ from, to == null ? "" : to });
+		return this;
+
+	}
+
+	/**
+	 * 既定の {@code Location} / {@code Refresh} の書き換えを切る（{@code proxy_redirect off}）
+	 *
+	 * <p>{@link #redirect(String, String)} で足したものは、切ったあとも効く。</p>
+	 *
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy noRedirectRewrite () {
+
+		refuseAfterUse("noRedirectRewrite");
+		this.redirectDefault = false;
+		return this;
+
+	}
+
+	/**
+	 * {@code Set-Cookie} の {@code Domain} を書き換える（{@code proxy_cookie_domain 元 先}）
+	 *
+	 * <p>大文字小文字は問わない。先頭の {@code .} は無視して比べる。</p>
+	 *
+	 * @param from	元
+	 * @param to	先
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy cookieDomain (String from, String to) {
+
+		refuseAfterUse("cookieDomain");
+		requireNonEmpty(from, "cookieDomain の元");
+		this.cookieDomains.add(new String[]{ from, to == null ? "" : to });
+		return this;
+
+	}
+
+	/**
+	 * {@code Set-Cookie} の {@code Path} を書き換える（{@code proxy_cookie_path 元 先}）
+	 *
+	 * <p>{@code from} で始まる Path を、{@code to} で始まるように置き換える。</p>
+	 *
+	 * @param from	元（例 {@code /}）
+	 * @param to	先（例 {@code /shop/}）
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy cookiePath (String from, String to) {
+
+		refuseAfterUse("cookiePath");
+		requireNonEmpty(from, "cookiePath の元");
+		this.cookiePaths.add(new String[]{ from, to == null ? "" : to });
+		return this;
+
+	}
+
+	/**
+	 * 使ったことにする（テストから。設定を変えさせないことを確かめる）
+	 */
+	void markUsedForTest () {
+
+		used = true;
+
+	}
+
+	/**
+	 * 使い始めたあとの設定の変更を止める
+	 */
+	private void refuseAfterUse (String what) {
+
+		if (used) {
+			throw new IllegalStateException("リクエストを受けたあとで " + what + " は変えられません（mount の前に設定してください）");
+		}
+
+	}
+
+	/**
+	 * ヘッダ名を確かめる（改行を入れさせない）
+	 */
+	private static void checkHeaderName (String name) {
+
+		requireNonEmpty(name, "ヘッダ名");
+
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c <= ' ' || c == ':' || c >= 0x7f) {
+				throw new IllegalArgumentException("ヘッダ名に使えない文字があります: " + name);
+			}
+		}
+
+	}
+
+	/**
+	 * 空でないこと
+	 */
+	private static void requireNonEmpty (String value, String what) {
+
+		if (value == null || value.isEmpty()) {
+			throw new IllegalArgumentException(what + "が空です");
+		}
+
+	}
+
+	// endregion
+
 	@Override
 	public void handle (WebContext context) {
 
+		used = true;
+
+		UpstreamConnection response;
+
 		try {
 
-			HttpRequest request = buildRequest(context);
-
-			HttpResponse<InputStream> response =
-				client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-
-			sendResponse(context, response);
+			response = send(context);
 
 		} catch (Exception ex) {
 
 			Log.warn("リバースプロキシに失敗しました: %s / %s".formatted(forwardBaseUrl, ex.getMessage()));
 			context.response().send(BAD_GATEWAY);
+			return;
+
+		}
+
+		try (response) {
+
+			sendResponse(context, response);
+
+		} catch (Exception ex) {
+
+			// もう送り始めているかもしれない。送っていなければ 502
+			Log.warn("リバースプロキシの応答を返せませんでした: %s / %s".formatted(forwardBaseUrl, ex.getMessage()));
+
+			if (!context.response().isSent()) {
+				context.response().send(BAD_GATEWAY);
+			}
 
 		}
 
@@ -120,107 +396,138 @@ public final class ReverseProxy implements Handler {
 	// region リクエスト
 
 	/**
-	 * 転送するリクエストを組み立てる
-	 *
-	 * @param context	コンテキスト
-	 * @return	リクエスト
+	 * 転送先へ送る
 	 */
-	private HttpRequest buildRequest (WebContext context) {
+	private UpstreamConnection send (WebContext context) throws Exception {
 
 		String method = context.request().method();
 
-		HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(forwardUrl(context)))
-			.timeout(requestTimeout)
-			.method(method, bodyPublisher(context, method));
+		Map<String, List<String>> headers = requestHeaders(context);
 
-		forwardRequestHeaders(context, builder);
-		addForwardedHeaders(context, builder);
+		InputStream body = null;
+		long contentLength = -1;
 
-		return builder.build();
+		if (!BODYLESS_METHODS.contains(method)) {
+
+			body = context.request().source().bodyStream();
+
+			String length = firstHeader(context, "content-length");
+			String transferEncoding = firstHeader(context, "transfer-encoding");
+
+			if (length != null && !length.isEmpty()) {
+				contentLength = Long.parseLong(length.trim());
+			} else if (transferEncoding == null || transferEncoding.isEmpty()) {
+				// 長さも chunked も無い = 本文なし。POST に長さが無いと断るサーバーもあるので 0 と書く
+				contentLength = 0;
+			}
+
+		}
+
+		boolean secure = "https".equalsIgnoreCase(forwardUri.getScheme());
+		int port = forwardUri.getPort() > 0 ? forwardUri.getPort() : (secure ? 443 : 80);
+
+		return UpstreamConnection.send(secure, forwardUri.getHost(), port, connectTimeout, requestTimeout
+			, method, target(context), headers, body, contentLength);
 
 	}
 
 	/**
-	 * 転送先の URL
-	 *
-	 * @param context	コンテキスト
-	 * @return	URL
+	 * 転送先のパス（ベース URL のパス + ワイルドカード + クエリ）
 	 */
-	private String forwardUrl (WebContext context) {
+	private String target (WebContext context) {
+
+		String basePath = forwardUri.getRawPath() == null ? "" : forwardUri.getRawPath();
 
 		String wildcard = context.route() == null ? "" : context.route().variables().wildcard();
 		String path = wildcard == null || wildcard.isEmpty() ? "" : "/" + wildcard;
 
-		String query = context.request().query();
+		String target = basePath + path;
 
-		return forwardBaseUrl + path + (query == null || query.isEmpty() ? "" : "?" + query);
-
-	}
-
-	/**
-	 * 本文
-	 *
-	 * @param context	コンテキスト
-	 * @param method	メソッド
-	 * @return	本文
-	 */
-	private HttpRequest.BodyPublisher bodyPublisher (WebContext context, String method) {
-
-		if (BODYLESS_METHODS.contains(method)) {
-			return HttpRequest.BodyPublishers.noBody();
+		if (target.isEmpty()) {
+			target = "/";
 		}
 
-		// 本文を読み切らずに流す
-		return HttpRequest.BodyPublishers.ofInputStream(() -> context.request().source().bodyStream());
+		String query = context.request().query();
+
+		return target + (query == null || query.isEmpty() ? "" : "?" + query);
 
 	}
 
 	/**
-	 * リクエストヘッダを転送する
+	 * 送るヘッダ
 	 *
-	 * @param context	コンテキスト
-	 * @param builder	リクエスト
+	 * <p>
+	 * <b>来た行のまま送る</b>（{@code headerValues()}）。{@code headers()} は同じ名前の行を {@code ", "} で繋いだ1本なので、
+	 * 2行の {@code Cookie} を渡すと {@code "a=1, b=2"} という、区切りの違う1行になっていた。
+	 * </p>
 	 */
-	private void forwardRequestHeaders (WebContext context, HttpRequest.Builder builder) {
+	private Map<String, List<String>> requestHeaders (WebContext context) {
 
-		for (Map.Entry<String, String> entry : context.request().source().headers().entrySet()) {
+		Map<String, List<String>> headers = new LinkedHashMap<>();
+
+		for (Map.Entry<String, List<String>> entry : context.request().source().headerValues().entrySet()) {
 
 			if (!HopByHopHeaders.isForwardable(entry.getKey())) {
 				continue;
 			}
 
-			try {
-				builder.header(entry.getKey(), entry.getValue());
-			} catch (IllegalArgumentException ignore) {
-				// JDK が拒否するヘッダ（Host など）。転送しないだけでよい
+			headers.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+
+		}
+
+		// Host（既定は転送先の。preserveHost なら元の）
+		String originalHost = originalHost(context);
+		put(headers, "Host", preserveHost && !originalHost.isEmpty() ? originalHost : forwardHost());
+
+		addForwardedHeaders(context, headers, originalHost);
+
+		// 最後に、アプリが決めたもの（Host も含めて上書きできる）
+		for (Map.Entry<String, Function<WebContext, String>> entry : setHeaders.entrySet()) {
+
+			String value = entry.getValue().apply(context);
+
+			remove(headers, entry.getKey());
+
+			if (value != null && !value.isEmpty()) {
+				if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+					throw new IllegalArgumentException("ヘッダ " + entry.getKey() + " の値に改行があります");
+				}
+				headers.put(entry.getKey(), new ArrayList<>(List.of(value)));
 			}
 
 		}
+
+		// 消すと決めたものは、足したあとでも消す
+		for (String name : removeHeaders) {
+			remove(headers, name);
+		}
+
+		return headers;
 
 	}
 
 	/**
 	 * X-Forwarded-* を足す
-	 *
-	 * @param context	コンテキスト
-	 * @param builder	リクエスト
 	 */
-	private void addForwardedHeaders (WebContext context, HttpRequest.Builder builder) {
+	private void addForwardedHeaders (WebContext context, Map<String, List<String>> headers, String originalHost) {
 
 		/*
-		 * setHeader で「置き換える」。header だと値が追加されるので、
+		 * <b>既存の値の後ろに足す</b>。移送元は上書きしていたので、
+		 * 多段のプロキシを通すと途中の経路が消えた。
+		 * X-Forwarded-For は名乗るだけの値なので、使う側は信じる段数を決めること（要件 F-H-02）。
 		 * クライアントが送ってきた X-Forwarded-For がそのまま残り、
-		 * 転送先は先頭の値（＝クライアントの自己申告）を読んでしまう。
+		 * その後ろにこのサーバーが見た接続元を足す。
 		 */
 
 		// 移送元は getProtocol()（= HTTP/1.1）を入れていた
-		builder.setHeader("X-Forwarded-Proto", context.request().scheme());
+		put(headers, "X-Forwarded-Proto", context.request().scheme());
 
 		// ポートまで含めたいので Host ヘッダを使う
-		String host = context.request().header().getStringOptional("host");
-		builder.setHeader("X-Forwarded-Host", host.isEmpty() ? context.request().host() : host);
+		put(headers, "X-Forwarded-Host", originalHost.isEmpty() ? context.request().host() : originalHost);
 
-		builder.setHeader("X-Real-IP", context.request().address());
+		put(headers, "X-Forwarded-Port", String.valueOf(context.request().port()));
+
+		put(headers, "X-Real-IP", context.request().address());
 
 		// 多段のときに経路が消えないよう、既存の値の後ろに足す
 		String existing = context.request().header().getStringOptional("x-forwarded-for");
@@ -228,7 +535,66 @@ public final class ReverseProxy implements Handler {
 			? context.request().address()
 			: existing + ", " + context.request().address();
 
-		builder.setHeader("X-Forwarded-For", forwardedFor);
+		put(headers, "X-Forwarded-For", forwardedFor);
+
+	}
+
+	/**
+	 * 元の Host ヘッダ（無ければ空）
+	 */
+	private static String originalHost (WebContext context) {
+
+		return context.request().header().getStringOptional("host");
+
+	}
+
+	/**
+	 * 転送先の Host（既定のポートなら付けない）
+	 */
+	private String forwardHost () {
+
+		int port = forwardUri.getPort();
+		boolean secure = "https".equalsIgnoreCase(forwardUri.getScheme());
+
+		if (port < 0 || (secure && port == 443) || (!secure && port == 80)) {
+			return forwardUri.getHost();
+		}
+
+		return forwardUri.getHost() + ":" + port;
+
+	}
+
+	/**
+	 * リクエストの最初の値（大文字小文字を問わない）
+	 */
+	private static String firstHeader (WebContext context, String name) {
+
+		for (Map.Entry<String, List<String>> entry : context.request().source().headerValues().entrySet()) {
+			if (entry.getKey().equalsIgnoreCase(name) && !entry.getValue().isEmpty()) {
+				return entry.getValue().getFirst();
+			}
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * 置き換える（大文字小文字を問わない）
+	 */
+	private static void put (Map<String, List<String>> headers, String name, String value) {
+
+		remove(headers, name);
+		headers.put(name, new ArrayList<>(List.of(value)));
+
+	}
+
+	/**
+	 * 消す（大文字小文字を問わない）
+	 */
+	private static void remove (Map<String, List<String>> headers, String name) {
+
+		headers.keySet().removeIf(key -> key.equalsIgnoreCase(name));
 
 	}
 
@@ -237,48 +603,190 @@ public final class ReverseProxy implements Handler {
 	// region レスポンス
 
 	/**
-	 * 応答を返す
-	 *
-	 * @param context	コンテキスト
-	 * @param response	転送先の応答
-	 * @throws Exception	送信に失敗した場合
+	 * 転送先の応答を返す
 	 */
-	private void sendResponse (WebContext context, HttpResponse<InputStream> response) throws Exception {
+	private void sendResponse (WebContext context, UpstreamConnection response) throws Exception {
 
 		// 移送元はここが抜けていて、転送先が何を返しても 200 になっていた
-		context.response().code(response.statusCode());
+		context.response().code(response.status());
 
-		for (Map.Entry<String, List<String>> entry : response.headers().map().entrySet()) {
+		String visiblePrefix = visiblePrefix(context);
 
-			if (!HopByHopHeaders.isForwardable(entry.getKey())) {
+		for (Map.Entry<String, List<String>> entry : response.headers().entrySet()) {
+
+			String name = entry.getKey();
+			String lower = name.toLowerCase(Locale.ROOT);
+
+			if (!HopByHopHeaders.isForwardable(name) || hideResponseHeaders.contains(lower)) {
 				continue;
 			}
 
 			for (String value : entry.getValue()) {
-				context.response().setResponseHeader(entry.getKey(), value);
+
+				String rewritten = switch (lower) {
+					case "location" -> rewriteRedirect(value, visiblePrefix);
+					case "refresh" -> rewriteRefresh(value, visiblePrefix);
+					case "set-cookie" -> rewriteCookie(value);
+					default -> value;
+				};
+
+				// <b>足す</b>（Set-Cookie のように同じ名前が何行もある。上書きすると最後の1つしか届かない）
+				context.response().addResponseHeader(name, rewritten);
+
 			}
 
 		}
 
 		// 本文を持てないステータスに本文を書くと、サーバー実装によっては例外になる
-		if (isBodyless(response.statusCode())) {
-			response.body().close();
-			context.response().send(response.statusCode());
+		if (isBodyless(response.status()) || "HEAD".equals(context.request().method())) {
+			context.response().send(response.status());
 			return;
 		}
 
-		try (InputStream body = response.body()) {
-			context.response().send(body);
-		}
+		context.response().send(response.body());
 
 	}
 
 	/**
-	 * 本文を持てないステータスか
-	 *
-	 * @param statusCode	ステータスコード
-	 * @return	持てない場合 = true
+	 * ブラウザから見えるプロキシの入口（{@code /api/x} を受けたなら {@code /api}）
 	 */
+	private static String visiblePrefix (WebContext context) {
+
+		String path = context.request().path();
+		String wildcard = context.route() == null ? "" : context.route().variables().wildcard();
+
+		if (path == null) {
+			return "";
+		}
+
+		if (wildcard != null && !wildcard.isEmpty() && path.endsWith("/" + wildcard)) {
+			path = path.substring(0, path.length() - wildcard.length() - 1);
+		}
+
+		return path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+
+	}
+
+	/**
+	 * Location を書き換える
+	 *
+	 * <p>
+	 * (1) {@link #redirect(String, String)} で足したもの（前から順）、
+	 * (2) 既定：転送先の URL（{@code http://backend:8080}）で始まるものを、ブラウザから見えるパス（{@code /api}）に。
+	 * <b>相対の値（{@code /moved}）はそのまま</b>（nginx の {@code proxy_redirect default} と同じ）。
+	 * </p>
+	 */
+	String rewriteRedirect (String value, String visiblePrefix) {
+
+		for (String[] rule : redirects) {
+			if (value.startsWith(rule[0])) {
+				return rule[1] + value.substring(rule[0].length());
+			}
+		}
+
+		if (!redirectDefault || forwardBaseUrl.isEmpty()) {
+			return value;
+		}
+
+		if (value.equals(forwardBaseUrl)) {
+			return visiblePrefix.isEmpty() ? "/" : visiblePrefix;
+		}
+
+		if (value.startsWith(forwardBaseUrl + "/") || value.startsWith(forwardBaseUrl + "?")) {
+			String rest = value.substring(forwardBaseUrl.length());
+			return (visiblePrefix + rest).isEmpty() ? "/" : visiblePrefix + rest;
+		}
+
+		return value;
+
+	}
+
+	/**
+	 * Refresh（{@code 5; url=http://...}）の url を書き換える
+	 */
+	private String rewriteRefresh (String value, String visiblePrefix) {
+
+		int at = value.toLowerCase(Locale.ROOT).indexOf("url=");
+
+		if (at < 0) {
+			return value;
+		}
+
+		String head = value.substring(0, at + 4);
+		String url = value.substring(at + 4).trim();
+
+		return head + rewriteRedirect(url, visiblePrefix);
+
+	}
+
+	/**
+	 * Set-Cookie の Domain / Path を書き換える
+	 */
+	String rewriteCookie (String value) {
+
+		if (cookieDomains.isEmpty() && cookiePaths.isEmpty()) {
+			return value;
+		}
+
+		String[] parts = value.split(";", -1);
+		StringBuilder out = new StringBuilder(parts[0]);
+
+		for (int i = 1; i < parts.length; i++) {
+
+			String part = parts[i];
+			String trimmed = part.trim();
+			int eq = trimmed.indexOf('=');
+			String attr = (eq < 0 ? trimmed : trimmed.substring(0, eq)).trim();
+			String attrValue = eq < 0 ? "" : trimmed.substring(eq + 1).trim();
+
+			if ("domain".equalsIgnoreCase(attr)) {
+				String replaced = rewriteDomain(attrValue);
+				out.append(replaced.isEmpty() ? "" : "; " + attr + "=" + replaced);
+			} else if ("path".equalsIgnoreCase(attr)) {
+				out.append("; ").append(attr).append('=').append(rewritePath(attrValue));
+			} else {
+				out.append(';').append(part);
+			}
+
+		}
+
+		return out.toString();
+
+	}
+
+	/**
+	 * Domain を書き換える（空を返したら Domain を消す）
+	 */
+	private String rewriteDomain (String domain) {
+
+		String bare = domain.startsWith(".") ? domain.substring(1) : domain;
+
+		for (String[] rule : cookieDomains) {
+			String from = rule[0].startsWith(".") ? rule[0].substring(1) : rule[0];
+			if (bare.equalsIgnoreCase(from)) {
+				return rule[1];
+			}
+		}
+
+		return domain;
+
+	}
+
+	/**
+	 * Path を書き換える
+	 */
+	private String rewritePath (String path) {
+
+		for (String[] rule : cookiePaths) {
+			if (path.startsWith(rule[0])) {
+				return rule[1] + path.substring(rule[0].length());
+			}
+		}
+
+		return path;
+
+	}
+
 	private static boolean isBodyless (int statusCode) {
 
 		return statusCode < 200 || statusCode == 204 || statusCode == 304;
@@ -287,12 +795,6 @@ public final class ReverseProxy implements Handler {
 
 	// endregion
 
-	/**
-	 * 末尾の「/」を落とす
-	 *
-	 * @param url	URL
-	 * @return	落としたもの
-	 */
 	private static String trimTrailingSlash (String url) {
 
 		if (url == null || url.isEmpty()) {
@@ -308,27 +810,36 @@ public final class ReverseProxy implements Handler {
 	/**
 	 * ルートに組み込む
 	 *
-	 * @param routePath			ルートのパス（例 {@code /api}）
+	 * @param routePath			受けるパス（{@code /api}）
 	 * @param forwardBaseUrl	転送先のベース URL
-	 * @return	コントローラ
+	 * @return	Controller
 	 */
 	public static Controller mount (String routePath, String forwardBaseUrl) {
 
-		// 1つだけ作って使い回す。HttpClient は接続を持つので毎回作ってはいけない
-		ReverseProxy proxy = new ReverseProxy(forwardBaseUrl);
+		return mount(routePath, new ReverseProxy(forwardBaseUrl));
 
+	}
+
+	/**
+	 * 設定したプロキシを組み込む（{@link #preserveHost()} などを使うとき）
+	 *
+	 * @param routePath	受けるパス（{@code /api}）
+	 * @param proxy		設定を済ませたプロキシ
+	 * @return	Controller
+	 */
+	public static Controller mount (String routePath, ReverseProxy proxy) {
+
+		// 1つだけ作って使い回す（設定は作ったときに決まっている）
 		return mount(routePath, context -> proxy);
 
 	}
 
 	/**
-	 * ルートに組み込む
+	 * リクエストごとに転送先を選んで組み込む
 	 *
-	 * @param routePath	ルートのパス
-	 * @param factory	リクエストから転送先を決める。
-	 *					<b>リクエストごとに呼ばれる</b>ので、毎回 {@code new} してはいけない
-	 *					（{@link HttpClient} が接続を持つ）。作り置きしたものを返すこと
-	 * @return	コントローラ
+	 * @param routePath	受けるパス
+	 * @param factory	リクエストから転送先を決めるもの。作り置きしたものを返すこと
+	 * @return	Controller
 	 */
 	public static Controller mount (String routePath, Function<WebContext, ReverseProxy> factory) {
 
