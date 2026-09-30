@@ -70,7 +70,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 */
 	public CsvReader(File csvFile, int headerRowNo, int bodyRowNo) {
 
-		this(openDetected(csvFile), headerRowNo, bodyRowNo);
+		this(new Source(openDetected(csvFile)), headerRowNo, bodyRowNo);
 
 	}
 
@@ -96,7 +96,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 */
 	public CsvReader(InputStream is, int headerRowNo, int bodyRowNo, String charset) {
 
-		this(open(is, Charset.forName(charset)), headerRowNo, bodyRowNo);
+		this(new Source(open(is, Charset.forName(charset))), headerRowNo, bodyRowNo);
 
 	}
 
@@ -125,20 +125,28 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 */
 	public CsvReader(Reader isr, int headerRowNo, int bodyRowNo) {
 
-		this(de.siegmar.fastcsv.reader.CsvReader.builder().ofCsvRecord(skipBom(isr)), headerRowNo, bodyRowNo);
+		this(new Source(de.siegmar.fastcsv.reader.CsvReader.builder().ofCsvRecord(skipBom(isr))), headerRowNo, bodyRowNo);
 
 	}
 
 	/**
 	 * コンストラクタ（中身）
 	 *
-	 * @param csvReader		FastCSV のリーダー
+	 * <p>
+	 * <b>引数に FastCSV の型を出さない</b>（{@link Source} で包む）。javac は、呼び出し先のコンストラクタを決めるとき、
+	 * 引数の数が合うものを {@code private} も含めて全部比べ、その引数の型のクラスを読みにいく。
+	 * FastCSV はアプリのコンパイル時のクラスパスに無い（{@code implementation} の依存）ので、ここに FastCSV の型があると、
+	 * アプリの {@code new CsvReader(file, 1, 2)} が「de.siegmar.fastcsv.reader.CsvReader のクラス・ファイルが見つかりません」
+	 * で落ちた（2.1.4）。
+	 * </p>
+	 *
+	 * @param source		FastCSV のリーダー（包んだもの）
 	 * @param headerRowNo	ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo		ボディ行番号
 	 */
-	private CsvReader(de.siegmar.fastcsv.reader.CsvReader<CsvRecord> csvReader, int headerRowNo, int bodyRowNo) {
+	private CsvReader(Source source, int headerRowNo, int bodyRowNo) {
 
-		this.csvReader = csvReader;
+		this.csvReader = source.reader();
 		this.csvIterator = csvReader.iterator();
 
 		if (headerRowNo > 0) {
@@ -614,5 +622,16 @@ public class CsvReader implements Closeable, AutoCloseable {
 		return pushback;
 
 	}
+
+	/**
+	 * FastCSV のリーダーを包むもの（非公開のコンストラクタの引数に FastCSV の型を出さないため）
+	 *
+	 * <p>
+	 * javac は呼び出し先を決めるときにこのクラスは読むが、中のフィールドの型（FastCSV）までは読まない。
+	 * </p>
+	 *
+	 * @param reader	FastCSV のリーダー
+	 */
+	private record Source (de.siegmar.fastcsv.reader.CsvReader<CsvRecord> reader) {}
 
 }
