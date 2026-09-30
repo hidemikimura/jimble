@@ -31,10 +31,25 @@ public final class SchedulerControl {
 	/** ハートビートのグループ */
 	public static final String HEARTBEAT_GROUP = "batch_db_scheduler_started";
 
+	/* 最後に読めた入り切り（まだ読めていなければ null） */
+	private static volatile Boolean lastKnown = null;
+
 	private SchedulerControl () {}
 
 	/**
 	 * 動いてよいか
+	 *
+	 * <p>
+	 * <b>読めなければ「今のまま」</b>——最後に読めた値を返す。
+	 * かつては読めないと {@code false}（止める）を返していたので、動いているスケジューラが
+	 * <b>DB の一瞬のつまずきで「止められた」と判断して降り、二度と戻らなかった</b>
+	 * （{@link DbScheduler} は止める印をこれで見ている）。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>一度も読めていなければ {@code false}</b>（起動しない）。
+	 * 止めてあるのに、読めなかったからといって動き出さないため。
+	 * </p>
 	 *
 	 * @return	動いてよい場合 = true
 	 */
@@ -42,14 +57,32 @@ public final class SchedulerControl {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			return !"0".equals(DBValue.getString(db, KEY_ENABLED, "1"));
+			boolean enabled = !"0".equals(DBValue.getString(db, KEY_ENABLED, "1"));
+
+			lastKnown = enabled;
+
+			return enabled;
 
 		} catch (Exception ex) {
 
-			Log.error(ex, "スケジューラの状態を読めませんでした");
-			return false;
+			Boolean known = lastKnown;
+
+			Log.error(ex, known == null
+				? "スケジューラの状態を読めませんでした。まだ一度も読めていないので、動かしません"
+				: "スケジューラの状態を読めませんでした。前に読めた値（%s）のまま続けます".formatted(known ? "動かす" : "止める"));
+
+			return known != null && known;
 
 		}
+
+	}
+
+	/**
+	 * 最後に読めた値を忘れる（テストから）
+	 */
+	static void forgetLastKnown () {
+
+		lastKnown = null;
 
 	}
 
@@ -63,6 +96,8 @@ public final class SchedulerControl {
 		try (DB db = DBUtil.getMainDB()) {
 
 			DBValue.set(db, KEY_ENABLED, "1");
+
+			lastKnown = true;
 
 			return true;
 
@@ -87,6 +122,8 @@ public final class SchedulerControl {
 		try (DB db = DBUtil.getMainDB()) {
 
 			DBValue.set(db, KEY_ENABLED, "0");
+
+			lastKnown = false;
 
 			return true;
 

@@ -2197,11 +2197,31 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	void txBegin () throws SQLException {
 
-		if (connection == null) {
+		boolean opened = connection == null;
+
+		if (opened) {
 			getWriteConnection();
 		}
 
-		connection.setAutoCommit(false);
+		try {
+			connection.setAutoCommit(false);
+		} catch (SQLException | RuntimeException ex) {
+			/*
+			 * <b>取った接続はここで返す。</b>返さずに抜けると、まだ closeTask も登録していないので、
+			 * DB を使い捨てにする書き方（DBUtil.getMainDB().transaction(...)）では<b>プールへ戻らない</b>。
+			 * 前から握っていた接続（取り出し途中の結果など）は、持ち主が返すので触らない。
+			 */
+			if (opened) {
+				try {
+					connection.close();
+				} catch (Exception closeFailed) {
+					ex.addSuppressed(closeFailed);
+				} finally {
+					connection = null;
+				}
+			}
+			throw ex;
+		}
 
 		// ここから先のエラーを持ち越す（要件 D-155）
 		clearErrorSinceTransaction();

@@ -332,7 +332,9 @@ db {
 		idle_timeout          = 10m        # 使っていない接続を閉じるまで
 		max_lifetime          = 30m        # 1本の接続の寿命
 		connection_timeout    = 30s        # 接続を待つ上限
-		keepalive_time        = 30s        # 生存確認の間隔
+		keepalive_time        = 30s        # 生存確認の間隔（Agroal は裏の定期確認と、これより長く寝ていた接続を渡す前の確認）
+		leak_timeout          = 0s         # これより長く握られた接続をリークの疑いとして警告する。0s なら見ない
+		validate_on_borrow    = false      # 取り出すたびに生存確認する（Agroal だけ。HikariCP はいつも確かめる）
 		connection_init_sql   = ""         # 接続直後に流す SQL
 		connection_test_query = ""         # 生存確認の SQL
 		connection_pool_type  = "hikari"   # hikari | agroal
