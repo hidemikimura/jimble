@@ -388,13 +388,14 @@ codegen {
 }
 
 mq {
-	poll_min          = 10ms   # wait when the queue is not empty
-	poll_max          = 1s     # wait when the queue is empty (grows)
+	poll_min          = 10ms   # the poller's wait while every worker is busy
+	poll_max          = 1s     # the poller's wait while the queue is empty (grows)
 	retry_backoff     = 10s    # interval between retries (doubles each time)
 	retry_backoff_max = 10m
 	stale             = 10m    # this long as running counts as dead
 
-	# Threads per execution type. Left out, each type's own default is used
+	# Workers per execution type (how many run in parallel). Left out, each type's own default is used.
+	# One poller per queue reads the DB, so more workers do not add connections while idle
 	thread_count {
 		short_time = 2
 		long_time  = 8

@@ -19,7 +19,6 @@ import io.jimble.util.log.Log;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -302,7 +301,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 		} finally {
 
-			stopHeartbeat();
+			stopHeartbeat(args);
 
 			db.delete("DELETE FROM batch_execute_info WHERE uid = ?", args.uid());
 
@@ -525,57 +524,19 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 	// region ハートビート
 
-	/* ハートビートのスレッド */
-	private volatile Thread heartbeat = null;
-
-	/* ハートビートを止めるか */
-	private volatile boolean heartbeatStopped = false;
-
-	/* ハートビートの待ちを解く（interrupt を使わないため） */
-	private volatile java.util.concurrent.CountDownLatch heartbeatWakeup;
-
 	/**
 	 * 「まだ走っている」ことを知らせ続ける
+	 *
+	 * <p>
+	 * <b>プロセスで1本の心拍に預ける</b>（{@link BatchHeartbeats}）。バッチ1本ごとにスレッドを立てていたので、
+	 * DB の応答が遅れると<b>動いているバッチの数だけ接続が埋まっていた</b>。
+	 * </p>
 	 *
 	 * @param args	引数
 	 */
 	private void startHeartbeat (BatchArgs args) {
 
-		heartbeatStopped = false;
-		heartbeatWakeup = new java.util.concurrent.CountDownLatch(1);
-
-		java.util.concurrent.CountDownLatch wakeup = heartbeatWakeup;
-
-		heartbeat = Thread.ofVirtual().name("jimble-batch-heartbeat").start(() -> {
-
-			while (!heartbeatStopped) {
-
-				/*
-				 * <b>失敗してもループを続ける。</b>2.0 から DB の失敗は例外なので、受け止めないと
-				 * <b>1回の失敗でこのスレッドが終わり、二度と打たない</b>。心拍が途切れると
-				 * alive を過ぎて同時実行数から外れ（<b>同じバッチがもう1本起動できる</b>）、
-				 * その3倍で実行情報が掃除される。次の間隔で打ち直せば元に戻る。
-				 */
-				try {
-					DBUtil.getMainDB().update(
-						"UPDATE batch_execute_info SET updated_at = NOW() WHERE uid = ?", args.uid());
-				} catch (RuntimeException ex) {
-					Log.error(ex, "バッチの心拍を打てませんでした。次の間隔で打ち直します: " + args.uid());
-				}
-
-				try {
-					// 止められたらここが解ける
-					if (wakeup.await(BatchConf.heartbeat().toMillis(), TimeUnit.MILLISECONDS)) {
-						return;
-					}
-				} catch (InterruptedException ex) {
-					Thread.currentThread().interrupt();
-					return;
-				}
-
-			}
-
-		});
+		BatchHeartbeats.add(args.uid());
 
 	}
 
@@ -588,38 +549,12 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * ハートビートのたびに<b>もう1本クエリが増える。</b>
 	 * しかも「バッチが終わったから止まる」しか止め方がなかった。
 	 * </p>
+	 *
+	 * @param args	引数
 	 */
-	private void stopHeartbeat () {
+	private void stopHeartbeat (BatchArgs args) {
 
-		heartbeatStopped = true;
-
-		java.util.concurrent.CountDownLatch wakeup = heartbeatWakeup;
-
-		if (wakeup != null) {
-			wakeup.countDown();
-		}
-
-		Thread thread = heartbeat;
-
-		if (thread != null) {
-
-			/*
-			 * interrupt では止めない。
-			 *
-			 * JDBC の実行中に割り込むと、そのコネクションが壊れたものとして
-			 * プールから捨てられる（HikariCP が "marked as broken" を出す）。
-			 * プールが小さいと、後続の処理が接続を取れなくなる。
-			 * 待ちを解いて、いま出ているクエリが終わるのを待つ。
-			 */
-			try {
-				thread.join(BatchConf.heartbeat().toMillis() + 1000);
-			} catch (InterruptedException ex) {
-				Thread.currentThread().interrupt();
-			}
-
-		}
-
-		heartbeat = null;
+		BatchHeartbeats.remove(args.uid());
 
 	}
 

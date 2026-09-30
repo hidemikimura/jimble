@@ -18,7 +18,12 @@ import io.jimble.util.thread.VirtualThreadManager;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * DB をキューにした MQ（要件 F-M-01〜08）
@@ -41,9 +46,20 @@ import java.util.List;
  *
  * <h2>拾い方</h2>
  * <p>
- * 実行種別（{@link MqExecuteType}）ごとにワーカーを立て、
- * {@code SELECT ... FOR UPDATE SKIP LOCKED} で1件ずつ取る。
+ * 実行種別（{@link MqExecuteType}）ごとにワーカーを立てる。
+ * <b>DB から取るのはキューごとに1本の取り出し役</b>で、{@code SELECT ... FOR UPDATE SKIP LOCKED} で1件ずつ取り、
+ * <b>手の空いたワーカーにその場で渡す</b>（ワーカーは待っている間 DB を触らない）。
  * <b>複数のプロセスが同時に回してもよい。</b>
+ * </p>
+ *
+ * <p>
+ * かつては<b>ワーカーが1本ずつ自分で DB を見ていた</b>。何もしていないときでも、ワーカーの数だけ
+ * 定期的に接続を借りるので、DB の応答が数秒遅れると<b>ワーカーの数だけ接続が同時に埋まった</b>。
+ * </p>
+ *
+ * <p>
+ * <b>先読みはしない</b>（D-35）。取り出し役が取るのは、<b>待っているワーカーがいるときだけ</b>で、
+ * 取った行はすぐに渡す。止めるときに手元に溜まった行が残ることはない。
  * </p>
  *
  * <h2>移送元から直したところ</h2>
@@ -140,6 +156,8 @@ public final class MqQueue {
 
 		VirtualThreadManager manager = new VirtualThreadManager();
 
+		Map<MqExecuteType, Handoff> handoffs = new LinkedHashMap<>();
+
 		for (MqExecuteType type : types) {
 
 			int threadCount = MqConf.threadCount(type);
@@ -147,13 +165,37 @@ public final class MqQueue {
 			Log.info("MQ ワーカーを起動します: %s / %s / %d スレッド"
 				.formatted(queueName, type.name(), threadCount));
 
+			Handoff handoff = new Handoff();
+			handoffs.put(type, handoff);
+
 			for (int i = 0; i < threadCount; i++) {
-				manager.execute(() -> worker(type, cancelOrderNotify));
+				String name = "jimble-mq-%s-%s-%d".formatted(queueName, type.name(), i);
+				manager.execute(() -> {
+					Thread.currentThread().setName(name);
+					worker(handoff, cancelOrderNotify);
+				});
 			}
 
 		}
 
+		manager.execute(() -> {
+			Thread.currentThread().setName(pollerName(queueName));
+			poller(handoffs, cancelOrderNotify);
+		});
+
 		return manager;
+
+	}
+
+	/**
+	 * 取り出し役のスレッドの名前
+	 *
+	 * @param queueName	キューの名前
+	 * @return	名前
+	 */
+	static String pollerName (String queueName) {
+
+		return "jimble-mq-poll-" + queueName;
 
 	}
 
@@ -273,49 +315,190 @@ public final class MqQueue {
 	// region ワーカー
 
 	/**
-	 * ワーカーのループ
+	 * 取り出し役から、手の空いたワーカーへ渡す口（実行種別ごとに1つ）
 	 *
-	 * @param type				実行種別
+	 * <p>
+	 * <b>{@code idle} の許可 = 待っているワーカーの数。</b>ワーカーは待つ前に1つ足し、取り出し役は取る前に1つ引く。
+	 * 引けたときだけ DB から取るので、<b>待っている人がいないのに取ることはない</b>（先読みしない）。
+	 * 取れなかったら許可を戻す。
+	 * </p>
+	 */
+	private static final class Handoff {
+
+		/* 待っているワーカーの数 */
+		final Semaphore idle = new Semaphore(0);
+
+		/* 渡すところ（溜めない） */
+		final SynchronousQueue<Claimed> queue = new SynchronousQueue<>();
+
+	}
+
+	/**
+	 * 取った1件
+	 *
+	 * @param db	取った DB
+	 * @param row	行
+	 */
+	private record Claimed (DB db, Data row) {}
+
+	/**
+	 * 取り出し役のループ（キューごとに1本）
+	 *
+	 * @param handoffs			実行種別ごとの渡す口
 	 * @param cancelOrderNotify	中断通知
 	 */
-	private void worker (MqExecuteType type, CancelOrderNotify cancelOrderNotify) {
+	private void poller (Map<MqExecuteType, Handoff> handoffs, CancelOrderNotify cancelOrderNotify) {
 
 		SleepManager sleepManager = new SleepManager(MqConf.pollMin().toMillis(), MqConf.pollMax().toMillis());
 
 		while (!cancelOrderNotify.isCancelOrder()) {
 
 			boolean found = false;
+			boolean anyIdle = false;
 
-			for (DB db : DBUtil.getDBList()) {
+			for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
 
-				Data row = claim(db, type);
+				Handoff handoff = entry.getValue();
 
-				if (row == null) {
-					continue;
-				}
+				for (DB db : DBUtil.getDBList()) {
 
-				found = true;
+					// 待っているワーカーがいなければ、DB を見にいかない
+					if (!handoff.idle.tryAcquire()) {
+						break;
+					}
 
-				/*
-				 * ここで受け切る。移送元は受けていなかったので、
-				 * Executor が投げた例外でワーカースレッドが静かに死んでいた。
-				 */
-				try {
-					handle(db, row, cancelOrderNotify);
-				} catch (Throwable ex) {
-					Log.error(ex, "MQ の処理で想定外の例外: %s / id=%d".formatted(queueName, row.getLong("id")));
-					fail(db, row, ex);
+					anyIdle = true;
+
+					Data row = claim(db, entry.getKey());
+
+					if (row == null) {
+						handoff.idle.release();
+						continue;
+					}
+
+					found = true;
+
+					/*
+					 * <b>必ず渡し切る。</b>許可を引いた以上、待っているワーカーが1人いる。
+					 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
+					 */
+					putUninterruptibly(handoff.queue, new Claimed(db, row));
+
 				}
 
 			}
 
 			if (found) {
-				sleepManager.sleepMin();
+				// 取れた。続けて見る（取れる限り、待たずに回す）
 				sleepManager.reset();
+			} else if (!anyIdle) {
+				// 全員が処理中。DB は見ずに、誰かの手が空くのを少し待つ
+				sleepManager.sleepMin();
 			} else {
+				// 手は空いているが、キューが空。だんだん間隔を伸ばす
 				sleepManager.sleep();
 			}
 
+		}
+
+	}
+
+	/**
+	 * ワーカーのループ
+	 *
+	 * @param handoff			渡す口
+	 * @param cancelOrderNotify	中断通知
+	 */
+	private void worker (Handoff handoff, CancelOrderNotify cancelOrderNotify) {
+
+		while (true) {
+
+			Claimed claimed = await(handoff);
+
+			if (claimed == null) {
+
+				if (cancelOrderNotify.isCancelOrder()) {
+					return;
+				}
+
+				continue;
+
+			}
+
+			/*
+			 * ここで受け切る。移送元は受けていなかったので、
+			 * Executor が投げた例外でワーカースレッドが静かに死んでいた。
+			 */
+			try {
+				handle(claimed.db(), claimed.row(), cancelOrderNotify);
+			} catch (Throwable ex) {
+				Log.error(ex, "MQ の処理で想定外の例外: %s / id=%d".formatted(queueName, claimed.row().getLong("id")));
+				fail(claimed.db(), claimed.row(), ex);
+			}
+
+		}
+
+	}
+
+	/**
+	 * 1件渡されるのを待つ
+	 *
+	 * <p>
+	 * 待つ前に許可を1つ足す。しばらく来なければ許可を引いて抜ける（中断を見るため）。
+	 * <b>引けなかったら、取り出し役がいま取りにいっている</b>——渡されるか、許可が戻されるまで待ち直す。
+	 * ここで諦めて抜けると、取り出し役が渡そうとした行を誰も受け取らない。
+	 * </p>
+	 *
+	 * @param handoff	渡す口
+	 * @return	渡された1件（しばらく来なければ null）
+	 */
+	private static Claimed await (Handoff handoff) {
+
+		handoff.idle.release();
+
+		while (true) {
+
+			try {
+
+				Claimed claimed = handoff.queue.poll(200, TimeUnit.MILLISECONDS);
+
+				if (claimed != null) {
+					return claimed;
+				}
+
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			}
+
+			if (handoff.idle.tryAcquire()) {
+				return null;
+			}
+
+		}
+
+	}
+
+	/**
+	 * 割り込まれても渡し切る
+	 *
+	 * @param queue		渡すところ
+	 * @param claimed	渡すもの
+	 */
+	private static void putUninterruptibly (SynchronousQueue<Claimed> queue, Claimed claimed) {
+
+		boolean interrupted = false;
+
+		while (true) {
+			try {
+				queue.put(claimed);
+				break;
+			} catch (InterruptedException ex) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) {
+			Thread.currentThread().interrupt();
 		}
 
 	}
