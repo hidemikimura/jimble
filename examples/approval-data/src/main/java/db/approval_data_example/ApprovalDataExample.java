@@ -16,7 +16,7 @@ import io.jimble.db.sql.definition.table.Table;
 /**
  * approval_data_example
  */
-public class ApprovalDataExample extends AbstractSchema {
+public class ApprovalDataExample extends ApprovalDataExampleSchema {
 
 	private static final long SQL_VERSION = 1;
 
@@ -29,12 +29,6 @@ public class ApprovalDataExample extends AbstractSchema {
 	/* 申請 */
 	public static final Table request = Request.instance();
 
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String name () { return "approval_data_example"; }
 
 	/**
 	 * get DB instance

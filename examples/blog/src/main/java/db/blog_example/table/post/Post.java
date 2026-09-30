@@ -5,7 +5,7 @@
 
 package db.blog_example.table.post;
 
-import db.blog_example.BlogExample;
+import db.blog_example.BlogExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -60,6 +60,6 @@ public class Post extends Table {
 
 	public Post (ISchema schema, String name) { super(schema, name); }
 
-	public static Post instance () { return new Post(new BlogExample(), "post"); }
+	public static Post instance () { return new Post(new BlogExampleSchema(), "post"); }
 
 }

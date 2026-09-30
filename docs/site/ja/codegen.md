@@ -199,11 +199,12 @@ Migration.install();
 ./gradlew codegen
 ```
 
-DB のスキーマから、データソースごとに3種類を作ります。
+DB のスキーマから、データソースごとに4種類を作ります。
 
 | 生成物 | 置き場所 | 何に使うか |
 | --- | --- | --- |
 | スキーマクラス | `db/<データソース>/BlogExample.java` | `BlogExample.db()`、テーブル一覧 |
+| スキーマの実体 | `db/<データソース>/BlogExampleSchema.java` | テーブルクラスが使う（アプリからは使わない） |
 | テーブルクラス | `db/<データソース>/table/post/Post.java` | `Post.id` などの `Column` |
 | 型付きアクセサ | `db/<データソース>/table_data/post/AbstractPostData.java` | `data.title("...").published(true)` |
 

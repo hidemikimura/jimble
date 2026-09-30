@@ -169,6 +169,9 @@ public class Generator {
 		// テーブル定義一覧を取得する
 		List<TableInfo> tableInfoList = getTableInfoList(dbSource);
 
+		// スキーマの実体（テーブルの定数を持たない。テーブルクラスはこちらを使う）
+		outputSchemeBase(rootDir, packageName, dbSource, schemeClassName);
+
 		// スキーマクラス（SchemaSQL は製品ごとの DDL で書く。要件 F-D-30）
 		outputScheme(rootDir, packageName, dbSource, dbSource.name(), schemeClassName, tableInfoList
 			, TableMetaReader.of(dbSource.dialect()));
@@ -182,6 +185,87 @@ public class Generator {
 	}
 
 	// region スキーマクラスソースコード出力
+
+	/**
+	 * スキーマの実体の名前（{@code Aqsell} なら {@code AqsellSchema}）
+	 *
+	 * @param schemeClassName	スキーマクラス名
+	 * @return	実体のクラス名
+	 */
+	static String schemeBaseClassName (String schemeClassName) {
+
+		return schemeClassName + "Schema";
+
+	}
+
+	/**
+	 * スキーマの実体のソースコード出力
+	 *
+	 * <p>
+	 * <b>クラスの初期化を輪にしないため</b>に、スキーマを2つに分ける。
+	 * スキーマクラス（{@code Aqsell}）は全テーブルの定数を持ち、初期化の中で全テーブルクラスを初期化する。
+	 * テーブルクラスは列を作るときに自分のスキーマを {@code new} する。
+	 * <b>そこでスキーマクラスを {@code new} すると、2つのクラスが互いの初期化を必要とする輪になる</b>——
+	 * 1つのスレッドなら通る（D-174）が、<b>2つのスレッドが輪の別の場所から同時に入ると、互いの初期化の終わりを待って止まる</b>
+	 * （Web のリクエストが {@code Shop} を、MQ が {@code JobHistory} を初めて触ったとき、など）。
+	 * </p>
+	 *
+	 * <p>
+	 * テーブルクラスは、テーブルの定数を持たないこちら（{@code AqsellSchema}）を {@code new} する。
+	 * {@code Aqsell} はこれを継承するので、アプリから見える書き方（{@code Aqsell.shop} / {@code Aqsell.db()}）は変わらない。
+	 * </p>
+	 *
+	 * @param rootDir           ルートディレクトリ
+	 * @param packageName       パッケージ名
+	 * @param dbSource          DBソース
+	 * @param schemeClassName   スキーマクラス名
+	 */
+	private static void outputSchemeBase (File rootDir, String packageName, DBSource dbSource, String schemeClassName) {
+
+		String baseClassName = schemeBaseClassName(schemeClassName);
+		File sourceFile = new File(rootDir, baseClassName + ".java");
+
+		try (
+			TextOutput textOutput = new TextOutput(sourceFile)
+		) {
+
+			writeGeneratedHeader(textOutput);
+
+			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name()));
+			textOutput.writeLine("");
+			textOutput.writeLine("import io.jimble.db.sql.definition.schema.AbstractSchema;");
+			textOutput.writeLine("");
+			textOutput.writeLine("/**");
+			textOutput.writeLine(" * %s（スキーマの実体。テーブルの定数は {@link %s}）".formatted(dbSource.name(), schemeClassName));
+			textOutput.writeLine(" *");
+			textOutput.writeLine(" * <p>");
+			textOutput.writeLine(" * テーブルクラスはこちらを使う。{@link %s} を使うと、クラスの初期化が輪になり、".formatted(schemeClassName));
+			textOutput.writeLine(" * 2つのスレッドが同時に初めて触ったときに止まる。");
+			textOutput.writeLine(" * </p>");
+			textOutput.writeLine(" */");
+			textOutput.writeLine("public class %s extends AbstractSchema {".formatted(baseClassName));
+			textOutput.writeLine("");
+			textOutput.writeLine("	/**");
+			textOutput.writeLine("	 * {@inheritDoc}");
+			textOutput.writeLine("	 */");
+			textOutput.writeLine("	@Override");
+			textOutput.writeLine("	public String name () { return \"%s\"; }".formatted(dbSource.name()));
+			textOutput.writeLine("");
+			textOutput.writeLine("	/**");
+			textOutput.writeLine("	 * テーブルの定数を持つクラス（{@link #tableList()} が読む。初期化はそのときまで遅らせる）");
+			textOutput.writeLine("	 *");
+			textOutput.writeLine("	 * @return\tクラス");
+			textOutput.writeLine("	 */");
+			textOutput.writeLine("	@Override");
+			textOutput.writeLine("	protected Class<?> tableHolder () { return %s.class; }".formatted(schemeClassName));
+			textOutput.writeLine("");
+			textOutput.writeLine("}");
+
+		} catch (Exception ex) {
+			throw new IllegalStateException("スキーマの実体を書き出せませんでした: " + sourceFile, ex);
+		}
+
+	}
 
 	/**
 	 * スキーマクラスソースコード出力
@@ -220,7 +304,7 @@ public class Generator {
 			textOutput.writeLine("/**");
 			textOutput.writeLine(" * %s".formatted(schemeName));
 			textOutput.writeLine(" */");
-			textOutput.writeLine("public class %s extends AbstractSchema {".formatted(schemeClassName));
+			textOutput.writeLine("public class %s extends %s {".formatted(schemeClassName, schemeBaseClassName(schemeClassName)));
 			textOutput.writeLine("");
 			/*
 			 * 生成したときの jimble の版。
@@ -244,13 +328,7 @@ public class Generator {
 			textOutput.writeLine("");
 
 
-			textOutput.writeLine("\t/**");
-			textOutput.writeLine("\t * {@inheritDoc}");
-			textOutput.writeLine("\t */");
-			textOutput.writeLine("\t@Override");
-			textOutput.writeLine("\tpublic String name () { return \"%s\"; }".formatted(dbSource.name()));
-			textOutput.writeLine("");
-
+			// name() は実体（%sSchema）が持つ
 			textOutput.writeLine("\t/**");
 			textOutput.writeLine("\t * get DB instance");
 			textOutput.writeLine("\t *");
@@ -428,7 +506,7 @@ public class Generator {
 			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, dbSource.name(), tableInfo.name));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, dbSource.name(), schemeClassName));
+			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, dbSource.name(), schemeBaseClassName(schemeClassName)));
 			textOutput.writeLine("import io.jimble.db.sql.definition.column.Column;");
 			textOutput.writeLine("import io.jimble.util.data.definition.ISchema;");
 			textOutput.writeLine("import io.jimble.db.sql.definition.table.Table;");
@@ -540,7 +618,8 @@ public class Generator {
 			textOutput.writeLine("\tpublic %s (ISchema schema, String name) { super(schema, name); }".formatted(tableInfo.className));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("\tpublic static %s instance () { return new %s(new %s(), \"%s\"); }".formatted(tableInfo.className, tableInfo.className, schemeClassName, tableInfo.name));
+			// スキーマの実体を使う（スキーマクラスを new すると、初期化が輪になる）
+			textOutput.writeLine("\tpublic static %s instance () { return new %s(new %s(), \"%s\"); }".formatted(tableInfo.className, tableInfo.className, schemeBaseClassName(schemeClassName), tableInfo.name));
 			textOutput.writeLine("");
 
 			textOutput.writeLine("}");

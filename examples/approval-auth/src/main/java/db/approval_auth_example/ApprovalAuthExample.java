@@ -14,19 +14,13 @@ import io.jimble.db.sql.definition.table.Table;
 /**
  * approval_auth_example
  */
-public class ApprovalAuthExample extends AbstractSchema {
+public class ApprovalAuthExample extends ApprovalAuthExampleSchema {
 
 	private static final long SQL_VERSION = 1;
 
 	/* 社員 */
 	public static final Table staff = Staff.instance();
 
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String name () { return "approval_auth_example"; }
 
 	/**
 	 * get DB instance

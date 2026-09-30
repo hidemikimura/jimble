@@ -5,7 +5,7 @@
 
 package db.approval_data_example.table.notice;
 
-import db.approval_data_example.ApprovalDataExample;
+import db.approval_data_example.ApprovalDataExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -57,6 +57,6 @@ public class Notice extends Table {
 
 	public Notice (ISchema schema, String name) { super(schema, name); }
 
-	public static Notice instance () { return new Notice(new ApprovalDataExample(), "notice"); }
+	public static Notice instance () { return new Notice(new ApprovalDataExampleSchema(), "notice"); }
 
 }

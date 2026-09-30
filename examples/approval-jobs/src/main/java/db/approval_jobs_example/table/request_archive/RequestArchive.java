@@ -5,7 +5,7 @@
 
 package db.approval_jobs_example.table.request_archive;
 
-import db.approval_jobs_example.ApprovalJobsExample;
+import db.approval_jobs_example.ApprovalJobsExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -63,6 +63,6 @@ public class RequestArchive extends Table {
 
 	public RequestArchive (ISchema schema, String name) { super(schema, name); }
 
-	public static RequestArchive instance () { return new RequestArchive(new ApprovalJobsExample(), "request_archive"); }
+	public static RequestArchive instance () { return new RequestArchive(new ApprovalJobsExampleSchema(), "request_archive"); }
 
 }

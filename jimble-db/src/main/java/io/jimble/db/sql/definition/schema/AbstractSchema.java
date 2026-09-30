@@ -79,9 +79,11 @@ public abstract class AbstractSchema implements ISchema {
 	 */
 	private void tableListInner () {
 
+		// 静的フィールドなので field.get(this) の this は使われない（tableHolder が別のクラスでも読める）
+
 		try {
 
-			Field[] fields = getClass().getDeclaredFields();
+			Field[] fields = tableHolder().getDeclaredFields();
 			for (Field field : fields) {
 				if (Table.class.isAssignableFrom(field.getType())) {
 					tableList.add((Table) field.get(this));
@@ -95,6 +97,22 @@ public abstract class AbstractSchema implements ISchema {
 		}
 
 		isGetTableList = true;
+
+	}
+
+	/**
+	 * テーブルの定数（{@code static final Table}）を持つクラス
+	 *
+	 * <p>
+	 * 既定は自分のクラス。生成されたスキーマの実体（{@code AqsellSchema}）は、定数を持つスキーマクラス
+	 * （{@code Aqsell}）を返す——スキーマを2つに分けたのは、クラスの初期化を輪にしないためである。
+	 * </p>
+	 *
+	 * @return	クラス
+	 */
+	protected Class<?> tableHolder () {
+
+		return getClass();
 
 	}
 

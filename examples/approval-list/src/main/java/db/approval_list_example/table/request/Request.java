@@ -5,7 +5,7 @@
 
 package db.approval_list_example.table.request;
 
-import db.approval_list_example.ApprovalListExample;
+import db.approval_list_example.ApprovalListExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -63,6 +63,6 @@ public class Request extends Table {
 
 	public Request (ISchema schema, String name) { super(schema, name); }
 
-	public static Request instance () { return new Request(new ApprovalListExample(), "request"); }
+	public static Request instance () { return new Request(new ApprovalListExampleSchema(), "request"); }
 
 }
