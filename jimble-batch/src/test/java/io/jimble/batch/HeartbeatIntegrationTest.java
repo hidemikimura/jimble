@@ -188,12 +188,6 @@ class HeartbeatIntegrationTest {
 		for (Class<?> batch : List.of(HoldBatchA.class, HoldBatchB.class, HoldBatchC.class)) {
 			runs.add(Thread.ofVirtual().start(() -> BatchExecutor.execute(
 				BatchExecutor.parseArgs(new String[]{ "class=" + batch.getName() }))));
-			/*
-			 * 少しずらして起動する。同じ瞬間に起動すると、実行情報の登録（registerExecuteInfo）で
-			 * 5 秒ほど待たされることがある——心拍の間隔を短くした（200ms）ときに出て、2.1 のコードでも同じだった。
-			 * ここで見たいのは心拍のスレッドの数なので、その待ちは避ける（原因は別に調べる）
-			 */
-			Thread.sleep(300);
 		}
 
 		// 3本とも走り出すまで待つ
