@@ -114,6 +114,24 @@ public interface ResponseSink {
 	void send (InputStream stream, long contentLength);
 
 	/**
+	 * ストリームを送信する（写すときの配列の大きさを指定する）
+	 *
+	 * <p>
+	 * {@code Response} は {@code io.buffer_size} をここに渡す（D-200）。
+	 * 大きさを気にしない実装は、既定のまま {@link #send(InputStream, long)} に任せてよい。
+	 * </p>
+	 *
+	 * @param stream		ストリーム
+	 * @param contentLength	長さ。不明なら -1
+	 * @param bufferSize	写すときの配列の大きさ（バイト）
+	 */
+	default void send (InputStream stream, long contentLength, int bufferSize) {
+
+		send(stream, contentLength);
+
+	}
+
+	/**
 	 * ファイルをダウンロードさせる
 	 *
 	 * @param path		ファイル

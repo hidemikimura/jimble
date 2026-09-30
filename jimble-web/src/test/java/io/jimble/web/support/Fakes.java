@@ -187,6 +187,23 @@ public final class Fakes {
 			}
 		}
 
+		/* send(InputStream, long, int) で受けた大きさと入力（D-200） */
+		private int streamBufferSize = -1;
+		private InputStream sentStream = null;
+
+		@Override
+		public void send (InputStream stream, long contentLength, int bufferSize) {
+			this.streamBufferSize = bufferSize;
+			this.sentStream = stream;
+			send(stream, contentLength);
+		}
+
+		/** send(InputStream, long, int) で受けた、写すときの大きさ。呼ばれていなければ -1 */
+		public int streamBufferSize () { return streamBufferSize; }
+
+		/** send(InputStream, long, int) で受けた入力 */
+		public InputStream sentStream () { return sentStream; }
+
 		@Override
 		public void sendFile (Path path, String fileName) {
 			markSent("file:" + path);

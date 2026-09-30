@@ -107,6 +107,13 @@ final class HelidonResponseSink implements ResponseSink {
 	@Override
 	public void send (InputStream stream, long contentLength) {
 
+		send(stream, contentLength, BUFFER_SIZE);
+
+	}
+
+	@Override
+	public void send (InputStream stream, long contentLength, int bufferSize) {
+
 		if (contentLength >= 0) {
 			header("Content-Length", contentLength);
 		}
@@ -114,7 +121,7 @@ final class HelidonResponseSink implements ResponseSink {
 		streamed = true;
 
 		try (OutputStream out = response.outputStream()) {
-			copy(stream, out);
+			copy(stream, out, bufferSize);
 		} catch (Exception ex) {
 			throw new IllegalStateException("ストリームの送信に失敗しました", ex);
 		}
@@ -135,13 +142,19 @@ final class HelidonResponseSink implements ResponseSink {
 	 * まとめて書いたほうが速い。flush するのは「読めるものが尽きた＝次は待つことになる」ときだけ。
 	 * </p>
 	 *
-	 * @param in	入力
-	 * @param out	出力
+	 * <p>
+	 * <b>配列の大きさは {@code io.buffer_size}</b>（D-200）。helidon の出力のバッファ（4KiB）より大きい書き込みは、
+	 * そのバッファを通らずにそのまま送り出される。なので、この配列の大きさが1回に送り出す大きさになる。
+	 * </p>
+	 *
+	 * @param in			入力
+	 * @param out			出力
+	 * @param bufferSize	写すときの配列の大きさ
 	 * @throws IOException	読み書きの失敗
 	 */
-	static void copy (InputStream in, OutputStream out) throws java.io.IOException {
+	static void copy (InputStream in, OutputStream out, int bufferSize) throws java.io.IOException {
 
-		byte[] buffer = new byte[BUFFER_SIZE];
+		byte[] buffer = new byte[bufferSize > 0 ? bufferSize : BUFFER_SIZE];
 		int read;
 
 		while ((read = in.read(buffer)) >= 0) {
@@ -158,7 +171,7 @@ final class HelidonResponseSink implements ResponseSink {
 
 	}
 
-	/** 写すときのバッファ（transferTo と同じ大きさ） */
+	/** 写すときのバッファ（大きさの指定が無いとき。transferTo と同じ大きさ） */
 	private static final int BUFFER_SIZE = 16 * 1024;
 
 	/**

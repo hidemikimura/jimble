@@ -151,8 +151,16 @@ public final class Response extends Data {
 	/** 設定のキー：IOバッファサイズ */
 	static final String KEY_IO_BUFFER_SIZE = "jimble.io.buffer_size";
 
-	/** IOバッファサイズの既定（256KiB） */
-	static final int DEFAULT_IO_BUFFER_SIZE = 256 * 1024;
+	/**
+	 * IOバッファサイズの既定（64KiB）
+	 *
+	 * <p>
+	 * 2.1.5 までは 256KiB。<b>測って決め直した</b>（D-200）。読む側の BufferedInputStream をやめ、
+	 * 写す配列そのものをこの大きさにしたところ、ファイルは 256KiB でも 64KiB でも速さは同じで、
+	 * 256KiB は1回に 700KB ほど、64KiB は 150KB ほどメモリを使った。JSON も 64KiB で遅くならなかった。
+	 * </p>
+	 */
+	static final int DEFAULT_IO_BUFFER_SIZE = 64 * 1024;
 
 	/**
 	 * 設定の IOバッファサイズ（{@code jimble.io.buffer_size}）
@@ -185,13 +193,13 @@ public final class Response extends Data {
 			bytes = conf.getLong(KEY_IO_BUFFER_SIZE, DEFAULT_IO_BUFFER_SIZE);
 			WarnOnce.warn(KEY_IO_BUFFER_SIZE
 				, "設定 %s に単位がありません。バイトとして読みます（%d）。%s のように単位を書いてください"
-					.formatted(KEY_IO_BUFFER_SIZE, bytes, "256KiB"));
+					.formatted(KEY_IO_BUFFER_SIZE, bytes, "64KiB"));
 		} else {
 			bytes = conf.getBytes(KEY_IO_BUFFER_SIZE, DEFAULT_IO_BUFFER_SIZE);
 		}
 
 		if (bytes <= 0 || bytes > Integer.MAX_VALUE) {
-			throw new IllegalStateException("設定 %s は 1 バイト以上、2GiB 未満にしてください（例: 256KiB）。いまの値: %d バイト"
+			throw new IllegalStateException("設定 %s は 1 バイト以上、2GiB 未満にしてください（例: 64KiB）。いまの値: %d バイト"
 				.formatted(KEY_IO_BUFFER_SIZE, bytes));
 		}
 
@@ -1557,10 +1565,12 @@ public final class Response extends Data {
 		if (contentLength > 0) {
 			sink.header("Content-Length", contentLength);
 		}
-		try (
-			BufferedInputStream bis = new BufferedInputStream(is, getIoBufferSize())
-		) {
-			sink.send(bis);
+		/*
+		 * 読む側には BufferedInputStream を挟まない（D-200）。写す配列そのものを io.buffer_size の大きさにする。
+		 * 挟むと、同じ大きさの配列をもう1つ取って、中身を1度余計に写すだけになる。
+		 */
+		try (is) {
+			sink.send(is, -1L, getIoBufferSize());
 		} catch (Exception ex) {
 			Log.error(ex, request, this);
 			this.responseCode = 500;
@@ -1752,7 +1762,7 @@ public final class Response extends Data {
 		}
 
 		try (
-			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
+			OutputStream bos = new GrowingBufferedOutputStream(sink.outputStream(), getIoBufferSize())
 		) {
 			Configration configration = new Configration();
 			configration.isAutoClose(true);
@@ -1797,7 +1807,7 @@ public final class Response extends Data {
 
 		byte[] ln = "\n".getBytes(StandardCharsets.UTF_8);
 		try (
-			BufferedOutputStream bos = new BufferedOutputStream(sink.outputStream(), getIoBufferSize())
+			OutputStream bos = new GrowingBufferedOutputStream(sink.outputStream(), getIoBufferSize())
 		) {
 			boolean isFirst = true;
 			for (Data json : jsonL) {
@@ -1880,11 +1890,11 @@ public final class Response extends Data {
 			sink.header("Content-Encoding", contentEncoding);
 		}
 		sink.header("Content-Length", file.length());
+		// 読む側に BufferedInputStream を挟まないのは、ストリームを送るときと同じ（D-200）
 		try (
-			FileInputStream fis = new FileInputStream(file);
-			BufferedInputStream bis = new BufferedInputStream(fis, getIoBufferSize())
+			FileInputStream fis = new FileInputStream(file)
 		) {
-			sink.send(bis);
+			sink.send(fis, -1L, getIoBufferSize());
 		} catch (Exception ex) {
 			// 書き始めたあとなので状態コードは変えられない。せめてログに出す
 			Log.error("ファイルの送信に失敗しました: " + file.getPath(), ex);
