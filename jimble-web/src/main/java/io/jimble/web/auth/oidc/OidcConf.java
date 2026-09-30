@@ -1,7 +1,10 @@
 package io.jimble.web.auth.oidc;
 
+import com.typesafe.config.ConfigValueType;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.internal.WarnOnce;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -22,8 +25,8 @@ import java.util.List;
  *             # jwks_uri               = "..."
  *
  *             scopes         = "openid email profile"
- *             clock_skew     = 60      # 秒。時計のずれをどこまで許すか
- *             discovery_ttl  = 3600    # 秒。discovery と JWKS を持つ時間
+ *             clock_skew     = 60s     # 時計のずれをどこまで許すか
+ *             discovery_ttl  = 1h      # discovery と JWKS を持つ時間
  *         }
  *     }
  * }
@@ -57,16 +60,36 @@ public final class OidcConf {
 	}
 
 	/**
-	 * 設定を読む（数）
+	 * 設定を読む（時間）
+	 *
+	 * <p>
+	 * <b>単位つきで読む</b>（{@code 60s} / {@code 1h}。要件 D-159）。
+	 * かつては素の数値（秒）で読んでいたので、<b>素の数値も秒として受ける</b>（1度だけ警告する）。
+	 * 上げた日に OIDC のログインが止まるのを避けるため。
+	 * </p>
 	 *
 	 * @param provider		プロバイダの名前
 	 * @param key			鍵
 	 * @param defaultValue	既定値
 	 * @return	値
 	 */
-	static long getLong (String provider, String key, long defaultValue) {
+	static Duration getDuration (String provider, String key, Duration defaultValue) {
 
-		return Conf.conf().getLong(ROOT + provider + "." + key, defaultValue);
+		String path = ROOT + provider + "." + key;
+		Conf conf = Conf.conf();
+
+		if (!conf.has(path)) {
+			return defaultValue;
+		}
+
+		if (conf.config().getValue(path).valueType() == ConfigValueType.NUMBER) {
+			long seconds = conf.getLong(path, defaultValue.toSeconds());
+			WarnOnce.warn(path, "設定 %s に単位がありません。秒として読みます（%d）。%ds のように単位を書いてください"
+				.formatted(path, seconds, seconds));
+			return Duration.ofSeconds(seconds);
+		}
+
+		return conf.getDuration(path, defaultValue);
 
 	}
 
@@ -115,7 +138,7 @@ public final class OidcConf {
 	 */
 	static long clockSkewSeconds (String provider) {
 
-		return Math.max(0, getLong(provider, "clock_skew", 60));
+		return Math.max(0, getDuration(provider, "clock_skew", Duration.ofSeconds(60)).toSeconds());
 
 	}
 
@@ -127,7 +150,7 @@ public final class OidcConf {
 	 */
 	static long cacheSeconds (String provider) {
 
-		return Math.max(60, getLong(provider, "discovery_ttl", 3600));
+		return Math.max(60, getDuration(provider, "discovery_ttl", Duration.ofHours(1)).toSeconds());
 
 	}
 

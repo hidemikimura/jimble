@@ -259,8 +259,8 @@ auth {
 			# jwks_uri               = "..."
 
 			scopes        = "openid email profile"
-			clock_skew    = 60      # seconds of clock drift accepted
-			discovery_ttl = 3600    # seconds discovery and JWKS are held
+			clock_skew    = 60s     # how much clock drift is accepted
+			discovery_ttl = 1h      # how long discovery and JWKS are held
 		}
 	}
 }

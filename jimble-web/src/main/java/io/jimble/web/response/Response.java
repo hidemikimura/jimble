@@ -5,7 +5,9 @@ import io.jimble.web.http.RedirectLoopException;
 import io.jimble.web.http.ResponseSink;
 import io.jimble.web.template.ModelAndView;
 import io.jimble.web.template.Templates;
+import com.typesafe.config.ConfigValueType;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.internal.WarnOnce;
 import io.jimble.db.cache.CacheData;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.data.TableNest;
@@ -142,7 +144,58 @@ public final class Response extends Data {
 			return this.ioBufferSize;
 		}
 
-		return Conf.conf().getInt("jimble.io.buffer_size", 256 * 1024);
+		return configuredIoBufferSize();
+
+	}
+
+	/** 設定のキー：IOバッファサイズ */
+	static final String KEY_IO_BUFFER_SIZE = "jimble.io.buffer_size";
+
+	/** IOバッファサイズの既定（256KiB） */
+	static final int DEFAULT_IO_BUFFER_SIZE = 256 * 1024;
+
+	/**
+	 * 設定の IOバッファサイズ（{@code jimble.io.buffer_size}）
+	 *
+	 * <p>
+	 * <b>単位つきで読む</b>（{@code 256KiB}。ドキュメントの書き方）。
+	 * かつては {@code getInt} で読んでいたので、<b>ドキュメントどおり {@code 256KiB} と書くと、
+	 * ファイルを送るたびに 500 になっていた</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>素の数値もバイトとして受ける</b>（1度だけ警告する）。{@code getInt} で動いていたアプリが、
+	 * 上げた日にファイルを送れなくなるのを避けるため。ほかの大きさの設定は素の数値を断る（D-159）。
+	 * </p>
+	 *
+	 * @return	バイト
+	 * @throws IllegalStateException	0 以下か、int に収まらない場合
+	 */
+	static int configuredIoBufferSize () {
+
+		Conf conf = Conf.conf();
+
+		if (!conf.has(KEY_IO_BUFFER_SIZE)) {
+			return DEFAULT_IO_BUFFER_SIZE;
+		}
+
+		long bytes;
+
+		if (conf.config().getValue(KEY_IO_BUFFER_SIZE).valueType() == ConfigValueType.NUMBER) {
+			bytes = conf.getLong(KEY_IO_BUFFER_SIZE, DEFAULT_IO_BUFFER_SIZE);
+			WarnOnce.warn(KEY_IO_BUFFER_SIZE
+				, "設定 %s に単位がありません。バイトとして読みます（%d）。%s のように単位を書いてください"
+					.formatted(KEY_IO_BUFFER_SIZE, bytes, "256KiB"));
+		} else {
+			bytes = conf.getBytes(KEY_IO_BUFFER_SIZE, DEFAULT_IO_BUFFER_SIZE);
+		}
+
+		if (bytes <= 0 || bytes > Integer.MAX_VALUE) {
+			throw new IllegalStateException("設定 %s は 1 バイト以上、2GiB 未満にしてください（例: 256KiB）。いまの値: %d バイト"
+				.formatted(KEY_IO_BUFFER_SIZE, bytes));
+		}
+
+		return (int) bytes;
 
 	}
 
