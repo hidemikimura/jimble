@@ -211,6 +211,14 @@ public final class DbScheduler implements CancelOrderNotify {
 			ticker.scheduleWithFixedDelay(() -> tick(ZonedDateTime.now())
 				, SchedulerConf.tickInterval().toMillis(), SchedulerConf.tickInterval().toMillis(), TimeUnit.MILLISECONDS);
 
+			/*
+			 * 止める印（db_value）も同じスレッドで見る。
+			 * <b>本体のスレッドは DB を触らずに待つだけ</b>にする——DB を見るスレッドが1本増えるごとに、
+			 * DB の応答が遅れたとき接続が1本ずつ埋まる。
+			 */
+			ticker.scheduleWithFixedDelay(this::checkEnabled
+				, SchedulerConf.exitCheck().toMillis(), SchedulerConf.exitCheck().toMillis(), TimeUnit.MILLISECONDS);
+
 			// 「いま動かして」を受ける口（要件 F-B-11）
 			mqThreads = startQueues(extraQueues);
 
@@ -292,12 +300,7 @@ public final class DbScheduler implements CancelOrderNotify {
 
 		while (!stopping) {
 
-			if (!SchedulerControl.isEnabled()) {
-				Log.info("スケジューラが止められました: %s".formatted(schedulerId));
-				stopping = true;
-				break;
-			}
-
+			// 止める印は ticker が見る（checkEnabled）。ここは DB を触らない
 			try {
 				Thread.sleep(SchedulerConf.exitCheck().toMillis());
 			} catch (InterruptedException ex) {
@@ -305,6 +308,26 @@ public final class DbScheduler implements CancelOrderNotify {
 				stopping = true;
 			}
 
+		}
+
+	}
+
+	/**
+	 * 止める印を見る（ticker から）
+	 *
+	 * <p>
+	 * <b>例外を外へ出さない。</b>{@code scheduleWithFixedDelay} は、1回でも例外が抜けると以後二度と呼ばない。
+	 * </p>
+	 */
+	private void checkEnabled () {
+
+		try {
+			if (!stopping && !SchedulerControl.isEnabled()) {
+				Log.info("スケジューラが止められました: %s".formatted(schedulerId));
+				stopping = true;
+			}
+		} catch (RuntimeException ex) {
+			Log.error(ex, "スケジューラの止める印を見られませんでした");
 		}
 
 	}
