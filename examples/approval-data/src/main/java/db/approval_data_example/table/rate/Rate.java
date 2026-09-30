@@ -5,7 +5,7 @@
 
 package db.approval_data_example.table.rate;
 
-import db.approval_data_example.ApprovalDataExample;
+import db.approval_data_example.ApprovalDataExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -54,6 +54,6 @@ public class Rate extends Table {
 
 	public Rate (ISchema schema, String name) { super(schema, name); }
 
-	public static Rate instance () { return new Rate(new ApprovalDataExample(), "rate"); }
+	public static Rate instance () { return new Rate(new ApprovalDataExampleSchema(), "rate"); }
 
 }

@@ -5,7 +5,7 @@
 
 package db.approval_jobs_example.table.request;
 
-import db.approval_jobs_example.ApprovalJobsExample;
+import db.approval_jobs_example.ApprovalJobsExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -60,6 +60,6 @@ public class Request extends Table {
 
 	public Request (ISchema schema, String name) { super(schema, name); }
 
-	public static Request instance () { return new Request(new ApprovalJobsExample(), "request"); }
+	public static Request instance () { return new Request(new ApprovalJobsExampleSchema(), "request"); }
 
 }

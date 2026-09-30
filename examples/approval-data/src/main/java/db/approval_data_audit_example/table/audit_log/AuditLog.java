@@ -5,7 +5,7 @@
 
 package db.approval_data_audit_example.table.audit_log;
 
-import db.approval_data_audit_example.ApprovalDataAuditExample;
+import db.approval_data_audit_example.ApprovalDataAuditExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -57,6 +57,6 @@ public class AuditLog extends Table {
 
 	public AuditLog (ISchema schema, String name) { super(schema, name); }
 
-	public static AuditLog instance () { return new AuditLog(new ApprovalDataAuditExample(), "audit_log"); }
+	public static AuditLog instance () { return new AuditLog(new ApprovalDataAuditExampleSchema(), "audit_log"); }
 
 }

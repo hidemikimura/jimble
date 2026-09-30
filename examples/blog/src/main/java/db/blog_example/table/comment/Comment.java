@@ -5,7 +5,7 @@
 
 package db.blog_example.table.comment;
 
-import db.blog_example.BlogExample;
+import db.blog_example.BlogExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -57,6 +57,6 @@ public class Comment extends Table {
 
 	public Comment (ISchema schema, String name) { super(schema, name); }
 
-	public static Comment instance () { return new Comment(new BlogExample(), "comment"); }
+	public static Comment instance () { return new Comment(new BlogExampleSchema(), "comment"); }
 
 }

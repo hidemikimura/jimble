@@ -5,7 +5,7 @@
 
 package db.approval_auth_example.table.staff;
 
-import db.approval_auth_example.ApprovalAuthExample;
+import db.approval_auth_example.ApprovalAuthExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -60,6 +60,6 @@ public class Staff extends Table {
 
 	public Staff (ISchema schema, String name) { super(schema, name); }
 
-	public static Staff instance () { return new Staff(new ApprovalAuthExample(), "staff"); }
+	public static Staff instance () { return new Staff(new ApprovalAuthExampleSchema(), "staff"); }
 
 }

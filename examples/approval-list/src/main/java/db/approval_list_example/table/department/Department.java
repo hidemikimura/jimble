@@ -5,7 +5,7 @@
 
 package db.approval_list_example.table.department;
 
-import db.approval_list_example.ApprovalListExample;
+import db.approval_list_example.ApprovalListExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -51,6 +51,6 @@ public class Department extends Table {
 
 	public Department (ISchema schema, String name) { super(schema, name); }
 
-	public static Department instance () { return new Department(new ApprovalListExample(), "department"); }
+	public static Department instance () { return new Department(new ApprovalListExampleSchema(), "department"); }
 
 }

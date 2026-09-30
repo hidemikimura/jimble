@@ -57,14 +57,22 @@ class GeneratedShapeInitTest {
 
 	// region 生成物と同じ形
 
-	/** スキーマクラス（生成物と同じ形） */
-	static final class Oreteki extends AbstractSchema {
-
-		/** テーブルの定数。生成物はこの形で持つ */
-		static final Table group = Group.instance();
+	/** スキーマの実体（生成物と同じ形。テーブルの定数を持たない） */
+	static class OretekiSchema extends AbstractSchema {
 
 		@Override
 		public String name () { return "oreteki"; }
+
+		@Override
+		protected Class<?> tableHolder () { return Oreteki.class; }
+
+	}
+
+	/** スキーマクラス（生成物と同じ形） */
+	static final class Oreteki extends OretekiSchema {
+
+		/** テーブルの定数。生成物はこの形で持つ */
+		static final Table group = Group.instance();
 
 	}
 
@@ -79,7 +87,11 @@ class GeneratedShapeInitTest {
 
 		Group (ISchema schema, String name) { super(schema, name); }
 
-		static Group instance () { return new Group(new Oreteki(), "group"); }
+		/*
+		 * スキーマの実体を new する。スキーマクラス（Oreteki）を new すると、2つのクラスが互いの初期化を必要とする輪になり、
+		 * 2つのスレッドが同時に初めて触ったときに止まる（GeneratorIntegrationTest#concurrentFirstTouchDoesNotDeadlock）
+		 */
+		static Group instance () { return new Group(new OretekiSchema(), "group"); }
 
 	}
 

@@ -14,19 +14,13 @@ import io.jimble.db.sql.definition.table.Table;
 /**
  * approval_data_audit_example
  */
-public class ApprovalDataAuditExample extends AbstractSchema {
+public class ApprovalDataAuditExample extends ApprovalDataAuditExampleSchema {
 
 	private static final long SQL_VERSION = 1;
 
 	/* 監査ログ */
 	public static final Table audit_log = AuditLog.instance();
 
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String name () { return "approval_data_audit_example"; }
 
 	/**
 	 * get DB instance

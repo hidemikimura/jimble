@@ -5,7 +5,7 @@
 
 package db.approval_list_example.table.staff;
 
-import db.approval_list_example.ApprovalListExample;
+import db.approval_list_example.ApprovalListExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -54,6 +54,6 @@ public class Staff extends Table {
 
 	public Staff (ISchema schema, String name) { super(schema, name); }
 
-	public static Staff instance () { return new Staff(new ApprovalListExample(), "staff"); }
+	public static Staff instance () { return new Staff(new ApprovalListExampleSchema(), "staff"); }
 
 }
