@@ -144,11 +144,16 @@ class JimbleRunPluginTest {
 		org.junit.jupiter.api.Assertions.assertFalse(HopByHopHeaders.isForwardable("Transfer-Encoding"));
 
 		/*
-		 * Host と Content-Length は HttpClient / HttpServer が付け直す。
+		 * Content-Length は転送する側と HttpServer が書き直す。
 		 * 元の値を持っていくと本文の長さが合わなくなる。
 		 */
-		org.junit.jupiter.api.Assertions.assertFalse(HopByHopHeaders.isForwardable("Host"));
 		org.junit.jupiter.api.Assertions.assertFalse(HopByHopHeaders.isForwardable("Content-Length"));
+
+		/*
+		 * <b>Host は引き継ぐ。</b>落とすと、アプリにはいつも 127.0.0.1:アプリのポート が届く
+		 * （ホストで振り分けるアプリが開発のときだけ食い違う）。
+		 */
+		assertTrue(HopByHopHeaders.isForwardable("Host"));
 
 	}
 

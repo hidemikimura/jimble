@@ -12,9 +12,14 @@ import java.util.Set;
  * </p>
  *
  * <p>
- * {@code Content-Length} と {@code Host} もここで落とす。
- * どちらも {@code HttpClient} と {@code HttpServer} が自分で付け直すもので、
- * <b>元の値を持っていくと本文の長さが合わなくなる。</b>
+ * {@code Content-Length} もここで落とす。本文の長さは {@link AppConnection} と {@code HttpServer} が
+ * 自分で書き直すもので、<b>元の値を持っていくと本文の長さが合わなくなる。</b>
+ * </p>
+ *
+ * <p>
+ * <b>{@code Host} は落とさない</b>——ブラウザが叩いたホストをアプリへ引き継ぐ。
+ * かつては {@code HttpClient} が付け直すので落としていたが、それで<b>アプリにはいつも
+ * {@code 127.0.0.1:9100} が届いていた</b>（ホストで振り分けるアプリが開発のときだけ食い違う）。
  * </p>
  */
 final class HopByHopHeaders {
@@ -29,7 +34,6 @@ final class HopByHopHeaders {
 		, "trailer"
 		, "transfer-encoding"
 		, "upgrade"
-		, "host"
 		, "content-length"
 		, "expect"
 	);
