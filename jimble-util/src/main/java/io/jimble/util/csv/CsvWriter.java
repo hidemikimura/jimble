@@ -14,11 +14,20 @@ import java.util.List;
 
 /**
  * CSV書き込み
+ *
+ * <h2>BOM</h2>
+ * <p>
+ * {@link #setWithBom(boolean)} で、書き始めに BOM を付けられる（Excel に UTF-8 の CSV を読ませるとき）。
+ * <b>文字コードが UTF 系のときだけ効く</b>。Shift_JIS などでは何もしない（BOM というものが無い）。
+ * </p>
  */
 public class CsvWriter implements Closeable, AutoCloseable {
 
 	/* 文字コード */
 	private String charset = "SHIFT-JIS";
+
+	/* BOM を付けるか（UTF 系のときだけ効く） */
+	private boolean withBom = false;
 
 	/* 改行コード */
 	private LineDelimiter lineSeparator = LineDelimiter.CRLF;
@@ -111,6 +120,11 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	 */
 	public CsvWriter(OutputStreamWriter outputStreamWriter) {
 
+		/*
+		 * 文字コードは渡されたライターのもの（BOM を付けるかの判定に使う）。
+		 * getEncoding() は歴史的な名前（UTF8 など）を返すので、Charset を通して正式な名前にする
+		 */
+		this.charset = Charset.forName(outputStreamWriter.getEncoding()).name();
 		this.writer = outputStreamWriter;
 
 	}
@@ -204,12 +218,54 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	}
 
 	/**
+	 * 書き始めに BOM を付けるか
+	 *
+	 * <p>
+	 * <b>文字コードが UTF 系（UTF-8 / UTF-16BE / UTF-16LE / UTF-32 …）のときだけ効く。</b>
+	 * それ以外では何もしない。{@code UTF-16}（向きの指定なし）は、Java が自分で BOM を書くので、
+	 * 付けても付けなくても BOM は1つ付く。
+	 * </p>
+	 *
+	 * @param withBom	付ける場合 = true
+	 * @return	CsvWriter
+	 */
+	public CsvWriter setWithBom (boolean withBom) {
+
+		refuseAfterWriting("BOM");
+		this.withBom = withBom;
+		return this;
+
+	}
+
+	/**
+	 * BOM を書く（頼まれていて、UTF 系で、Java が自分で書かないとき）
+	 */
+	private void writeBomIfWanted () {
+
+		Charset cs = Charset.forName(charset);
+
+		if (!withBom || !CsvCharsets.isUtf(cs) || CsvCharsets.encoderWritesBom(cs)) {
+			return;
+		}
+
+		try {
+			// U+FEFF を文字として書けば、ライターの文字コードで BOM のバイト列になる（UTF-8 なら EF BB BF）
+			writer.write('\uFEFF');
+		} catch (IOException ex) {
+			throw new java.io.UncheckedIOException(ex);
+		}
+
+	}
+
+	/**
 	 * CSV出力を作成する
 	 *
 	 */
 	private void createCsvWriter () {
 
 		if (csvWriter == null) {
+
+			writeBomIfWanted();
 
 			this.csvWriter = de.siegmar.fastcsv.writer.CsvWriter.builder()
 				.fieldSeparator(recordSeparator)
@@ -289,6 +345,22 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	@Override
 	public void close () {
 
+		/*
+		 * <b>1行も書かずに閉じても、開いたものを閉じる。</b>かつては csvWriter を作っていないと何もせず、
+		 * ファイルを開いたままにしていた。BOM を頼まれていれば、中身が空でも BOM だけは書く。
+		 */
+		if (csvWriter == null && writer != null) {
+			try {
+				writeBomIfWanted();
+				writer.close();
+			} catch (IOException ex) {
+				throw new java.io.UncheckedIOException(ex);
+			} finally {
+				writer = null;
+			}
+			return;
+		}
+
 		if (csvWriter != null) {
 			try {
 				csvWriter.flush();
@@ -297,6 +369,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 				throw new java.io.UncheckedIOException(ex);
 			} finally {
 				csvWriter = null;
+				writer = null;
 			}
 		}
 

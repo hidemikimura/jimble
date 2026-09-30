@@ -396,6 +396,190 @@ class CsvTest {
 
 	// endregion
 
+	// region BOM
+
+	@Test
+	@DisplayName("BOM：ファイルから読むとき（文字コードを推し量る）も、1列目のヘッダー名が合う")
+	void bomInAFileIsDropped (@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+
+		java.nio.file.Path file = dir.resolve("excel.csv");
+		java.nio.file.Files.write(file, "\ufeffname,age\nりんご,3\n".getBytes(StandardCharsets.UTF_8));
+
+		try (CsvReader csv = new CsvReader(file.toFile())) {
+			assertEquals("name", csv.getHeader().getFirst(), "BOM が残っています");
+			assertTrue(csv.next());
+			assertEquals("りんご", csv.getString("name"));
+		}
+
+		try (CsvReader csv = new CsvReader(file.toFile(), "UTF-8")) {
+			assertEquals("name", csv.getHeader().getFirst(), "文字コードを指定したときに BOM が残っています");
+		}
+
+	}
+
+	@Test
+	@DisplayName("BOM：UTF-8 と指定しても、UTF-16LE の BOM が付いていれば UTF-16LE で読む（FastCSV の detectBomHeader）")
+	void bomDecidesTheCharset () throws Exception {
+
+		byte[] body = "name,age\nりんご,3\n".getBytes(StandardCharsets.UTF_16LE);
+		byte[] bytes = new byte[body.length + 2];
+		bytes[0] = (byte) 0xFF;
+		bytes[1] = (byte) 0xFE;
+		System.arraycopy(body, 0, bytes, 2, body.length);
+
+		try (CsvReader csv = new CsvReader(new ByteArrayInputStream(bytes), "UTF-8")) {
+			assertEquals("name", csv.getHeader().getFirst());
+			assertTrue(csv.next());
+			assertEquals("りんご", csv.getString("name"));
+		}
+
+	}
+
+	@Test
+	@DisplayName("BOM：Reader で渡したとき、BOM が無ければ1文字目を消さない")
+	void readerWithoutBomKeepsTheFirstCharacter () throws Exception {
+
+		try (CsvReader csv = new CsvReader(new StringReader("name,age\nりんご,3\n"))) {
+			assertEquals(List.of("name", "age"), csv.getHeader());
+		}
+
+		// 先頭の BOM は1つだけ落とす（2つ目は中身として残す）
+		try (CsvReader csv = new CsvReader(new StringReader("\ufeff\ufeffx\n1\n"))) {
+			assertEquals("\ufeffx", csv.getHeader().getFirst());
+		}
+
+	}
+
+	@Test
+	@DisplayName("BOM：Shift_JIS は BOM を見ない（これまでどおり読む）")
+	void shiftJisIsReadAsIs () throws Exception {
+
+		byte[] bytes = "名前,数\nりんご,3\n".getBytes(java.nio.charset.Charset.forName("Shift_JIS"));
+
+		try (CsvReader csv = new CsvReader(new ByteArrayInputStream(bytes), "Shift_JIS")) {
+			assertEquals("名前", csv.getHeader().getFirst());
+			assertTrue(csv.next());
+			assertEquals("りんご", csv.getString("名前"));
+		}
+
+	}
+
+	@Test
+	@DisplayName("BOM：setWithBom(true) で、UTF-8 の書き始めに BOM（EF BB BF）が1つ付き、読み直すと消える")
+	void writerAddsUtf8Bom () throws Exception {
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+		try (CsvWriter csv = new CsvWriter(out, "UTF-8").setWithBom(true)) {
+			csv.writeLine("name", "age");
+			csv.writeLine("りんご", 3);
+		}
+
+		byte[] bytes = out.toByteArray();
+
+		assertEquals(List.of(0xEF, 0xBB, 0xBF, (int) '"'), head(bytes, 4), "BOM が1つだけ付いていません");
+
+		try (CsvReader csv = new CsvReader(new ByteArrayInputStream(bytes), "UTF-8")) {
+			assertEquals("name", csv.getHeader().getFirst());
+			assertTrue(csv.next());
+			assertEquals("りんご", csv.getString("name"));
+		}
+
+	}
+
+	@Test
+	@DisplayName("BOM：UTF-16LE / UTF-16BE はそれぞれの向きの BOM、UTF-16 は Java が付けるので1つだけ")
+	void writerAddsUtf16Bom () throws Exception {
+
+		assertEquals(List.of(0xFF, 0xFE, (int) '"', 0x00), head(write("UTF-16LE", true), 4));
+		assertEquals(List.of(0xFE, 0xFF, 0x00, (int) '"'), head(write("UTF-16BE", true), 4));
+
+		// UTF-16（向きの指定なし）は Java が自分で BOM を書く。頼んでも2つにならない
+		assertEquals(List.of(0xFE, 0xFF, 0x00, (int) '"'), head(write("UTF-16", true), 4), "BOM が2つ付いています");
+		assertEquals(List.of(0xFE, 0xFF, 0x00, (int) '"'), head(write("UTF-16", false), 4));
+
+	}
+
+	@Test
+	@DisplayName("BOM：Shift_JIS では頼んでも付かない。既定（頼まない）では UTF-8 でも付かない")
+	void writerAddsNoBomWhenNotUtfOrNotAsked () throws Exception {
+
+		assertEquals((int) '"', head(write("Shift_JIS", true), 1).getFirst(), "Shift_JIS に BOM を付けています");
+		assertEquals((int) '"', head(write("UTF-8", false), 1).getFirst(), "頼んでいないのに BOM を付けています");
+
+	}
+
+	@Test
+	@DisplayName("BOM：OutputStreamWriter を渡したときも、その文字コードで判定する")
+	void writerUsesTheEncodingOfTheGivenWriter () throws Exception {
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+		try (CsvWriter csv = new CsvWriter(new java.io.OutputStreamWriter(out, StandardCharsets.UTF_8)).setWithBom(true)) {
+			csv.writeLine("a");
+		}
+
+		assertEquals(List.of(0xEF, 0xBB, 0xBF), head(out.toByteArray(), 3));
+
+	}
+
+	@Test
+	@DisplayName("BOM：1行も書かずに閉じても、BOM だけは書く（開いたものも閉じる）")
+	void emptyCsvStillGetsTheBom (@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+
+		java.nio.file.Path file = dir.resolve("empty.csv");
+
+		try (CsvWriter csv = new CsvWriter(file.toFile(), "UTF-8").setWithBom(true)) {
+			assertFalse(csv.isBodyWritten());
+		}
+
+		assertEquals(List.of(0xEF, 0xBB, 0xBF), head(java.nio.file.Files.readAllBytes(file), 10));
+
+	}
+
+	@Test
+	@DisplayName("BOM：書き始めたあとには変えられない")
+	void bomCannotChangeAfterWriting () throws Exception {
+
+		try (CsvWriter csv = new CsvWriter(new ByteArrayOutputStream(), "UTF-8")) {
+			csv.writeLine("a");
+			assertThrows(IllegalStateException.class, () -> csv.setWithBom(true));
+		}
+
+	}
+
+	/**
+	 * 1行書いたバイト列
+	 */
+	private static byte[] write (String charset, boolean withBom) {
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+		try (CsvWriter csv = new CsvWriter(out, charset).setWithBom(withBom)) {
+			csv.writeLine("a");
+		}
+
+		return out.toByteArray();
+
+	}
+
+	/**
+	 * 先頭の n バイト（符号なし）
+	 */
+	private static List<Integer> head (byte[] bytes, int n) {
+
+		List<Integer> head = new java.util.ArrayList<>();
+
+		for (int i = 0; i < Math.min(n, bytes.length); i++) {
+			head.add(bytes[i] & 0xff);
+		}
+
+		return head;
+
+	}
+
+	// endregion
+
 	// region ここで固定していないこと
 
 	/*

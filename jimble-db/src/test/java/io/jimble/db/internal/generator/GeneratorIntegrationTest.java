@@ -233,6 +233,11 @@ class GeneratorIntegrationTest {
 		assertTrue(table.contains("public static GenItem instance () { return new GenItem(")
 			, "instance() が毎回 new を返していない:\n" + table);
 
+		// テーブルはスキーマの実体を new する（スキーマクラスを new すると、初期化が輪になる）
+		assertTrue(table.contains("new GenItem(new JimbleTestSchema(), \"gen_item\")")
+			, "テーブルがスキーマの実体を使っていない（スキーマクラスとの初期化が輪になる）:\n" + table);
+		assertFalse(table.contains("new JimbleTest()"), table);
+
 		assertTrue(table.contains("new Column(instance(), ")
 			, "列が instance() 経由でテーブルを掴んでいない:\n" + table);
 
@@ -313,6 +318,120 @@ class GeneratorIntegrationTest {
 		Generator.generate(outputDir.toFile(), PACKAGE);
 
 		assertFalse(stale.exists(), "消えたテーブルのクラスが残っている");
+
+	}
+
+	@Test
+	@DisplayName("スキーマの実体（JimbleTestSchema）を書き出し、スキーマクラスはそれを継承する")
+	void schemaIsSplitIntoBaseAndConstants () {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		String base = read(source("JimbleTestSchema.java"));
+		String schema = read(source("JimbleTest.java"));
+
+		assertTrue(base.contains("public class JimbleTestSchema extends AbstractSchema"), base);
+		assertTrue(base.contains("public String name () { return \"jimble_test\"; }"), base);
+		assertFalse(base.contains("static final Table"), "実体がテーブルの定数を持っている（初期化が輪になる）:\n" + base);
+
+		assertTrue(schema.contains("public class JimbleTest extends JimbleTestSchema"), schema);
+		assertTrue(schema.contains("public static final Table gen_item = GenItem.instance();"), schema);
+
+	}
+
+	/**
+	 * 2つのスレッドが、テーブルクラスとスキーマクラスを同時に初めて触っても止まらないこと
+	 *
+	 * <p>
+	 * <b>かつてはここで止まった。</b>テーブルクラスは列を作るときにスキーマクラスを {@code new} し、
+	 * スキーマクラスは初期化の中で全テーブルクラスを初期化する——<b>2つのクラスが互いの初期化を必要とする輪</b>だった。
+	 * 1つのスレッドなら通る（D-174）が、Web のリクエストがテーブルクラスを、MQ がスキーマクラスを同時に初めて触ると、
+	 * <b>互いの初期化の終わりを待って、どちらも永久に止まる</b>（aqSell の jimbleRun で、起動直後の2回に1回ほど起きた）。
+	 * </p>
+	 *
+	 * <p>
+	 * 生成物をコンパイルし、<b>クラスローダを毎回作り直して</b>（= 初期化をやり直して）何度も試す。
+	 * </p>
+	 */
+	@Test
+	@DisplayName("生成物のテーブルクラスとスキーマクラスを、2つのスレッドが同時に初めて触っても止まらない")
+	void concurrentFirstTouchDoesNotDeadlock () throws Exception {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		List<String> errors = compile(outputDir);
+		assertTrue(errors.isEmpty(), String.join("\n", errors));
+
+		java.net.URL classes = outputDir.resolve("__classes").toUri().toURL();
+
+		for (int round = 0; round < 200; round++) {
+
+			try (java.net.URLClassLoader loader = new java.net.URLClassLoader(new java.net.URL[]{ classes }, getClass().getClassLoader())) {
+
+				java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+				java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2, r -> {
+					Thread t = new Thread(r);
+					t.setDaemon(true);
+					return t;
+				});
+
+				try {
+
+					java.util.concurrent.Future<?> table = pool.submit(() -> {
+						barrier.await();
+						return Class.forName(PACKAGE + ".jimble_test.table.gen_item.GenItem", true, loader);
+					});
+					java.util.concurrent.Future<?> schema = pool.submit(() -> {
+						barrier.await();
+						return Class.forName(PACKAGE + ".jimble_test.JimbleTest", true, loader);
+					});
+
+					try {
+						table.get(10, java.util.concurrent.TimeUnit.SECONDS);
+						schema.get(10, java.util.concurrent.TimeUnit.SECONDS);
+					} catch (java.util.concurrent.TimeoutException ex) {
+						throw new AssertionError(("%d 回目で、テーブルクラスとスキーマクラスの初期化が互いを待って止まりました"
+							+ "（クラスの初期化が輪になっている）").formatted(round + 1), ex);
+					}
+
+				} finally {
+					pool.shutdownNow();
+				}
+
+			}
+
+		}
+
+	}
+
+	@Test
+	@DisplayName("スキーマを分けても、スキーマから取るテーブルの一覧は変わらない（tableList）")
+	void tableListStillWorks () throws Exception {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		List<String> errors = compile(outputDir);
+		assertTrue(errors.isEmpty(), String.join("\n", errors));
+
+		try (java.net.URLClassLoader loader = new java.net.URLClassLoader(
+				new java.net.URL[]{ outputDir.resolve("__classes").toUri().toURL() }, getClass().getClassLoader())) {
+
+			Class<?> tableClass = Class.forName(PACKAGE + ".jimble_test.table.gen_item.GenItem", true, loader);
+			io.jimble.db.sql.definition.table.Table table =
+				(io.jimble.db.sql.definition.table.Table) tableClass.getMethod("instance").invoke(null);
+
+			// テーブルが持つスキーマ（実体）から取っても、スキーマクラスから取っても、同じ一覧
+			io.jimble.db.sql.definition.schema.AbstractSchema fromTable =
+				(io.jimble.db.sql.definition.schema.AbstractSchema) table.schema();
+			io.jimble.db.sql.definition.schema.AbstractSchema fromSchema = (io.jimble.db.sql.definition.schema.AbstractSchema)
+				Class.forName(PACKAGE + ".jimble_test.JimbleTest", true, loader).getConstructor().newInstance();
+
+			assertFalse(fromTable.tableList().isEmpty(), "スキーマの実体からテーブルの一覧が取れません");
+			assertTrue(fromTable.tableList().contains(table), fromTable.tableList().toString());
+			assertTrue(fromTable.tableList().equals(fromSchema.tableList()));
+			assertTrue("jimble_test".equals(fromTable.name()) && "jimble_test".equals(fromSchema.name()));
+
+		}
 
 	}
 

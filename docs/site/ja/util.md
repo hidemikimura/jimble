@@ -140,6 +140,19 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 > **文字コードを省略すると、判定に失敗したときは Shift_JIS になります。**
 > UTF-8 と分かっているなら `new CsvReader(file, "UTF-8")` と書いてください。
 
+**BOM**（Excel が書き出す UTF-8 の CSV に付くもの）は、文字コードが UTF 系なら読むときに落とします。
+BOM があれば、その BOM が示す文字コードで読みます（UTF-8 と指定しても、UTF-16LE の BOM なら UTF-16LE）。
+`Reader` を渡したときは、先頭の BOM を1文字だけ落とします。
+
+書くときに BOM を付けるなら `setWithBom(true)` です（Excel に UTF-8 の CSV を開かせるとき）。
+**文字コードが UTF 系のときだけ効き**、Shift_JIS などでは何もしません。
+
+```java
+try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(true)) {
+	writer.writeLine("名前", "数");
+}
+```
+
 ## XML
 
 `XmlParser.parse(file)` で `XmlData` の木にします（**全部メモリに載ります**）。

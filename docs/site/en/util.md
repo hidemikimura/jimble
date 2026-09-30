@@ -145,6 +145,19 @@ try (CsvReader reader = new CsvReader(new File("in.csv"))) {
 > **Leave the character encoding out and, when detection fails, you get Shift_JIS.**
 > If you know it is UTF-8, write `new CsvReader(file, "UTF-8")`.
 
+A **BOM** (the one Excel puts on UTF-8 CSV files) is dropped when reading, as long as the encoding is a UTF one.
+If there is a BOM, the file is read in the encoding the BOM says (ask for UTF-8 and get a UTF-16LE BOM, and it is read as UTF-16LE).
+Pass a `Reader` and a single leading BOM character is dropped.
+
+To write a BOM, use `setWithBom(true)` (for Excel to open a UTF-8 CSV correctly).
+**It only has an effect for UTF encodings**; with Shift_JIS and the like it does nothing.
+
+```java
+try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(true)) {
+	writer.writeLine("name", "count");
+}
+```
+
 ## XML
 
 `XmlParser.parse(file)` turns it into a tree of `XmlData` (**all of it goes in memory**).

@@ -5,7 +5,7 @@
 
 package db.approval_forms_example.table.request_item;
 
-import db.approval_forms_example.ApprovalFormsExample;
+import db.approval_forms_example.ApprovalFormsExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -57,6 +57,6 @@ public class RequestItem extends Table {
 
 	public RequestItem (ISchema schema, String name) { super(schema, name); }
 
-	public static RequestItem instance () { return new RequestItem(new ApprovalFormsExample(), "request_item"); }
+	public static RequestItem instance () { return new RequestItem(new ApprovalFormsExampleSchema(), "request_item"); }
 
 }

@@ -228,11 +228,12 @@ They run once each, in `versionYyyyMmDd()` order, and the result is kept in
 ./gradlew codegen
 ```
 
-From the DB schema, three kinds of file are generated per data source.
+From the DB schema, four kinds of file are generated per data source.
 
 | Generated | Where it goes | What it is for |
 | --- | --- | --- |
 | Schema class | `db/<data source>/BlogExample.java` | `BlogExample.db()`, the table list |
+| Schema base | `db/<data source>/BlogExampleSchema.java` | Used by the table classes (not by your code) |
 | Table class | `db/<data source>/table/post/Post.java` | The `Column`s, such as `Post.id` |
 | Typed accessors | `db/<data source>/table_data/post/AbstractPostData.java` | `data.title("...").published(true)` |
 

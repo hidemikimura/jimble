@@ -5,7 +5,7 @@
 
 package db.approval_forms_example.table.attachment;
 
-import db.approval_forms_example.ApprovalFormsExample;
+import db.approval_forms_example.ApprovalFormsExampleSchema;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.ISchema;
 import io.jimble.db.sql.definition.table.Table;
@@ -60,6 +60,6 @@ public class Attachment extends Table {
 
 	public Attachment (ISchema schema, String name) { super(schema, name); }
 
-	public static Attachment instance () { return new Attachment(new ApprovalFormsExample(), "attachment"); }
+	public static Attachment instance () { return new Attachment(new ApprovalFormsExampleSchema(), "attachment"); }
 
 }

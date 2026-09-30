@@ -10,11 +10,21 @@ import java.util.*;
 
 /**
  * CSV読み込み
+ *
+ * <h2>BOM</h2>
+ * <p>
+ * <b>文字コードが UTF 系なら、先頭の BOM は FastCSV が読み捨てる</b>（{@code detectBomHeader}）。
+ * BOM があれば、その BOM が示す文字コードで読む（UTF-8 と指定しても、UTF-16LE の BOM なら UTF-16LE）。
+ * </p>
+ *
+ * <p>
+ * <b>{@link Reader} を渡したときは、FastCSV の BOM 検出が効かない</b>（もう文字になっているので）。
+ * そのときは、先頭の {@code U+FEFF} を1文字だけ読み捨てる——文字にしたときに BOM を残す文字コード
+ * （Java の UTF-8 がそう）で開いた {@link Reader} だと、見出しの1つ目が「U+FEFF のついた id」になり、
+ * {@code getString("id")} が引けなくなる。
+ * </p>
  */
 public class CsvReader implements Closeable, AutoCloseable {
-
-	/* 初回読み込み */
-	private boolean isFirstRead = true;
 
 	/* ヘッダー */
 	private List<String> header = null;
@@ -52,13 +62,15 @@ public class CsvReader implements Closeable, AutoCloseable {
 	/**
 	 * コンストラクタ
 	 *
+	 * <p>文字コードは中身から推し量る（分からなければ Shift_JIS）。</p>
+	 *
 	 * @param csvFile     CSVファイル
 	 * @param headerRowNo ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo   ボディ行番号
 	 */
 	public CsvReader(File csvFile, int headerRowNo, int bodyRowNo) {
 
-		this(openReader(csvFile), headerRowNo, bodyRowNo);
+		this(openDetected(csvFile), headerRowNo, bodyRowNo);
 
 	}
 
@@ -70,7 +82,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 */
 	public CsvReader(InputStream is, String charset) {
 
-		this(new InputStreamReader(is, Charset.forName(charset)), 1, 2);
+		this(is, 1, 2, charset);
 
 	}
 
@@ -84,7 +96,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	 */
 	public CsvReader(InputStream is, int headerRowNo, int bodyRowNo, String charset) {
 
-		this(new InputStreamReader(is, Charset.forName(charset)), headerRowNo, bodyRowNo);
+		this(open(is, Charset.forName(charset)), headerRowNo, bodyRowNo);
 
 	}
 
@@ -102,20 +114,37 @@ public class CsvReader implements Closeable, AutoCloseable {
 	/**
 	 * コンストラクタ
 	 *
+	 * <p>
+	 * <b>FastCSV の BOM 検出は効かない</b>（もう文字になっている）。先頭の {@code U+FEFF} を1文字だけ読み捨てる。
+	 * 文字コードが分かっているなら、{@link #CsvReader(InputStream, int, int, String)} を使うほうがよい。
+	 * </p>
+	 *
 	 * @param isr 			CSVファイル
 	 * @param headerRowNo	ヘッダー行番号(0=ヘッダーなし)
 	 * @param bodyRowNo		ボディ行番号
 	 */
 	public CsvReader(Reader isr, int headerRowNo, int bodyRowNo) {
 
-		BufferedReader bufferedReader = new BufferedReader(isr);
-		csvReader = de.siegmar.fastcsv.reader.CsvReader.builder().ofCsvRecord(bufferedReader);
-		csvIterator = csvReader.iterator();
+		this(de.siegmar.fastcsv.reader.CsvReader.builder().ofCsvRecord(skipBom(isr)), headerRowNo, bodyRowNo);
+
+	}
+
+	/**
+	 * コンストラクタ（中身）
+	 *
+	 * @param csvReader		FastCSV のリーダー
+	 * @param headerRowNo	ヘッダー行番号(0=ヘッダーなし)
+	 * @param bodyRowNo		ボディ行番号
+	 */
+	private CsvReader(de.siegmar.fastcsv.reader.CsvReader<CsvRecord> csvReader, int headerRowNo, int bodyRowNo) {
+
+		this.csvReader = csvReader;
+		this.csvIterator = csvReader.iterator();
 
 		if (headerRowNo > 0) {
 			for (int i = 0; i < headerRowNo; i++) {
 				if (csvIterator.hasNext()) {
-					header = removeBom(csvIterator.next().getFields());
+					header = csvIterator.next().getFields();
 				}
 			}
 		}
@@ -124,7 +153,6 @@ public class CsvReader implements Closeable, AutoCloseable {
 			for (int i = 0; i < bodyRowNo - (headerRowNo + 1); i++) {
 				if (csvIterator.hasNext()) {
 					csvIterator.next();
-					isFirstRead = false;
 				}
 			}
 		}
@@ -141,7 +169,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 		if (!csvIterator.hasNext()) {
 			return false;
 		}
-		record = removeBom(csvIterator.next().getFields());
+		record = csvIterator.next().getFields();
 		return record != null;
 
 	}
@@ -518,54 +546,72 @@ public class CsvReader implements Closeable, AutoCloseable {
 	}
 
 	/*
-	 * 文字コードを見てからファイルを開く
+	 * 文字コードを中身から推し量る（分からなければ Shift_JIS）
 	 */
-	private static Reader openReader (File csvFile) {
+	private static Charset detect (File csvFile) {
 
 		try {
-			return new FileReader(csvFile, Charset.forName(FileCharDetecter.detector(csvFile, "SHIFT-JIS")));
+			return Charset.forName(FileCharDetecter.detector(csvFile, "SHIFT-JIS"));
 		} catch (Exception ex) {
 			throw io.jimble.util.internal.Unchecked.of("CSV_001", "CSV を開けませんでした: " + csvFile, ex);
 		}
 
 	}
 
-	/**
-	 * BOMを削除する
-	 *
-	 * @param lines	lines
-	 * @return	lines
+	/*
+	 * 文字コードを推し量ってから開く（推し量るのを先にする。失敗したときに開いたファイルを残さない）
 	 */
-	private List<String> removeBom (List<String> lines) {
+	private static de.siegmar.fastcsv.reader.CsvReader<CsvRecord> openDetected (File csvFile) {
 
-		if (lines == null || lines.isEmpty() || lines.getFirst() == null) {
-			return lines;
-		}
+		Charset charset = detect(csvFile);
 
-		if (!isFirstRead) {
-			return lines;
-		}
+		return open(openStream(csvFile), charset);
 
-		isFirstRead = false;
+	}
 
-		String first = lines.getFirst();
-		if (first.startsWith("\uFEFF")) {
-			List<String> res = new ArrayList<>();
+	/**
+	 * バイトのまま FastCSV に渡す
+	 *
+	 * <p>
+	 * <b>UTF 系なら BOM を FastCSV に読み捨てさせる</b>（{@code detectBomHeader}）。
+	 * BOM の検出は {@link InputStream} を渡したときにしか効かないので、{@link Reader} にしてから渡さない。
+	 * </p>
+	 *
+	 * @param is		入力
+	 * @param charset	文字コード
+	 * @return	FastCSV のリーダー
+	 */
+	private static de.siegmar.fastcsv.reader.CsvReader<CsvRecord> open (InputStream is, Charset charset) {
 
-			boolean isFirst = true;
-			for (String s : lines) {
-				if (isFirst) {
-					res.add(s.substring(1));
-					isFirst = false;
-				} else {
-					res.add(s);
-				}
+		return de.siegmar.fastcsv.reader.CsvReader.builder()
+			.detectBomHeader(CsvCharsets.isUtf(charset))
+			.ofCsvRecord(is, charset);
+
+	}
+
+	/**
+	 * 先頭の U+FEFF を1文字だけ読み捨てる（{@link Reader} を渡されたとき）
+	 *
+	 * @param reader	入力
+	 * @return	読み捨てたあとの入力
+	 */
+	private static Reader skipBom (Reader reader) {
+
+		PushbackReader pushback = new PushbackReader(reader instanceof BufferedReader ? reader : new BufferedReader(reader), 1);
+
+		try {
+
+			int first = pushback.read();
+
+			if (first >= 0 && first != '\uFEFF') {
+				pushback.unread(first);
 			}
 
-			return res;
+		} catch (IOException ex) {
+			throw new java.io.UncheckedIOException("CSV を読めませんでした", ex);
 		}
 
-		return lines;
+		return pushback;
 
 	}
 

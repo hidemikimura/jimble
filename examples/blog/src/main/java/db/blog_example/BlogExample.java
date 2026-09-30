@@ -15,7 +15,7 @@ import io.jimble.db.sql.definition.table.Table;
 /**
  * blog_example
  */
-public class BlogExample extends AbstractSchema {
+public class BlogExample extends BlogExampleSchema {
 
 	private static final long SQL_VERSION = 1;
 
@@ -25,12 +25,6 @@ public class BlogExample extends AbstractSchema {
 	/* 記事 */
 	public static final Table post = Post.instance();
 
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String name () { return "blog_example"; }
 
 	/**
 	 * get DB instance
