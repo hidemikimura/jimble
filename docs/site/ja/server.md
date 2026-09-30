@@ -238,3 +238,26 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` は**既存の値に足します**（上書きしません）。
 タイムアウトは `proxy.connect_timeout`（5秒）と `proxy.request_timeout`（30秒）で、
 転送に失敗したら **502** を返します。
+
+### nginx の proxy_set_header などに当たるもの
+
+設定したプロキシを `mount` に渡します。**設定は `mount` の前に済ませてください**（リクエストを受けたあとに変えると例外です）。
+
+```java
+install(() -> ReverseProxy.mount("/shop", new ReverseProxy("http://shop:9000")
+	.preserveHost()                                     // proxy_set_header Host $http_host
+	.setHeader("X-App", "front")                        // proxy_set_header X-App front
+	.setHeader("X-User", context -> userId(context))    // 値をリクエストから作る（null なら送らない）
+	.removeHeader("Cookie")                             // proxy_set_header Cookie ""
+	.hideResponseHeader("X-Powered-By")                 // proxy_hide_header X-Powered-By
+	.redirect("http://shop.internal/", "/shop/")        // proxy_redirect http://shop.internal/ /shop/
+	.cookieDomain("shop.internal", "example.com")       // proxy_cookie_domain shop.internal example.com
+	.cookiePath("/", "/shop/")));                       // proxy_cookie_path / /shop/
+```
+
+| | nginx と同じ既定 |
+| --- | --- |
+| `Host` | **転送先のもの**を送ります（`proxy_set_header Host $proxy_host`）。元の `Host` は `X-Forwarded-Host` / `X-Forwarded-Port` で渡します。転送先が **Host で振り分ける**なら `preserveHost()` を付けてください |
+| `Location` / `Refresh` | **転送先の URL で始まるものを、ブラウザから見えるパスに書き換えます**（`proxy_redirect default`。`http://backend:8080/moved` → `/api/moved`）。相対の値（`/moved`）はそのままです。切るなら `noRedirectRewrite()` |
+| 転送先との接続 | 1回ごとに切ります（keepalive は持ちません）。`https://` の転送先は証明書のホスト名を確かめます |
+| 圧縮 | 転送先が gzip で返した本文は、そのまま返します（もう一度圧縮しません） |

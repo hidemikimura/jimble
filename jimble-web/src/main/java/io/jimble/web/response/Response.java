@@ -908,6 +908,40 @@ public final class Response extends Data {
 	}
 
 	/**
+	 * レスポンスヘッダを足す（同じ名前があっても上書きしない）
+	 *
+	 * <p>
+	 * {@code Set-Cookie} のように、<b>同じ名前を何行も送るヘッダ</b>に使う。
+	 * {@link #setResponseHeader(String, String)} は上書きなので、2つ目を書くと1つ目が消える。
+	 * </p>
+	 *
+	 * @param name	ヘッダ名
+	 * @param value	値
+	 * @return	Response
+	 * @throws IllegalStateException	送ったあとに呼んだ場合
+	 */
+	public Response addResponseHeader (String name, String value) {
+
+		if (sink.isSent()) {
+			throw new IllegalStateException(
+				"送ったあとにヘッダ " + name + " は足せません（届きません）。send() より前に書いてください"
+					+ io.jimble.util.internal.Docs.see("request-response"));
+		}
+
+		if (HEADER_CACHE_CONTROL.equalsIgnoreCase(name)) {
+			cacheControlSet = true;
+		}
+
+		if (HEADER_CONTENT_TYPE.equalsIgnoreCase(name)) {
+			contentTypeSet = true;
+		}
+
+		sink.addHeader(name, value);
+		return this;
+
+	}
+
+	/**
 	 * 既定の Cache-Control を設定する
 	 *
 	 * <p>

@@ -4,6 +4,38 @@
 
 ---
 
+## 2.2.0（未公開）
+
+### 上げる前に見るところ（ReverseProxy）
+
+| | |
+|---|---|
+| **`Location` / `Refresh` を書き換えるようになります** | 転送先の URL で始まるもの（`http://backend:8080/moved`）を、ブラウザから見えるパス（`/api/moved`）にします（nginx の `proxy_redirect default`）。相対の値（`/moved`）はそのままです。これまでどおりにするなら `noRedirectRewrite()` |
+| **転送先との接続は1回ごとに切ります** | JDK の `HttpClient`（接続を使い回し、HTTP/2 も話す）をやめ、HTTP/1.1 をソケットで直に話します（nginx の既定と同じ）。`Host` を決められるようにするためです |
+| **`X-Forwarded-Port` を足します** | |
+
+### 足したこと（ReverseProxy：nginx の proxy_set_header ほか）
+
+| | |
+|---|---|
+| **`preserveHost()`** | 元の `Host` をそのまま渡します（`proxy_set_header Host $http_host`）。転送先が Host で振り分けるときに使います。これまでは JDK の `HttpClient` の制約で、`Host` を決められませんでした |
+| **`setHeader(名前, 値)` / `setHeader(名前, context -> 値)` / `removeHeader(名前)`** | リクエストヘッダを足す・上書きする・送らない（`proxy_set_header`）。`Host` も決められます |
+| **`hideResponseHeader(名前)`** | 転送先の応答ヘッダを返さない（`proxy_hide_header`） |
+| **`redirect(元, 先)` / `noRedirectRewrite()`** | `Location` / `Refresh` の書き換え（`proxy_redirect`） |
+| **`cookieDomain(元, 先)` / `cookiePath(元, 先)`** | `Set-Cookie` の `Domain` / `Path` の書き換え（`proxy_cookie_domain` / `proxy_cookie_path`） |
+| **`ReverseProxy.mount(パス, 設定したプロキシ)`** | 設定したプロキシを組み込みます |
+| **`Response#addResponseHeader(名前, 値)`** | 同じ名前があっても上書きせずに足します（`Set-Cookie` のように何行も送るヘッダ） |
+
+### 直したこと（ReverseProxy）
+
+| | |
+|---|---|
+| **転送先が gzip で返すと、ブラウザが本文を読めませんでした** | `Content-Encoding` を落としたうえで、jimble がもう一度 gzip をかけていました（1回解いても gzip のまま）。`Content-Encoding` をそのまま渡すようにしました（付いていれば jimble は圧縮し直しません） |
+| **転送先の `Set-Cookie` が2つ以上あると、最後の1つしか届きませんでした** | 上書きしていたためです。全部届くようにしました |
+| **2行の `Cookie` などを `", "` で繋いだ1行にして送っていました** | 来た行のまま送るようにしました |
+
+---
+
 ## 2.1.5（2026-10-01）
 
 ### 直したこと（CSV）
