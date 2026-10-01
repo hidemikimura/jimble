@@ -41,9 +41,25 @@ public final class McpDispatch {
 	 */
 	public McpDispatch (McpRegistry registry) {
 
-		this.registry = registry;
+		this(registry, false);
 
 	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param registry	登録簿
+	 * @param stdio		stdio で受けるか（購読の相手の見分け方が変わる。D-221）
+	 */
+	public McpDispatch (McpRegistry registry, boolean stdio) {
+
+		this.registry = registry;
+		this.stdio = stdio;
+
+	}
+
+	/* stdio で受けるか */
+	private final boolean stdio;
 
 	/**
 	 * 1つの要求を処理する
@@ -70,7 +86,7 @@ public final class McpDispatch {
 		 * HTTP では 202 になる。
 		 */
 		if (id == null) {
-			return notification(method, params);
+			return notification(context, method, params);
 		}
 
 		/*
@@ -124,14 +140,16 @@ public final class McpDispatch {
 	 * @param params	引数
 	 * @return 応答（本文なし）
 	 */
-	private McpResponse notification (String method, Data params) {
+	private McpResponse notification (WebContext context, String method, Data params) {
 
 		/*
 		 * 取り消しは stdio でだけ意味を持つ。
 		 * HTTP には応答のストリームがあり、閉じることで取り消しを伝える。
 		 */
 		if (McpProtocol.NOTIFICATION_CANCELLED.equals(method)) {
-			McpSubscriptions.cancel(params.get("requestId"));
+			// 取り消せるのは、その購読を開いた相手だけ（D-221）
+			McpSubscriptions.cancel(stdio ? McpSubscriptions.STDIO : McpSubscriptions.owner(context)
+				, params.get("requestId"));
 		}
 
 		return McpResponse.none(202);
