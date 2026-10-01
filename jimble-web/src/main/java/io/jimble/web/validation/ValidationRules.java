@@ -123,7 +123,14 @@ public class ValidationRules {
 				|| (isInsertRequest && validationRule.isInsertRequired())) {
 				Object input = req.getObject(column);
 				List<Object> inputList = new ArrayList<>();
-				if (input instanceof List<?> _list) {
+				if (input instanceof List<?> _list && _list.isEmpty()) {
+					/*
+					 * <b>空の配列は「値が無い」として1回見る</b>（D-211）。
+					 * かつては要素ごとに見るだけだったので、{@code {"name": []}} は1度も検証されず、
+					 * {@code empty()}（必須）も含めて<b>どの規則も素通り</b>していた
+					 */
+					inputList.add(null);
+				} else if (input instanceof List<?> _list) {
 					inputList.addAll(_list);
 				} else {
 					inputList.add(input);
