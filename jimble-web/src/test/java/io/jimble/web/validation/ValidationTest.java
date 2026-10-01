@@ -184,6 +184,35 @@ public class ValidationTest {
 	}
 
 	@Test
+	@DisplayName("D-211 空の配列は「値が無い」として見る（かつては1度も検証されず、必須も素通り）")
+	void emptyArray () {
+
+		ValidationRules rules = new ValidationRules()
+			.put(Item.name, new ValidationRule().empty().textLengthMax(5))
+			.put(Item.age, new ValidationRule().empty().integer(1, 120));
+
+		Data request = new Data();
+		request.putData(Item.name, java.util.List.of());
+		request.putData(Item.age, java.util.List.of());
+
+		Data messages = ValidationMessages.toMessages(rules.errors(null, request));
+
+		assertTrue(messages.containsKey("name"), messages.toString());
+		assertTrue(messages.containsKey("age"), messages.toString());
+
+		// 必須でなければ、空の配列は通す（値が無いのと同じ）
+		ValidationRules optional = new ValidationRules().put(Item.name, new ValidationRule().textLengthMax(5));
+		assertTrue(optional.errors(null, request).isEmpty());
+
+		// 要素があれば、これまでどおり一つひとつ見る
+		Data filled = new Data();
+		filled.putData(Item.name, java.util.List.of("toolongname"));
+		filled.putData(Item.age, java.util.List.of(30));
+		assertTrue(ValidationMessages.toMessages(rules.errors(null, filled)).containsKey("name"));
+
+	}
+
+	@Test
 	@DisplayName("D-196 送られていない項目：必須（empty）なら失敗、必須でなければ見ない（1.x は必須でも素通り）")
 	void absentColumn () {
 

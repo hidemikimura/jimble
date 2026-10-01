@@ -232,16 +232,39 @@ class TemplateTest {
 	}
 
 	@Test
-	@DisplayName("JSON を求められたら同じ口が JSON を返す")
-	void responseViewAsJson () {
+	@DisplayName("既定では、JSON を求められてもテンプレートを描く（テンプレートに渡したデータを丸ごと返さない。D-210）")
+	void responseViewIgnoresAcceptJsonByDefault () {
 
-		// 移送元の挙動をそのまま採った。1つの口が HTML と JSON の両方を返せる
 		Fakes.FakeResponseSink sink = request(viewApp(), "application/json");
 
 		assertEquals(200, sink.status());
-		assertTrue(sink.body().contains("\"title\""), sink.body());
-		assertTrue(sink.body().contains("見出し"), sink.body());
-		assertFalse(sink.body().contains("<h1>"), sink.body());
+		assertEquals("<h1>見出し</h1>\n", sink.body());
+
+	}
+
+	@Test
+	@DisplayName("template.json_fallback = true なら、同じ口が JSON を返す。Vary: Accept を付ける")
+	void responseViewAsJson () {
+
+		com.typesafe.config.Config original = io.jimble.util.conf.Conf.conf().config();
+
+		try {
+
+			io.jimble.util.conf.Conf.replace(com.typesafe.config.ConfigFactory
+				.parseString("template.json_fallback = true").withFallback(original));
+
+			// 移送元の挙動。1つの口が HTML と JSON の両方を返せる
+			Fakes.FakeResponseSink sink = request(viewApp(), "application/json");
+
+			assertEquals(200, sink.status());
+			assertTrue(sink.body().contains("\"title\""), sink.body());
+			assertTrue(sink.body().contains("見出し"), sink.body());
+			assertFalse(sink.body().contains("<h1>"), sink.body());
+			assertEquals("Accept", sink.headers().get("Vary"));
+
+		} finally {
+			io.jimble.util.conf.Conf.replace(original);
+		}
 
 	}
 
