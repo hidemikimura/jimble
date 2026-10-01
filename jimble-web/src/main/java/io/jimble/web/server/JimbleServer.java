@@ -312,6 +312,7 @@ public final class JimbleServer {
 					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")));
 
 		warnSecureCookieInLocal();
+		warnInsecureCookieOutsideLocal();
 		checkUploadLimits();
 
 		/*
@@ -669,6 +670,26 @@ public final class JimbleServer {
 	}
 
 	/**
+	 * ローカルでないのに Cookie が http でも送られる設定なら言う（D-228）
+	 */
+	private static void warnInsecureCookieOutsideLocal () {
+
+		/*
+		 * <b>逆向きも言う</b>（D-228）。ローカルでない環境で cookie.secure = false だと、
+		 * セッションや CSRF の Cookie が http でも送られ、途中で盗める
+		 */
+		if (Conf.DEFAULT_ENV.equals(Conf.env()) || CookieConf.secure()) {
+			return;
+		}
+
+		Log.warn("""
+			cookie.secure = false です（env=%s）。セッション・CSRF・ログイン状態の Cookie が http でも送られます。
+			ローカル用の設定（application.local.conf）にだけ書いてください。
+			詳しく: %s""".formatted(Conf.env(), Docs.url("session-security")));
+
+	}
+
+	/**
 	 * ローカルで Cookie が届かない設定になっていたら言う（要件 F-X-05）
 	 *
 	 * <p>
@@ -697,7 +718,8 @@ public final class JimbleServer {
 			cookie.secure = true のままです（env=local）。
 			ローカルは http なので、ブラウザは Cookie を送り返しません。
 			セッション・CSRF・Flash が黙って効かなくなります。
-			application.conf に次を足してください。
+			ローカル用の application.local.conf（1行目に include "application.conf"）に次を書いてください。
+			application.conf に書くと、本番も引き継ぎます。
 			  cookie { secure = false }
 			詳しく: %s""".formatted(Docs.url("session-security")));
 

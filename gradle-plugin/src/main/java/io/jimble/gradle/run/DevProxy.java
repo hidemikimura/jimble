@@ -72,13 +72,14 @@ final class DevProxy {
 	/**
 	 * コンストラクタ
 	 *
+	 * @param host			待ち受けるアドレス（既定 127.0.0.1。D-228）
 	 * @param port			受けるポート
 	 * @param appPort		アプリのポート
 	 * @param beforeRequest	転送の前に呼ぶもの。作り直しが要ればここで行い、結果を返す
 	 * @param log			ログ
 	 * @throws IOException	受け口を作れなかった場合
 	 */
-	DevProxy (int port, int appPort, Supplier<BuildOutcome> beforeRequest, RunLog log) throws IOException {
+	DevProxy (String host, int port, int appPort, Supplier<BuildOutcome> beforeRequest, RunLog log) throws IOException {
 
 		this.appPort = appPort;
 		this.appBaseUrl = "http://" + APP_HOST + ":" + appPort;
@@ -89,7 +90,8 @@ final class DevProxy {
 			return thread;
 		});
 
-		this.server = HttpServer.create(new InetSocketAddress(port), 0);
+		// 既定ではこのマシンからしか開けない（かつてはすべての NIC で待ち受けていた。D-228）
+		this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
 		this.server.setExecutor(executor);
 		this.server.createContext("/", exchange -> handle(exchange, beforeRequest, log));
 

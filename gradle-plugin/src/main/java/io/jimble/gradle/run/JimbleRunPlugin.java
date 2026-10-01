@@ -81,6 +81,7 @@ public class JimbleRunPlugin implements Plugin<Project> {
 			project.getExtensions().create(EXTENSION_NAME, JimbleRunExtension.class);
 
 		extension.getPort().convention(9000);
+		extension.getHost().convention("127.0.0.1");
 		extension.getEnv().convention("local");
 		extension.getRestartMode().convention(RestartMode.ON_REQUEST.key());
 		extension.getQuietMillis().convention(300L);
@@ -101,6 +102,7 @@ public class JimbleRunPlugin implements Plugin<Project> {
 
 			task.getMainClass().set(extension.getMainClass());
 			task.getPort().set(extension.getPort());
+			task.getHost().set(extension.getHost());
 			task.getAppPort().set(extension.getAppPort());
 			task.getEnv().set(extension.getEnv());
 			task.getBuildTasks().set(extension.getBuildTasks());

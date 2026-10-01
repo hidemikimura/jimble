@@ -128,6 +128,14 @@ public abstract class JimbleRunTask extends DefaultTask {
 	public abstract Property<Integer> getAppPort ();
 
 	/**
+	 * 開発用プロキシが待ち受けるアドレス（D-228）
+	 *
+	 * @return	アドレス
+	 */
+	@Input
+	public abstract Property<String> getHost ();
+
+	/**
 	 * 環境名
 	 *
 	 * @return	環境名
@@ -427,7 +435,7 @@ public abstract class JimbleRunTask extends DefaultTask {
 
 		try {
 
-			proxy = new DevProxy(getPort().get(), getAppPort().get(), this::beforeRequest, log);
+			proxy = new DevProxy(getHost().get(), getPort().get(), getAppPort().get(), this::beforeRequest, log);
 			proxy.start();
 
 		} catch (IOException ex) {

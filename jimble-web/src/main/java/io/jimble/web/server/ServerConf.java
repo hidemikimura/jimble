@@ -29,8 +29,9 @@ import io.jimble.util.conf.ConfFlag;
  * </p>
  *
  * <p>
- * ポートだけはシステムプロパティ {@code jimble.server.port} でも指定できる。
+ * ポートはシステムプロパティ {@code jimble.server.port} でも指定できる。
  * コンテナで「設定ファイルは触らずポートだけ変える」ことが多いため。
+ * 待ち受けるアドレスも {@code jimble.server.host} で指定できる（jimbleRun が、アプリを 127.0.0.1 だけで待たせるのに使う。D-228）。
  * </p>
  */
 public final class ServerConf {
@@ -88,6 +89,9 @@ public final class ServerConf {
 
 	/** システムプロパティ：ポート */
 	public static final String PROPERTY_PORT = "jimble.server.port";
+
+	/** システムプロパティ：待ち受けるアドレス（jimbleRun がアプリを 127.0.0.1 で待たせるのに使う。D-228） */
+	public static final String PROPERTY_HOST = "jimble.server.host";
 
 	/** 既定のポート */
 	public static final int DEFAULT_PORT = 9000;
@@ -152,6 +156,12 @@ public final class ServerConf {
 	 * @return	アドレス（空なら全部）
 	 */
 	public static String host () {
+
+		String property = System.getProperty(PROPERTY_HOST);
+
+		if (property != null && !property.isBlank()) {
+			return property.trim();
+		}
 
 		return Conf.conf().getString(KEY_HOST, "").trim();
 
