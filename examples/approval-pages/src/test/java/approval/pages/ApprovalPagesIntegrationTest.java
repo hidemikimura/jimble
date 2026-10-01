@@ -347,13 +347,12 @@ class ApprovalPagesIntegrationTest {
 
 		/*
 		 * 中身が毎回変わりうるので、ETag も Last-Modified も付けない。
-		 * かわりに must-revalidate で毎回確かめさせる。
+		 * かわりに no-cache で毎回確かめさせ、private で共有キャッシュに置かせない（D-212）。
 		 */
 		HttpResponse<String> rewritten = get("/app/items/42");
 
 		assertEquals(null, header(rewritten, "etag"), "書き換えたのに ETag が付いている");
-		assertTrue(header(rewritten, "cache-control").contains("must-revalidate")
-			, header(rewritten, "cache-control"));
+		assertEquals("private,no-cache", header(rewritten, "cache-control"));
 
 	}
 

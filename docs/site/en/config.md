@@ -202,6 +202,16 @@ assets {
 template {
 	package      = "gg.jte.generated.precompiled"   # output of precompilation
 	content_type = "text/html; charset=utf-8"
+	json_fallback = false   # when a view() page is asked for Accept: application/json, return the template's data as JSON
+}
+
+security_headers {
+	enabled                 = true
+	content_type_options    = "nosniff"                           # empty sends none
+	frame_options           = "SAMEORIGIN"                        # no framing by other sites
+	referrer_policy         = "strict-origin-when-cross-origin"
+	hsts                    = 0s      # Strict-Transport-Security max-age; 0s sends none (only sent on https)
+	hsts_include_subdomains = false
 }
 
 paging {
