@@ -281,6 +281,9 @@ public final class PropertyUtil {
 	 */
 	private static final Map<Class<?>, Set<String>> NO_FIELD_CACHE = new ConcurrentHashMap<>();
 
+	/** クラスごとに覚える「無い名前」の数の上限（D-226） */
+	static final int MAX_NO_FIELD_CACHE = 1024;
+
 	/**
 	 * 単一メソッドキャッシュ.
 	 */
@@ -356,16 +359,32 @@ public final class PropertyUtil {
 				}
 
 				Field f = map.get(fieldName);
+
+				/*
+				 * <b>static / final / transient / 合成された項目には書かない</b>（D-226）。
+				 * 名前は外から来る（リクエストのキー）ので、{@code convertClass(Form.class)} にリクエストを渡したときに
+				 * JVM 全体の値や、持たせておく値を書き換えさせない。ここで明示的に断る
+				 */
+				int modifiers = f.getModifiers();
+				if (Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers) || Modifier.isTransient(modifiers) || f.isSynthetic()) {
+					return;
+				}
+
 				Class<?>[] fieldClasses = getFieldClasses(src.getClass(), f);
 				f.set(src, Convertor.convert(conf, value, fieldClasses));
 
 			} catch (NoSuchFieldException | SecurityException e) {
 
-				if (!NO_FIELD_CACHE.containsKey(cls)) {
-					NO_FIELD_CACHE.put(cls, new HashSet<>());
-				}
+				/*
+				 * <b>覚える数に上限を置く</b>（D-226）。名前は外から来る（リクエストのキー）ので、
+				 * 上限が無いと、知らないキーを送るたびにメモリが増え続けた（100 万個で 240MB）。
+				 * かつては HashSet で、同時に足すと壊れることもあった
+				 */
+				Set<String> unknown = NO_FIELD_CACHE.computeIfAbsent(cls, k -> ConcurrentHashMap.newKeySet());
 
-				NO_FIELD_CACHE.get(cls).add(fieldName);
+				if (unknown.size() < MAX_NO_FIELD_CACHE) {
+					unknown.add(fieldName);
+				}
 
 			} catch (Exception e) {
 
@@ -426,11 +445,12 @@ public final class PropertyUtil {
 
 			} catch (NoSuchFieldException | SecurityException e) {
 
-				if (!NO_METHOD_CACHE.containsKey(cls)) {
-					NO_METHOD_CACHE.put(cls, new HashSet<>());
-				}
+				// 覚える数に上限を置く（D-226。上の NO_FIELD_CACHE と同じ）
+				Set<String> unknown = NO_METHOD_CACHE.computeIfAbsent(cls, k -> ConcurrentHashMap.newKeySet());
 
-				NO_METHOD_CACHE.get(cls).add(fieldName);
+				if (unknown.size() < MAX_NO_FIELD_CACHE) {
+					unknown.add(fieldName);
+				}
 
 			} catch (Exception e) {
 
