@@ -117,7 +117,8 @@ public final class Session {
 	 * <ul>
 	 *   <li>DB / Redis … 古い行を消して、新しい ID で書き直す</li>
 	 *   <li>Cookie … <b>ID で引いていないので、中身の Cookie を書き直すだけ</b>。
-	 *       それでも古い値は無効になる（署名と暗号化がかかっている）</li>
+	 *       <b>古い値はすぐには無効にならない</b>。最後に使ってから {@code session.timeout}、
+	 *       発行から {@code session.absolute_timeout} を過ぎると捨てる（D-209。かつてはいつまでも使えた）</li>
 	 *   <li>なし … 何も起きない</li>
 	 * </ul>
 	 */

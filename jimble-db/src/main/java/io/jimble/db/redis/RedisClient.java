@@ -32,6 +32,16 @@ public class RedisClient {
 	/** 設定キー：SSL を使うか */
 	public static final String KEY_SSL = "redis.ssl";
 
+	/** 設定キー：利用者（Redis 6 の ACL。空なら送らない） */
+	public static final String KEY_USERNAME = "redis.username";
+
+	/**
+	 * 設定キー：パスワード（D-208。空なら送らない）
+	 *
+	 * <p>かつては書く場所が無く、<b>Redis に認証を掛けられなかった</b>。</p>
+	 */
+	public static final String KEY_PASSWORD = "redis.password";
+
 	/** 設定キー：繋ぐまでの上限 */
 	public static final String KEY_CONNECTION_TIMEOUT = "redis.settings.connection_timeout";
 
@@ -129,7 +139,23 @@ public class RedisClient {
 			}
 
 			Config config = new Config();
-			config.useSingleServer()
+
+			// 文字列として読み書きする（既定の Kryo は、読むときに何のクラスでも作る。D-208）
+			config.setCodec(StringValueCodec.INSTANCE);
+
+			org.redisson.config.SingleServerConfig server = config.useSingleServer();
+
+			String username = Conf.conf().getString(KEY_USERNAME, "");
+			String password = Conf.conf().getString(KEY_PASSWORD, "");
+
+			if (!username.isEmpty()) {
+				server.setUsername(username);
+			}
+			if (!password.isEmpty()) {
+				server.setPassword(password);
+			}
+
+			server
 				.setAddress(
 					"%s://%s:%s".formatted(
 						Conf.conf().getBoolean(KEY_SSL, false) ? "rediss" : "redis"

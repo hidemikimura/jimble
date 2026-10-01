@@ -31,6 +31,24 @@ import java.util.List;
  *   <li><b>サイズ上限が無かった。</b>Cookie は 4KB を超えるとブラウザに黙って捨てられる。
  *       超えたら {@link IllegalStateException} で落とす（要件 F-S-08「超過時は明確に失敗させる」）</li>
  * </ol>
+ *
+ * <h2>有効期限をサーバー側でも見る（D-209）</h2>
+ * <p>
+ * <b>2.2.2 までは、暗号文の中に時刻が無かった。</b>{@code session.timeout} は Cookie の {@code Max-Age} に
+ * なるだけで、それを守るのはブラウザである。<b>1度盗まれた Cookie は、ログアウトしても、
+ * タイムアウトを過ぎても、いつまでも使えた</b>（ログアウトは削除の Set-Cookie を送るだけ）。
+ * </p>
+ * <p>
+ * いまは暗号文の中に<b>発行した時刻（{@code iat}）と最後に使った時刻（{@code seen}）</b>を入れ、読むときに
+ * {@code seen} から {@code session.timeout}、{@code iat} から {@code session.absolute_timeout}（既定 1 日）を
+ * 過ぎたものを捨てる。<b>時刻の無い（2.2.2 までの）Cookie も捨てる</b>——いつ発行されたものか分からないので、
+ * 盗まれたものと見分けられない。
+ * </p>
+ * <p>
+ * それでも、<b>ログアウトした瞬間に、盗まれた写しまで無効にはできない</b>（サーバーに何も置かないため）。
+ * 最後に使ってから {@code session.timeout} までは使える。すぐに無効にしたいなら
+ * {@code store = "db"} か {@code "redis"} にするか、{@code Auth.revoke} を使う。
+ * </p>
  */
 public final class CookieSessionStore implements SessionStore {
 
@@ -50,6 +68,22 @@ public final class CookieSessionStore implements SessionStore {
 	/* タイムアウト（分） */
 	private final long timeoutMinutes;
 
+	/* 発行からの上限（ミリ秒） */
+	private final long absoluteTimeoutMillis;
+
+	/** 暗号文の中身の形の版（D-209） */
+	static final int FORMAT = 2;
+
+	/**
+	 * 最後に使った時刻を書き直す間隔（ミリ秒）
+	 *
+	 * <p>読むだけのリクエストのたびに暗号化し直さないため。これより短い間は {@code Max-Age} だけ延ばす。</p>
+	 */
+	static final long SEEN_RESOLUTION_MILLIS = 60_000;
+
+	/* 時計（テストで差し替える） */
+	java.util.function.LongSupplier clock = System::currentTimeMillis;
+
 	/* 暗号鍵（先頭が「いま書くのに使う鍵」。要件 NF-S-09） */
 	private final List<String> secrets;
 
@@ -58,7 +92,7 @@ public final class CookieSessionStore implements SessionStore {
 	 */
 	public CookieSessionStore () {
 
-		this(SessionConf.secrets(), SessionConf.timeout().toMinutes());
+		this(SessionConf.secrets(), SessionConf.timeout().toMinutes(), SessionConf.absoluteTimeout());
 
 	}
 
@@ -82,6 +116,19 @@ public final class CookieSessionStore implements SessionStore {
 	 */
 	public CookieSessionStore (List<String> secrets, long timeoutMinutes) {
 
+		this(secrets, timeoutMinutes, SessionConf.DEFAULT_ABSOLUTE_TIMEOUT);
+
+	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param secrets			暗号鍵（<b>先頭が「いま書くのに使う鍵」</b>。要件 NF-S-09）
+	 * @param timeoutMinutes	タイムアウト（分。最後に使ってから）
+	 * @param absoluteTimeout	発行からの上限（使い続けても延びない。D-209）
+	 */
+	public CookieSessionStore (List<String> secrets, long timeoutMinutes, java.time.Duration absoluteTimeout) {
+
 		if (secrets == null || secrets.isEmpty()) {
 			throw new IllegalStateException(
 				"Cookie セッションには暗号鍵が要ります（%s）".formatted(SessionConf.KEY_SECRET));
@@ -89,6 +136,7 @@ public final class CookieSessionStore implements SessionStore {
 
 		this.secrets = List.copyOf(secrets);
 		this.timeoutMinutes = timeoutMinutes;
+		this.absoluteTimeoutMillis = absoluteTimeout.toMillis();
 
 	}
 
@@ -112,6 +160,13 @@ public final class CookieSessionStore implements SessionStore {
 			return SessionEntry.empty();
 		}
 
+		Envelope envelope = open(match.value());
+
+		if (envelope == null) {
+			// 期限切れか、時刻の無い 2.2.2 までの Cookie。空の新規セッションとして扱う
+			return SessionEntry.empty();
+		}
+
 		if (match.isStale()) {
 
 			// 数えておく。0 になるまで古い鍵を捨てられない
@@ -123,13 +178,11 @@ public final class CookieSessionStore implements SessionStore {
 			 * 保存が呼ばれないので、待っていると<b>その人はずっと古い鍵のまま</b>になる。
 			 * 中身は変えないので、アプリから見た振る舞いは変わらない
 			 */
-			write(context, match.value());
+			write(context, envelope.data(), envelope.issuedAt(), envelope.seen());
 
 		}
 
-		Data data = Dson.decodes(match.value(), Data.class);
-
-		return new SessionEntry(data == null ? new Data() : data, true);
+		return new SessionEntry(envelope.data(), true, envelope.issuedAt());
 
 	}
 
@@ -141,7 +194,12 @@ public final class CookieSessionStore implements SessionStore {
 			return;
 		}
 
-		write(context, Dson.encodes(entry.data()));
+		long now = clock.getAsLong();
+
+		// 発行した時刻は引き継ぐ。ID を作り直したとき（ログイン）は既存ではないので、いまから数え直す
+		long issuedAt = entry.isExisting() && entry.issuedAt() > 0 ? entry.issuedAt() : now;
+
+		write(context, entry.data(), issuedAt, now);
 
 	}
 
@@ -149,12 +207,63 @@ public final class CookieSessionStore implements SessionStore {
 	 * 今の鍵で暗号化して書く
 	 *
 	 * @param context	コンテキスト
-	 * @param json		中身
+	 * @param data		中身
+	 * @param issuedAt	発行した時刻
+	 * @param seen		最後に使った時刻
 	 */
-	private void write (WebContext context, String json) {
+	private void write (WebContext context, Data data, long issuedAt, long seen) {
+
+		Data envelope = new Data();
+		envelope.put("v", FORMAT);
+		envelope.put("iat", issuedAt);
+		envelope.put("seen", seen);
+		envelope.put("data", data);
 
 		// 書くときは必ず先頭の鍵。古い鍵で書いたら入れ替えが終わらない
-		put(context, Aead.encrypt(json, secrets.get(0)));
+		put(context, Aead.encrypt(Dson.encodes(envelope), secrets.get(0)));
+
+	}
+
+	/**
+	 * 暗号文の中身
+	 *
+	 * @param data		中身
+	 * @param issuedAt	発行した時刻
+	 * @param seen		最後に使った時刻
+	 */
+	record Envelope (Data data, long issuedAt, long seen) {}
+
+	/**
+	 * 中身を読み、期限を確かめる（D-209）
+	 *
+	 * @param json	復号した中身
+	 * @return	中身。期限切れか、時刻の無い（2.2.2 までの）形なら null
+	 */
+	Envelope open (String json) {
+
+		Data envelope;
+
+		try {
+			envelope = Dson.decodes(json, Data.class);
+		} catch (RuntimeException ex) {
+			return null;
+		}
+
+		if (envelope == null || !envelope.containsKey("v") || envelope.getLong("v") != FORMAT) {
+			return null;
+		}
+
+		long issuedAt = envelope.getLong("iat");
+		long seen = envelope.getLong("seen");
+		long now = clock.getAsLong();
+
+		if (now - seen > timeoutMinutes * 60_000L || now - issuedAt > absoluteTimeoutMillis) {
+			return null;
+		}
+
+		Data data = envelope.getDataOptional("data");
+
+		return new Envelope(data == null ? new Data() : data, issuedAt, seen);
 
 	}
 
@@ -224,16 +333,28 @@ public final class CookieSessionStore implements SessionStore {
 			return;
 		}
 
-		if (match.current()) {
-			// 今の鍵。中身はそのまま、有効期限だけ延ばす
+		Envelope envelope = open(match.value());
+
+		if (envelope == null) {
+			// 期限切れのものは延ばさない
+			return;
+		}
+
+		long now = clock.getAsLong();
+
+		if (match.current() && now - envelope.seen() < SEEN_RESOLUTION_MILLIS) {
+			// 今の鍵で、少し前に使ったばかり。中身はそのまま、Cookie の有効期限だけ延ばす
 			put(context, encrypted);
 			return;
 		}
 
-		// 古い鍵。中身は変えずに、今の鍵で包み直す
-		Metrics.count(METRIC_STALE);
+		if (!match.current()) {
+			// 古い鍵。中身は変えずに、今の鍵で包み直す
+			Metrics.count(METRIC_STALE);
+		}
 
-		write(context, match.value());
+		// 最後に使った時刻を書き直す
+		write(context, envelope.data(), envelope.issuedAt(), now);
 
 	}
 

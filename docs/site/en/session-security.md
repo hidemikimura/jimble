@@ -97,7 +97,7 @@ What it does depends on the store:
 | store | What happens |
 | --- | --- |
 | `db` / `redis` | The old row is deleted and rewritten under the new id |
-| `cookie` | **Nothing is keyed by the id**, so the contents cookie is simply rewritten (the old value is void — it is signed and encrypted) |
+| `cookie` | **Nothing is keyed by the id**, so the contents cookie is simply rewritten. **The old value does not die at once**: the server drops it `session.timeout` after it was last used, or `session.absolute_timeout` (1 day by default) after it was issued |
 | `none` | Nothing |
 
 ## CSRF

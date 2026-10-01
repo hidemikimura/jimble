@@ -19,6 +19,9 @@ public final class SessionEntry {
 	/* 保存先に既にあるか */
 	private final boolean existing;
 
+	/* 発行した時刻（ミリ秒。分からなければ 0。Cookie セッションが使う。D-209） */
+	private final long issuedAt;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -27,8 +30,22 @@ public final class SessionEntry {
 	 */
 	public SessionEntry (Data data, boolean existing) {
 
+		this(data, existing, 0L);
+
+	}
+
+	/**
+	 * コンストラクタ（発行した時刻つき）
+	 *
+	 * @param data		中身
+	 * @param existing	保存先に既にあるか
+	 * @param issuedAt	発行した時刻（ミリ秒。分からなければ 0）
+	 */
+	public SessionEntry (Data data, boolean existing, long issuedAt) {
+
 		this.data = data == null ? new Data() : data;
 		this.existing = existing;
+		this.issuedAt = issuedAt;
 
 	}
 
@@ -51,6 +68,17 @@ public final class SessionEntry {
 	public Data data () {
 
 		return data;
+
+	}
+
+	/**
+	 * 発行した時刻（Cookie セッションが、発行からの上限を数えるのに使う。D-209）
+	 *
+	 * @return	ミリ秒。分からなければ 0
+	 */
+	public long issuedAt () {
+
+		return issuedAt;
 
 	}
 
