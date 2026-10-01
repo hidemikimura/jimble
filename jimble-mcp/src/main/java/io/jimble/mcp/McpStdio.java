@@ -149,7 +149,7 @@ public final class McpStdio {
 		 */
 		System.setOut(new PrintStream(System.err, true, StandardCharsets.UTF_8));
 
-		McpDispatch dispatch = new McpDispatch(registry);
+		McpDispatch dispatch = new McpDispatch(registry, true);
 
 		Log.info("MCP を標準入出力で待ち受けます（仕様 %s / ルート表=%s）".formatted(
 			McpProtocol.version(), dispatcher == null ? "なし" : "あり"));

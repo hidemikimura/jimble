@@ -163,6 +163,9 @@ public final class McpHandler {
 		 */
 		BlockingQueue<Data> pending = new LinkedBlockingQueue<>();
 
+		// 繋いでいる相手（取り消せるのは同じ相手だけ。D-221）
+		String owner = McpSubscriptions.owner(context);
+
 		/*
 		 * <b>接続を1本、長く握る。</b>SSE と同じ費用がかかる（要件 NF-P-07）。
 		 * 上限は SSE の設定（sse.max_duration_seconds）に従う。
@@ -179,7 +182,7 @@ public final class McpHandler {
 
 			// acknowledged もここで行列に入る（書くのは下の輪）
 			McpSubscriptions.Subscription subscription
-				= McpSubscriptions.open(id, params, new McpSubscriptions.Sink() {
+				= McpSubscriptions.open(owner, id, params, new McpSubscriptions.Sink() {
 
 					@Override
 					public void write (Data message) {
@@ -233,7 +236,7 @@ public final class McpHandler {
 			 * 取り消しで閉じられていた場合は、ここは何もしない
 			 * （仕様は「取り消された要求に応答を返してはならない」と定めている）。
 			 */
-			McpSubscriptions.complete(id);
+			McpSubscriptions.complete(owner, id);
 
 			// 締めの応答を含め、行列に残っているものを書き切る
 			for (Data message = pending.poll(); message != null; message = pending.poll()) {
@@ -256,7 +259,7 @@ public final class McpHandler {
 			 */
 			io.jimble.util.log.Log.error(ex, "MCP の購読が途中で終わりました: id=%s".formatted(id));
 
-			McpSubscriptions.cancel(id);
+			McpSubscriptions.cancel(owner, id);
 
 		}
 
