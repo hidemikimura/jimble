@@ -171,6 +171,7 @@ csrf {
 session {
 	store            = "none"                     # none | db | redis | cookie
 	timeout          = 30m
+	absolute_timeout = 1d                         # store = cookie のとき。発行からの上限（使い続けても延びない）
 	cookie_name      = "sid"
 	table            = "session"                  # store = db のとき
 	secret           = ${?SESSION_SECRET}         # store = cookie のとき必須
@@ -295,6 +296,8 @@ redis {
 	host = ""        # 空なら Redis 無し
 	port = 6379
 	ssl  = false
+	username = ""    # Redis 6 の ACL の利用者。空なら送らない
+	password = ${?REDIS_PASSWORD}   # 空なら送らない
 
 	settings {
 		connection_timeout      = 10s

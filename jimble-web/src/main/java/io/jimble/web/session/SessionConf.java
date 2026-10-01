@@ -46,6 +46,12 @@ public final class SessionConf {
 	/** 既定のタイムアウト */
 	public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(30);
 
+	/** 設定キー：Cookie セッションの、発行からの上限（使い続けても延びない。D-209） */
+	public static final String KEY_ABSOLUTE_TIMEOUT = "session.absolute_timeout";
+
+	/** 既定の、発行からの上限 */
+	public static final Duration DEFAULT_ABSOLUTE_TIMEOUT = Duration.ofDays(1);
+
 	/** 既定の Cookie 名 */
 	public static final String DEFAULT_COOKIE_NAME = "sid";
 
@@ -73,6 +79,17 @@ public final class SessionConf {
 	public static Duration timeout () {
 
 		return Conf.conf().getDuration(KEY_TIMEOUT, DEFAULT_TIMEOUT);
+
+	}
+
+	/**
+	 * Cookie セッションの、発行からの上限（D-209）
+	 *
+	 * @return	時間
+	 */
+	public static Duration absoluteTimeout () {
+
+		return Conf.conf().getDuration(KEY_ABSOLUTE_TIMEOUT, DEFAULT_ABSOLUTE_TIMEOUT);
 
 	}
 

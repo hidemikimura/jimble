@@ -98,7 +98,7 @@ context.session().save();                  // ← ここで新しい ID が発�
 | store | 何が起きるか |
 | --- | --- |
 | `db` / `redis` | 古い行を消して、新しい ID で書き直す |
-| `cookie` | **ID で引いていない**ので、中身の Cookie を書き直すだけ（古い値は署名と暗号化で無効） |
+| `cookie` | **ID で引いていない**ので、中身の Cookie を書き直すだけ。**古い値はすぐには無効になりません**。最後に使ってから `session.timeout`、発行から `session.absolute_timeout`（既定 1 日）を過ぎると、サーバーが捨てます |
 | `none` | 何も起きない |
 
 ## CSRF

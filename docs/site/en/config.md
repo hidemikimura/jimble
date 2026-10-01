@@ -178,6 +178,7 @@ csrf {
 session {
 	store            = "none"                     # none | db | redis | cookie
 	timeout          = 30m
+	absolute_timeout = 1d                         # when store = cookie: the limit from issue (does not slide)
 	cookie_name      = "sid"
 	table            = "session"                  # when store = db
 	secret           = ${?SESSION_SECRET}         # required when store = cookie
@@ -302,6 +303,8 @@ redis {
 	host = ""        # empty means no Redis
 	port = 6379
 	ssl  = false
+	username = ""    # Redis 6 ACL user; empty sends none
+	password = ${?REDIS_PASSWORD}   # empty sends none
 
 	settings {
 		connection_timeout      = 10s
