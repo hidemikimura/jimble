@@ -1,6 +1,5 @@
 package io.jimble.web.spa;
 
-import io.jimble.web.assets.AssetConf;
 import io.jimble.web.assets.AssetHandler;
 import io.jimble.web.assets.AssetPath;
 import io.jimble.web.assets.Resources;
@@ -180,9 +179,11 @@ public final class SpaHandler implements Handler {
 
 		String rewritten = route.rewriter().rewrite(context, html);
 
-		// index.html は毎回確認させる（中身が変わりうる）
-		context.response().setResponseHeader("Cache-Control",
-			"public,max-age=%d,must-revalidate".formatted(AssetConf.maxAge().toSeconds()));
+		/*
+		 * <b>共有キャッシュに置かせない</b>（D-212）。書き換えにはリクエストごとの値が入りうる
+		 * （かつては public で返していたので、誰かの値を差し込んだページを、CDN がほかの人に配りえた）
+		 */
+		context.response().setResponseHeader("Cache-Control", "private,no-cache");
 		context.response().send(rewritten, "text/html", StandardCharsets.UTF_8);
 
 		return true;

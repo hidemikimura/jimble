@@ -9,6 +9,7 @@ import io.jimble.util.conf.Conf;
  * template {
  *   content_type = Html                            # Html | Plain
  *   package      = "gg.jte.generated.precompiled"  # 事前コンパイルの出力パッケージ
+ *   json_fallback = false                          # Accept: application/json ならデータを JSON で返すか
  * }
  * </pre>
  *
@@ -24,6 +25,17 @@ public final class TemplateConf {
 
 	/** 設定キー：事前コンパイルの出力パッケージ */
 	public static final String KEY_PACKAGE = "template.package";
+
+	/**
+	 * 設定キー：{@code view()} のページに {@code Accept: application/json} で来たら、データを JSON で返すか（D-210）
+	 *
+	 * <p>
+	 * <b>既定は false。</b>2.2.2 までは必ず返していた（移送元の振る舞い）。
+	 * データはテンプレートに渡したもの<b>全部</b>なので、テンプレートが出していない列
+	 * （メール、パスワードのハッシュなど）まで、{@code curl -H 'Accept: application/json'} で読めた。
+	 * </p>
+	 */
+	public static final String KEY_JSON_FALLBACK = "template.json_fallback";
 
 	/** 既定の種別 */
 	public static final String DEFAULT_CONTENT_TYPE = "Html";
@@ -52,6 +64,17 @@ public final class TemplateConf {
 	public static String packageName () {
 
 		return Conf.conf().getString(KEY_PACKAGE, DEFAULT_PACKAGE);
+
+	}
+
+	/**
+	 * {@code view()} のページで、JSON を求められたらデータを返すか（D-210）
+	 *
+	 * @return	返すなら true（既定 false）
+	 */
+	public static boolean jsonFallback () {
+
+		return Conf.conf().getBoolean(KEY_JSON_FALLBACK, false);
 
 	}
 

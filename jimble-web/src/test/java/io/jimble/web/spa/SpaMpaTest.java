@@ -169,7 +169,8 @@ class SpaMpaTest {
 				// docs:begin spa-rewrite
 				install(() -> SpaHandler.mount("/app", "test-spa", spa -> spa
 					.route("/app/items/{id}", (context, html) ->
-						html.replace("<!--title-->", "<title>item " + context.request().bodyPath().getString("id") + "</title>"))
+						html.replace("<!--title-->",
+							"<title>item " + SpaRewriter.escapeHtml(context.request().bodyPath().getString("id")) + "</title>"))
 				));
 				// docs:end
 			}
@@ -179,6 +180,23 @@ class SpaMpaTest {
 
 		assertEquals(200, sink.status());
 		assertTrue(sink.body().contains("<title>item 42</title>"), sink.body());
+
+		// D-212 書き換えたページは共有キャッシュに置かせない
+		assertEquals("private,no-cache", sink.headers().get("Cache-Control"));
+
+		// D-212 パスの値はデコード済み。エスケープしないと、そのまま HTML になる
+		Fakes.FakeResponseSink xss = request(app, "/app/items/%3C%2Ftitle%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E");
+		assertFalse(xss.body().contains("<script>"), xss.body());
+		assertTrue(xss.body().contains("&lt;/title&gt;&lt;script&gt;"), xss.body());
+
+	}
+
+	@Test
+	@DisplayName("D-212 escapeHtml は本文と属性の値に差し込めるようにする")
+	void escapeHtml () {
+
+		assertEquals("&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;", SpaRewriter.escapeHtml("<a href=\"x\" title='y'>&</a>"));
+		assertEquals("", SpaRewriter.escapeHtml(null));
 
 	}
 
