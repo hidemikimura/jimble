@@ -40,6 +40,14 @@ SQL.select(Post.id, Post.title).from(Post.instance())
 Call `where` more than once and the conditions are joined with AND.
 
 For OR and parentheses, group with `Dsl.anyOf(...)` / `Dsl.allOf(...)` (since 1.5.0).
+Chaining `a.or(b).and(c)` reads **left to right** as `(a OR b) AND c` (since 2.2.3; up to 2.2.2 it was written
+without parentheses as `a OR b AND c`, that is `a OR (b AND c)`).
+
+> [!TRAP]
+> **Do not pass the request straight to `apply(Data)` / `setRow(Data)` / `valueRow(Data)`.** They accept any column name,
+> so `?where[users][password_hash|starts_with]=...` can probe columns the page never shows, and a form can add `role`.
+> Use **the forms that take the allowed columns** (since 2.2.3):
+> `apply(data, User.name, User.created_at)`, `setRow(form, User.nickname, User.bio)`.
 
 ```java
 .where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))

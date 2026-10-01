@@ -71,6 +71,24 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	}
 
 	/**
+	 * 平らな行で入れる（<b>許した列だけ</b>。D-224）
+	 *
+	 * <p>リクエストを渡すときはこちらを使う。許していない列が来たら {@link SqlBuildException}（書き換えてはいけない列を足させない）。</p>
+	 *
+	 * @param row		列名 → 値
+	 * @param allowed	入れてよい列
+	 * @return	InsertBuilder
+	 * @throws SqlBuildException	許していない列がある、値に入れ子がある
+	 */
+	public InsertBuilder valueRow (Data row, IColumn... allowed) {
+
+		AllowedColumns.checkRow(table.name(), row, allowed);
+
+		return valueRow(row);
+
+	}
+
+	/**
 	 * 平らな行で入れる（要件 D-192）
 	 *
 	 * <pre>
@@ -86,6 +104,8 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	 * （現在時刻は {@code Dsl.now()} を値に入れる）。値が {@code Data} / {@code Map}（入れ子）なら例外——
 	 * 結果の Data をそのまま渡して、テーブル名のキーを列だと思って入れる事故を止める。
 	 * </p>
+	 *
+	 * <p><b>どの列でも受け付ける。</b>リクエストを渡すなら {@link #valueRow(Data, IColumn...)} を使う（D-224）。</p>
 	 *
 	 * @param row	列名 → 値
 	 * @return	InsertBuilder
