@@ -194,6 +194,16 @@ assets {
 template {
 	package      = "gg.jte.generated.precompiled"   # 事前コンパイルの出力先
 	content_type = "text/html; charset=utf-8"
+	json_fallback = false   # view() のページに Accept: application/json で来たら、テンプレートに渡したデータを JSON で返すか
+}
+
+security_headers {
+	enabled                 = true
+	content_type_options    = "nosniff"                           # 空なら付けない
+	frame_options           = "SAMEORIGIN"                        # 別のサイトの iframe に入れさせない
+	referrer_policy         = "strict-origin-when-cross-origin"
+	hsts                    = 0s      # Strict-Transport-Security の max-age。0s なら付けない（https で受けたときだけ付ける）
+	hsts_include_subdomains = false
 }
 
 paging {

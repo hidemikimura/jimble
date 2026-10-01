@@ -319,6 +319,9 @@ public final class Response extends Data {
 	/* Cache-Control を自分で設定したか */
 	private boolean cacheControlSet = false;
 
+	/* アプリが決めたヘッダの名前（小文字。既定のセキュリティのヘッダで上書きしない。D-213） */
+	private final java.util.Set<String> headersSet = new java.util.HashSet<>();
+
 	/* Content-Type を自分で設定したか */
 	private boolean contentTypeSet = false;
 
@@ -910,6 +913,8 @@ public final class Response extends Data {
 			contentTypeSet = true;
 		}
 
+		headersSet.add(name.toLowerCase(java.util.Locale.ROOT));
+
 		sink.header(name, value);
 		return this;
 
@@ -944,6 +949,8 @@ public final class Response extends Data {
 			contentTypeSet = true;
 		}
 
+		headersSet.add(name.toLowerCase(java.util.Locale.ROOT));
+
 		sink.addHeader(name, value);
 		return this;
 
@@ -964,11 +971,50 @@ public final class Response extends Data {
 	 */
 	private void applyDefaultCacheControl () {
 
+		applyDefaultSecurityHeaders();
+
 		if (cacheControlSet) {
 			return;
 		}
 
 		sink.header(HEADER_CACHE_CONTROL, "no-store");
+
+	}
+
+	/**
+	 * 既定のセキュリティのヘッダを付ける（D-213。{@link SecurityHeadersConf}）
+	 *
+	 * <p>アプリが同じ名前のヘッダを決めていれば上書きしない。</p>
+	 */
+	private void applyDefaultSecurityHeaders () {
+
+		if (!SecurityHeadersConf.enabled()) {
+			return;
+		}
+
+		defaultHeader("X-Content-Type-Options", SecurityHeadersConf.contentTypeOptions());
+		defaultHeader("X-Frame-Options", SecurityHeadersConf.frameOptions());
+		defaultHeader("Referrer-Policy", SecurityHeadersConf.referrerPolicy());
+
+		String hsts = SecurityHeadersConf.hsts();
+
+		// http で受けた応答の HSTS はブラウザが無視する。https のときだけ付ける
+		if (hsts != null && "https".equalsIgnoreCase(request.scheme())) {
+			defaultHeader("Strict-Transport-Security", hsts);
+		}
+
+	}
+
+	/**
+	 * アプリが決めていなければ付ける
+	 */
+	private void defaultHeader (String name, String value) {
+
+		if (value == null || value.isEmpty() || headersSet.contains(name.toLowerCase(java.util.Locale.ROOT))) {
+			return;
+		}
+
+		sink.header(name, value);
 
 	}
 
@@ -1318,8 +1364,13 @@ public final class Response extends Data {
 			if (sendWithoutBodyIfBodiless("テンプレート")) {
 				return this;
 			}
-			// JSONレスポンスを要求されている場合はデータだけ返す（移送元と同じ）
-			if (request.acceptJson()) {
+			/*
+			 * JSON を求められたらデータだけ返す（移送元と同じ）。<b>既定では返さない</b>（D-210）。
+			 * データはテンプレートに渡したもの全部なので、テンプレートが出していない列まで読めた。
+			 * 返すときは Vary: Accept を付ける（付けないと、共有キャッシュが JSON を HTML の代わりに配る）
+			 */
+			if (io.jimble.web.template.TemplateConf.jsonFallback() && request.acceptJson()) {
+				setResponseHeader("Vary", "Accept");
 				send(this);
 				return this;
 			}
