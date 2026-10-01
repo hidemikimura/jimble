@@ -156,7 +156,7 @@ public final class Flash {
 		data.put(key, value);
 
 		// セッション Cookie（MAX_AGE_SESSION）にする。次のリクエストで読まれて消える
-		Cookie cookie = CookieConf.create(PREFIX + key, Cookies.sign(value), Cookie.MAX_AGE_SESSION);
+		Cookie cookie = CookieConf.create(PREFIX + key, Cookies.sign(PREFIX + key, value), Cookie.MAX_AGE_SESSION);
 		cookies.put(cookie, value);
 
 	}

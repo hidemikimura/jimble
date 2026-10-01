@@ -145,4 +145,95 @@ public final class Signer {
 
 	}
 
+
+	/** 名前に結びつけた署名の頭（D-220） */
+	public static final String BOUND_PREFIX = "v2:";
+
+	/**
+	 * 名前に結びつけて署名する（D-220）
+	 *
+	 * <p>
+	 * <b>{@link #sign(String, String)} は値だけに署名する。</b>そのため、アプリが攻撃者の決めた値を
+	 * 署名して返す場所（フラッシュに入力を入れる、など）が1つでもあると、その署名を<b>別の名前の Cookie に
+	 * 移し替えて使えた</b>。こちらは名前も MAC に入れるので、移し替えると検証に落ちる。
+	 * </p>
+	 *
+	 * @param name		名前（Cookie 名など）
+	 * @param value		値
+	 * @param secret	鍵
+	 * @return	{@code v2:<署名>|<値>}
+	 */
+	public static String signFor (String name, String value, String secret) {
+
+		if (value == null) {
+			return null;
+		}
+
+		return BOUND_PREFIX + mac(bound(name, value), secret) + SEPARATOR + value;
+
+	}
+
+	/**
+	 * 名前に結びつけた署名を、鍵を順に試して外す（D-220）
+	 *
+	 * <p>
+	 * {@code acceptLegacy} なら、名前に結びついていない古い形（{@link #sign(String, String)}）も読む。
+	 * そのときは<b>古い鍵で読めたものと同じに扱う</b>（{@link KeyMatch#isStale()} が true）。書き直す側が新しい形に入れ替える。
+	 * </p>
+	 *
+	 * @param name			名前
+	 * @param signed		署名つきの値
+	 * @param secrets		鍵（先頭がいまの鍵）
+	 * @param acceptLegacy	古い形も読むか
+	 * @return	読めたもの。読めなければ null
+	 */
+	public static KeyMatch unsignAnyFor (String name, String signed, List<String> secrets, boolean acceptLegacy) {
+
+		if (signed == null || secrets == null || secrets.isEmpty()) {
+			return null;
+		}
+
+		if (!signed.startsWith(BOUND_PREFIX)) {
+
+			if (!acceptLegacy) {
+				return null;
+			}
+
+			KeyMatch legacy = unsignAny(signed, secrets);
+
+			return legacy == null ? null : new KeyMatch(legacy.value(), false);
+
+		}
+
+		String body = signed.substring(BOUND_PREFIX.length());
+		int index = body.indexOf(SEPARATOR);
+
+		if (index < 0) {
+			return null;
+		}
+
+		String signature = body.substring(0, index);
+		String value = body.substring(index + 1);
+		String message = bound(name, value);
+
+		for (int i = 0; i < secrets.size(); i++) {
+			if (MessageDigest.isEqual(signature.getBytes(StandardCharsets.UTF_8)
+				, mac(message, secrets.get(i)).getBytes(StandardCharsets.UTF_8))) {
+				return new KeyMatch(value, i == 0);
+			}
+		}
+
+		return null;
+
+	}
+
+	/**
+	 * 名前と値をつなぐ（NUL で区切る。名前に NUL は来ない）
+	 */
+	private static String bound (String name, String value) {
+
+		return (name == null ? "" : name) + '\u0000' + value;
+
+	}
+
 }

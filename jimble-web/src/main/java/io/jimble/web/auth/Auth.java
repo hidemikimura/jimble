@@ -821,7 +821,8 @@ public final class Auth {
 	@CheckReturnValue
 	public static boolean attemptLogin (WebContext context, String key, String inputPassword, String passwordHash) {
 
-		long waitSeconds = Lockout.waitSeconds(key);
+		// 確かめる前に数える（同時に送られても素通りさせない。D-216）
+		long waitSeconds = Lockout.attempt(key);
 
 		if (waitSeconds > 0) {
 
@@ -844,8 +845,7 @@ public final class Auth {
 			return true;
 		}
 
-		Lockout.fail(key);
-
+		// 失敗はもう数えてある（Lockout.attempt）
 		return false;
 
 	}
