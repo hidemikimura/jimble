@@ -79,6 +79,77 @@ public final class Lockout {
 	// region 数える
 
 	/**
+	 * 1回試させてよいか確かめ、<b>よければ先に1回の失敗として数える</b>（D-216）
+	 *
+	 * <p>
+	 * <b>{@link #waitSeconds} → 確かめる → {@link #fail} の順では、同時に来た分が素通りする。</b>
+	 * 待ち時間が開いた瞬間に N 本同時に送ると、どれも「待たなくてよい」を読んでから失敗を数えるので、
+	 * 待ち時間ごとに N 回試せた（パスワードも TOTP も）。ここでは行に鍵をかけ、
+	 * 待ち時間を読むのと数えるのを1つのトランザクションでする。後から来た分は、先の分が数え終わるのを待ってから読む。
+	 * </p>
+	 *
+	 * <p>
+	 * 成功したら {@link #clear} を呼ぶ。失敗したときは何もしなくてよい（もう数えてある）。
+	 * <b>記録を読めなければ待たせる</b>（数えられないまま試させない）。
+	 * </p>
+	 *
+	 * @param key	数える単位（ログイン ID など）
+	 * @return	待たせる秒。0 なら試してよい（1回数えた）
+	 */
+	public static long attempt (String key) {
+
+		if (!isUsable()) {
+			return 0;
+		}
+
+		String hashed = hash(key);
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			db.execute(Sqls.insertIgnoreInto(db.dialect(), FrameworkTables.AUTH_ATTEMPT)
+				+ " (attempt_key, failed_count, last_failed_at) VALUES (?, 0, 0)"
+				+ Sqls.insertIgnoreTail(db.dialect())
+				, hashed);
+
+			long wait = db.transactionResult(tx -> {
+
+				Data row = db.select("SELECT failed_count, last_failed_at FROM %s WHERE attempt_key = ? FOR UPDATE"
+					.formatted(table(db)), hashed).orElse(null);
+
+				long now = nowMillis();
+				long failed = row == null ? 0 : row.getLong("failed_count");
+				long lastFailedAt = row == null ? 0 : row.getLong("last_failed_at");
+
+				if (isForgotten(lastFailedAt)) {
+					failed = 0;
+				}
+
+				long required = requiredSeconds(failed);
+				long remaining = required <= 0 ? 0 : Math.max(0, required - (now - lastFailedAt) / 1000);
+
+				if (remaining > 0) {
+					return remaining;
+				}
+
+				db.update("UPDATE %s SET failed_count = ?, last_failed_at = ? WHERE attempt_key = ?"
+					.formatted(table(db)), failed + 1, now, hashed);
+
+				return 0L;
+
+			});
+
+			cleanupIfDue();
+
+			return wait;
+
+		} catch (Exception ex) {
+			Log.error(ex, "ログイン失敗の記録を読めませんでした。待たせます");
+			return Math.max(1, LockoutConf.base().toSeconds());
+		}
+
+	}
+
+	/**
 	 * あと何秒待たせるか
 	 *
 	 * <p>0 なら待たせない。</p>

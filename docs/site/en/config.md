@@ -169,6 +169,7 @@ cookie {
 	secret           = ${?COOKIE_SECRET}         # signing key. empty means no signing
 	previous_secrets = [${?COOKIE_SECRET_OLD}]   # only while a key is being rotated
 	accept_unsigned  = false                     # true only while signing is being turned on
+	accept_legacy_signature = true               # also read pre-2.2.3 signatures not bound to the name (during the move)
 }
 
 csrf {

@@ -166,6 +166,9 @@ When you write a `Cookie` whose attributes (`Path`, `Max-Age`) you set yourself,
 
 ```java
 context.cookies().putSigned(new Cookie("user", id).path("/app").maxAge(3600));    // signed (readable with get)
+// The signature is bound to the cookie name (2.2.3+): a signature moved to another cookie name does not verify.
+// Signatures from 2.2.2 and earlier are read during the move (cookie.accept_legacy_signature, default true).
+// A signature carries no expiry: do not trust a signed cookie alone to identify a user — keep that in the session.
 context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));      // not signed (for JavaScript)
 ```
 
