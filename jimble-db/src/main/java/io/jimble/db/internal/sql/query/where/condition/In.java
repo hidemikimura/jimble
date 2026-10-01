@@ -1,5 +1,7 @@
 package io.jimble.db.internal.sql.query.where.condition;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.SelectBuilder;
@@ -106,11 +108,12 @@ public class In implements ICondition {
 		} else if (value instanceof ISelect select) {
 			return select.getParameter();
 		} else if (value instanceof Collection<?> list) {
-			return list;
+			return Parameter.singles(list);
 		} else if (value != null && value.getClass().isArray()) {
-			return value;
+			// 素の配列は一つひとつの値に（中に入れ子があれば断る）
+			return Parameter.singles(ArrayUtil.toList(value));
 		} else {
-			return value;
+			return Parameter.single(value);
 		}
 
 	}

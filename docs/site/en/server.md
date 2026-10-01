@@ -240,6 +240,8 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` is **appended to the existing value** (not overwritten).
 The timeouts are `proxy.connect_timeout` (5 seconds) and `proxy.request_timeout` (30 seconds),
 and a forward that fails returns **502**.
+The path is re-encoded segment by segment, and **a path containing `.` or `..` gets 400**
+(so a request cannot climb out of the base URL's path).
 
 ### The equivalents of nginx's proxy_set_header and friends
 

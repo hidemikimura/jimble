@@ -129,7 +129,7 @@ public final class MySqlDialect implements Dialect {
 
 		sb.append("DATE_FORMAT(");
 		value.run();
-		sb.append(", '").append(format.replace("'", "''")).append("')");
+		sb.append(", ").append(literal(format)).append(")");
 
 	}
 
@@ -304,7 +304,7 @@ public final class MySqlDialect implements Dialect {
 		}
 
 		value.run();
-		sb.append(" SEPARATOR '").append(separator.replace("'", "''")).append("')");
+		sb.append(" SEPARATOR ").append(literal(separator)).append(")");
 
 	}
 
@@ -355,7 +355,7 @@ public final class MySqlDialect implements Dialect {
 
 		sb.append("JSON_EXTRACT(");
 		value.run();
-		sb.append(", '").append(path).append("')");
+		sb.append(", ").append(literal(path)).append(")");
 
 		if (unquote) {
 			sb.append(')');
@@ -513,7 +513,7 @@ public final class MySqlDialect implements Dialect {
 
 		StringBuilder sb = new StringBuilder("ALTER TABLE ");
 		identifier(sb, table);
-		sb.append(" COMMENT '").append(comment.replace("'", "''")).append('\'');
+		sb.append(" COMMENT ").append(literal(comment));
 
 		return sb.toString();
 
@@ -551,6 +551,31 @@ public final class MySqlDialect implements Dialect {
 		}
 
 		return base.substring(0, slash) + "" + tail;
+
+	}
+
+
+	/**
+	 * 文字列リテラルにする（D-205）
+	 *
+	 * <p>
+	 * <b>{@code '} だけでなく {@code \\} も重ねる。</b>MySQL は既定で（{@code NO_BACKSLASH_ESCAPES} でなければ）
+	 * リテラルの中のバックスラッシュを効かせる。{@code '} を {@code ''} にするだけだと、
+	 * {@code \\'} が {@code \\''} になり、<b>バックスラッシュが1つ目の {@code '} を食べて、2つ目でリテラルが閉じる</b>。
+	 * かつての {@code dateFormat} / {@code groupConcat} の区切り / コメントはこれで抜けられ、
+	 * {@code jsonExtract} のパスは<b>何もエスケープしていなかった</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code NO_BACKSLASH_ESCAPES} の DB では、重ねたバックスラッシュが2つのまま残る（抜けられはしない）。
+	 * </p>
+	 *
+	 * @param value	値
+	 * @return	{@code '...'}
+	 */
+	static String literal (String value) {
+
+		return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'";
 
 	}
 

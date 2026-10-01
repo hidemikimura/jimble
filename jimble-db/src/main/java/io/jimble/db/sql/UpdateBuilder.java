@@ -88,6 +88,15 @@ public class UpdateBuilder extends AbstractBuilder<UpdateBuilder> {
 					"setRow(Data) には平らな行を渡してください（" + entry.getKey() + " の値が入れ子です。"
 						+ "結果の Data なら getData(テーブル) か flattenTable(テーブル) で平らにしてから）");
 			}
+			if (entry.getValue() instanceof java.util.Collection<?>
+				|| (entry.getValue() != null && entry.getValue().getClass().isArray() && !(entry.getValue() instanceof byte[]))) {
+				/*
+				 * <b>リストは断る</b>（D-204）。平らにされて値だけが増え、後ろの WHERE のプレースホルダーとずれる。
+				 * MariaDB のドライバは余った値を黙って捨てるので、<b>別の行を書き換えていた</b>
+				 */
+				throw new SqlBuildException(
+					"列 " + entry.getKey() + " の値がリストです。1つの列には1つの値を渡してください");
+			}
 			set(new TemporaryColumn(table, entry.getKey()), entry.getValue());
 		}
 		return this;

@@ -156,6 +156,7 @@ try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(t
 ## XML
 
 `XmlParser.parse(file)` で `XmlData` の木にします（**全部メモリに載ります**）。
+**DOCTYPE を含む XML は解析しません**（null を返します。外部の実体でファイルを読ませないため）。
 組み立ては `XmlBuilder.build(xmlData)`（検査例外は投げません）。
 
 ## ハッシュと暗号

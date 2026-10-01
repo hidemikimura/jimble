@@ -161,6 +161,7 @@ try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(t
 ## XML
 
 `XmlParser.parse(file)` turns it into a tree of `XmlData` (**all of it goes in memory**).
+**XML with a DOCTYPE is not parsed** (it returns null, so external entities cannot read files).
 To build one, `XmlBuilder.build(xmlData)` (it throws no checked exception).
 
 ## Hashing and encryption

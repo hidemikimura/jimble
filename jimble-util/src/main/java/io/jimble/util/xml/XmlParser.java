@@ -65,7 +65,7 @@ public class XmlParser {
 	private static XmlData parseDom(InputStream inputStream) {
 
 		try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
-			DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+			DocumentBuilderFactory documentBuilderFactory = secureDocumentBuilderFactory();
 			DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
 			Document document = documentBuilder.parse(bufferedInputStream);
 			document.getDocumentElement().normalize();
@@ -131,7 +131,7 @@ public class XmlParser {
 	 */
 	private static XmlData parseSax(InputStream inputStream) {
 
-		SAXParserFactory factory = SAXParserFactory.newInstance();
+		SAXParserFactory factory = secureSaxParserFactory();
 
 		try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
 			XmlSaxParser xmlSaxParser = new XmlSaxParser();
@@ -144,6 +144,67 @@ public class XmlParser {
 			Log.error(ex);
 			return null;
 		}
+
+	}
+
+	/**
+	 * 外部のものを読まない SAX の factory（D-206）
+	 *
+	 * <p>
+	 * <b>DOCTYPE を断る。</b>JDK の既定のままだと外部実体を読むので、
+	 * {@code <!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>} で
+	 * <b>サーバーのファイルが読め</b>、{@code http://} の実体で<b>内側のネットワークへ届いた</b>（XXE / SSRF）。
+	 * DOCTYPE を含む XML は解析できず、{@code parse} は null を返す。
+	 * </p>
+	 *
+	 * @return	factory
+	 */
+	static SAXParserFactory secureSaxParserFactory () {
+
+		SAXParserFactory factory = SAXParserFactory.newInstance();
+
+		try {
+			factory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+			factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+			factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+			factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+			factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+		} catch (Exception ex) {
+			// 守れない factory では解析しない
+			throw new IllegalStateException("XML の解析器を安全に設定できませんでした", ex);
+		}
+
+		factory.setXIncludeAware(false);
+
+		return factory;
+
+	}
+
+	/**
+	 * 外部のものを読まない DOM の factory（D-206）
+	 *
+	 * @return	factory
+	 */
+	static DocumentBuilderFactory secureDocumentBuilderFactory () {
+
+		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+
+		try {
+			factory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+			factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+			factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+			factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+			factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+			factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+			factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+		} catch (Exception ex) {
+			throw new IllegalStateException("XML の解析器を安全に設定できませんでした", ex);
+		}
+
+		factory.setXIncludeAware(false);
+		factory.setExpandEntityReferences(false);
+
+		return factory;
 
 	}
 

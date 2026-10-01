@@ -1,5 +1,7 @@
 package io.jimble.db.internal.sql.query.dsl.select;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.SqlBuildException;
 import io.jimble.db.sql.query.dsl.AbstractDsl;
@@ -256,7 +258,7 @@ public class Over extends AbstractDsl implements IDsl {
 					params.add(select.getParameter());
 				}
 			} else {
-				params.add(value);
+				params.add(Parameter.single(value));
 			}
 		}
 

@@ -1,5 +1,7 @@
 package io.jimble.db.internal.sql.query.set;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
@@ -95,7 +97,7 @@ public class Set implements ISet {
 		} else if (value instanceof ISelect select) {
 			return select.getParameter();
 		} else {
-			return value;
+			return Parameter.single(value);
 		}
 
 	}
