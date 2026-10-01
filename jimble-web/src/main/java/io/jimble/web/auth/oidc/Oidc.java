@@ -180,7 +180,12 @@ public final class Oidc {
 	 */
 	public static Handler callback (String provider, Function<OidcUser, Principal> lookup, String mfaPath) {
 
-		return callback(provider, lookup, mfaPath, "");
+		/*
+		 * <b>二要素認証の種別は、このルートの Auth.REALM にする</b>（D-219）。かつては "" で決め打ちだったので、
+		 * Auth.REALM = "operator" のルートで operator として登録した人が、<b>コードを聞かれずに入れた</b>
+		 * （"" の種別には登録が無いので、二要素認証をしていない人に見えた）
+		 */
+		return callback(provider, lookup, mfaPath, null);
 
 	}
 
@@ -248,7 +253,8 @@ public final class Oidc {
 					throw new HttpException(401, "ログインできませんでした");
 				}
 
-				finishLogin(context, principal, user.key(), mfaPath, mfaRealm);
+				finishLogin(context, principal, user.key(), mfaPath
+					, mfaRealm == null ? Auth.realmOf(context) : mfaRealm);
 
 			} catch (OidcException cause) {
 
@@ -297,7 +303,7 @@ public final class Oidc {
 	 */
 	static void finishLogin (WebContext context, Principal principal, String userKey, String mfaPath) {
 
-		finishLogin(context, principal, userKey, mfaPath, "");
+		finishLogin(context, principal, userKey, mfaPath, Auth.realmOf(context));
 
 	}
 

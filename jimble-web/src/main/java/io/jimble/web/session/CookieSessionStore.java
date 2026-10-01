@@ -288,7 +288,7 @@ public final class CookieSessionStore implements SessionStore {
 	 */
 	private void put (WebContext context, String encrypted) {
 
-		String value = Cookies.sign(encrypted);
+		String value = Cookies.sign(COOKIE_NAME, encrypted);
 
 		/*
 		 * <b>大きさは署名まで含めて見る。</b>ブラウザが持つのはこちらである。

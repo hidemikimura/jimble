@@ -131,6 +131,59 @@ class LockoutIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-216 待ち時間が開いた瞬間に同時に送られても、1本しか試させない")
+	void attemptSerializesConcurrentTries () throws Exception {
+
+		/*
+		 * 打ち間違いの3回を使い切った状態。次の1回は試せるが、その1回を数えたら待たせる。
+		 * waitSeconds → 確かめる → fail の順だと、10 本とも「待たなくてよい」を読んで、10 回試せた。
+		 */
+		Lockout.fail("alice");
+		Lockout.fail("alice");
+		Lockout.fail("alice");
+
+		java.util.concurrent.atomic.AtomicInteger allowed = new java.util.concurrent.atomic.AtomicInteger();
+		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+		Thread[] threads = new Thread[10];
+
+		for (int i = 0; i < threads.length; i++) {
+			threads[i] = new Thread(() -> {
+				try {
+					start.await();
+				} catch (InterruptedException ignore) {
+					return;
+				}
+				if (Lockout.attempt("alice") == 0) {
+					allowed.incrementAndGet();
+				}
+			});
+			threads[i].start();
+		}
+
+		start.countDown();
+
+		for (Thread thread : threads) {
+			thread.join();
+		}
+
+		assertEquals(1, allowed.get(), "同時に送ると、待ち時間を素通りして何本も試せています");
+		assertEquals(4, failedCount("alice"), "試させた1回を数えていません");
+
+	}
+
+	@Test
+	@DisplayName("D-216 attempt は試す前に数え、成功して clear すれば消える")
+	void attemptCountsBeforeTheCheck () {
+
+		assertEquals(0, Lockout.attempt("bob"));
+		assertEquals(1, failedCount("bob"));
+
+		Lockout.clear("bob");
+		assertEquals(0, failedCount("bob"));
+
+	}
+
+	@Test
 	@DisplayName("F-W-29 綴りを変えても同じ単位で数える")
 	void spellingDoesNotResetTheCount () {
 
