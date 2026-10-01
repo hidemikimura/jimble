@@ -97,4 +97,17 @@ class SqlCacheKeyTest {
 
 	}
 
+
+	@Test
+	@DisplayName("D-222 データソースが違えば、同じ SQL と値でも別のキー（テナントの結果を混ぜない）")
+	void keyPerDataSource () {
+
+		assertNotEquals(SqlCache.key("tenant_a", SQL, List.of(42)), SqlCache.key("tenant_b", SQL, List.of(42)));
+		assertEquals(SqlCache.key("tenant_a", SQL, List.of(42)), SqlCache.key("tenant_a", SQL, List.of(42)));
+
+		// データソースと SQL の区切りをずらしても同じキーにならない
+		assertNotEquals(SqlCache.key("a", "bSELECT 1", List.of()), SqlCache.key("ab", "SELECT 1", List.of()));
+
+	}
+
 }

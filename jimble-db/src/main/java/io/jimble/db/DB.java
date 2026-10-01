@@ -703,7 +703,8 @@ public class DB implements Closeable, AutoCloseable {
 		String sql = builder.sql(dialect());
 		List<Object> params = builder.params();
 
-		String key = SqlCache.key(sql, params);
+		// データソースごとに分ける（D-222）
+		String key = SqlCache.key(getDBName(), sql, params);
 
 		List<Data> cached = SqlCache.get(key);
 

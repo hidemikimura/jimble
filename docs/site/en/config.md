@@ -296,6 +296,7 @@ sql_cache {
 	store   = "memory"   # memory | redis | db
 	ttl     = 5m
 	max     = 10000      # cap on entries (memory only)
+	namespace = ""       # give each app / environment its own value when they share one Redis
 }
 
 redis {
