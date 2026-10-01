@@ -124,9 +124,13 @@ Data json = res.getContentJson();
 > **The default timeout is 30 seconds**, and **the same value goes to both** connect and response. You cannot set them separately.
 
 > [!TRAP]
-> **`setIgnoreSslError(true)` takes effect across the whole JVM.**
-> It raises a system property that turns certificate validation off, so
-> **every other connection in the same process stops validating too, and it never goes back.**
+> **`setIgnoreSslError(true)` checks neither the certificate nor the host name of that connection.** Do not use it in production.
+> Up to 2.2.2 it raised a system property that **turned host-name checking off for the whole JVM**, so every other connection
+> in the process (including fetching OIDC tokens and JWKS) stopped checking host names too. From 2.2.3 it affects that one client only.
+
+- **Redirects are not followed from https to http** (since 2.2.3). The target host is not checked, so if you check URLs
+  against an allow-list before fetching, use `setEnableRedirect(false)`
+- **A body read into memory is capped at 50MiB after decompression** (`setMaxResponseSize(bytes)`); above that the body is not read
 
 ## CSV
 
@@ -151,6 +155,10 @@ Pass a `Reader` and a single leading BOM character is dropped.
 
 To write a BOM, use `setWithBom(true)` (for Excel to open a UTF-8 CSV correctly).
 **It only has an effect for UTF encodings**; with Shift_JIS and the like it does nothing.
+
+**Values starting with `= + - @`, a tab or CR (and the full-width `＝＋－＠`) are written with a leading `'`** (since 2.2.3).
+Excel runs such cells as formulas, so a user-supplied `=HYPERLINK(...)` would run on the machine of whoever opened the CSV.
+Values that read as numbers (`-5` and so on) are left alone. Turn it off with `setEscapeFormula(false)`.
 
 ```java
 try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(true)) {
