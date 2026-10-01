@@ -5,6 +5,7 @@ import io.jimble.util.annotation.CheckReturnValue;
 import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.Data;
+import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.util.data.definition.ITable;
@@ -1098,6 +1099,23 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/**
 	 * {@inheritDoc}
 	 */
+	/**
+	 * 条件と並び順を Data からまとめて読む（<b>許した列だけ</b>。D-224）
+	 *
+	 * <p>リクエストを渡すときはこちらを使う。許していない列が来たら {@link SqlBuildException}。</p>
+	 *
+	 * @param data		{@code where} / {@code order} を持つもの
+	 * @param allowed	条件や並び順に使ってよい列
+	 * @return	SelectBuilder
+	 */
+	public SelectBuilder apply (Data data, IColumn... allowed) {
+
+		AllowedColumns.checkQuery(data, allowed);
+
+		return apply(data);
+
+	}
+
 	@Override
 	public SelectBuilder apply(Data data) {
 

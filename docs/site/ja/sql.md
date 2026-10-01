@@ -45,6 +45,20 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめます（1.5.0 �
 // WHERE (shop_id = ?) AND ( status = ? OR status = ?)
 ```
 
+`a.or(b).and(c)` のようにつなぐと、**左から読んだとおり** `(a OR b) AND c` になります（2.2.3 から）。
+2.2.2 までは括弧を付けずに `a OR b AND c`（＝ `a OR (b AND c)`）と書いていたので、
+「公開、または自分のもの」に「自分のテナント」を足したつもりが、ほかのテナントの公開データまで返りました。
+
+> [!TRAP]
+> **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さないでください。**どの列名でも受け付けるので、
+> `?where[users][password_hash|starts_with]=...` で画面に出していない列を当てられたり、
+> `role` などの書き換えてはいけない列を足されたりします。**許す列を渡す形**を使ってください（2.2.3 から）。
+>
+> ```java
+> SQL.select(User.id, User.name).from(User.instance()).apply(context.request().bodyAll(), User.name, User.created_at)
+> SQL.update(User.instance()).setRow(form, User.nickname, User.bio).where(User.id.eq(me))
+> ```
+
 > [!TRAP]
 > **1つの条件に比較は1つだけです。**`Post.id.ge(1).le(9)` は組み立て時に落ちます——
 > 1.4 までは**後ろの `le(9)` だけが残り、例外も出ませんでした**。範囲は `between(a, b)`、
