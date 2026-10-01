@@ -4,6 +4,25 @@
 
 ---
 
+## 2.2.3（未公開）
+
+### 上げる前に見るところ（送り元 IP と CORS）
+
+| | |
+|---|---|
+| **`trust_proxy = true` のとき、`X-Forwarded-For` を右から読みます** | 中継が2段以上なら `server.trusted_proxies` に中継の範囲を書いてください（書かないと、直前の中継の1つ前、つまり右端を送り元とします） |
+| **`CF-Connecting-IP` / `X-Real-IP` は、`server.client_ip_header` に書いたときだけ信じます** | Cloudflare の後ろなら `client_ip_header = "CF-Connecting-IP"` |
+| `Cors().addAllowOrigin("*")` は `allAllowOrigin()` と同じ扱いになり、`allowCredentials(true)` と一緒に使うと例外です | |
+
+### 直したこと（セキュリティ・送り元 IP と CORS）
+
+| | |
+|---|---|
+| **`trust_proxy = true` のとき、送り元の IP を偽れました** | `X-Forwarded-For` の**左端**（クライアントが好きに名乗れる）と、`CF-Connecting-IP` / `X-Real-IP` を無条件に信じていたので、名乗る値を変えるだけで `RateLimit.perIp` や IP での制限をすり抜けられました。右から読み、`server.trusted_proxies`（IP / CIDR。名前は引きません）に入っている中継を飛ばすようにしました |
+| **`addAllowOrigin("*")` と `allowCredentials(true)` を一緒に使うと、どのサイトにも Cookie 付きの読み取りを許していました** | `allAllowOrigin()` との組み合わせは断っていましたが、`"*"` をパターンとして足すとすり抜けていました。オリジンのパターンは、`*` のほかを字のとおりに比べるようにしました（`?` や `+` が正規表現として効いていました） |
+
+---
+
 ## 2.2.2（2026-10-01）
 
 **セキュリティの修正版です。早めに上げてください。**特に `ReverseProxy` を使っているアプリは、すぐに上げてください。
