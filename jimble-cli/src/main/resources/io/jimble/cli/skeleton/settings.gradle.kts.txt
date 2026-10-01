@@ -7,8 +7,13 @@ pluginManagement {
 		 *
 		 * mavenLocal() は「手元でビルドした jimble を試す」ためのもの。
 		 * 要らなければ消してよい。
+		 *
+		 * ~/.m2 は、ほかのビルドやツールが何でも書き込める置き場なので、
+		 * <b>jimble のもの（io.jimble…）だけ</b>をここから取る。ほかのライブラリは Maven Central から取る
 		 */
-		mavenLocal()
+		mavenLocal {
+			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
+		}
 		mavenCentral()
 		gradlePluginPortal()
 	}
@@ -16,8 +21,10 @@ pluginManagement {
 
 dependencyResolutionManagement {
 	repositories {
-		// jimble を publishToMavenLocal したものを先に見る
-		mavenLocal()
+		// jimble を publishToMavenLocal したものを先に見る（jimble のものだけ）
+		mavenLocal {
+			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
+		}
 		mavenCentral()
 	}
 }

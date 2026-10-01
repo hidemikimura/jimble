@@ -68,7 +68,7 @@ ln -sf "$PWD/jimble-cli/build/install/jimble/bin/jimble" /usr/local/bin/jimble
 ./gradlew -p gradle-plugin publishToMavenLocal
 ```
 
-雛形の `settings.gradle.kts` は `mavenLocal()` を先に見るようにしてあります。
+雛形の `settings.gradle.kts` は `mavenLocal()` を先に見るようにしてあります（2.2.4 から、`mavenLocal()` から取るのは jimble のもの（`io.jimble…`）だけです）。
 公開済みの版だけを使うなら、これは要りません。
 
 ## jimble new

@@ -35,10 +35,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '25'
@@ -46,4 +46,4 @@ jobs:
       # <b>v5 で止める。</b>v6 はキャッシュが MIT ではない
       # 非公開コンポーネントになり、使うと Terms of Use への同意になる（D-118）
       - name: 依存を解決して登録する
-        uses: gradle/actions/dependency-submission@v5
+        uses: gradle/actions/dependency-submission@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2

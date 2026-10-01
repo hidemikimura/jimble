@@ -79,7 +79,7 @@ was built from**. If that version is not published (`2.2.4-SNAPSHOT`, say),
 ./gradlew -p gradle-plugin publishToMavenLocal
 ```
 
-The skeleton's `settings.gradle.kts` already looks at `mavenLocal()` first.
+The skeleton's `settings.gradle.kts` already looks at `mavenLocal()` first (since 2.2.4 it takes only jimble's own artifacts, `io.jimble…`, from there).
 If you only ever use published versions, you do not need any of this.
 
 ## jimble new
