@@ -324,13 +324,24 @@ DB を直に触るツールを書いたなら、ネットワークの誰から�
 `before` で認証を掛けてください（`RouteTool` の先の API の認証とは別です）。
 
 ```java
-path("/mcp", () -> before(context -> {
-	if (!isValidToken(context.request().header().getStringOptional("authorization"))) {   // アプリの照合
-		throw new HttpException(401, "認証が必要です");
+public class BlogMcp extends McpController {
+	{
+		// MCP の口そのものに効く（このクラスのルートは POST /mcp だけ）
+		before(context -> {
+			if (!isValidToken(context.request().header().getStringOptional("authorization"))) {   // アプリの照合
+				throw new HttpException(401, "認証が必要です");
+			}
+		});
+
+		tool("search_posts", SearchPostsTool::new);
 	}
-}));
-install(BlogMcp::new);
+}
 ```
+
+> [!TRAP]
+> **`path("/mcp", () -> before(...))` を別のブロックに書いても、`install(BlogMcp::new)` には効きません。**
+> フィルタは書いたブロックの中のルートにしか付かないためです（パスが同じでも別のブロックなら効かない）。
+> MCP のクラスの中に書くか、`before` と `install` を同じブロックに入れてください。
 
 購読（`subscriptions/listen`）の取り消しは、**開いた相手と同じ接続元・`Authorization`・Cookie から来たものだけ**受けます（2.2.3 から）。
 認証の無い `/mcp` を同じ接続元から叩かれると、見分けられません。

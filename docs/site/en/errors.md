@@ -83,16 +83,18 @@ The order is this.
 The point of step 4 is that it is `send()`, not `send(statusCode)`.
 Whatever a handler built up with `json(...)` or the like is **sent, not thrown away.**
 
+**Do not return `cause.getMessage()` for 5xx.** Database errors (the duplicated key value and so on) and internal paths would reach the caller as they are. Read them in the log.
+
 ```java
 error((context, cause, statusCode) -> {
 
 	// JSON for an API, HTML for a screen
 	if (context.request().acceptJson()) {
-		context.response().json("error", cause.getMessage());
+		context.response().json("error", (statusCode < 500 ? cause.getMessage() : "Something went wrong on the server"));
 		return;
 	}
 
-	context.response().send("error: %d %s".formatted(statusCode, cause.getMessage()));
+	context.response().send("error: %d %s".formatted(statusCode, (statusCode < 500 ? cause.getMessage() : "Something went wrong on the server")));
 
 });
 ```

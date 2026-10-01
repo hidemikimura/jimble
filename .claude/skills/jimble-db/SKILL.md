@@ -58,6 +58,15 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 .where(Post.shop_id.eq(shopId), Dsl.anyOf(Post.status.eq("draft"), Post.status.eq("review")))
 ```
 
+**`a.or(b).and(c)` とつなぐと `(a OR b) AND c`**（左から読んだとおり。2.2.3）。
+2.2.2 までは括弧なしの `a OR b AND c`（＝ `a OR (b AND c)`）で、テナントの条件を足したつもりが効いていなかった。
+`a OR (b AND c)` にしたいなら `a.or(b.and(c))`。迷ったら `Dsl.anyOf` / `Dsl.allOf` で書く。
+
+**1つの値を書く場所（`eq` / `gt` / `like` / `set` / `value` など）にリストや配列を渡すと `SqlBuildException`**（2.2.2）。
+かつては値だけが増えて後ろのプレースホルダーとずれ、MySQL では**別の行を書き換えていた**。
+リクエストの JSON の配列や `a[]=` はそのままリストになるので、検査で弾く。一覧で比べるなら `in(...)`（中の入れ子も断る）。
+`byte[]` は1つの値として渡る。
+
 **1つの条件に比較は1つ。**`Post.id.ge(1).le(9)` は組み立てで落ちる。
 範囲は `between(a, b)`、別の条件は `.and(Post.id.le(9))`。列に直接 `.and(...)` も落ちる。
 
@@ -214,6 +223,20 @@ int copied = db.execute("INSERT INTO post_archive SELECT * FROM post WHERE creat
 **平らな行（`{"title": ..., "body": ...}`）を丸ごと入れるなら `valueRow(row)` / `setRow(row)`。**
 `value(Data)` / `set(Data)` は `{"value": {...}}` / `{"set": {...}}` に包んだ形しか読まず、包まない行は例外。
 
+**リクエストを渡すなら、入れてよい列を並べる**（2.2.3）。並べないと `role` や `is_admin` を足されても入る。
+
+```java
+db.update(SQL.update(User.instance())
+	.setRow(form, User.nickname, User.bio)        // ほかの列が来たら SqlBuildException
+	.where(User.id.eq(me)));
+
+db.selectList(SQL.select(User.id, User.name).from(User.instance())
+	.apply(context.request().bodyAll(), User.name, User.created_at));   // where / order に使ってよい列
+```
+
+`apply(Data)`（列を並べない形）にリクエストを渡すと、`?where[users][password_hash|starts_with]=$2a$...` で
+**画面に出していない列を1文字ずつ当てられる**。
+
 **時刻はどちらの時計か決める。**`new Date()` はアプリ側、`Dsl.now()` は DB 側
 （**文字列の `"now()"` はただの文字列として入る**）。
 **複数台で動かすなら DB 側**——台ごとに時計がずれると、
@@ -312,6 +335,8 @@ Optional<RedisLockResult> got = RedisLock.tryLock("report", 1000, 60000);   // �
   値が null かもしれない変数を `eq(x)` に渡すところは、分けて書く
 - **`where(Data)` / `set(Data)` / `value(Data)` は包んだ形（`{"where": ...}` など）しか読まない。**
   平らな行を渡すと例外。平らな行は `setRow` / `valueRow`
+- **リクエストを `apply` / `setRow` / `valueRow` に渡すときは、許す列を並べる**（上の「入れる・直す・消す」）
+- **`eq` などにリストを渡さない**（`SqlBuildException`）。`a.or(b).and(c)` は `(a OR b) AND c`
 - **`in()` に空のリストを渡すと組み立てた時点で例外。**「空なら条件を外す」はしない——
   外すと**全件**になる。呼び出し側で `if (ids.isEmpty()) return List.of();` と分ける
 - **`executeBatch` / `insertBatch` に積むビルダーは、SQL が全部同じでなければならない。**
@@ -406,3 +431,16 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 `maximum_pool_size` を打ち間違えたアプリは**プールが既定のまま**だった。
 
 時間は**単位を値に書く**（`idle_timeout = 5m`）。素の数値は落ちる。
+
+**プールの大きさは、書かなければ上限 10・最小 1**（2.2.1。それまでは書かないと HikariCP は最小も 10、Agroal は起動時に落ちた）。
+`maximum_pool_size` が 1 未満、`minimum_idle` が負なら起動時に落ちる。
+
+**`connection_pool_type = "agroal"` でも、DB が再起動すれば切れた接続は捨てる**（`product` に合った見分け方を渡す。2.2.1）。
+`validate_on_borrow = true` は取り出すたびに確かめるので**速さが半分ほど**になる。再起動に備えるだけなら要らない。
+
+## Redis とキャッシュの設定
+
+- **Redis にパスワードを掛ける**：`redis.password = ${?REDIS_PASSWORD}`（Redis 6 の ACL なら `redis.username` も。2.2.3）
+- Redis には**文字列として**読み書きする（2.2.3。それまでの Kryo は、読むときに何のクラスでも作った）。アプリは何もしなくてよい
+- **SQL 結果のキャッシュはデータソースごとに分かれる**（2.2.3）。1つの Redis を複数のアプリや環境で分け合うなら、
+  それぞれ `sql_cache.namespace` を別の値にする

@@ -31,7 +31,8 @@ public class App extends JimbleApp {
 		});
 
 		error((context, cause, statusCode) ->
-			context.response().code(statusCode).json("error", cause.getMessage()));
+			context.response().code(statusCode).json("error"
+				, statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));   // 500 番台は中身を返さない
 	}
 
 	public static void main (String[] args) {
@@ -194,7 +195,20 @@ try (Tx tx = db.begin()) {
 - **`Auth::guard` はいちばん最初に登録する。** セッションを使うかどうかをここで決めるので、
   先に誰かが `session()` を触ると間に合わない
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず、
-  セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）
+  セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）。
+  **`cookie { secure = false }` はローカル用の `application.local.conf`（1行目に `include "application.conf"`）にだけ書く。**
+  `application.conf` に書くと本番も引き継ぐ（ローカルでない環境で false なら起動時に WARN）
+- **`error(...)` で 500 番台の `cause.getMessage()` を返さない。**DB の誤り（重複したキーの値）や内部のパスが相手に届く
+- **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さない。**どの列名でも受け付けるので、
+  隠れた列を当てられたり（`?where[users][password_hash|starts_with]=...`）、`role` を足されたりする。
+  **許す列を渡す形**にする：`apply(data, User.name, User.created_at)` / `setRow(form, User.nickname)`（ほかの列は `SqlBuildException`）
+- **1つの値を書く場所（`eq` / `set` / `value` など）にリストや配列を渡すと `SqlBuildException`**（2.2.2）。
+  JSON の配列や `a[]=` はそのままリストになるので、検査で弾くか `in(...)` を使う
+- **`a.or(b).and(c)` は `(a OR b) AND c`**（左から読んだとおり。2.2.3）。`a OR (b AND c)` は `a.or(b.and(c))` か `Dsl.anyOf`
+- **`view()` のページは、`Accept: application/json` でもテンプレートを描く**（2.2.3。テンプレートに渡したデータを丸ごと返さない）。
+  1つの口で JSON も返したいなら `json(...)` で別に返す
+- **`/mcp` そのものには認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く
+  （`Origin` の検査はブラウザしか止めない。**別のブロックの `path("/mcp", () -> before(...))` は効かない**）
 
 ## モジュール
 
@@ -260,6 +274,9 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 | 設定ファイルの全項目 | `config.md` |
 | テンプレート（jte） | `view.md` |
 | よくある落とし穴 | `pitfalls.md` |
+| プロキシの後ろ（`trust_proxy`）・リバースプロキシ | `server.md` |
+| HTTP クライアント・CSV・XML | `util.md` |
+| MCP サーバー | `mcp.md` |
 | 考え方の理由 | `principles.md` |
 
 **版で挙動が変わることがある。**手元の版は `jimble version`、

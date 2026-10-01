@@ -43,7 +43,9 @@ public class App extends JimbleApp {
 			if (cause instanceof ValidationException) {
 				return;                            // 422 の本文 {"validation": {...}} は枠組みが付ける
 			}
-			context.response().code(statusCode).json("error", cause.getMessage());
+			// 500 番台は中身を返さない（DB の誤りや内部のパスが届く）。中身はログで見る
+			context.response().code(statusCode).json("error"
+				, statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました");
 		});
 	}
 
@@ -124,6 +126,7 @@ String title = input.getString("title");
 
 入れ子は `user.name=taro` でも `user[name]=taro` でも同じ。
 `items[0].price` は添字、`items[].price` は末尾に追加。
+**添字は 10,000 まで**（1回のリクエストで伸ばせる配列は合わせて 100,000 要素まで）。超えると 400（2.2.2）。
 
 無いキー（キーが無い・空欄）は `getString` なら `null`、`getInt` なら `0`、`getBoolean` なら `false`。
 「無い」と「0」を分けたいなら `getIntObject` か `isNull(key)`、既定値は `getInt("page", 1)`。
@@ -149,6 +152,7 @@ long categoryId = input.getLong(Post.category_id);   // 検査を通したあと
 - **エラーの一覧が欲しいときだけ `errors(db, input)`**（`Data`。空なら通った）。本文を自分で作るならこちら
 - 明細などの一覧は `validate(db, list)` / `errors(db, list)`（エラーのある行だけ、1始まりの `index` つき。`validate` の 422 は `{"rows": [...]}` を包む）
 - **`required()`（= `empty()`）はキーが送られてこなくても失敗する。**ほかの規則は空を通すので、必須には `required()` を積む。
+  **空の配列（`{"name": []}`）も「値が無い」として見る**（2.2.3。それまでは1度も検証されず、必須も素通りした）
   「登録のときだけ必須、更新は送られた項目だけ見る」は `insertRequired()` と `insertRequestChecker(...)`
 - `ValidationExecutor`（ルートに積む検査）も同じ 422 の形。こちらは `addError(...)` で積み、`error` は通らず `onCancel` で返す
 
@@ -163,6 +167,10 @@ context.response().code(201).send();
 ```
 
 `json()` は重ねて呼ぶと1つの JSON に足されていく。
+**`view()` のページは、`Accept: application/json` で来てもテンプレートを描く**（2.2.3。それまではテンプレートに渡したデータを丸ごと JSON で返していた）。
+JSON も返す口にしたいなら `json(...)` で別に返す（元に戻すなら `template.json_fallback = true`）。
+**既定で `X-Content-Type-Options: nosniff`・`X-Frame-Options: SAMEORIGIN`・`Referrer-Policy` を付ける**（`security_headers`。自分で決めたヘッダは上書きしない）。
+別のサイトの iframe に入れるページは、そのルートで `setResponseHeader("X-Frame-Options", ...)` を決めるか `security_headers.frame_options = ""`。
 **返し方を2種類積む（`json(...)` と `redirect(...)` など）と `IllegalStateException`。**同じ種類を重ねるのはよい。
 **そのあとに `send()` は書かない**——組み立てておけば、
 ディスパッチャが実行の終わりに送る（`error` ハンドラの中でも同じ）。
@@ -197,6 +205,13 @@ CSRF は `before` に `Csrf::verify`。`GET` `HEAD` `OPTIONS` `TRACE` は素通�
 トークンは `context.request().csrfToken()` を hidden に入れる。
 
 Flash は**次の1回のリクエストだけ**残る。読んだ時点で消える。
+
+**署名つき Cookie の署名は Cookie の名前に結びついている**（2.2.3）。自分で署名するなら `Cookies.sign(名前, 値)`（`Cookies.sign(値)` は非推奨）。
+署名は有効期限を含まない。**利用者を表す値を署名つき Cookie だけで信じない**（セッションに入れる）。
+
+**`session.store = "cookie"` はログアウトしても、盗まれた写しまでは無効にできない**（サーバーに何も置かないため）。
+最後に使ってから `session.timeout`、発行から `session.absolute_timeout`（既定 1 日）で切れる（2.2.3）。
+すぐに無効にしたいなら `db` / `redis` にするか、`Auth.revoke(id)` を使う。
 
 ## エラー
 
@@ -305,7 +320,11 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **ログインの種別が複数ある（運用者と利用者など、別の表から ID を引く）なら種別を渡す**：
   `Mfa.isActive("operator", id)` / `Mfa.pending(context, principal, "operator")` /
   `Mfa.enroll("operator", id, 名前)` など。渡さないと**同じ数字の ID が同じ人として扱われ、秘密鍵を上書きし合う**。
-  `complete()` は pending で預けた種別で確かめる（種別は渡さない）。OIDC は `Oidc.callback(名前, 関数, 画面, 種別)`
+  `complete()` は pending で預けた種別で確かめる（種別は渡さない）。OIDC の3引数の `Oidc.callback(名前, 関数, 画面)` は、
+  **そのルートの `Auth.REALM` の二要素認証を見る**（2.2.3。それまでは種別なしを見て、種別つきのルートでは二要素が素通りした）。
+  別の種別を見るなら4引数で渡す
+- **ログインを自分で書くなら、`Lockout.waitSeconds` → 確かめる → `Lockout.fail` の順にしない**（同時に送られると素通りする）。
+  **`Lockout.attempt(key)` で、試す前に数える**（0 なら試してよい。成功したら `Lockout.clear(key)`）。`Auth.attemptLogin` はこれを使っている
 
 ## 落とし穴（実際に踏んだもの）
 
@@ -332,7 +351,18 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **確定後にフィルタを足すと落ちる**（「足したのに効かない」を作らないため）。
   ルート定義は初期化ブロックの中で完結させる
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず
-  セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）
+  セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）。
+  `cookie { secure = false }` は **`application.local.conf` にだけ**書く（`application.conf` に書くと本番も引き継ぐ）
+- **ロードバランサの後ろで `trust_proxy = true` にするなら、`X-Forwarded-For` は右から読む**（2.2.3）。
+  中継が2段以上なら `server.trusted_proxies`（IP / CIDR）を書く。`CF-Connecting-IP` / `X-Real-IP` は
+  `server.client_ip_header` に書いたときだけ信じる。`RateLimit.perIp` はここで決めた IP で数える
+- **`new Cors().addAllowOrigin("*")` と `allowCredentials(true)` は一緒に使えない**（例外。2.2.3）。資格情報つきなら、オリジンを並べる
+- **SPA の書き換え（`SpaRewriter`）で差し込む値は `SpaRewriter.escapeHtml(...)` を通す。**パスの値はデコード済みで、そのまま HTML になる
+- **`ReverseProxy` は `.` / `..` を含むパスを 400 で断る**（2.2.2）。転送先の `Host` やヘッダを決めるなら `preserveHost()` /
+  `setHeader(...)`、`Location` の書き換えは既定で入る（`noRedirectRewrite()` で外す）（2.2.0）
+- **`BasicAuth` は、成功したらセッション ID を作り直し、失敗を `Lockout` で数える**（2.2.3）
+- **`/mcp` には認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く。
+  **別のブロックの `path("/mcp", () -> before(...))` は効かない**（フィルタは書いたブロックのルートにしか付かない）
 - **パスワードを変えたら `Auth.revokeOthers(context)`。`Remember.forgetAll` だけではほかの端末のセッションが残る**
   （消えるのは remember-me の記憶だけ）。管理画面から止めるなら `Auth.revoke(id)`。**これからのログインは止めない**ので、
   盗まれたアカウントは先にパスワードを変えるか止めてから。**役割を剥奪したときも `revoke`**（役割はログイン時にセッションへ写すので残る）。
@@ -361,6 +391,8 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 | テンプレート（jte） | <https://jimble.io/ja/view.md> |
 | 静的ファイル・SPA | <https://jimble.io/ja/assets.md> |
 | 流量制限 | <https://jimble.io/ja/ratelimit.md> |
+| プロキシの後ろ（`trust_proxy`）・リバースプロキシ | <https://jimble.io/ja/server.md> |
+| MCP サーバー | <https://jimble.io/ja/mcp.md> |
 | ファイルアップロード | <https://jimble.io/ja/upload.md> |
 | SSE / WebSocket | <https://jimble.io/ja/sse.md> / <https://jimble.io/ja/websocket.md> |
 | よくある落とし穴 | <https://jimble.io/ja/pitfalls.md> |
