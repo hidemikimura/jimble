@@ -45,6 +45,13 @@ public final class SqlCacheConf {
 	/** 設定キー：件数の上限（memory のみ） */
 	public static final String KEY_MAX = "sql_cache.max";
 
+	/**
+	 * 設定キー：キーの名前空間（D-222）
+	 *
+	 * <p>1つの Redis を複数のアプリや環境（ステージングと本番など）で分け合うとき、それぞれ別の値にする。</p>
+	 */
+	public static final String KEY_NAMESPACE = "sql_cache.namespace";
+
 	/** 置き場：メモリ */
 	public static final String STORE_MEMORY = "memory";
 
@@ -137,6 +144,17 @@ public final class SqlCacheConf {
 	public static Duration ttl () {
 
 		return Conf.atLeast(Conf.conf().getDuration(KEY_TTL, DEFAULT_TTL), Duration.ZERO);
+
+	}
+
+	/**
+	 * キーの名前空間（D-222）
+	 *
+	 * @return	名前空間（既定は空）
+	 */
+	public static String namespace () {
+
+		return Conf.conf().getString(KEY_NAMESPACE, "");
 
 	}
 

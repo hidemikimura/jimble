@@ -201,7 +201,30 @@ public final class SqlCache {
 	 */
 	public static String key (String sql, List<Object> params) {
 
-		StringBuilder builder = new StringBuilder(sql);
+		return key("", sql, params);
+
+	}
+
+	/**
+	 * キーを作る（データソースごと。D-222）
+	 *
+	 * <p>
+	 * <b>データソースの名前と {@code sql_cache.namespace} もキーに入れる。</b>かつては SQL とパラメータだけだったので、
+	 * テナントごとのサブ DB で同じ SQL を流すと<b>別のテナントの結果が返り</b>、
+	 * 1つの Redis を分け合うアプリや環境のあいだでも結果が混ざった。
+	 * </p>
+	 *
+	 * @param dataSource	データソースの名前
+	 * @param sql			SQL
+	 * @param params		バインドパラメータ
+	 * @return	キー
+	 */
+	public static String key (String dataSource, String sql, List<Object> params) {
+
+		StringBuilder builder = new StringBuilder()
+			.append(SqlCacheConf.namespace()).append(KEY_SEPARATOR)
+			.append(dataSource == null ? "" : dataSource).append(KEY_SEPARATOR)
+			.append(sql);
 
 		for (Object param : params) {
 
