@@ -238,6 +238,8 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` は**既存の値に足します**（上書きしません）。
 タイムアウトは `proxy.connect_timeout`（5秒）と `proxy.request_timeout`（30秒）で、
 転送に失敗したら **502** を返します。
+パスはセグメントごとにエンコードし直して送り、**`.` / `..` を含むパスは 400** で断ります
+（ベース URL のパスの外へ出させないため）。
 
 ### nginx の proxy_set_header などに当たるもの
 

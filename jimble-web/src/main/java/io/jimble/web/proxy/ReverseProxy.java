@@ -81,6 +81,9 @@ public final class ReverseProxy implements Handler {
 	/** 転送先が応答しないときのステータスコード */
 	public static final int BAD_GATEWAY = 502;
 
+	/** 転送できないパス（{@code .} / {@code ..} を含む） */
+	public static final int BAD_REQUEST = 400;
+
 	/* 転送先のベース URL */
 	private final String forwardBaseUrl;
 
@@ -362,11 +365,18 @@ public final class ReverseProxy implements Handler {
 
 		used = true;
 
+		String target = target(context);
+
+		if (target == null) {
+			context.response().send(BAD_REQUEST);
+			return;
+		}
+
 		UpstreamConnection response;
 
 		try {
 
-			response = send(context);
+			response = send(context, target);
 
 		} catch (Exception ex) {
 
@@ -398,7 +408,7 @@ public final class ReverseProxy implements Handler {
 	/**
 	 * 転送先へ送る
 	 */
-	private UpstreamConnection send (WebContext context) throws Exception {
+	private UpstreamConnection send (WebContext context, String target) throws Exception {
 
 		String method = context.request().method();
 
@@ -427,19 +437,99 @@ public final class ReverseProxy implements Handler {
 		int port = forwardUri.getPort() > 0 ? forwardUri.getPort() : (secure ? 443 : 80);
 
 		return UpstreamConnection.send(secure, forwardUri.getHost(), port, connectTimeout, requestTimeout
-			, method, target(context), headers, body, contentLength);
+			, method, target, headers, body, contentLength);
+
+	}
+
+	/**
+	 * デコード済みのパスを、セグメントごとにエンコードし直す（D-203）
+	 *
+	 * @param decoded	デコード済みのパス（先頭の {@code /} なし）
+	 * @return	{@code /} で始まるパス。{@code .} / {@code ..} を含めば null
+	 */
+	static String encodePath (String decoded) {
+
+		StringBuilder sb = new StringBuilder();
+
+		for (String segment : decoded.split("/", -1)) {
+
+			if (".".equals(segment) || "..".equals(segment)) {
+				return null;
+			}
+
+			sb.append('/').append(encodeSegment(segment));
+
+		}
+
+		return sb.toString();
+
+	}
+
+	/**
+	 * パスの1セグメントをエンコードする（RFC 3986 の pchar 以外を %XX に）
+	 *
+	 * @param segment	セグメント
+	 * @return	エンコードしたもの
+	 */
+	private static String encodeSegment (String segment) {
+
+		StringBuilder sb = new StringBuilder();
+
+		for (byte b : segment.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+
+			int c = b & 0xff;
+
+			if (isPchar(c)) {
+				sb.append((char) c);
+			} else {
+				sb.append('%').append(HEX[c >> 4]).append(HEX[c & 0xf]);
+			}
+
+		}
+
+		return sb.toString();
+
+	}
+
+	/** 16進の字 */
+	private static final char[] HEX = "0123456789ABCDEF".toCharArray();
+
+	/**
+	 * そのまま書いてよい字か（unreserved / sub-delims / ":" / "@"）
+	 *
+	 * @param c	字（0〜255）
+	 * @return	そのままでよければ true
+	 */
+	private static boolean isPchar (int c) {
+
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+			|| "-._~!$&'()*+,;=:@".indexOf(c) >= 0;
 
 	}
 
 	/**
 	 * 転送先のパス（ベース URL のパス + ワイルドカード + クエリ）
+	 *
+	 * <p>
+	 * <b>ワイルドカードはセグメントごとにエンコードし直す</b>（D-203）。ワイルドカードの値は
+	 * <b>パーセントデコード済み</b>なので、かつてはそのまま要求行に書いていた。
+	 * {@code %0d%0a} が改行になって<b>転送先への2本目のリクエストを差し込め</b>、
+	 * {@code %2e%2e} が {@code ..} になって<b>ベース URL のパスの外へ出られた</b>。
+	 * {@code .} / {@code ..} のセグメントは、エンコードしても転送先が辿るので断る。
+	 * </p>
+	 *
+	 * @return	パス。転送できないパスなら null
 	 */
-	private String target (WebContext context) {
+	String target (WebContext context) {
 
 		String basePath = forwardUri.getRawPath() == null ? "" : forwardUri.getRawPath();
 
 		String wildcard = context.route() == null ? "" : context.route().variables().wildcard();
-		String path = wildcard == null || wildcard.isEmpty() ? "" : "/" + wildcard;
+		String path = wildcard == null || wildcard.isEmpty() ? "" : encodePath(wildcard);
+
+		if (path == null) {
+			return null;
+		}
 
 		String target = basePath + path;
 

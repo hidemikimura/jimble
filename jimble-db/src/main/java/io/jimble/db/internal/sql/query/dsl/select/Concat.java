@@ -1,5 +1,7 @@
 package io.jimble.db.internal.sql.query.dsl.select;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.query.dsl.IDsl;
@@ -114,7 +116,7 @@ public class Concat implements IDsl {
 				params.add(select.getParameter());
 			}
 		} else {
-			params.add(value);
+			params.add(Parameter.single(value));
 		}
 
 	}

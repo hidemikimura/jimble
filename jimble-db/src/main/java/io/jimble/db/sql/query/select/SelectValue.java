@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.select;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.dsl.IDsl;
 
@@ -121,7 +123,7 @@ public class SelectValue implements ISelect {
 	@Override
 	public Object getParameter() {
 
-		return this.value;
+		return Parameter.single(this.value);
 
 	}
 

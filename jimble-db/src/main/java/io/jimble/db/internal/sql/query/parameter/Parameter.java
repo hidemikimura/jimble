@@ -1,5 +1,7 @@
 package io.jimble.db.internal.sql.query.parameter;
 
+import io.jimble.db.sql.SqlBuildException;
+
 import io.jimble.util.internal.array.ArrayUtil;
 import io.jimble.util.data.Data;
 
@@ -31,6 +33,55 @@ public class Parameter {
 	}
 
 	/**
+	 * 1つの値を受ける場所（{@code = ?} / {@code SET x = ?} / {@code VALUES (?)} など）の値を確かめる（D-204）
+	 *
+	 * <p>
+	 * <b>リストや配列を断る。</b>{@link #flatten} は入れ子のリストを平らにするので、
+	 * {@code ?} が1つの場所にリストが来ると、<b>値だけが増えて後ろのプレースホルダーとずれる</b>。
+	 * MariaDB のドライバは<b>余った値を黙って捨てる</b>ので、
+	 * {@code setRow({"nickname": ["x", 999]})} に {@code .where(id.eq(me))} を足した UPDATE が
+	 * <b>id = 999 の行を書き換えていた</b>（PostgreSQL のドライバは例外を投げる）。
+	 * リクエストの JSON や {@code a[]=} のフォームは、そのままリストになる。
+	 * </p>
+	 *
+	 * <p>{@code byte[]}（バイナリ）と {@code Data}（JSON の列）は1つの値として通す。</p>
+	 *
+	 * @param value	値
+	 * @return	そのままの値
+	 * @throws SqlBuildException	リストや配列のとき
+	 */
+	public static Object single (Object value) {
+
+		if (value instanceof Collection<?> || (value != null && value.getClass().isArray() && !(value instanceof byte[]))) {
+			throw new SqlBuildException(
+				"1つの値を書く場所に、リストや配列が来ました（%s）。IN で比べるなら in(...) を使ってください"
+					.formatted(value.getClass().getSimpleName()));
+		}
+
+		return value;
+
+	}
+
+	/**
+	 * IN / NOT IN の一覧の、一つひとつの値を確かめる（D-204）
+	 *
+	 * <p><b>一覧の中の入れ子を断る。</b>入れ子は平らにされて、プレースホルダーの数とずれる。</p>
+	 *
+	 * @param values	一覧
+	 * @return	そのままの一覧
+	 * @throws SqlBuildException	入れ子のリストや配列があるとき
+	 */
+	public static <T extends Collection<?>> T singles (T values) {
+
+		for (Object value : values) {
+			single(value);
+		}
+
+		return values;
+
+	}
+
+	/**
 	 * オブジェクトをフラットリストにする
 	 *
 	 * @param o	オブジェクト
@@ -56,6 +107,9 @@ public class Parameter {
 			for (Object listObj : list) {
 				res.addAll(flattenObject(listObj));
 			}
+		} else if (o instanceof byte[]) {
+			// バイナリは1つの値（D-204）。かつては1バイトずつに平らにされ、プレースホルダーとずれていた
+			res.add(o);
 		} else if (o.getClass().isArray()) {
 			// 素の配列（long[] など）も通る（要件 D-162）
 			for (Object arrObj : ArrayUtil.toList(o)) {

@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.dsl;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.util.data.definition.IColumn;
@@ -219,7 +221,7 @@ public abstract class AbstractFunction implements IDsl {
 			return;
 		}
 
-		params.add(value);
+		params.add(Parameter.single(value));
 
 	}
 

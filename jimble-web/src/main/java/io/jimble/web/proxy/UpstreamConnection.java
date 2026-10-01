@@ -186,16 +186,81 @@ final class UpstreamConnection implements Closeable {
 	// region 送る
 
 	/**
+	 * メソッドやヘッダ名に使える字だけか（RFC 9110 の token）
+	 */
+	private static void requireToken (String value, String what) {
+
+		if (value == null || value.isEmpty()) {
+			throw new IllegalArgumentException(what + "が空です");
+		}
+
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+				|| "!#$%&'*+-.^_`|~".indexOf(c) >= 0;
+			if (!ok) {
+				throw new IllegalArgumentException(what + "に使えない字があります");
+			}
+		}
+
+	}
+
+	/**
+	 * 要求行のパスに、空白・制御文字・# が無いか
+	 */
+	private static void requireTarget (String target) {
+
+		if (target == null || target.isEmpty() || target.charAt(0) != '/') {
+			throw new IllegalArgumentException("転送先のパスが / で始まっていません");
+		}
+
+		for (int i = 0; i < target.length(); i++) {
+			char c = target.charAt(i);
+			if (c <= 0x20 || c == 0x7f || c == '#') {
+				throw new IllegalArgumentException("転送先のパスに使えない字があります");
+			}
+		}
+
+	}
+
+	/**
+	 * ヘッダの値に CR / LF / NUL が無いか
+	 */
+	private static void requireHeaderValue (String name, String value) {
+
+		if (value == null) {
+			return;
+		}
+
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == '\r' || c == '\n' || c == 0) {
+				throw new IllegalArgumentException("ヘッダ " + name + " の値に改行があります");
+			}
+		}
+
+	}
+
+	/**
 	 * リクエストを書く
 	 */
 	private static void writeRequest (OutputStream out, String method, String target
 		, Map<String, List<String>> requestHeaders, InputStream requestBody, long contentLength) throws IOException {
 
+		/*
+		 * <b>書く前に、要求行とヘッダを確かめる</b>（D-203）。ここはソケットに直に書くので、
+		 * 改行が混ざれば<b>そのまま2本目のリクエスト</b>になる。呼ぶ側で防いでいても、最後にもう一度見る
+		 */
+		requireToken(method, "メソッド");
+		requireTarget(target);
+
 		StringBuilder head = new StringBuilder();
 		head.append(method).append(' ').append(target).append(" HTTP/1.1\r\n");
 
 		for (Map.Entry<String, List<String>> entry : requestHeaders.entrySet()) {
+			requireToken(entry.getKey(), "ヘッダ名");
 			for (String value : entry.getValue()) {
+				requireHeaderValue(entry.getKey(), value);
 				head.append(entry.getKey()).append(": ").append(value).append("\r\n");
 			}
 		}

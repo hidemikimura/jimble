@@ -1,5 +1,7 @@
 package io.jimble.web.request;
 
+import io.jimble.web.http.HttpException;
+
 import io.jimble.util.data.Data;
 
 import java.util.ArrayList;
@@ -43,6 +45,24 @@ public final class NestedParameterParser {
 	/** 添字なしの {@code []}（末尾に足す） */
 	private static final int APPEND = -1;
 
+	/**
+	 * 添字の上限（D-207）
+	 *
+	 * <p>
+	 * <b>かつては上限が無く、添字の位置まで null で埋めて伸ばしていた。</b>
+	 * {@code a[2000000000]=1}（20 バイトほど）で 20 億個の要素を取りにいき、
+	 * <b>認証の前に</b>（CSRF の確かめの中で）メモリを使い切らせられた。
+	 * </p>
+	 */
+	static final int MAX_INDEX = 10_000;
+
+	/**
+	 * 1回の解析で、リストを伸ばしてよい要素数の合計（D-207）
+	 *
+	 * <p>添字ごとの上限だけでは、キーを変えて {@code a1[9999]&a2[9999]&...} と並べられる。</p>
+	 */
+	static final int MAX_GROWTH = 100_000;
+
 	private NestedParameterParser () {}
 
 	/**
@@ -54,11 +74,12 @@ public final class NestedParameterParser {
 	public static Data parse (Request request) {
 
 		Data data = new Data();
+		int[] growth = {0};
 
 		// パスパラメータ → クエリ → フォーム の順に重ねる
-		putAll(data, request.bodyPath());
-		putAll(data, request.bodyQuery());
-		putAll(data, request.bodyForm());
+		putAll(data, request.bodyPath(), growth);
+		putAll(data, request.bodyQuery(), growth);
+		putAll(data, request.bodyForm(), growth);
 
 		// JSON は最後に上書きで重ねる
 		overlay(data, request.bodyJson());
@@ -73,14 +94,14 @@ public final class NestedParameterParser {
 	 * @param data	入れ先
 	 * @param src	入れるもの
 	 */
-	private static void putAll (Data data, Data src) {
+	private static void putAll (Data data, Data src, int[] growth) {
 
 		if (src == null) {
 			return;
 		}
 
 		for (String key : src.keySet()) {
-			set(data, key, src.getObject(key));
+			set(data, key, src.getObject(key), growth);
 		}
 
 	}
@@ -94,7 +115,7 @@ public final class NestedParameterParser {
 	 * @param key	キー
 	 * @param value	値
 	 */
-	private static void set (Data root, String key, Object value) {
+	private static void set (Data root, String key, Object value, int[] growth) {
 
 		List<Segment> segments = segments(key);
 
@@ -105,13 +126,13 @@ public final class NestedParameterParser {
 		Object cursor = root;
 
 		for (int i = 0; i < segments.size() - 1; i++) {
-			cursor = descend(cursor, segments.get(i), segments.get(i + 1).isIndex());
+			cursor = descend(cursor, segments.get(i), segments.get(i + 1).isIndex(), growth);
 			if (cursor == null) {
 				return;
 			}
 		}
 
-		assign(cursor, segments.getLast(), value);
+		assign(cursor, segments.getLast(), value, growth);
 
 	}
 
@@ -124,7 +145,7 @@ public final class NestedParameterParser {
 	 * @return	降りた先（降りられなければ null）
 	 */
 	@SuppressWarnings("unchecked")
-	private static Object descend (Object container, Segment segment, boolean nextIsIndex) {
+	private static Object descend (Object container, Segment segment, boolean nextIsIndex, int[] growth) {
 
 		if (segment.isIndex()) {
 
@@ -135,7 +156,7 @@ public final class NestedParameterParser {
 			List<Object> list = (List<Object>) container;
 			int index = segment.index() == APPEND ? list.size() : segment.index();
 
-			grow(list, index);
+			grow(list, index, growth);
 
 			if (list.get(index) == null) {
 				list.set(index, nextIsIndex ? new ArrayList<>() : new Data());
@@ -171,7 +192,7 @@ public final class NestedParameterParser {
 	 * @param value		値
 	 */
 	@SuppressWarnings("unchecked")
-	private static void assign (Object container, Segment segment, Object value) {
+	private static void assign (Object container, Segment segment, Object value, int[] growth) {
 
 		if (segment.isIndex()) {
 
@@ -194,7 +215,7 @@ public final class NestedParameterParser {
 
 			}
 
-			grow(list, segment.index());
+			grow(list, segment.index(), growth);
 			list.set(segment.index(), single(value));
 
 			return;
@@ -257,7 +278,19 @@ public final class NestedParameterParser {
 	 * @param list	リスト
 	 * @param index	必要な添字
 	 */
-	private static void grow (List<Object> list, int index) {
+	private static void grow (List<Object> list, int index, int[] growth) {
+
+		int add = index + 1 - list.size();
+
+		if (add <= 0) {
+			return;
+		}
+
+		growth[0] += add;
+
+		if (growth[0] > MAX_GROWTH) {
+			throw new HttpException(400, "リクエストのパラメータの配列が大きすぎます（合わせて %d 要素まで）".formatted(MAX_GROWTH));
+		}
 
 		while (list.size() <= index) {
 			list.add(null);
@@ -268,6 +301,26 @@ public final class NestedParameterParser {
 	// endregion
 
 	// region キーの分解
+
+	/**
+	 * 添字を読む（D-207）
+	 *
+	 * @param digits	数字だけの文字列
+	 * @return	添字
+	 * @throws HttpException	{@link #MAX_INDEX} を超えるとき（400）
+	 */
+	private static int index (String digits) {
+
+		// 長い数字は int に収まらない（かつては NumberFormatException で 500 だった）
+		int index = digits.length() > 9 ? Integer.MAX_VALUE : Integer.parseInt(digits);
+
+		if (index > MAX_INDEX) {
+			throw new HttpException(400, "リクエストのパラメータの添字が大きすぎます（%d まで）".formatted(MAX_INDEX));
+		}
+
+		return index;
+
+	}
 
 	/**
 	 * キーを分解する
@@ -310,7 +363,7 @@ public final class NestedParameterParser {
 				String inner = key.substring(i + 1, end);
 
 				segments.add(inner.isEmpty() || isDigits(inner)
-					? Segment.index(inner.isEmpty() ? APPEND : Integer.parseInt(inner))
+					? Segment.index(inner.isEmpty() ? APPEND : index(inner))
 					: Segment.name(inner));
 
 				i = end;

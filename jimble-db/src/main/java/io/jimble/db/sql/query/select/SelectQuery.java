@@ -1,5 +1,7 @@
 package io.jimble.db.sql.query.select;
 
+import io.jimble.db.internal.sql.query.parameter.Parameter;
+
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.util.data.definition.IColumn;
@@ -266,7 +268,7 @@ public class SelectQuery implements ISelect {
 				params.add(s.getParameter());
 			}
 		} else {
-			params.add(value);
+			params.add(Parameter.single(value));
 		}
 
 	}
