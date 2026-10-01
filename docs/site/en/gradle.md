@@ -245,7 +245,8 @@ jimbleRun {
 | --- | --- | --- |
 | `mainClass` | **none (required)** | The class that has `main` |
 | `port` | `9000` | The proxy port the browser talks to |
-| `appPort` | `port + 100` | The port the application listens on |
+| `host` | `"127.0.0.1"` | The address the proxy listens on. **By default only this machine can open it** (since 2.2.3; before that it listened on every interface). Use `"0.0.0.0"` only to try it from a phone or another device |
+| `appPort` | `port + 100` | The port the application listens on (the application always listens on `127.0.0.1`) |
 | `env` | `"local"` | Passed through as `jimble.env` |
 | `buildTasks` | `[":classes"]` | Tasks to run on a change |
 | `watchDirs` | none | Extra directories to watch (relative to the root) |

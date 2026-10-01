@@ -1,0 +1,13 @@
+include "application.conf"
+
+# __NAME__ のローカル用の設定（-Djimble.env=local。既定の環境）
+#
+# 環境別のファイルがあると、そちらだけが読まれる。上の include で共通の設定を読み込んでいる。
+# 本番の環境（application.production.conf など）には、ここの内容を写さないこと。
+
+# ローカルは http なので、HTTPS のみの Cookie はブラウザが送り返さない。
+# セッションも CSRF も「エラーも出ずに効かない」形になるので、ローカルだけ false にする（D-228）。
+# かつてはこれを application.conf に書いていたので、本番もそのまま引き継いでいた。
+cookie {
+	secure = false
+}

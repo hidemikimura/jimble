@@ -47,6 +47,7 @@ class NewCommandTest {
 			, "src/main/java/myblog/App.java"
 			, "src/main/jte/myblog/index.jte"
 			, "conf/application.conf"
+			, "conf/application.local.conf"
 			, "conf/logback.xml"
 		}) {
 			assertTrue(Files.isRegularFile(root.resolve(path)), path);
@@ -162,6 +163,22 @@ class NewCommandTest {
 
 		assertFalse(Files.exists(
 			root.resolve("conf/migration/my_blog/001_create_note.sql")));
+
+	}
+
+
+	@Test
+	@DisplayName("D-228 cookie.secure = false はローカル用のファイルにだけ書く（共通に書くと本番も引き継ぐ）")
+	void insecureCookieOnlyInLocal (@TempDir Path dir) throws IOException {
+
+		Path root = NewCommand.run("my-blog", dir);
+
+		String base = Files.readString(root.resolve("conf/application.conf"));
+		String local = Files.readString(root.resolve("conf/application.local.conf"));
+
+		assertTrue(!base.replaceAll("(?m)^\\s*#.*$", "").contains("secure = false"), "共通の設定に secure = false があります");
+		assertTrue(local.startsWith("include \"application.conf\""), local);
+		assertTrue(local.contains("secure = false"), local);
 
 	}
 
