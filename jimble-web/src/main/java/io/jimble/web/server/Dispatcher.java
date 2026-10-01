@@ -385,7 +385,8 @@ public final class Dispatcher {
 		 */
 		if (!stage.isDone() && cause instanceof io.jimble.web.validation.ValidationException invalid
 			&& !context.response().hasBody()) {
-			context.response().putForm(context.request().bodyAll());
+			// 返す入力値から秘密を落とす（D-241）
+			context.response().putForm(io.jimble.web.validation.ValidationExecutor.echoable(context.request().bodyAll()));
 			context.response().json(io.jimble.web.validation.ValidationExecutor.RESPONSE_KEY
 				, io.jimble.web.validation.ValidationMessages.toMessages(invalid.errors()));
 		}

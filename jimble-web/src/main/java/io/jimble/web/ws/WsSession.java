@@ -153,8 +153,13 @@ public final class WsSession {
 	/**
 	 * アップグレード時の Cookie
 	 *
+	 * <p>
+	 * <b>署名を確かめて返す</b>（D-242。ふつうの Cookie の読み方と同じ）。かつては受け取ったままの値を返していたので、
+	 * {@code cookie.secret} を設定していると {@code mac|} の頭が付いたまま返り、署名の合わない値も返った。
+	 * </p>
+	 *
 	 * @param name	名前
-	 * @return	値。無ければ空文字
+	 * @return	値。無い・署名が合わなければ空文字
 	 */
 	public String cookie (String name) {
 
@@ -166,7 +171,8 @@ public final class WsSession {
 			String prefix = name + "=";
 
 			if (trimmed.startsWith(prefix)) {
-				return trimmed.substring(prefix.length());
+				String verified = io.jimble.web.cookie.Cookies.verify(name, trimmed.substring(prefix.length()));
+				return verified == null ? "" : verified;
 			}
 
 		}
