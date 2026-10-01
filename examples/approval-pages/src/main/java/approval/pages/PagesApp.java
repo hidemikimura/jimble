@@ -7,6 +7,7 @@ import io.jimble.web.proxy.ReverseProxy;
 import io.jimble.web.server.JimbleApp;
 import io.jimble.web.server.JimbleServer;
 import io.jimble.web.spa.SpaHandler;
+import io.jimble.web.spa.SpaRewriter;
 
 import java.util.List;
 
@@ -147,11 +148,14 @@ public class PagesApp extends JimbleApp {
 		 *
 		 * 渡すパスは<b>マウント先を含んだフルパス</b>（"/app/items/{id}"）である。
 		 * マッチには本体と同じルートツリーを使う（別インスタンス）。
+		 *
+		 * <b>差し込む値は escapeHtml を通す。</b>パスの値はデコード済みなので、
+		 * /app/items/%3Cscript%3E... がそのまま HTML になる。
 		 */
 		install(() -> SpaHandler.mount("/app", "app", spa -> spa
 			.route("/app/items/{id}", (context, html) -> html.replace(
 				"<!--title-->"
-				, "<title>申請 %s</title>".formatted(context.request().bodyPath().getString("id"))))
+				, "<title>申請 %s</title>".formatted(SpaRewriter.escapeHtml(context.request().bodyPath().getString("id")))))
 		));
 
 		// MPA（要件 F-W-20）。静的サイトの出力をそのまま配る
