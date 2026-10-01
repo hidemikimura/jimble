@@ -60,6 +60,13 @@ public final class CookieConf {
 	 */
 	public static final String KEY_ACCEPT_UNSIGNED = "cookie.accept_unsigned";
 
+	/**
+	 * 設定キー：名前に結びついていない古い署名（2.2.2 まで）も読むか（D-220。移す間だけ。既定 true）
+	 *
+	 * <p>読んだものは「古い鍵で読めたもの」と同じに扱い、枠組みの Cookie（sid / csrf_token）は書き直す。</p>
+	 */
+	public static final String KEY_ACCEPT_LEGACY_SIGNATURE = "cookie.accept_legacy_signature";
+
 	/** 設定キー：有効期間 */
 	public static final String KEY_MAX_AGE = "cookie.max_age";
 
@@ -128,6 +135,17 @@ public final class CookieConf {
 	public static boolean acceptUnsigned () {
 
 		return Conf.conf().getBoolean(KEY_ACCEPT_UNSIGNED, false);
+
+	}
+
+	/**
+	 * 名前に結びついていない古い署名も読むか（D-220）
+	 *
+	 * @return	読むなら true（既定 true）
+	 */
+	public static boolean acceptLegacySignature () {
+
+		return Conf.conf().getBoolean(KEY_ACCEPT_LEGACY_SIGNATURE, true);
 
 	}
 
