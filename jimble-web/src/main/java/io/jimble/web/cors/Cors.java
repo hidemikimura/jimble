@@ -110,6 +110,15 @@ public final class Cors {
 	 */
 	public Cors addAllowOrigin (String origin) {
 
+		/*
+		 * <b>"*" は allAllowOrigin() と同じに扱う</b>（D-215）。かつては1つのパターンとして足していたので、
+		 * allowCredentials(true) と一緒に使えないという確かめをすり抜け、
+		 * <b>どのサイトにも Cookie 付きの読み取りを許していた</b>（Origin をそのまま返すため）
+		 */
+		if ("*".equals(origin == null ? null : origin.trim())) {
+			return allAllowOrigin();
+		}
+
 		addOnce(allowedOrigins, origin);
 		originMatcher = null;
 		return this;
@@ -393,7 +402,23 @@ public final class Cors {
 	 */
 	private static Pattern rewrite (final String origin) {
 
-		return Pattern.compile(origin.replace(".", "\\.").replace("*", ".*"), Pattern.CASE_INSENSITIVE);
+		/*
+		 * {@code *} のほかは<b>字のとおりに比べる</b>（D-215）。かつては {@code .} だけを逃がしていたので、
+		 * {@code ?} や {@code +} などが正規表現として効いていた
+		 */
+		StringBuilder regex = new StringBuilder();
+		String[] parts = origin.split("\\*", -1);
+
+		for (int i = 0; i < parts.length; i++) {
+			if (i > 0) {
+				regex.append(".*");
+			}
+			if (!parts[i].isEmpty()) {
+				regex.append(Pattern.quote(parts[i]));
+			}
+		}
+
+		return Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE);
 
 	}
 
