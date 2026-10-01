@@ -185,10 +185,36 @@ public final class BasicAuth implements Handler {
 
 			String[] credentials = decode(header.substring(PREFIX.length()).trim());
 
-			if (credentials != null && verifier.verify(context, credentials[0], credentials[1])) {
-				context.session().put(sessionKey, "1");
-				context.session().save();
-				return;
+			if (credentials != null) {
+
+				/*
+				 * <b>試す回数を数える</b>（D-217。ログインと同じ {@link Lockout}）。
+				 * かつては何度でも試せたので、外に出した管理画面はパスワードを総当たりできた
+				 */
+				String lockoutKey = "basic:" + realm + ":" + credentials[0];
+				long waitSeconds = Lockout.attempt(lockoutKey);
+
+				if (waitSeconds > 0) {
+					context.response().setResponseHeader("Retry-After", String.valueOf(waitSeconds));
+					throw new HttpException(Auth.LOCKED_STATUS_CODE, "しばらく待ってからやり直してください");
+				}
+
+				if (verifier.verify(context, credentials[0], credentials[1])) {
+
+					Lockout.clear(lockoutKey);
+
+					/*
+					 * <b>セッション ID を作り直してから印を付ける</b>（D-217。ログインと同じ）。
+					 * かつてはそのまま付けていたので、攻撃者が先に植えたセッション ID に
+					 * 認証済みの印が付いた（セッション固定）
+					 */
+					context.session().regenerateId();
+					context.session().put(sessionKey, "1");
+					context.session().save();
+					return;
+
+				}
+
 			}
 
 		}

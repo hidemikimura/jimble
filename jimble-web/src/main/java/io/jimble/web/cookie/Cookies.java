@@ -128,7 +128,11 @@ public final class Cookies {
 			 * 鍵を順に試す（要件 NF-S-09）。
 			 * <b>先頭が「いま書くのに使う鍵」</b>で、残りは入れ替え前の古い鍵。
 			 */
-			KeyMatch match = Signer.unsignAny(value, secrets);
+			/*
+			 * <b>署名は名前に結びついている</b>（D-220）。別の名前の Cookie の署名を移し替えても通らない。
+			 * 2.2.2 までの名前に結びついていない署名は、移す間だけ読み、古い鍵と同じに扱って書き直させる
+			 */
+			KeyMatch match = Signer.unsignAnyFor(entry.getKey(), value, secrets, CookieConf.acceptLegacySignature());
 
 			if (match == null) {
 
@@ -264,7 +268,7 @@ public final class Cookies {
 	 */
 	public void put (String name, String value) {
 
-		put(CookieConf.create(name, sign(value)), value);
+		put(CookieConf.create(name, sign(name, value)), value);
 
 	}
 
@@ -277,7 +281,7 @@ public final class Cookies {
 	 */
 	public void put (String name, String value, long maxAge) {
 
-		put(CookieConf.create(name, sign(value), maxAge), value);
+		put(CookieConf.create(name, sign(name, value), maxAge), value);
 
 	}
 
@@ -294,7 +298,7 @@ public final class Cookies {
 	 */
 	public void putSigned (Cookie cookie) {
 
-		put(cookie.withValue(sign(cookie.value())), cookie.value());
+		put(cookie.withValue(sign(cookie.name(), cookie.value())), cookie.value());
 
 	}
 
@@ -370,18 +374,37 @@ public final class Cookies {
 	}
 
 	/**
-	 * 設定に従って署名する
+	 * 設定に従って署名する（Cookie の名前に結びつける。D-220）
 	 *
+	 * @param name	Cookie の名前
 	 * @param value	値
 	 * @return	署名つきの値（鍵が無ければそのまま）
 	 */
-	public static String sign (String value) {
+	public static String sign (String name, String value) {
 
 		if (value == null || !CookieConf.isSigned()) {
 			return value;
 		}
 
 		// 書くときは必ず「いまの鍵」。古い鍵で書いたら入れ替えが終わらない
+		return Signer.signFor(name, value, CookieConf.secret());
+
+	}
+
+	/**
+	 * 設定に従って署名する（名前に結びつけない、2.2.2 までの形）
+	 *
+	 * @param value	値
+	 * @return	署名つきの値（鍵が無ければそのまま）
+	 * @deprecated	名前に結びつかないので、別の名前の Cookie に移し替えて使える。{@link #sign(String, String)} を使う（D-220）
+	 */
+	@Deprecated(since = "2.2.3")
+	public static String sign (String value) {
+
+		if (value == null || !CookieConf.isSigned()) {
+			return value;
+		}
+
 		return Signer.sign(value, CookieConf.secret());
 
 	}

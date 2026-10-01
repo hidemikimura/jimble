@@ -282,6 +282,26 @@ class BatchManagerIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-218 フォームで送った書き換えは 415（別のサイトのフォームから、覚えた Basic 認証で送らせない）")
+	void formPostIsRejected () throws Exception {
+
+		assertTrue(io.jimble.batch.scheduler.SchedulerControl.isEnabled());
+
+		HttpResponse<String> response = client.send(HttpRequest.newBuilder()
+			.uri(URI.create("http://127.0.0.1:" + server.port() + PATH + "/api/status/change?kind=scheduler&enabled=false"))
+			.timeout(Duration.ofSeconds(10))
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.header("Authorization", "Basic " + Base64.getEncoder()
+				.encodeToString("%s:%s".formatted(USER, PASSWORD).getBytes(StandardCharsets.UTF_8)))
+			.POST(HttpRequest.BodyPublishers.ofString("kind=scheduler&enabled=false"))
+			.build(), HttpResponse.BodyHandlers.ofString());
+
+		assertEquals(415, response.statusCode());
+		assertTrue(io.jimble.batch.scheduler.SchedulerControl.isEnabled(), "フォームの POST でスケジューラが止まりました");
+
+	}
+
+	@Test
 	@DisplayName("知らない kind は 400")
 	void unknownKind () throws Exception {
 
