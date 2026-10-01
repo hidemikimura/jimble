@@ -38,8 +38,28 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class McpSubscriptions {
 
-	/** 購読の識別子ごとの購読 */
-	private static final Map<Object, Subscription> OPEN = new ConcurrentHashMap<>();
+	/**
+	 * 購読（繋いでいる相手と、要求の識別子の組ごと。D-221）
+	 *
+	 * <p>
+	 * <b>かつては要求の識別子だけをキーにして、プロセス全体で1つの表に持っていた。</b>
+	 * 識別子はクライアントが決める（ほとんどは 1, 2, ...）ので、別のクライアントが同じ識別子で開くと
+	 * <b>前の購読を黙って上書きし</b>（前のストリームにはもう何も届かない）、
+	 * {@code notifications/cancelled} で<b>他人の購読を閉じられた</b>。
+	 * </p>
+	 */
+	private static final Map<Key, Subscription> OPEN = new ConcurrentHashMap<>();
+
+	/** stdio の相手（1つしかいない） */
+	public static final String STDIO = "stdio";
+
+	/**
+	 * 表のキー
+	 *
+	 * @param owner	繋いでいる相手
+	 * @param id	要求の識別子
+	 */
+	private record Key (Object owner, Object id) {}
 
 	/** 何番目の購読か（ログ用） */
 	private static final AtomicLong SEQUENCE = new AtomicLong();
@@ -59,13 +79,28 @@ public final class McpSubscriptions {
 	 */
 	public static Subscription open (Object id, Data params, Sink sink) {
 
+		return open(STDIO, id, params, sink);
+
+	}
+
+	/**
+	 * 購読を開く（繋いでいる相手ごと。D-221）
+	 *
+	 * @param owner		繋いでいる相手（{@link #owner(io.jimble.web.context.WebContext)}。stdio は {@link #STDIO}）
+	 * @param id		{@code subscriptions/listen} の要求の識別子（＝購読の識別子）
+	 * @param params	要求の引数
+	 * @param sink		流す先
+	 * @return 購読
+	 */
+	public static Subscription open (Object owner, Object id, Data params, Sink sink) {
+
 		Data wanted = params.getDataOptional("notifications");
 
 		Subscription subscription = new Subscription(id, sink
 			, wanted.getBoolean("resourcesListChanged")
 			, Set.copyOf(wanted.getStringListOptional("resourceSubscriptions")));
 
-		OPEN.put(key(id), subscription);
+		OPEN.put(new Key(owner, key(id)), subscription);
 
 		Log.debug("MCP の購読を開きました: id=%s / 通し番号=%d / リソース=%d 件".formatted(
 			id, SEQUENCE.incrementAndGet(), subscription.resourceUris.size()));
@@ -113,11 +148,49 @@ public final class McpSubscriptions {
 	 */
 	public static void cancel (Object id) {
 
-		Subscription subscription = OPEN.remove(key(id));
+		cancel(STDIO, id);
+
+	}
+
+	/**
+	 * 購読を閉じる（クライアントが取り消した。<b>その相手が開いたものだけ</b>。D-221）
+	 *
+	 * @param owner	取り消してきた相手
+	 * @param id	購読の識別子
+	 */
+	public static void cancel (Object owner, Object id) {
+
+		Subscription subscription = OPEN.remove(new Key(owner, key(id)));
 
 		if (subscription != null) {
 			subscription.close(false);
 		}
+
+	}
+
+	/**
+	 * 繋いでいる相手を見分けるもの（HTTP。D-221）
+	 *
+	 * <p>
+	 * HTTP の購読にはセッションが無いので、<b>接続元と、認証に使うヘッダ（Authorization / Cookie）</b>から作る。
+	 * 同じ相手からの取り消しだけを受ける。認証の無い {@code /mcp} を同じ IP から叩かれると見分けられない——
+	 * {@code /mcp} は認証を掛けて使う。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @return	相手
+	 */
+	public static String owner (io.jimble.web.context.WebContext context) {
+
+		if (context == null) {
+			return STDIO;
+		}
+
+		String text = context.request().proxyAddress()
+			+ '\u0000' + context.request().header().getStringOptional("authorization")
+			+ '\u0000' + context.request().header().getStringOptional("cookie");
+
+		return "http:" + io.jimble.util.hash.Hash.sha256(text);
 
 	}
 
@@ -140,7 +213,26 @@ public final class McpSubscriptions {
 	 */
 	public static void complete (Object id) {
 
-		Subscription subscription = OPEN.remove(key(id));
+		// サーバー側から終える（呼ぶのはアプリとテスト）。どの相手のものでも閉じる
+		Object normalized = key(id);
+
+		for (Key key : List.copyOf(OPEN.keySet())) {
+			if (key.id().equals(normalized)) {
+				complete(key.owner(), id);
+			}
+		}
+
+	}
+
+	/**
+	 * 購読を閉じる（サーバー側から終わる。その相手のもの）
+	 *
+	 * @param owner	相手
+	 * @param id	購読の識別子
+	 */
+	public static void complete (Object owner, Object id) {
+
+		Subscription subscription = OPEN.remove(new Key(owner, key(id)));
 
 		if (subscription != null) {
 			subscription.close(true);
@@ -158,7 +250,7 @@ public final class McpSubscriptions {
 	 */
 	public static void closeAll () {
 
-		for (Object id : List.copyOf(OPEN.keySet())) {
+		for (Key id : List.copyOf(OPEN.keySet())) {
 
 			Subscription subscription = OPEN.remove(id);
 
