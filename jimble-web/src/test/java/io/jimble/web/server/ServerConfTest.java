@@ -132,10 +132,18 @@ class ServerConfTest {
 	}
 
 	@Test
-	@DisplayName("信じる設定なら X-Forwarded-For の先頭を返す")
+	@DisplayName("信じる設定なら X-Forwarded-For を右から読み、中継（trusted_proxies）を飛ばす（D-214。かつては先頭）")
 	void trustsProxyWhenConfigured () {
 
+		// 中継を書かなければ右端（直前の中継が足した値）。先頭はクライアントが名乗れる
 		use(Map.of("server.trust_proxy", true));
+
+		try (WebContext context = proxied()) {
+			assertEquals("10.0.0.1", context.request().proxyAddress());
+		}
+
+		// 10.0.0.1 が中継なら、その前
+		use(Map.of("server.trust_proxy", true, "server.trusted_proxies", java.util.List.of("10.0.0.0/8", "127.0.0.1")));
 
 		try (WebContext context = proxied()) {
 			assertEquals("203.0.113.9", context.request().proxyAddress());

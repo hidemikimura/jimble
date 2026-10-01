@@ -117,15 +117,26 @@ server { host = "127.0.0.1" }
 **既定では `X-Forwarded-*` を信じません。**信じるのは、前段のプロキシを必ず通ると分かってからです。
 
 ```conf
-server { trust_proxy = true }
+server {
+	trust_proxy      = true
+	trusted_proxies  = ["10.0.0.0/8"]   # 中継の IP / CIDR。書けば、ここから来たときだけヘッダを見る
+	client_ip_header = ""                # "CF-Connecting-IP" / "X-Real-IP" など。書いたときだけ信じる
+}
 ```
 
 `true` にすると `proxyAddress()` が次の順で送信元を返します。
 
-1. `CF-Connecting-IP`
-2. `X-Real-IP`
-3. `X-Forwarded-For` の**先頭**
+1. `trusted_proxies` を書いていて、接続元がそこに入っていなければ、**接続元**（ヘッダは名乗りにすぎない）
+2. `client_ip_header` を書いていれば、そのヘッダの値
+3. `X-Forwarded-For` を**右から**見て、`trusted_proxies` に入っていない最初のもの（書いていなければ**右端**）
 4. どれも無ければ接続元
+
+> [!TRAP]
+> **`X-Forwarded-For` の左端は、クライアントが好きに名乗れます。**
+> nginx・ALB・jimble の ReverseProxy は、クライアントが送ってきた値の**後ろに足す**からです。
+> 2.2.2 までは左端と、`CF-Connecting-IP` / `X-Real-IP` を無条件に信じていたので、
+> 名乗る値を変えるだけで IP ごとのレート制限をすり抜けられました。
+> 中継が2段以上（CDN → ロードバランサ など）なら、`trusted_proxies` に中継の範囲を書いてください。
 
 > [!TRAP]
 > **`trust_proxy` を true にしても `address()` は変わりません。**
