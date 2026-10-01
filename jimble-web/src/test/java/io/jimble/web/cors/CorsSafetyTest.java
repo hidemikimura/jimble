@@ -113,4 +113,35 @@ class CorsSafetyTest {
 
 	}
 
+
+	@Test
+	@DisplayName("D-215 addAllowOrigin(\"*\") も allowCredentials(true) と一緒には使えない（かつては素通りし、どのサイトにも Cookie 付きを許した）")
+	void starWithCredentials () {
+
+		assertThrows(IllegalStateException.class
+			, () -> new Cors().addAllowOrigin("*").allowCredentials(true));
+		assertThrows(IllegalStateException.class
+			, () -> new Cors().allowCredentials(true).addAllowOrigin("*"));
+
+		// 資格情報なしなら、これまでどおり全部許す
+		assertTrue(new Cors().addAllowOrigin("*").matchOrigin("https://any.example"));
+
+	}
+
+	@Test
+	@DisplayName("D-215 オリジンのパターンは * のほかは字のとおりに比べる")
+	void literalPatterns () {
+
+		Cors cors = new Cors().addAllowOrigin("https://*.example.com").addAllowOrigin("https://app?.test");
+
+		assertTrue(cors.matchOrigin("https://a.example.com"));
+		assertFalse(cors.matchOrigin("https://evilexample.com"));
+		assertFalse(cors.matchOrigin("http://a.example.com"));
+
+		// ? は正規表現の「あってもなくても」ではなく、字の ?
+		assertFalse(cors.matchOrigin("https://ap.test"));
+		assertTrue(cors.matchOrigin("https://app?.test"));
+
+	}
+
 }

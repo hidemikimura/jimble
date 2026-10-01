@@ -119,15 +119,26 @@ There are no read or write timeouts.
 **By default `X-Forwarded-*` is not believed.** You start believing it once you know for certain that every request comes through the proxy in front.
 
 ```conf
-server { trust_proxy = true }
+server {
+	trust_proxy      = true
+	trusted_proxies  = ["10.0.0.0/8"]   # IPs / CIDRs of the proxies; when set, headers are read only from them
+	client_ip_header = ""                # "CF-Connecting-IP", "X-Real-IP", ...; trusted only when set
+}
 ```
 
 With `true`, `proxyAddress()` returns the source in this order.
 
-1. `CF-Connecting-IP`
-2. `X-Real-IP`
-3. the **first** entry in `X-Forwarded-For`
+1. if `trusted_proxies` is set and the connection source is not in it, **the connection source** (the headers are just claims)
+2. if `client_ip_header` is set, that header's value
+3. `X-Forwarded-For` read **from the right**, the first entry not in `trusted_proxies` (the **last** entry when it is not set)
 4. the connection source, if none of those are there
+
+> [!TRAP]
+> **The leftmost `X-Forwarded-For` entry is whatever the client claims.**
+> nginx, ALB and jimble's ReverseProxy **append** to the value the client sent.
+> Up to 2.2.2 the leftmost entry, `CF-Connecting-IP` and `X-Real-IP` were trusted unconditionally,
+> so changing the claimed value slipped past per-IP rate limits.
+> With two or more hops (CDN → load balancer and so on), list the proxies in `trusted_proxies`.
 
 > [!TRAP]
 > **Setting `trust_proxy` to true does not change `address()`.**

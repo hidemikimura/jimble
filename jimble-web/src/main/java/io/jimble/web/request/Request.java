@@ -288,29 +288,18 @@ public final class Request {
 			return address();
 		}
 
+		/*
+		 * <b>X-Forwarded-For は右から見る</b>（D-214。{@link ClientIp}）。中継は、クライアントが送ってきた値の
+		 * 後ろに足すので、左端はクライアントが好きに名乗れる。CF-Connecting-IP / X-Real-IP は、
+		 * server.client_ip_header に書いたときだけ信じる。
+		 */
 		Data proxy = proxyHeader();
 
-		// 信頼できるものから順に見る
-		String cloudflare = proxy.getStringOptional(CF_CONNECTING_IP_LOW);
-		if (!cloudflare.isEmpty()) {
-			return cloudflare;
-		}
-
-		String realIp = proxy.getStringOptional(X_REAL_IP_LOW);
-		if (!realIp.isEmpty()) {
-			return realIp;
-		}
-
-		String forwardedFor = proxy.getStringOptional(X_FORWARDED_FOR_LOW);
-		if (!forwardedFor.isEmpty()) {
-			// 「クライアント, プロキシ1, プロキシ2」の先頭がクライアント
-			int comma = forwardedFor.indexOf(',');
-			return (comma < 0 ? forwardedFor : forwardedFor.substring(0, comma)).trim();
-		}
-
-		return address();
+		return ClientIp.resolve(address(), proxy.getStringOptional(X_FORWARDED_FOR_LOW)
+			, name -> header().getStringOptional(name));
 
 	}
+
 	public Data proxyHeader () {
 
 		if (!store.containsKey("proxy_header")) {
