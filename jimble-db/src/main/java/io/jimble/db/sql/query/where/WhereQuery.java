@@ -318,9 +318,60 @@ public class WhereQuery implements IWhere {
 	@Override
 	public void whereSql (SqlWriter sb) {
 
-		for (IWhere where : whereList) {
-			where.whereSql(sb);
+		/*
+		 * <b>AND と OR が入れ替わるところで、それまでを括弧で包む</b>（D-223）。
+		 * かつては平らに並べるだけだったので、{@code a.or(b).and(c)} が {@code a OR b AND c}
+		 * ＝ {@code a OR (b AND c)} になり、読んだとおりの {@code (a OR b) AND c} ではなかった。
+		 * 「公開、または自分のもの」に「自分のテナント」を足したつもりが、<b>ほかのテナントの公開データまで返った</b>
+		 */
+		int changes = 0;
+		String previous = null;
+
+		for (int i = 1; i < whereList.size(); i++) {
+			String operator = connector(whereList.get(i));
+			if (operator != null) {
+				if (previous != null && !previous.equalsIgnoreCase(operator)) {
+					changes++;
+				}
+				previous = operator;
+			}
 		}
+
+		for (int i = 0; i < changes; i++) {
+			sb.append("(");
+		}
+
+		previous = null;
+
+		for (int i = 0; i < whereList.size(); i++) {
+
+			String operator = i == 0 ? null : connector(whereList.get(i));
+
+			if (operator != null && previous != null && !previous.equalsIgnoreCase(operator)) {
+				sb.append(")");
+			}
+
+			whereList.get(i).whereSql(sb);
+
+			if (operator != null) {
+				previous = operator;
+			}
+
+		}
+
+	}
+
+	/**
+	 * 前とつなぐ演算子（AND / OR。無ければ null）
+	 */
+	private static String connector (IWhere where) {
+
+		if (where instanceof WhereQueryInner inner) {
+			String operator = inner.logicalOperator();
+			return operator == null || operator.isEmpty() ? null : operator;
+		}
+
+		return null;
 
 	}
 

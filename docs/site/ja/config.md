@@ -300,6 +300,7 @@ sql_cache {
 	store   = "memory"   # memory | redis | db
 	ttl     = 5m
 	max     = 10000      # 件数の上限（memory のみ）
+	namespace = ""       # 1つの Redis を複数のアプリや環境で分け合うなら、それぞれ別の値に
 }
 
 redis {

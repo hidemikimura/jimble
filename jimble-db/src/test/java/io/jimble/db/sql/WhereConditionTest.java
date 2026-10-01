@@ -376,4 +376,27 @@ class WhereConditionTest {
 
 	// endregion
 
+
+	@Test
+	@DisplayName("D-223 a.or(b).and(c) は (a OR b) AND c（読んだとおり。かつては a OR (b AND c)）")
+	void andOrPrecedence () {
+
+		String orThenAnd = sql(NAME.eq("public").or(ID.eq(1)).and(COUNT.eq(7)));
+		assertTrue(orThenAnd.contains("(( `site`.`name` = ? OR `site`.`id` = ?) AND `site`.`feed_count` = ?)")
+			|| orThenAnd.replace(" ", "").contains("((`site`.`name`=?OR`site`.`id`=?)AND`site`.`feed_count`=?)")
+			, orThenAnd);
+
+		// 値の順番は変わらない
+		assertEquals(List.of("public", 1, 7), params(NAME.eq("public").or(ID.eq(1)).and(COUNT.eq(7))));
+
+		// 入れ替わりが2回なら、括弧も2重
+		String twice = sql(NAME.eq("a").and(ID.eq(1)).or(ID.eq(2)).and(COUNT.eq(3)));
+		assertTrue(twice.replace(" ", "").contains("(((`site`.`name`=?AND`site`.`id`=?)OR`site`.`id`=?)AND`site`.`feed_count`=?)"), twice);
+
+		// 同じ演算子だけなら括弧を足さない（字面が変わると結果キャッシュの鍵が変わる）
+		String sameOnly = sql(NAME.eq("a").and(ID.eq(1)).and(COUNT.eq(3)));
+		assertFalse(sameOnly.contains("(("), sameOnly);
+
+	}
+
 }
