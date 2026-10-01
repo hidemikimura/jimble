@@ -291,7 +291,7 @@ error((context, cause, statusCode) -> {
 		return;
 	}
 
-	context.response().code(statusCode).json("error", cause.getMessage());
+	context.response().code(statusCode).json("error", (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
 
 });
 ```

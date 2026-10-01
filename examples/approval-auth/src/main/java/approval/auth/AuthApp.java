@@ -115,7 +115,7 @@ public class AuthApp extends JimbleApp {
 		error((context, cause, statusCode) -> {
 
 			if (context.request().acceptJson()) {
-				context.response().code(statusCode).json("error", cause.getMessage());
+				context.response().code(statusCode).json("error", (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
 				return;
 			}
 

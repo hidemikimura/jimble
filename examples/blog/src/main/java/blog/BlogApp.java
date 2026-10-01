@@ -85,11 +85,11 @@ public class BlogApp extends JimbleApp {
 		error((context, cause, statusCode) -> {
 
 			if (context.request().acceptJson() || !context.request().accept().contains("text/html")) {
-				context.response().json("error", cause.getMessage());
+				context.response().json("error", (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
 				return;
 			}
 
-			context.response().send("エラー: %d %s".formatted(statusCode, cause.getMessage()));
+			context.response().send("エラー: %d %s".formatted(statusCode, (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました")));
 
 		});
 

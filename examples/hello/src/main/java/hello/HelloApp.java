@@ -28,7 +28,7 @@ public class HelloApp extends JimbleApp {
 		// エラーは全部ここで整形する（未マッチの 404 もここに来る）
 		// docs:begin error-handler
 		error((context, cause, statusCode) ->
-			context.response().code(statusCode).send("エラー: %d %s%n".formatted(statusCode, cause.getMessage())));
+			context.response().code(statusCode).send("エラー: %d %s%n".formatted(statusCode, (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"))));
 		// docs:end
 
 		// docs:begin hello-route

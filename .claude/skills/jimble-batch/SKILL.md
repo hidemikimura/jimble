@@ -291,6 +291,8 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
   時間どおりに終わっただけなのに**異常終了に見える**
 - **二重起動は `allowConcurrentExecutionCount()`（既定1本）。**
   サーバーが複数台でも DB のテーブルで排他するので1本しか走らない
+- **バッチ管理画面の書き換える API は `Content-Type: application/json` でしか受けない**（2.2.3。CSRF 対策。フォームは 415）。
+  スクリプトから叩くなら JSON で送る。Basic 認証の失敗は `Lockout` で数え、超えると 429
 
 ## 詳しいことは引く
 

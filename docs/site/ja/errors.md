@@ -83,16 +83,18 @@ void handle (WebContext context, Throwable cause, int statusCode) throws Excepti
 4 が `send(statusCode)` ではなく `send()` なのが要点です。
 ハンドラが `json(...)` などで組み立てた中身を、**捨てずに送る**ためです。
 
+**500 番台では `cause.getMessage()` を返さないでください。**DB の誤り（重複したキーの値など）や内部のパスが、相手にそのまま届きます。中身はログで見ます。
+
 ```java
 error((context, cause, statusCode) -> {
 
 	// API なら JSON、画面なら HTML
 	if (context.request().acceptJson()) {
-		context.response().json("error", cause.getMessage());
+		context.response().json("error", (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
 		return;
 	}
 
-	context.response().send("エラー: %d %s".formatted(statusCode, cause.getMessage()));
+	context.response().send("エラー: %d %s".formatted(statusCode, (statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました")));
 
 });
 ```

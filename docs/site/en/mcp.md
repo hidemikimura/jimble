@@ -325,13 +325,24 @@ If you wrote tools that touch the database, anyone on the network can call them.
 Put authentication in a `before` (separate from the authentication of the APIs behind `RouteTool`).
 
 ```java
-path("/mcp", () -> before(context -> {
-	if (!isValidToken(context.request().header().getStringOptional("authorization"))) {   // your own check
-		throw new HttpException(401, "Authentication required");
+public class BlogMcp extends McpController {
+	{
+		// Applies to the MCP endpoint itself (this class's only route is POST /mcp)
+		before(context -> {
+			if (!isValidToken(context.request().header().getStringOptional("authorization"))) {   // your own check
+				throw new HttpException(401, "Authentication required");
+			}
+		});
+
+		tool("search_posts", SearchPostsTool::new);
 	}
-}));
-install(BlogMcp::new);
+}
 ```
+
+> [!TRAP]
+> **A `path("/mcp", () -> before(...))` written in another block does not apply to `install(BlogMcp::new)`.**
+> Filters attach only to the routes in the block they are written in (the same path in another block is not covered).
+> Put it inside the MCP class, or put `before` and `install` in the same block.
 
 Cancelling a subscription (`subscriptions/listen`) is accepted **only from the same source address, `Authorization` and cookies that opened it** (2.2.3+).
 An unauthenticated `/mcp` called from the same source address cannot tell callers apart.
