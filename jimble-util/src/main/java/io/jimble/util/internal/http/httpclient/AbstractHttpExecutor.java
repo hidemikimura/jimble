@@ -31,7 +31,6 @@ import java.security.cert.CertificateException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.zip.DeflaterInputStream;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -501,6 +500,28 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 	public E setEnableRedirect (boolean isEnableRedirect) {
 
 		this.isEnableRedirect = isEnableRedirect;
+		return self();
+	}
+
+	// endregion
+
+	// region 応答の大きさの上限
+
+	/** 応答の大きさの上限の既定（50MiB） */
+	public static final long DEFAULT_MAX_RESPONSE_SIZE = 50L * 1024 * 1024;
+
+	/* 応答の大きさの上限（メモリに読むとき。解いたあとの大きさ。D-225） */
+	protected long maxResponseSize = DEFAULT_MAX_RESPONSE_SIZE;
+
+	/**
+	 * 応答の大きさの上限を設定する（メモリに読むとき。解いたあとの大きさで見る。D-225）
+	 *
+	 * @param bytes	バイト（超えたら本文を読まない）
+	 * @return this
+	 */
+	public E setMaxResponseSize (long bytes) {
+
+		this.maxResponseSize = bytes;
 		return self();
 	}
 
@@ -1218,9 +1239,15 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 			}
 		}
 
-		// SSLエラー無視
+		/*
+		 * SSLエラー無視。
+		 *
+		 * <b>JVM 全体の設定は変えない</b>（D-225）。かつては jdk.internal.httpclient.disableHostnameVerification を
+		 * true にしていた。JDK はこれを1度だけ読んで覚えるので、最初に作った HttpClient が無視するものだと、
+		 * <b>そのあとのすべての HttpClient（OIDC のトークンや JWKS の取得を含む）がホスト名を確かめなくなった</b>。
+		 * ホスト名の確認は X509ExtendedTrustManager の側でするので、何もしない TrustManager を渡せば、この1本だけで済む
+		 */
 		if (this.isIgnoreSslError) {
-			System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
 			try {
 				SSLContext sslContext = SSLContext.getInstance("SSL");
 				sslContext.init(null, new TrustManager[]{new MyX509TrustManager()}, new java.security.SecureRandom());
@@ -1234,9 +1261,12 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 			builder.connectTimeout(Duration.ofMillis(this.timeout));
 		}
 
-		// リダイレクトを追う
+		/*
+		 * リダイレクトを追う。<b>https から http へは追わない</b>（D-225。かつては ALWAYS）。
+		 * 追う先のホストは確かめないので、URL を許可リストで確かめるときは setEnableRedirect(false) にする
+		 */
 		if (this.isEnableRedirect) {
-			builder.followRedirects(Redirect.ALWAYS);
+			builder.followRedirects(Redirect.NORMAL);
 		} else {
 			builder.followRedirects(Redirect.NEVER);
 		}
@@ -1408,10 +1438,20 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 						while ((length = bis.read(buffer, 0, 2048)) > -1) {
 							os.write(buffer, 0, length);
 							this.contentLength += length;
+							/*
+							 * <b>解いたあとの大きさで上限を見る</b>（D-225）。かつては上限が無く、
+							 * 10MB の gzip が何 GB にもなってメモリを使い切った
+							 */
+							if (this.contentLength > this.maxResponseSize) {
+								throw new java.io.IOException("応答が大きすぎます（%d バイトまで）".formatted(this.maxResponseSize));
+							}
 						}
 
 						this.contentText = os.toString(this.charset);
-					} catch (Exception ignore) {}
+					} catch (Exception ex) {
+						// 本文を読めなかった（大きすぎる、途中で切れた）。黙って空にしない
+						io.jimble.util.log.Log.warn("HTTP の応答の本文を読めませんでした: %s".formatted(ex.getMessage()));
+					}
 				} else {
 					/*
 					 * 本文は読まないが、<b>閉じないと接続が返らない</b>。
@@ -1486,7 +1526,8 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		if (contentEncoding.contains("gzip")) {
 			return new BufferedInputStream(new GZIPInputStream(response.body()));
 		} else if (contentEncoding.contains("deflate")) {
-			return new BufferedInputStream(new DeflaterInputStream(response.body()));
+			// 解く側（Inflater）。かつては DeflaterInputStream で、届いたものをもう一度圧縮していた
+			return new BufferedInputStream(new java.util.zip.InflaterInputStream(response.body()));
 		} else if (contentEncoding.contains("br")) {
 			return new BufferedInputStream(new BrotliInputStream(response.body()));
 		}
@@ -1545,7 +1586,7 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 
 	// region MyX509TrustManager
 
-	static class MyX509TrustManager implements X509TrustManager {
+	static class MyX509TrustManager extends javax.net.ssl.X509ExtendedTrustManager {
 
 		public void checkClientTrusted (java.security.cert.X509Certificate[] chain, String authType) throws
 			CertificateException {
@@ -1553,6 +1594,30 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		}
 
 		public void checkServerTrusted (java.security.cert.X509Certificate[] chain, String authType) throws CertificateException {
+
+		}
+
+		/*
+		 * <b>X509ExtendedTrustManager にする</b>（D-225）。ただの X509TrustManager だと、JDK が包んで
+		 * ホスト名を確かめてしまう（それを止めるために、JVM 全体の設定を変えていた）
+		 */
+		@Override
+		public void checkClientTrusted (java.security.cert.X509Certificate[] chain, String authType, java.net.Socket socket) {
+
+		}
+
+		@Override
+		public void checkServerTrusted (java.security.cert.X509Certificate[] chain, String authType, java.net.Socket socket) {
+
+		}
+
+		@Override
+		public void checkClientTrusted (java.security.cert.X509Certificate[] chain, String authType, javax.net.ssl.SSLEngine engine) {
+
+		}
+
+		@Override
+		public void checkServerTrusted (java.security.cert.X509Certificate[] chain, String authType, javax.net.ssl.SSLEngine engine) {
 
 		}
 
