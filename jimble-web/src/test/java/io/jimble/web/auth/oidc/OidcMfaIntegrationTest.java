@@ -240,6 +240,35 @@ class OidcMfaIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("D-219 種別を渡さない入口は、ルートの Auth.REALM の二要素認証を見る（かつては種別なしを見て、コードを聞かずに入れた）")
+	void callbackWithoutRealmUsesTheRouteRealm () {
+
+		enrollAndActivate("operator");
+
+		boolean[] pending = {false};
+		boolean[] authenticated = {true};
+
+		io.jimble.web.server.JimbleApp app = new io.jimble.web.server.JimbleApp() {
+			{
+				get("/ops/auth/google/callback", context -> {
+					Oidc.finishLogin(context, principal(MFA_USER_ID), "google:1234", MFA_PATH);
+					pending[0] = Mfa.isPending(context);
+					authenticated[0] = Auth.principal(context).isAuthenticated();
+				}).attribute(Auth.REALM, "operator").attribute(Auth.PUBLIC, true);
+			}
+		};
+
+		try (WebContext context = new WebContext(
+			new Fakes.FakeRequestSource("GET", "/ops/auth/google/callback"), new Fakes.FakeResponseSink())) {
+			new io.jimble.web.server.Dispatcher(app).dispatch(context);
+		}
+
+		assertFalse(authenticated[0], "operator のルートで、二要素認証が飛んでいます");
+		assertTrue(pending[0], "コードを聞く側に倒していません");
+
+	}
+
 	// region ここで固定していないこと
 
 	/*
