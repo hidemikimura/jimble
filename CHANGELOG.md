@@ -23,6 +23,21 @@
 | **SPA の書き換えのドキュメントの例が、反射型 XSS になっていました** | パスの値（デコード済み）をエスケープせずに HTML に差し込んでいました。例を直し、`SpaRewriter.escapeHtml` を足しました。書き換えたページは共有キャッシュに置かせないようにしました |
 | **セキュリティのヘッダを何も付けていませんでした** | どのページも別のサイトの iframe に入れられ（クリックジャッキング）、拡張子の無いファイルはブラウザが中身から種類を推測していました。`security_headers` を足しました。HSTS は既定で付けません（設定したとき、https で受けたときだけ） |
 
+### 上げる前に見るところ（送り元 IP と CORS）
+
+| | |
+|---|---|
+| **`trust_proxy = true` のとき、`X-Forwarded-For` を右から読みます** | 中継が2段以上なら `server.trusted_proxies` に中継の範囲を書いてください（書かないと、直前の中継の1つ前、つまり右端を送り元とします） |
+| **`CF-Connecting-IP` / `X-Real-IP` は、`server.client_ip_header` に書いたときだけ信じます** | Cloudflare の後ろなら `client_ip_header = "CF-Connecting-IP"` |
+| `Cors().addAllowOrigin("*")` は `allAllowOrigin()` と同じ扱いになり、`allowCredentials(true)` と一緒に使うと例外です | |
+
+### 直したこと（セキュリティ・送り元 IP と CORS）
+
+| | |
+|---|---|
+| **`trust_proxy = true` のとき、送り元の IP を偽れました** | `X-Forwarded-For` の**左端**（クライアントが好きに名乗れる）と、`CF-Connecting-IP` / `X-Real-IP` を無条件に信じていたので、名乗る値を変えるだけで `RateLimit.perIp` や IP での制限をすり抜けられました。右から読み、`server.trusted_proxies`（IP / CIDR。名前は引きません）に入っている中継を飛ばすようにしました |
+| **`addAllowOrigin("*")` と `allowCredentials(true)` を一緒に使うと、どのサイトにも Cookie 付きの読み取りを許していました** | `allAllowOrigin()` との組み合わせは断っていましたが、`"*"` をパターンとして足すとすり抜けていました。オリジンのパターンは、`*` のほかを字のとおりに比べるようにしました（`?` や `+` が正規表現として効いていました） |
+
 ### 上げる前に見るところ（DB）
 
 | | |

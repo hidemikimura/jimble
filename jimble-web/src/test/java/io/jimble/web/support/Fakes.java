@@ -95,7 +95,15 @@ public final class Fakes {
 		@Override public String scheme () { return "http"; }
 		@Override public String host () { return "localhost"; }
 		@Override public int port () { return 9000; }
-		@Override public String remoteAddress () { return "127.0.0.1"; }
+		@Override public String remoteAddress () { return remoteAddress; }
+
+		private String remoteAddress = "127.0.0.1";
+
+		/** 接続元の IP を決める */
+		public FakeRequestSource remote (String address) {
+			this.remoteAddress = address;
+			return this;
+		}
 		@Override public String query () { return ""; }
 		@Override public Map<String, String> headers () { return headers; }
 		@Override public Map<String, String> cookies () { return cookies; }
