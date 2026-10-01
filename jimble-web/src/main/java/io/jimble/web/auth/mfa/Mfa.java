@@ -456,14 +456,14 @@ public final class Mfa {
 
 		String lockoutKey = lockoutKey(realm, userId);
 
-		if (Lockout.waitSeconds(lockoutKey) > 0) {
+		// 確かめる前に数える（同時に送られても素通りさせない。D-216）
+		if (Lockout.attempt(lockoutKey) > 0) {
 			throw new HttpException(429, "しばらく待ってからやり直してください");
 		}
 
 		Data row = row(realm, userId);
 
 		if (row == null || row.getLong("activated_at") <= 0) {
-			Lockout.fail(lockoutKey);
 			return false;
 		}
 
@@ -472,8 +472,7 @@ public final class Mfa {
 			return true;
 		}
 
-		Lockout.fail(lockoutKey);
-
+		// 失敗はもう数えてある
 		return false;
 
 	}

@@ -148,6 +148,7 @@ public final class BatchManagerController extends Controller {
 		path(basePath, () -> {
 
 			before(auth::handle);
+			before(BatchManagerController::requireJson);
 
 			get("/", context -> assets.send(context, "/" + ASSET_DIR + "/index.html"));
 
@@ -170,6 +171,39 @@ public final class BatchManagerController extends Controller {
 		Log.info("バッチ管理画面を組み込みました: %s".formatted(basePath));
 
 	}
+
+	/**
+	 * 書き換える要求は JSON に限る（D-218。CSRF）
+	 *
+	 * <p>
+	 * <b>かつては CSRF を防いでいなかった。</b>認証は Basic なので、ブラウザが覚えた認証情報は
+	 * 別のサイトから来たフォームの POST にも付く。パラメータは JSON でなくフォームでも読むので、
+	 * 管理者が開いた罠のページから、バッチを止めたり、実行したり、予定を書き換えたりできた。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code Content-Type: application/json} の POST は、別のサイトからは事前の確認（CORS のプリフライト）
+	 * なしに送れないので、JSON に限れば防げる。画面（index.html）はもともと JSON で送っている。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 */
+	static void requireJson (io.jimble.web.context.WebContext context) {
+
+		String method = context.request().method();
+
+		if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || "OPTIONS".equalsIgnoreCase(method)) {
+			return;
+		}
+
+		String contentType = context.request().header().getStringOptional("content-type").toLowerCase(java.util.Locale.ROOT);
+
+		if (!contentType.startsWith("application/json")) {
+			throw new io.jimble.web.http.HttpException(415, "Content-Type: application/json で送ってください");
+		}
+
+	}
+
 
 	// region 履歴
 
