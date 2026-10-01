@@ -43,13 +43,8 @@ server {
 
 # Cookie（要件 F-S-05 / NF-S-04）
 #
-# 既定は secure = true（HTTPS のみ）である。安全側が既定なのは正しいが、
-# ローカルは http なのでブラウザが Cookie を送り返さない。
-# セッションも CSRF も「エラーも出ずに効かない」形になる。
-# 本番では必ず true に戻すこと（この節を消せばよい）。
-cookie {
-	secure = false
-}
+# 既定は secure = true（HTTPS のみ）で、ここには書かない。
+# ローカルは http なので、application.local.conf で false にしている（本番の環境では読まれない）。
 
 # セッションを使うようになったら外す（none | db | redis | cookie）
 #

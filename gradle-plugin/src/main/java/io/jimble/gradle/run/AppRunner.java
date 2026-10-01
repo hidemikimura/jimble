@@ -49,6 +49,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class AppRunner {
 
+	/** アプリが待ち受けるアドレス（プロキシからしか呼ばれない。D-228） */
+	static final String APP_HOST = "127.0.0.1";
+
 	/** 「全部止める」の入口（jimble 側。要件 D-77） */
 	private static final String SHUTDOWN_CLASS = "io.jimble.core.lifecycle.Shutdown";
 
@@ -132,6 +135,9 @@ final class AppRunner {
 		 */
 		System.setProperty("jimble.env", spec.env());
 		System.setProperty("jimble.server.port", String.valueOf(spec.port()));
+
+		// アプリはプロキシからしか呼ばれないので、このマシンだけで待ち受ける（D-228）
+		System.setProperty("jimble.server.host", APP_HOST);
 
 		keepDaemonDeserializable(log);
 

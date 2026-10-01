@@ -97,7 +97,7 @@ class DevProxyTest {
 
 		app.start();
 
-		proxy = new DevProxy(proxyPort, appPort, () -> BuildOutcome.OK, new RunLog());
+		proxy = new DevProxy("127.0.0.1", proxyPort, appPort, () -> BuildOutcome.OK, new RunLog());
 		proxy.start();
 
 	}

@@ -38,6 +38,10 @@ final class Skeleton {
 		, new Entry("index.jte.txt", "src/main/jte/__PACKAGE_PATH__/index.jte")
 		, new Entry("application.conf.txt", "conf/application.conf")
 		/*
+		 * ローカル用（cookie.secure = false）。共通の application.conf に書くと、本番も引き継ぐ（D-228）
+		 */
+		, new Entry("application.local.conf.txt", "conf/application.local.conf")
+		/*
 		 * ログの設定。無いと logback の既定（全部まとめてコンソール）になり、
 		 * アクセスログもアプリのログも同じところに混ざる。
 		 */

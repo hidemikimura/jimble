@@ -24,9 +24,13 @@ public class App extends JimbleApp {
 		/*
 		 * 例外はここで整形する。
 		 * ルートに当たらなかった 404 もここへ来る。
+		 *
+		 * 500 番台では例外のメッセージを返さない。DB の誤り（重複したキーの値など）や
+		 * 内部のパスがそのまま相手に届く。中身はログで見る。
 		 */
 		error((context, cause, statusCode) ->
-			context.response().code(statusCode).json("error", cause.getMessage()));
+			context.response().code(statusCode).json("error"
+				, statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
 
 		// HTML を返す（src/main/jte/__PACKAGE_PATH__/index.jte）
 		get("/", context -> {

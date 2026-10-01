@@ -46,6 +46,21 @@ public abstract class JimbleRunExtension {
 	public abstract Property<Integer> getPort ();
 
 	/**
+	 * 開発用プロキシが待ち受けるアドレス（既定 {@code 127.0.0.1}。D-228）
+	 *
+	 * <p>
+	 * <b>既定では、このマシンからしか開けない。</b>かつてはすべての NIC で待ち受けていたので、
+	 * 同じ LAN やカフェの Wi-Fi の誰でも、開発中のアプリ（ローカルの DB の認証情報や、
+	 * ソースの一部を出すビルドエラーの画面を含む）を開けた。
+	 * スマートフォンなど別の端末から確かめるときだけ {@code "0.0.0.0"} にする。
+	 * アプリそのものは、いつも {@code 127.0.0.1} で待ち受ける（プロキシだけが外を向く）。
+	 * </p>
+	 *
+	 * @return	アドレス
+	 */
+	public abstract Property<String> getHost ();
+
+	/**
 	 * アプリが待ち受けるポート（既定 {@code port + 100}）
 	 *
 	 * <p>
