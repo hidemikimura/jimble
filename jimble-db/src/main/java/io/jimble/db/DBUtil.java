@@ -14,6 +14,8 @@ import io.agroal.api.configuration.AgroalConnectionFactoryConfiguration;
 import io.agroal.api.configuration.AgroalConnectionPoolConfiguration;
 import io.agroal.api.configuration.AgroalDataSourceConfiguration;
 import io.agroal.api.configuration.supplier.AgroalDataSourceConfigurationSupplier;
+import io.agroal.api.exceptionsorter.MySQLExceptionSorter;
+import io.agroal.api.exceptionsorter.PostgreSQLExceptionSorter;
 import io.agroal.api.security.NamePrincipal;
 import io.agroal.api.security.SimplePassword;
 import io.jimble.util.conf.Conf;
@@ -743,6 +745,7 @@ public class DBUtil {
 									? AgroalConnectionPoolConfiguration.ConnectionValidator.sqlValidator(dbConf.connectionTestQuery(), 5)
 									: AgroalConnectionPoolConfiguration.ConnectionValidator.defaultValidator())
 								.validateOnBorrow(dbConf.validateOnBorrow())
+								.exceptionSorter(exceptionSorter(dbConf))
 								.connectionFactoryConfiguration(cf -> {
 										cf
 											.autoCommit(true)
@@ -775,13 +778,10 @@ public class DBUtil {
 									}
 								)
 							;
-							if (dbConf.minimumIdle() > 0) {
-								cp.minSize(dbConf.minimumIdle());
-								cp.initialSize(dbConf.minimumIdle());
-							}
-							if (dbConf.maximumPoolSize() > 0) {
-								cp.maxSize(dbConf.maximumPoolSize());
-							}
+							// 大きさは必ず渡す（既定は DBConf が持つ。D-201）
+							cp.maxSize(dbConf.maximumPoolSize());
+							cp.minSize(dbConf.minimumIdle());
+							cp.initialSize(dbConf.minimumIdle());
 							if (dbConf.connectionTimeout() > 0) {
 								cp.acquisitionTimeout(Duration.ofMillis(dbConf.connectionTimeout() + 1000));
 							}
@@ -830,12 +830,12 @@ public class DBUtil {
 		if (dbConf.password() != null) {
 			hikariConfig.setPassword(dbConf.password());
 		}
-		if (dbConf.maximumPoolSize() > 0) {
-			hikariConfig.setMaximumPoolSize(dbConf.maximumPoolSize());
-		}
-		if (dbConf.minimumIdle() > 0) {
-			hikariConfig.setMinimumIdle(dbConf.minimumIdle());
-		}
+		/*
+		 * 大きさは必ず渡す（D-201）。かつては 0 なら渡さなかったので、書かないと
+		 * HikariCP の既定（最小も上限と同じ 10）になり、ドキュメントの既定（最小 1）と違っていた。
+		 */
+		hikariConfig.setMaximumPoolSize(dbConf.maximumPoolSize());
+		hikariConfig.setMinimumIdle(dbConf.minimumIdle());
 		if (dbConf.idleTimeout() > 0) {
 			hikariConfig.setIdleTimeout(dbConf.idleTimeout());
 		}
@@ -863,6 +863,64 @@ public class DBUtil {
 	}
 
 	/**
+	 * Agroal に渡す、接続を捨てる例外の見分け方（D-202）
+	 *
+	 * <p>
+	 * <b>Agroal の既定は「どの例外でも捨てない」</b>（{@code emptyExceptionSorter}）。
+	 * これを渡していなかったので、<b>DB が再起動すると、切れた接続をプールに戻しては渡し続け</b>、
+	 * DB が戻ってからも裏の定期確認（{@code keepalive_time}、既定 30 秒）が回るまで、
+	 * <b>すべての問い合わせが失敗していた</b>（手元で約 20 秒、12 万件）。HikariCP は自分で見分けて捨てるので起きない。
+	 * </p>
+	 *
+	 * <p>
+	 * Agroal に同梱の、製品ごとの見分け方を使う。どちらも SQLState が {@code 08}（接続の例外）なら捨て、
+	 * MySQL のほうは MySQL / MariaDB の接続切れのエラーコードも見る。
+	 * 取り出すたびに確かめる（{@code validate_on_borrow}）のと違い、<b>ふだんの速さは落ちない</b>
+	 * （{@code validate_on_borrow} は手元で速さが半分になった）。
+	 * </p>
+	 *
+	 * @param dbConf	DB設定
+	 * @return	見分け方
+	 */
+	static AgroalConnectionPoolConfiguration.ExceptionSorter exceptionSorter (DBConf dbConf) {
+
+		String product = io.jimble.db.dialect.Dialects.productNameOrNull(dbConf.product());
+
+		if (io.jimble.db.dialect.PostgreSqlDialect.NAME.equals(product)) {
+			return new PostgreSQLExceptionSorter();
+		}
+
+		// 書いていなければ mysql（方言の既定と同じ）
+		return new MySQLExceptionSorter();
+
+	}
+
+	/**
+	 * プールの大きさを確かめる（D-201）
+	 *
+	 * <p>
+	 * 0 以下の上限は、これまで黙って無視していた（HikariCP は自分の既定 10 で動き、Agroal は落ちた）。
+	 * 最小が上限より大きいときは、これまでどおりプールに任せる（HikariCP は上限に丸め、Agroal は断る）。
+	 * </p>
+	 *
+	 * @param dbConf	DB設定
+	 * @throws IllegalStateException	上限が 1 より小さいか、最小が 0 より小さい場合
+	 */
+	static void checkPoolSize (DBConf dbConf) {
+
+		if (dbConf.maximumPoolSize() < 1) {
+			throw new IllegalStateException("db の maximum_pool_size は 1 以上にしてください（既定 %d）。いまの値: %d"
+				.formatted(DBConf.DEFAULT_MAXIMUM_POOL_SIZE, dbConf.maximumPoolSize()) + Docs.see("db"));
+		}
+
+		if (dbConf.minimumIdle() < 0) {
+			throw new IllegalStateException("db の minimum_idle は 0 以上にしてください（既定 %d）。いまの値: %d"
+				.formatted(DBConf.DEFAULT_MINIMUM_IDLE, dbConf.minimumIdle()) + Docs.see("db"));
+		}
+
+	}
+
+	/**
 	 * DB設定を読み込む
 	 *
 	 * @param dbConf	DB設定
@@ -885,6 +943,8 @@ public class DBUtil {
 		if (has(config, "minimum_idle")) {
 			dbConf.minimumIdle(innerConf.getInt(spelling(config, "minimum_idle")));
 		}
+		checkPoolSize(dbConf);
+
 		if (has(config, "fetch_size")) {
 			dbConf.fetchSize(innerConf.getInt(spelling(config, "fetch_size")));
 		}

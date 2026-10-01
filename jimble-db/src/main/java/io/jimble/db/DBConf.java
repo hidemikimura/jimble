@@ -29,11 +29,26 @@ public final class DBConf {
 	/** 接続する利用者のパスワード */
 	private String password;
 
+	/** プールの上限の既定 */
+	public static final int DEFAULT_MAXIMUM_POOL_SIZE = 10;
+
+	/** 遊ばせておく本数の既定 */
+	public static final int DEFAULT_MINIMUM_IDLE = 1;
+
+	/*
+	 * プールの上限と、遊ばせておく本数。
+	 *
+	 * <b>既定はここで持つ</b>（D-201）。かつては 0 のまま持っていて、0 ならプールに渡さなかった。
+	 * そのため書かないと、HikariCP は自分の既定（上限 10・<b>最小も 10</b>）で動き、
+	 * Agroal は上限が無いので<b>起動時に落ちていた</b>（max size attribute is mandatory）。
+	 * ドキュメントの既定（上限 10・最小 1）は、どちらにも効いていなかった。
+	 */
+
 	/** プールの上限 */
-	private int maximumPoolSize;
+	private int maximumPoolSize = DEFAULT_MAXIMUM_POOL_SIZE;
 
 	/** 遊ばせておく本数 */
-	private int minimumIdle;
+	private int minimumIdle = DEFAULT_MINIMUM_IDLE;
 
 	/** 遊んでいる接続を切るまで（ミリ秒） */
 	private long idleTimeout = 600000;
