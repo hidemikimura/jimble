@@ -215,6 +215,8 @@ paging {
 }
 
 auth {
+	full_auth_max_age = 0s   # Auth.FULL_AUTH のルートを、パスワードを入れてからこれだけの間だけ通す。0s なら切らない
+
 	lockout {
 		enabled       = true    # DB が無ければ何もしない
 		free_attempts = 3       # ここまでは待たされない（打ち間違い）
@@ -282,6 +284,7 @@ hash {
 		# cipher.* を書くなら、これも必ず書く（書かないと起動時に落ちる）
 		encrypt = false
 		pepper  = ${?PASSWORD_PEPPER}   # ハッシュに混ぜる秘密。入れ替えられない
+		cost    = 10   # bcrypt のコスト（4〜31）。1 上げると倍の時間。72 バイトより後ろは bcrypt が読まない
 	}
 }
 

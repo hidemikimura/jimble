@@ -111,6 +111,9 @@ context.session().save();                  // ← ここで新しい ID が発�
 
 トークンは `context.request().csrfToken()` で取り、フォームの hidden に入れます。
 
+送られたトークンは、**`X-CSRF-Token` ヘッダ → フォームの本文 → JSON の本文**の順に読みます。
+**クエリ文字列（`?csrf_token=...`）では受け付けません**（2.2.4 から）。URL に載ったトークンは、アクセスログや `Referer` に残るためです。
+
 **トークンの寿命は `csrf.max_age`（既定 1 日）です。**
 0.6.x までは `cookie.max_age`（既定 1 年）に相乗りしていたので、
 アプリが自分の都合で `cookie.max_age` を短くすると

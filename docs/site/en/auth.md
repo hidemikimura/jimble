@@ -345,6 +345,10 @@ Put it on password changes, account deletion, payments, and contact details. In 
 is `Auth.fullyAuthenticated(context)`, but **the route attribute is the one you cannot
 forget to write.**
 
+**To limit it by time since the password was typed, set `auth.full_auth_max_age`** (default 0s, no limit).
+With `15m`, a session more than 15 minutes past its login gets 401 on `Auth.FULL_AUTH` routes (ask for the password again).
+A stolen session then has only a short window for the sensitive operations.
+
 ### Theft shows up
 
 The cookie holds **`selector:validator`**, and **the validator is replaced on every use.**
@@ -585,7 +589,7 @@ Phones get lost. This is the way back.
 
 | | |
 | --- | --- |
-| Where they appear | Only in the return value of `enroll`. **The DB keeps SHA-256 only** |
+| Where they appear | Only in the return value of `enroll`. **The DB keeps only an HMAC keyed with `auth.mfa.secret_key`** (codes issued up to 2.2.3 are stored as SHA-256 and still work) |
 | How many | 10 (`auth.mfa.recovery_codes`) |
 | Using one | Type it into the same code box. `verify` tries the authenticator first, then these |
 | After use | **It is gone.** Each one works once |

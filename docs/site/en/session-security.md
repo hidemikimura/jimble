@@ -110,6 +110,9 @@ Put `Csrf::verify` in a `before` and the routes below it are protected.
 
 Take the token with `context.request().csrfToken()` and put it in a hidden form field.
 
+The token sent back is read from **the `X-CSRF-Token` header, then the form body, then the JSON body**.
+**The query string (`?csrf_token=...`) is not accepted** (since 2.2.4): a token in the URL ends up in access logs and `Referer`.
+
 **The token lives for `csrf.max_age` (one day by default).** Up to 0.6.x it rode on
 `cookie.max_age` (one year by default), so shortening `cookie.max_age` for your own reasons
 **shortened the CSRF token with it** — and all you got back was a 403 saying the token was

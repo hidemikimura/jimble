@@ -202,7 +202,7 @@ context.session().save();                  // ← 呼ばないと書かれない
 `Auth.login` を使えば振り直しと保存までやる。
 
 CSRF は `before` に `Csrf::verify`。`GET` `HEAD` `OPTIONS` `TRACE` は素通し。
-トークンは `context.request().csrfToken()` を hidden に入れる。
+トークンは `context.request().csrfToken()` を hidden に入れる。読むのはヘッダ（`X-CSRF-Token`）→ フォーム → JSON の本文。**クエリ文字列では受けない**。
 
 Flash は**次の1回のリクエストだけ**残る。読んだ時点で消える。
 
@@ -313,7 +313,7 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **`cipher.key` を流用しない。**`cipher.*` を書くと **`hash.password.encrypt` も書かないと起動しない**。
   `true` にすると**保存済みの BCrypt が「暗号化済み」として読まれ、全員入れなくなる**。
   二要素には `auth.mfa.secret_key` を使う
-- 回復コードは **`enroll` の戻り値でしか見られない**（DB にはハッシュだけ）。使うと消える
+- 回復コードは **`enroll` の戻り値でしか見られない**（DB には `auth.mfa.secret_key` を鍵にした HMAC だけ）。使うと消える
 - `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
 - 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**
 - QR 画像は作らない（`enrollment.uri()` を画面側で描く）。SMS / メールは無い

@@ -184,7 +184,7 @@ public final class Csrf {
 	/**
 	 * リクエストから送られたトークン
 	 *
-	 * <p>ヘッダを先に見て、無ければフォーム（{@value #FORM_NAME}）を見る。</p>
+	 * <p>ヘッダを先に見て、無ければフォーム、JSON の本文（{@value #FORM_NAME}）を見る。クエリ文字列は見ない。</p>
 	 *
 	 * @param context	コンテキスト
 	 * @return	トークン（無ければ null）
@@ -196,7 +196,17 @@ public final class Csrf {
 			return header;
 		}
 
-		return context.request().bodyAll().getStringOptional(FORM_NAME);
+		/*
+		 * <b>本文（フォーム・JSON）からだけ読む</b>（D-245）。かつては bodyAll() から読んだので、
+		 * クエリ文字列やパスでも受け付け、トークンが URL に載ってアクセスログや Referer に残りえた。
+		 * 入れ子を解く bodyAll() を、認証の前にここで走らせることも無くなる
+		 */
+		String form = context.request().bodyForm().getStringOptional(FORM_NAME);
+		if (form != null && !form.isEmpty()) {
+			return form;
+		}
+
+		return context.request().bodyJson().getStringOptional(FORM_NAME);
 
 	}
 
