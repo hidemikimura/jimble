@@ -804,6 +804,65 @@ class McpIntegrationTest {
 
 	}
 
+	/**
+	 * subscriptions/listen を張る（Authorization を付けて）
+	 */
+	private java.io.BufferedReader listen (int id, String authorization) throws Exception {
+
+		HttpRequest request = HttpRequest
+			.newBuilder(URI.create("http://127.0.0.1:" + server.port() + McpConf.DEFAULT_PATH))
+			.timeout(Duration.ofSeconds(30))
+			.version(HttpClient.Version.HTTP_1_1)
+			.header("Content-Type", "application/json")
+			.header("Accept", "text/event-stream")
+			.header("Authorization", authorization)
+			.header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version())
+			.header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_SUBSCRIPTIONS_LISTEN)
+			.POST(HttpRequest.BodyPublishers.ofString(
+				"{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"subscriptions/listen\",\"params\":{\"notifications\":{\"resourcesListChanged\":true}}}".formatted(id)
+				, StandardCharsets.UTF_8))
+			.build();
+
+		HttpResponse<java.io.InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+
+		java.io.BufferedReader lines = new java.io.BufferedReader(
+			new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8));
+
+		assertEquals(McpProtocol.NOTIFICATION_SUBSCRIPTIONS_ACKNOWLEDGED, nextMessage(lines).getString("method"));
+
+		return lines;
+
+	}
+
+	@Test
+	@DisplayName("D-221 別の相手からの取り消しでは閉じない。同じ識別子で開いても、前の購読を上書きしない")
+	void subscriptionsAreOwned () throws Exception {
+
+		java.io.BufferedReader alice = listen(77, "Bearer alice");
+		java.io.BufferedReader bob = listen(77, "Bearer bob");
+
+		assertEquals(2, McpSubscriptions.openCount(), "同じ識別子で開いたら、前の購読を上書きしています");
+
+		// bob が alice の識別子を当てて取り消しても、bob のものしか閉じない
+		HttpResponse<String> cancelled = send("POST"
+			, """
+				{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":77}}"""
+			, McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.version()
+			, McpProtocol.HEADER_METHOD, McpProtocol.NOTIFICATION_CANCELLED
+			, "Authorization", "Bearer bob");
+
+		assertEquals(202, cancelled.statusCode());
+		assertNull(readLineOrNull(bob), "bob の購読が閉じていません");
+		assertEquals(1, McpSubscriptions.openCount(), "別の相手の取り消しで、alice の購読まで閉じています");
+
+		// alice には、まだ通知が届く
+		McpNotify.resourcesListChanged();
+		assertEquals(McpProtocol.NOTIFICATION_RESOURCES_LIST_CHANGED, nextMessage(alice).getString("method"));
+
+		McpSubscriptions.complete(77);
+
+	}
+
 	@Test
 	@DisplayName("取り消されたら、応答を返さずに閉じる（仕様 MUST NOT）")
 	void subscribeCancelled () throws Exception {

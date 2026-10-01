@@ -311,9 +311,31 @@ mcp {
 
 ## Origin を必ず設定してください
 
-`allowed_origins` を設定しないと、`Origin` ヘッダの検査ができません。
+**`allowed_origins` が空なら、`Origin` ヘッダの付いた要求は全部断ります**（ブラウザからは呼べません）。
+ブラウザから呼ばせるなら、許すオリジンを書いてください。
 ブラウザから叩ける MCP サーバーは、**DNS リバインディングの的になります**。
 ローカルで動かすサーバーほど危険です（`localhost` は誰の手元にもあります）。
+
+## `/mcp` に認証を掛けてください
+
+**`/mcp` そのものには認証がありません。**`Origin` の検査が止めるのはブラウザだけで、
+`curl` や MCP のクライアントは `Origin` を付けずに直に呼べます。
+DB を直に触るツールを書いたなら、ネットワークの誰からでも呼べることになります。
+`before` で認証を掛けてください（`RouteTool` の先の API の認証とは別です）。
+
+```java
+path("/mcp", () -> before(context -> {
+	if (!isValidToken(context.request().header().getStringOptional("authorization"))) {   // アプリの照合
+		throw new HttpException(401, "認証が必要です");
+	}
+}));
+install(BlogMcp::new);
+```
+
+購読（`subscriptions/listen`）の取り消しは、**開いた相手と同じ接続元・`Authorization`・Cookie から来たものだけ**受けます（2.2.3 から）。
+認証の無い `/mcp` を同じ接続元から叩かれると、見分けられません。
+
+**ツールの `inputSchema` は、`required` しか確かめません。**型・範囲・`enum`・余分な引数は、ツールの中で確かめてください（`Validation` を使えます）。
 
 ## つなぐ
 
