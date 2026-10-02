@@ -96,6 +96,9 @@ public final class ReverseProxy implements Handler {
 	/* 応答待ちの上限 */
 	private final Duration requestTimeout;
 
+	/* 応答の本文の全体の上限（0 なら上限なし。D-258） */
+	private Duration bodyTimeout = ProxyConf.bodyTimeout();
+
 	/* 元の Host をそのまま渡すか */
 	private boolean preserveHost = false;
 
@@ -172,6 +175,24 @@ public final class ReverseProxy implements Handler {
 
 		refuseAfterUse("preserveHost");
 		this.preserveHost = true;
+		return this;
+
+	}
+
+	/**
+	 * 応答の本文の全体の上限（既定は {@code proxy.body_timeout}。0 なら上限なし。D-258）
+	 *
+	 * <p>
+	 * 大きなダウンロードや SSE を通すルートでは、0 のままにする。
+	 * </p>
+	 *
+	 * @param timeout	上限
+	 * @return	ReverseProxy
+	 */
+	public ReverseProxy bodyTimeout (Duration timeout) {
+
+		refuseAfterUse("bodyTimeout");
+		this.bodyTimeout = timeout == null ? Duration.ZERO : timeout;
 		return this;
 
 	}
@@ -393,7 +414,8 @@ public final class ReverseProxy implements Handler {
 		} catch (Exception ex) {
 
 			// もう送り始めているかもしれない。送っていなければ 502
-			Log.warn("リバースプロキシの応答を返せませんでした: %s / %s".formatted(forwardBaseUrl, ex.getMessage()));
+			String reason = response.timedOut() != null ? response.timedOut() : ex.getMessage();
+			Log.warn("リバースプロキシの応答を返せませんでした: %s / %s".formatted(forwardBaseUrl, reason));
 
 			if (!context.response().isSent()) {
 				context.response().send(BAD_GATEWAY);
@@ -447,7 +469,7 @@ public final class ReverseProxy implements Handler {
 		int port = forwardUri.getPort() > 0 ? forwardUri.getPort() : (secure ? 443 : 80);
 
 		return UpstreamConnection.send(secure, forwardUri.getHost(), port, connectTimeout, requestTimeout
-			, method, target, headers, body, contentLength);
+			, bodyTimeout, method, target, headers, body, contentLength);
 
 	}
 

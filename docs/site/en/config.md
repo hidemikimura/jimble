@@ -448,7 +448,8 @@ batch_manager {
 
 proxy {
 	connect_timeout = 5s     # cap on connecting to the target
-	request_timeout = 30s    # cap on waiting for the answer
+	request_timeout = 30s    # no progress while sending / until the response headers (total) / per body read
+	body_timeout    = 0s     # total cap on the response body. 0 means none (downloads and SSE are not cut)
 }
 
 sse {

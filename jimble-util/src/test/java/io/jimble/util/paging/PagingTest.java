@@ -61,6 +61,19 @@ class PagingTest {
 	}
 
 	@Test
+	@DisplayName("D-257 巨大なページ番号でも、開始位置があふれない")
+	void hugePageDoesNotOverflow () {
+
+		Paging paging = new Paging();
+		paging.load(request(String.valueOf(Long.MAX_VALUE), "20"), 0);
+
+		assertEquals(Long.MAX_VALUE / 20, paging.page());
+		assertTrue(paging.start() > 0, "開始位置が負: " + paging.start());
+		assertEquals((paging.page() - 1) * 20 + 1, paging.start());
+
+	}
+
+	@Test
 	@DisplayName("指定が無ければ既定値になる")
 	void defaults () {
 
