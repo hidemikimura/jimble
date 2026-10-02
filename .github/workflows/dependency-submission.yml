@@ -46,4 +46,4 @@ jobs:
       # <b>v5 で止める。</b>v6 はキャッシュが MIT ではない
       # 非公開コンポーネントになり、使うと Terms of Use への同意になる（D-118）
       - name: 依存を解決して登録する
-        uses: gradle/actions/dependency-submission@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
