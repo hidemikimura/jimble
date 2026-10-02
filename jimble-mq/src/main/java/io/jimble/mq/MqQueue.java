@@ -236,8 +236,12 @@ public final class MqQueue {
 	 * <p>
 	 * 戻した行は<b>もう一度</b>処理される。要件 F-M-05（二重処理されうる前提）の出どころの1つ。
 	 * </p>
+
+	 * <p>
+	 * 戻すのも1回のリトライと数える。{@link MqExecutor#maxRetry()} を使い切った行は、戻さずに {@code dead} にする。
+	 * </p>
 	 *
-	 * @return	戻した件数
+	 * @return	戻した件数（{@code dead} にしたものは数えない）
 	 */
 	public int recoverStale () {
 
@@ -245,18 +249,70 @@ public final class MqQueue {
 
 		for (DB db : DBUtil.getDBList()) {
 
-			int count = db.update("""
-					UPDATE %s SET
-						status = ?
-						, updated_at = NOW()
+			String table = db.dialect().identifier(queueName);
+			String stale = db.dialect().intervalFromNow("SECOND", true);
+			long staleSeconds = MqConf.stale().toSeconds();
+
+			/*
+			 * <b>戻すたびに retry_count を数え、上限を超えたら dead にする</b>（D-250）。
+			 * かつては数えずに waiting へ戻すだけだったので、<b>処理するたびにプロセスを落とす行</b>
+			 * （メモリを使い切らせる大きな data など）は、戻されては落とし、を際限なく繰り返した。
+			 * 1行ずつ、拾ったときと同じ状態（running・同じ retry_count・古いまま）のときだけ書き換えるので、
+			 * 何台かで同時に呼んでも二重には数えない
+			 */
+			List<Data> rows = db.selectList("""
+					SELECT
+						id, mq_key, retry_count
+					FROM
+						%s
 					WHERE
 						status = ?
 						AND updated_at < %s
-				""".formatted(db.dialect().identifier(queueName)
-					, db.dialect().intervalFromNow("SECOND", true))
-				, MqStatus.waiting.name()
+				""".formatted(table, stale)
 				, MqStatus.running.name()
-				, MqConf.stale().toSeconds());
+				, staleSeconds);
+
+			int count = 0;
+
+			for (Data row : rows) {
+
+				long id = row.getLong("id");
+				int retryCount = row.getInt("retry_count");
+				MqExecutor executor = MqRegistry.create(queueName, row.getStringOptional("mq_key"));
+				int maxRetry = executor == null ? 0 : executor.maxRetry();
+				boolean dead = retryCount >= maxRetry;
+
+				int updated = db.update("""
+						UPDATE %s SET
+							status = ?
+							, retry_count = ?
+							, log_info = ?
+							, updated_at = NOW()
+						WHERE
+							id = ?
+							AND status = ?
+							AND retry_count = ?
+							AND updated_at < %s
+					""".formatted(table, stale)
+					, dead ? MqStatus.dead.name() : MqStatus.waiting.name()
+					, dead ? retryCount : retryCount + 1
+					, new Data().putData("reason", "running のまま止まっていました（処理中にプロセスが落ちた）")
+					, id
+					, MqStatus.running.name()
+					, retryCount
+					, staleSeconds);
+
+				if (updated == 0) {
+					continue;
+				}
+
+				if (dead) {
+					Log.error("MQ の迷子をあきらめました: %s / id=%d / %d 回目".formatted(queueName, id, retryCount + 1));
+				} else {
+					count++;
+				}
+
+			}
 
 			if (count > 0) {
 				Log.warn("MQ の迷子を戻しました: %s / %d 件".formatted(queueName, count));

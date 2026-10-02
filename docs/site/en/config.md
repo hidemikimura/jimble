@@ -173,7 +173,8 @@ cookie {
 }
 
 csrf {
-	max_age = 1d    # how long a token lives. separate from cookie.max_age
+	max_age      = 1d      # how long a token lives. separate from cookie.max_age
+	bind_session = false   # true keeps the token in the session and regenerates it on login (needs session.store)
 }
 
 session {
@@ -222,6 +223,8 @@ paging {
 }
 
 auth {
+	full_auth_max_age = 0s   # Auth.FULL_AUTH routes pass only this long after the password was typed. 0s means no limit
+
 	lockout {
 		enabled       = true    # does nothing without a database
 		free_attempts = 3       # nobody waits up to here (mistyping)
@@ -289,6 +292,7 @@ hash {
 		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = false
 		pepper  = ${?PASSWORD_PEPPER}   # mixed into the hash. cannot be rotated
+		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}
 }
 
@@ -407,7 +411,7 @@ mq {
 	poll_max          = 1s     # the poller's wait while the queue is empty (grows)
 	retry_backoff     = 10s    # interval between retries (doubles each time)
 	retry_backoff_max = 10m
-	stale             = 10m    # this long as running counts as dead
+	stale             = 10m    # this long as running counts as dead (sent back to waiting, counted as one retry)
 
 	# Workers per execution type (how many run in parallel). Left out, each type's own default is used.
 	# One poller per queue reads the DB, so more workers do not add connections while idle

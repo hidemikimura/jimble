@@ -109,12 +109,52 @@ context.session().save();                  // ← ここで新しい ID が発�
 `Csrf::verify` を `before` に置くと、その下のルートが守られます。
 `GET` `HEAD` `OPTIONS` `TRACE` は素通しです（`Csrf.SAFE_METHODS`）。
 
-トークンは `context.request().csrfToken()` で取り、フォームの hidden に入れます。
+トークンは `Csrf.token(context)` で取り、フォームの hidden（名前は `csrf_token`）に入れます。
+無ければ発行して Cookie に載せるので、**フォームを出すページで呼んでください**。
+（`context.request().csrfToken()` は、送られてきた `csrf-token` ヘッダを読むだけで、発行はしません。）
+
+送られたトークンは、**`X-CSRF-Token` ヘッダ → フォームの本文 → JSON の本文**の順に読みます。
+**クエリ文字列（`?csrf_token=...`）では受け付けません**（2.2.4 から）。URL に載ったトークンは、アクセスログや `Referer` に残るためです。
 
 **トークンの寿命は `csrf.max_age`（既定 1 日）です。**
 0.6.x までは `cookie.max_age`（既定 1 年）に相乗りしていたので、
 アプリが自分の都合で `cookie.max_age` を短くすると
 **CSRF トークンも一緒に短くなり**、出るのは「CSRF トークンがありません」の 403 だけでした。
+
+### トークンをセッションに結びつける（`csrf.bind_session`）
+
+既定は **double submit cookie** です。Cookie のトークンと、送られてきたトークンが同じなら通します。
+Cookie には署名があるので、攻撃者が値を作ることはできません。
+ただし、トークンは**利用者に結びついていません**。同じ親ドメインの下に Cookie を書ける場所（別のサブドメインなど）を攻撃者が持っていると、
+**攻撃者が自分で受け取った正しいトークン**を被害者のブラウザに植え付けて、それを使って送らせられます。
+
+```conf
+csrf {
+	bind_session = true   # 2.2.4 から。既定 false
+}
+```
+
+`true` にすると、次のように変わります。
+
+| | |
+| --- | --- |
+| 置き場 | Cookie ではなく**セッション**。`session.store` が `db` / `redis` / `cookie` のどれかでないと、使ったところで例外です |
+| ログイン | セッション ID を振り直すとき（`Auth.login`・二要素認証の完了など）に、**トークンも作り直します** |
+| 新しいトークン | 作り直した応答の **`X-CSRF-Token` ヘッダ**で返します |
+
+**SPA は、応答に `X-CSRF-Token` ヘッダがあったら、手元のトークンを差し替えてください。**
+ページを読み直さずにログインする SPA は、ログインの前に受け取ったトークンを持ち続けるので、差し替えないとログインのあとの POST が 403 になります。
+
+```javascript
+const response = await fetch("/login", { method: "POST", headers: { "X-CSRF-Token": csrfToken }, body });
+csrfToken = response.headers.get("X-CSRF-Token") ?? csrfToken;
+```
+
+> 別のオリジンから呼ぶなら、CORS で `Access-Control-Expose-Headers: X-CSRF-Token` を出さないと、ヘッダを読めません。
+>
+> **ログアウトのあとは、トークンがありません**（セッションごと捨てるため）。次にフォームを出すか、トークンを返すルートを呼んで受け取り直してください。
+>
+> `true` にした時点で開いているフォームは、**1度だけ 403** になります（置き場が変わるため）。
 
 ## Flash
 

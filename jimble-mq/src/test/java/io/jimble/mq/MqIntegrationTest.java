@@ -501,6 +501,57 @@ class MqIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-250 戻すたびに retry_count を数える")
+	void recoverStaleCounts () {
+
+		// scheduled_at を先にして、戻したあとに拾われないようにする
+		DBUtil.getMainDB().insert("""
+				INSERT INTO %s (execute_type, mq_key, status, scheduled_at, retry_count, data, created_at, updated_at)
+				VALUES (?, ?, ?, %s, 1, ?, NOW(), %s)
+			""".formatted(quoted()
+				, DBUtil.getMainDB().dialect().intervalFromNow("HOUR", false)
+				, DBUtil.getMainDB().dialect().intervalFromNow("HOUR", true))
+			, MqExecuteType.short_time.name()
+			, "ok"
+			, MqStatus.running.name()
+			, 1
+			, new Data()
+			, 1);
+
+		assertEquals(1, queue.recoverStale());
+
+		Data row = firstRow();
+		assertEquals(MqStatus.waiting.name(), row.getString("status"));
+		assertEquals(2, row.getInt("retry_count"));
+
+	}
+
+	@Test
+	@DisplayName("D-250 リトライを使い切った迷子は、戻さずに dead にする（処理するたびに落とす行が回り続けない）")
+	void recoverStaleGivesUp () {
+
+		// "ok" の maxRetry は 3
+		DBUtil.getMainDB().insert("""
+				INSERT INTO %s (execute_type, mq_key, status, retry_count, data, created_at, updated_at)
+				VALUES (?, ?, ?, 3, ?, NOW(), %s)
+			""".formatted(quoted()
+				, DBUtil.getMainDB().dialect().intervalFromNow("HOUR", true))
+			, MqExecuteType.short_time.name()
+			, "ok"
+			, MqStatus.running.name()
+			, new Data()
+			, 1);
+
+		assertEquals(0, queue.recoverStale());
+
+		Data row = firstRow();
+		assertEquals(MqStatus.dead.name(), row.getString("status"));
+		assertEquals(3, row.getInt("retry_count"));
+		assertTrue(row.getDataOptional("log_info").getString("reason").contains("running のまま"));
+
+	}
+
+	@Test
 	@DisplayName("処理中の行は戻さない")
 	void recoverKeepsFresh () {
 

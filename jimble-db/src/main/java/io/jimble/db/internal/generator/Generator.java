@@ -18,7 +18,6 @@ import io.jimble.util.log.Log;
 
 import java.io.File;
 import java.util.*;
-import java.util.regex.Pattern;
 
 /**
  * ソースコード生成
@@ -321,7 +320,7 @@ public class Generator {
 			textOutput.writeLine("\tprivate static final long SQL_VERSION = %s;".formatted(SQL.VERSION));
 			textOutput.writeLine("");
 			for (TableInfo tableInfo : tableInfoList) {
-				textOutput.writeLine("\t/* %s */".formatted(tableInfo.comment));
+				textOutput.writeLine("\t/* %s */".formatted(javaComment(tableInfo.comment)));
 				textOutput.writeLine("\tpublic static final Table %s = %s.instance();".formatted(tableInfo.name, tableInfo.className));
 				textOutput.writeLine("");
 			}
@@ -384,7 +383,7 @@ public class Generator {
 					// PostgreSQL は列の定義にコメントを書けない。あとで COMMENT ON を出す
 					if (reader.inlineComment()
 						&& columnInfo.comment != null && !columnInfo.comment.isEmpty()) {
-						textOutput.write(" comment '" + escapeComment(columnInfo.comment) + "'");
+						textOutput.write(" comment '" + escapeComment(sqlLiteral(columnInfo.comment)) + "'");
 					}
 					if (i < tableInfo.columnList.size() - 1) {
 						textOutput.write(",");
@@ -394,7 +393,7 @@ public class Generator {
 
 				textOutput.write("\t\t\")");
 				if (reader.inlineComment() && tableComment != null && !tableComment.isEmpty()) {
-					textOutput.write(" comment '" + escapeComment(tableComment) + "'");
+					textOutput.write(" comment '" + escapeComment(sqlLiteral(tableComment)) + "'");
 				}
 				textOutput.write("; \" + \n");
 
@@ -436,12 +435,55 @@ public class Generator {
 
 	}
 
-	private static final String commentQuotePattern = Pattern.quote("\"");
-	private static final String commentQuote = "\\\\\"";
+	/**
+	 * Java の文字列リテラルの中に書けるようにする
+	 *
+	 * <p>
+	 * かつては {@code "} だけを直していたので、DB のコメントに &#92; や改行があると、
+	 * 生成したソースがコンパイルできないか、別の文字列になった（D-252）。
+	 * </p>
+	 *
+	 * @param comment	コメント
+	 * @return	エスケープしたもの
+	 */
+	static String escapeComment (String comment) {
 
-	private static String escapeComment (String comment) {
+		return comment
+			.replace("\\", "\\\\")
+			.replace("\"", "\\\"")
+			.replace("\n", "\\n")
+			.replace("\r", "\\r");
 
-		return comment.replaceAll(commentQuotePattern, commentQuote);
+	}
+
+	/**
+	 * MySQL の {@code comment '...'} の中に書けるようにする（D-252）
+	 *
+	 * @param comment	コメント
+	 * @return	エスケープしたもの
+	 */
+	static String sqlLiteral (String comment) {
+
+		return comment.replace("\\", "\\\\").replace("'", "''");
+
+	}
+
+	/**
+	 * Java のコメント（{@code /* *}{@code /} と Javadoc）の中に書けるようにする
+	 *
+	 * <p>
+	 * <b>DB のコメントをそのまま生成するソースのコメントに書いていた</b>（D-252）。
+	 * コメントに {@code *}{@code /} があるとそこでコメントが閉じ、続きが<b>コードとしてコンパイルされた</b>。
+	 * Java はコメントの中でも &#92;u002a のような Unicode エスケープを先に解くので、&#92; も直す。
+	 * DB のコメントを書ける人が、生成物を取り込むアプリのビルドにコードを差し込めた。
+	 * </p>
+	 *
+	 * @param comment	コメント
+	 * @return	エスケープしたもの
+	 */
+	static String javaComment (String comment) {
+
+		return comment.replace("\\", "&#92;").replace("*/", "*&#47;");
 
 	}
 
@@ -515,7 +557,7 @@ public class Generator {
 			textOutput.writeLine("");
 
 			textOutput.writeLine("/**");
-			textOutput.writeLine(" * %s".formatted(tableInfo.comment));
+			textOutput.writeLine(" * %s".formatted(javaComment(tableInfo.comment)));
 			textOutput.writeLine(" */");
 			textOutput.writeLine("public class %s extends Table {".formatted(tableInfo.className));
 			textOutput.writeLine("");
@@ -547,7 +589,7 @@ public class Generator {
 			 * <b>それは 1.0 のあとでもできる</b>（equals の追加は互換である）。
 			 */
 			for (ColumnInfo columnInfo : tableInfo.columnList) {
-				textOutput.writeLine("\t/* %s */".formatted(columnInfo.comment));
+				textOutput.writeLine("\t/* %s */".formatted(javaComment(columnInfo.comment)));
 				textOutput.writeLine("\tpublic static final Column %s = new Column(instance(), \"%s\", %s.class, %s, %s, %s);".formatted(columnInfo.name, columnInfo.name, columnInfo.typeClass.getTypeName(), String.valueOf(columnInfo.nullable), getColumnDefaultValueString(columnInfo), String.valueOf(columnInfo.primaryKey)));
 				textOutput.writeLine("");
 			}
@@ -670,7 +712,7 @@ public class Generator {
 			textOutput.writeLine("");
 
 			textOutput.writeLine("/**");
-			textOutput.writeLine(" * %s".formatted(tableInfo.comment));
+			textOutput.writeLine(" * %s".formatted(javaComment(tableInfo.comment)));
 			textOutput.writeLine(" */");
 			textOutput.writeLine("public abstract class %s<T extends %s<?>> extends AbstractTableData {".formatted(className, className));
 			for (ColumnInfo columnInfo : tableInfo.columnList) {

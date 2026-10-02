@@ -60,13 +60,41 @@ public final class PasswordUtil {
 	/** ペッパー */
 	public static final String KEY_PEPPER = "hash.password.pepper";
 
-	/* ハッシュ化回数 */
-	private static final int LOG_ROUNDS = 10;
+	/**
+	 * 設定キー：BCrypt のコスト（D-247。4〜31。既定 10）
+	 *
+	 * <p>1 上げるとハッシュを作る時間が倍になる。保存済みのハッシュは、作ったときのコストのまま照合できる。</p>
+	 */
+	public static final String KEY_COST = "hash.password.cost";
+
+	/** BCrypt のコストの既定 */
+	public static final int DEFAULT_COST = 10;
+
+	/** BCrypt が見るのはここまで（バイト） */
+	public static final int BCRYPT_MAX_BYTES = 72;
 
 	/* SecureRandom のアルゴリズム */
 	private static final String ALGORITHM = detectAlgorithm();
 
 	private PasswordUtil () {}
+
+	/**
+	 * BCrypt のコスト（D-247）
+	 *
+	 * @return	コスト
+	 * @throws IllegalStateException	4〜31 でない場合
+	 */
+	public static int cost () {
+
+		int cost = io.jimble.util.conf.Conf.conf().getInt(KEY_COST, DEFAULT_COST);
+
+		if (cost < 4 || cost > 31) {
+			throw new IllegalStateException("%s は 4〜31 にしてください（既定 %d）。いまの値: %d".formatted(KEY_COST, DEFAULT_COST, cost));
+		}
+
+		return cost;
+
+	}
 
 	/**
 	 * 暗号化するか
@@ -142,7 +170,17 @@ public final class PasswordUtil {
 	 */
 	public static String createHash (String password, boolean encrypt) {
 
-		String hash = BCrypt.hashpw(password, BCrypt.gensalt(LOG_ROUNDS, createSecureRandom())) + pepper();
+		/*
+		 * <b>72 バイトを超えた分は効かない</b>（BCrypt の仕様。D-247）。断ると、長いパスワードを受けていたアプリの登録が
+		 * 上げた日に落ちるので、1度だけ言う。登録の検証で長さを抑えるのがよい
+		 */
+		if (password != null && password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
+			io.jimble.util.internal.WarnOnce.warn(KEY_COST + ".max_bytes"
+				, "パスワードが %d バイトを超えています。BCrypt は先頭の %d バイトしか見ません（登録の検証で長さを抑えてください）"
+					.formatted(BCRYPT_MAX_BYTES, BCRYPT_MAX_BYTES));
+		}
+
+		String hash = BCrypt.hashpw(password, BCrypt.gensalt(cost(), createSecureRandom())) + pepper();
 
 		return encrypt ? CipherUtil.encryptAes(hash) : hash;
 

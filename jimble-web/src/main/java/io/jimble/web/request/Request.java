@@ -684,9 +684,14 @@ public final class Request {
 	}
 
 	/**
-	 * CSRF Token
+	 * 送られてきた {@code csrf-token} ヘッダ
 	 *
-	 * @return  Csrf-Token
+	 * <p>
+	 * <b>トークンを発行するものではない。</b>フォームに入れるトークンは
+	 * {@link io.jimble.web.csrf.Csrf#token(io.jimble.web.context.WebContext)} で取る。
+	 * </p>
+	 *
+	 * @return  ヘッダの値（無ければ空文字）
 	 */
 	public String csrfToken () {
 

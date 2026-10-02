@@ -17,6 +17,24 @@ import java.util.zip.GZIPOutputStream;
 public abstract class AbstractCache implements ICache {
 
 	/**
+	 * 大きな中身を置くファイルの名前（D-235）
+	 *
+	 * <p>
+	 * <b>キーをそのまま名前にしない。</b>キーはアプリが決める（URL のパスなど、外から来た値のこともある）ので、
+	 * かつては {@code ../} を含むキーで<b>一時ディレクトリの外にファイルを作れた</b>。キーと時刻のハッシュにする。
+	 * </p>
+	 *
+	 * @param key		キャッシュのキー
+	 * @param createdAt	作った時刻（字のまま）
+	 * @return	ファイル名
+	 */
+	protected static String cacheFileName (String key, Object createdAt) {
+
+		return io.jimble.util.hash.Hash.sha256(key + '\u0000' + createdAt);
+
+	}
+
+	/**
 	 * キャッシュ内容をファイルに出力する
 	 *
 	 * @param cacheKey			キャッシュキー

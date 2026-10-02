@@ -22,6 +22,16 @@ import io.jimble.web.validation.error.ValidationErrorType;
 public class UrlValidator implements IValidator {
 
 	/**
+	 * URL の長さの上限（D-230）
+	 *
+	 * <p>
+	 * URL の正規表現は、長さに比例して深く潜る。リクエストを処理する仮想スレッドのスタックでは、
+	 * JIT が効く前だと 2,000 文字ほどで使い切ることがあった。余裕を見て 1,024 文字にする。
+	 * </p>
+	 */
+	static final int MAX_LENGTH = 1024;
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override
@@ -36,9 +46,17 @@ public class UrlValidator implements IValidator {
 			return true;
 		}
 
+		/*
+		 * <b>長さを先に見る</b>（D-230）。かつては見ずに正規表現にかけたので、数 KB の URL で
+		 * StackOverflowError になり、検証の誤りではなく 500 になった
+		 */
+		if (str.length() > MAX_LENGTH) {
+			return false;
+		}
+
 		try {
 			return Patterns.WEB_URL.matcher(str).matches();
-		} catch (Exception ex) {
+		} catch (Exception | StackOverflowError ex) {
 			return false;
 		}
 

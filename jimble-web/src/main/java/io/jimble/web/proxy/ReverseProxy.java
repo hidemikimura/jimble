@@ -424,7 +424,17 @@ public final class ReverseProxy implements Handler {
 			String length = firstHeader(context, "content-length");
 			String transferEncoding = firstHeader(context, "transfer-encoding");
 
-			if (length != null && !length.isEmpty()) {
+			String contentEncoding = firstHeader(context, "content-encoding");
+			boolean encoded = contentEncoding != null && !contentEncoding.isBlank()
+				&& !"identity".equalsIgnoreCase(contentEncoding.trim());
+
+			if (encoded) {
+				/*
+				 * <b>圧縮された本文は、長さを決めずに送る</b>（D-244）。受け取った Content-Length は圧縮したままの長さで、
+				 * かつてはそれを本文の長さにしていたので、解かれた本文と長さが合わずに 502 になった
+				 */
+				contentLength = -1;
+			} else if (length != null && !length.isEmpty()) {
 				contentLength = Long.parseLong(length.trim());
 			} else if (transferEncoding == null || transferEncoding.isEmpty()) {
 				// 長さも chunked も無い = 本文なし。POST に長さが無いと断るサーバーもあるので 0 と書く
@@ -555,14 +565,42 @@ public final class ReverseProxy implements Handler {
 
 		Map<String, List<String>> headers = new LinkedHashMap<>();
 
+		/*
+		 * <b>Connection が指名したヘッダも、その1区間だけのもの</b>（RFC 9110 7.6.1。D-243）。
+		 * かつては決まった名前（Keep-Alive など）しか落とさず、指名されたヘッダを転送先へ渡していた
+		 */
+		java.util.Set<String> nominated = new java.util.HashSet<>();
+
+		for (Map.Entry<String, List<String>> entry : context.request().source().headerValues().entrySet()) {
+			if ("connection".equalsIgnoreCase(entry.getKey())) {
+				for (String value : entry.getValue()) {
+					for (String token : value.split(",")) {
+						if (!token.isBlank()) {
+							nominated.add(token.trim().toLowerCase(Locale.ROOT));
+						}
+					}
+				}
+			}
+		}
+
 		for (Map.Entry<String, List<String>> entry : context.request().source().headerValues().entrySet()) {
 
-			if (!HopByHopHeaders.isForwardable(entry.getKey())) {
+			if (!HopByHopHeaders.isForwardable(entry.getKey())
+				|| nominated.contains(entry.getKey().toLowerCase(Locale.ROOT))) {
 				continue;
 			}
 
 			headers.put(entry.getKey(), new ArrayList<>(entry.getValue()));
 
+		}
+
+		/*
+		 * <b>Helidon が解いた本文には、Content-Encoding を付けない</b>（D-244）。gzip / deflate の本文は
+		 * 受けたところで解かれているので、そのまま付けると転送先が平文をもう一度解こうとして壊れる
+		 */
+		List<String> encodings = headers.get(findKey(headers, "content-encoding"));
+		if (encodings != null && encodings.stream().allMatch(ReverseProxy::isDecodedByServer)) {
+			remove(headers, "content-encoding");
 		}
 
 		// Host（既定は転送先の。preserveHost なら元の）
@@ -593,6 +631,32 @@ public final class ReverseProxy implements Handler {
 		}
 
 		return headers;
+
+	}
+
+	/**
+	 * 受けたサーバー（Helidon）が解く圧縮か
+	 */
+	private static boolean isDecodedByServer (String encoding) {
+
+		String value = encoding == null ? "" : encoding.trim().toLowerCase(Locale.ROOT);
+
+		return value.equals("gzip") || value.equals("x-gzip") || value.equals("deflate");
+
+	}
+
+	/**
+	 * 大文字小文字を見ずにキーを探す
+	 */
+	private static String findKey (Map<String, List<String>> headers, String name) {
+
+		for (String key : headers.keySet()) {
+			if (key.equalsIgnoreCase(name)) {
+				return key;
+			}
+		}
+
+		return name;
 
 	}
 

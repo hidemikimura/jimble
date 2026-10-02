@@ -22,6 +22,25 @@ public class ArrayStreamParser implements IStreamParser {
 	@Override
 	public Object parse(Configration conf, IInputStream stream) {
 
+		stream.enterNesting();
+
+		try {
+			return parseList(conf, stream);
+		} finally {
+			stream.exitNesting();
+		}
+
+	}
+
+	/**
+	 * 配列にデコードする
+	 *
+	 * @param conf		設定情報
+	 * @param stream	入力ストリーム
+	 * @return	リスト
+	 */
+	private Object parseList(Configration conf, IInputStream stream) {
+
 		List<Object> res = new ArrayList<Object>();
 
 		int val = -1;

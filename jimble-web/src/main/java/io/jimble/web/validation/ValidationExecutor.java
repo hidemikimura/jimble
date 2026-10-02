@@ -81,7 +81,8 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 	@Override
 	public void onCancel (WebContext context) throws Exception {
 
-		context.response().putForm(context.request().bodyAll());
+		// 返す入力値から秘密を落とす（D-241）
+		context.response().putForm(echoable(context.request().bodyAll()));
 		context.response().json(RESPONSE_KEY, errors);
 		context.response().code(STATUS_CODE);
 
@@ -161,5 +162,57 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 	}
 
 	// endregion
+
+	/**
+	 * 422 で返す入力値から、秘密を落とす（D-241）
+	 *
+	 * <p>
+	 * <b>かつては送られた本文をそのまま返していた。</b>ログインや登録の検証に落ちると、
+	 * 入れたパスワードが応答に載り、ブラウザの開発ツール・HAR・画面側のエラー送信・APM に残った。
+	 * 名前に password / secret / token などを含む項目を落とす（入れ子も見る）。
+	 * </p>
+	 *
+	 * @param input	入力値
+	 * @return	秘密を落とした写し
+	 */
+	public static io.jimble.util.data.Data echoable (io.jimble.util.data.Data input) {
+
+		io.jimble.util.data.Data copy = new io.jimble.util.data.Data();
+
+		if (input == null) {
+			return copy;
+		}
+
+		for (java.util.Map.Entry<String, Object> entry : input.entrySet()) {
+
+			if (isSecret(entry.getKey())) {
+				continue;
+			}
+
+			Object value = entry.getValue();
+			copy.put(entry.getKey(), value instanceof io.jimble.util.data.Data nested ? echoable(nested) : value);
+
+		}
+
+		return copy;
+
+	}
+
+	/**
+	 * 返してはいけない項目の名前か
+	 */
+	static boolean isSecret (String name) {
+
+		if (name == null) {
+			return false;
+		}
+
+		String lower = name.toLowerCase(java.util.Locale.ROOT);
+
+		return lower.contains("password") || lower.contains("passwd") || lower.contains("secret")
+			|| lower.contains("token") || lower.contains("card_number") || lower.contains("cardnumber")
+			|| lower.equals("cvc") || lower.equals("cvv") || lower.equals("pin") || lower.equals("otp") || lower.equals("code_verifier");
+
+	}
 
 }

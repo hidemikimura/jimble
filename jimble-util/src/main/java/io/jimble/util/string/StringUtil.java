@@ -664,10 +664,14 @@ public class StringUtil {
 				break;
 		}
 
+		/*
+		 * <b>暗号用の乱数で選ぶ</b>（D-233）。かつては SplittableRandom で、出てくる値を読めば先を当てられた
+		 * （初期パスワードや、再設定のトークンに使われうる）。{@code Math.abs(nextInt()) % 長さ} の偏りと、
+		 * {@code Math.abs(Integer.MIN_VALUE)} が負のままで落ちることも、nextInt(上限) で無くした
+		 */
 		int sourceLength = source.length();
-		SplittableRandom random = new SplittableRandom();
 		while (result.length() < length) {
-			result.append(source.charAt(Math.abs(random.nextInt()) % sourceLength));
+			result.append(source.charAt(SECURE_RANDOM.nextInt(sourceLength)));
 		}
 
 		return result.toString();
@@ -744,20 +748,33 @@ public class StringUtil {
 	// endregion
 
 	/**
-	 * 改行続きを削除する
+	 * 改行続きを削除する（空の行と、空白だけの行を落とし、残った行を {@code \n} でつなぐ）
 	 *
-	 * @param text	文字列
+	 * <p>
+	 * <b>正規表現を使わずに1回なめる</b>（D-231）。かつての正規表現は {@code [ \t\x0B\f] + (\n|...)} と
+	 * {@code +} の前後に空白が入っていて、空白が長く続くと<b>2乗の時間</b>がかかった（空白 10 万個で 47 秒）。
+	 * 空の文字列で例外になることもあった。
+	 * </p>
+	 *
+	 * @param text	文字列（null なら null）
 	 * @return	文字列
 	 */
 	public static String trimBlankLine (String text) {
 
-		String result = text.replaceAll("(\n|\r|\n\r|\r\n){2,}", "\n");
-		result = result.replaceAll("[ \t\\x0B\f] + (\n|\r|\n\r|\r\n)", "");
-		if (result.substring(result.length() - 1).equals("\n")) {
-			result = result.substring(0, result.length() - 1);
+		if (text == null) {
+			return null;
 		}
 
-		return result;
+		StringBuilder result = new StringBuilder(text.length());
+
+		text.lines().filter(line -> !line.isBlank()).forEach(line -> {
+			if (!result.isEmpty()) {
+				result.append('\n');
+			}
+			result.append(line);
+		});
+
+		return result.toString();
 
 	}
 
@@ -828,10 +845,22 @@ public class StringUtil {
 	 */
 	public static String randomNumberString (int length) {
 
-		long upperBound = (long) Math.pow(10, length);
-		return String.format("%0" + length + "d",new Random().nextLong(upperBound));
+		/*
+		 * <b>暗号用の乱数で1桁ずつ選ぶ</b>（D-233）。確認コード（メールや SMS）に使われうるので、
+		 * かつての java.util.Random（出てくる値から先を当てられる）にしない。19 桁以上で桁あふれもしない
+		 */
+		StringBuilder result = new StringBuilder(Math.max(length, 0));
+
+		for (int i = 0; i < length; i++) {
+			result.append((char) ('0' + SECURE_RANDOM.nextInt(10)));
+		}
+
+		return result.toString();
 
 	}
+
+	/** 暗号用の乱数（D-233） */
+	private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
 
 	/**
 	 * 4byte文字を削除する
