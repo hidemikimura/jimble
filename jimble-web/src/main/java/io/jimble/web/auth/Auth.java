@@ -177,11 +177,25 @@ public final class Auth {
 	/** セッションに入れる鍵：パスワードを入れて入ったか */
 	private static final String KEY_FULL = "__auth_full";
 
+	/** セッションのキー：パスワードを入れた時刻（エポック秒。D-249） */
+	private static final String KEY_FULL_AT = "__auth_full_at";
+
+	/**
+	 * 設定キー：{@link #FULL_AUTH} を通す、パスワードを入れてからの時間（D-249。既定 0s ＝ 上限なし）
+	 *
+	 * <p>
+	 * 既定では「このセッションでパスワードを入れて入った人」なら、何時間たっても通す（2.2.3 までと同じ）。
+	 * 書くと、入れてからこの時間を過ぎた人には、入れ直しを求める（401）。盗まれたセッションで、
+	 * パスワードの変更や二要素認証の解除をさせないため。
+	 * </p>
+	 */
+	public static final String KEY_FULL_AUTH_MAX_AGE = "auth.full_auth_max_age";
+
 	/** セッションに入れる鍵：ログインしたときの失効の世代（F-W-33。無ければ 0） */
 	private static final String KEY_GEN = "__auth_gen";
 
 	/* ログインの鍵すべて（ログアウト・締め出しで消す） */
-	private static final String[] LOGIN_KEYS = { KEY_ID, KEY_NAME, KEY_ROLE, KEY_FULL, KEY_GEN };
+	private static final String[] LOGIN_KEYS = { KEY_ID, KEY_NAME, KEY_ROLE, KEY_FULL, KEY_FULL_AT, KEY_GEN };
 
 	/** 種別の書式（英数字・_・- の 64 文字まで） */
 	private static final java.util.regex.Pattern REALM_PATTERN = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
@@ -429,6 +443,11 @@ public final class Auth {
 		context.session().put(sessionKey(KEY_NAME, realm), principal.name());
 		context.session().put(sessionKey(KEY_ROLE, realm), principal.role());
 		context.session().put(sessionKey(KEY_FULL, realm), fullAuth);
+		if (fullAuth) {
+			context.session().put(sessionKey(KEY_FULL_AT, realm), System.currentTimeMillis() / 1000);
+		} else {
+			context.session().remove(sessionKey(KEY_FULL_AT, realm));
+		}
 		context.session().put(sessionKey(KEY_GEN, realm), generation);
 
 		context.session().save();
@@ -463,7 +482,20 @@ public final class Auth {
 
 		checkRealm(realm);
 
-		return context.session().getBoolean(sessionKey(KEY_FULL, realm));
+		if (!context.session().getBoolean(sessionKey(KEY_FULL, realm))) {
+			return false;
+		}
+
+		java.time.Duration maxAge = io.jimble.util.conf.Conf.conf().getDuration(KEY_FULL_AUTH_MAX_AGE, java.time.Duration.ZERO);
+
+		if (maxAge.isZero() || maxAge.isNegative()) {
+			return true;
+		}
+
+		// 入れた時刻の無いもの（2.2.3 までのセッション）は、入れ直してもらう
+		long at = context.session().getLong(sessionKey(KEY_FULL_AT, realm));
+
+		return at > 0 && System.currentTimeMillis() / 1000 - at <= maxAge.toSeconds();
 
 	}
 

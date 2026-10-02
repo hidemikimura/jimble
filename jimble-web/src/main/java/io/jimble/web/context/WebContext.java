@@ -668,7 +668,11 @@ public final class WebContext extends Context<WebContext> {
 		 * {@code String.format} は 489 byte、連結は 56 byte——
 		 * <b>1リクエストに1回、必ず通るところ</b>である。
 		 */
-		Log.access(request.method() + " " + request.path() + " " + response.code(), isBot, fields -> {
+		/*
+		 * 1行の文字列には、パスの<b>制御文字を逃がして入れる</b>（D-239）。パスはデコード済みなので、
+		 * %0d%0a で<b>アクセスログの行を偽れた</b>（文字の形で出すエンコーダのとき）。項目（JSON）はもともと逃がす
+		 */
+		Log.access(request.method() + " " + escapeControl(request.path()) + " " + response.code(), isBot, fields -> {
 			fields.put("method", request.method());
 			fields.put("path", request.path());
 			fields.put("query", request.query());
@@ -770,6 +774,49 @@ public final class WebContext extends Context<WebContext> {
 	public void route (RouteMatch route) {
 
 		this.route = route;
+
+	}
+
+	/**
+	 * 制御文字を {@code \\xNN} にする（無ければそのまま返す。D-239）
+	 *
+	 * @param value	値
+	 * @return	逃がした値
+	 */
+	static String escapeControl (String value) {
+
+		if (value == null) {
+			return null;
+		}
+
+		int length = value.length();
+		int first = -1;
+
+		for (int i = 0; i < length; i++) {
+			char c = value.charAt(i);
+			if (c < 0x20 || c == 0x7f) {
+				first = i;
+				break;
+			}
+		}
+
+		// 1リクエストに1回必ず通るので、制御文字が無ければ作らない
+		if (first < 0) {
+			return value;
+		}
+
+		StringBuilder sb = new StringBuilder(length + 16).append(value, 0, first);
+
+		for (int i = first; i < length; i++) {
+			char c = value.charAt(i);
+			if (c < 0x20 || c == 0x7f) {
+				sb.append("\\x").append(Character.forDigit(c >> 4, 16)).append(Character.forDigit(c & 0xf, 16));
+			} else {
+				sb.append(c);
+			}
+		}
+
+		return sb.toString();
 
 	}
 

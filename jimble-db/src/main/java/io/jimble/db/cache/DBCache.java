@@ -138,7 +138,7 @@ public class DBCache extends AbstractCache {
 		long contentLength = data.getLong("content_length");
 		Date createdAt = data.getDate("created_at");
 
-		String fileName = key + "_" + data.getDateTime("created_at");
+		String fileName = cacheFileName(key, data.getDateTime("created_at"));
 
 		File file = new File(Cache.getTempDirPath(), fileName);
 		if (file.exists() && Cache.isFileResponse(contentLength)) {
@@ -188,7 +188,7 @@ public class DBCache extends AbstractCache {
 			long contentLength = data.getLong("content_length");
 			Date createdAt = data.getDate("created_at");
 
-			String fileName = key + "_" + data.getDateTime("created_at");
+			String fileName = cacheFileName(key, data.getDateTime("created_at"));
 
 			File file = new File(Cache.getTempDirPath(), fileName);
 			if (file.exists() && Cache.isFileResponse(contentLength)) {

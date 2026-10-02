@@ -173,7 +173,8 @@ cookie {
 }
 
 csrf {
-	max_age = 1d    # how long a token lives. separate from cookie.max_age
+	max_age      = 1d      # how long a token lives. separate from cookie.max_age
+	bind_session = false   # true keeps the token in the session and regenerates it on login (needs session.store)
 }
 
 session {
@@ -222,6 +223,8 @@ paging {
 }
 
 auth {
+	full_auth_max_age = 0s   # Auth.FULL_AUTH routes pass only this long after the password was typed. 0s means no limit
+
 	lockout {
 		enabled       = true    # does nothing without a database
 		free_attempts = 3       # nobody waits up to here (mistyping)
@@ -289,6 +292,7 @@ hash {
 		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = false
 		pepper  = ${?PASSWORD_PEPPER}   # mixed into the hash. cannot be rotated
+		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}
 }
 

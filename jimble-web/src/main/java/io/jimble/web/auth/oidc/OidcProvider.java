@@ -254,12 +254,32 @@ final class OidcProvider {
 			return;
 		}
 
-		if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) {
+		/*
+		 * <b>ホストを読んで比べる</b>（D-248）。かつては startsWith("http://localhost") だったので、
+		 * http://localhost.evil.example/ も「localhost」として http のまま通した
+		 */
+		if (isLoopbackHttp(url)) {
 			Log.warn("OIDC の %s が http です（localhost なので通します）: %s".formatted(key, url));
 			return;
 		}
 
 		throw new IllegalStateException("OIDC の %s は https でなければなりません: %s".formatted(key, url));
+
+	}
+
+	/**
+	 * この機械の中だけの http か（localhost / 127.0.0.1 / ::1）
+	 */
+	static boolean isLoopbackHttp (String url) {
+
+		try {
+			java.net.URI uri = java.net.URI.create(url);
+			String host = uri.getHost();
+			return "http".equalsIgnoreCase(uri.getScheme()) && host != null
+				&& (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1") || host.equals("[::1]") || host.equals("::1"));
+		} catch (IllegalArgumentException ex) {
+			return false;
+		}
 
 	}
 

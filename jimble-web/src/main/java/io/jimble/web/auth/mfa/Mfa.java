@@ -216,7 +216,7 @@ public final class Mfa {
 
 			for (String code : codes) {
 				db.insert("INSERT INTO %s (realm, user_id, code_hash, created_at) VALUES (?, ?, ?, ?)"
-					.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, Hash.sha256(code), now);
+					.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, recoveryHash(realm, userId, code), now);
 			}
 
 		} catch (Exception cause) {
@@ -555,8 +555,10 @@ public final class Mfa {
 			 * <b>消せた1件だけを「使えた」とする。</b>
 			 * 「引いてから消す」にすると、<b>同時に2回使える</b>。
 			 */
-			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND code_hash = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, Hash.sha256(normalized));
+			// 新しい形（鍵つき）と、2.2.3 までの形（塩なしの SHA-256）のどちらでも1度だけ使える（D-246）
+			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND (code_hash = ? OR code_hash = ?)"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY))
+				, realm, userId, recoveryHash(realm, userId, normalized), Hash.sha256(normalized));
 
 			if (deleted <= 0) {
 				return false;
@@ -924,6 +926,35 @@ public final class Mfa {
 	private static String lockoutKey (String realm, long userId) {
 
 		return realm.isEmpty() ? "mfa:" + userId : "mfa:" + realm + ":" + userId;
+
+	}
+
+	/**
+	 * 回復コードを保存する形（D-246）
+	 *
+	 * <p>
+	 * <b>鍵（{@code auth.mfa.secret_key}）と、種別・利用者を混ぜた HMAC にする。</b>かつては塩なしの SHA-256 で、
+	 * 回復コードは 50 ビットほどしかないので、DB が漏れると総当たりで全部割り出せた。
+	 * 鍵は DB の外にあるので、DB だけが漏れても割り出せない。
+	 * </p>
+	 *
+	 * @param realm		種別
+	 * @param userId	利用者
+	 * @param code		回復コード（正規化したもの）
+	 * @return	{@code h1:} で始まる値（64 文字に収まる）
+	 */
+	static String recoveryHash (String realm, long userId, String code) {
+
+		try {
+			javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+			mac.init(new javax.crypto.spec.SecretKeySpec(
+				MfaConf.secretKey().getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+			byte[] digest = mac.doFinal((realm + '\u0000' + userId + '\u0000' + code)
+				.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			return "h1:" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+		} catch (java.security.GeneralSecurityException ex) {
+			throw new IllegalStateException("回復コードを保存する形を作れませんでした", ex);
+		}
 
 	}
 
