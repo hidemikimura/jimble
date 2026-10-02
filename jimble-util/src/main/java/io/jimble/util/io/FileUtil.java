@@ -90,11 +90,17 @@ public final class FileUtil {
 
 	public static String safeFileName (String name, boolean includeExtension, String replace) {
 
+		// 置き換えは字のとおり（かつては正規表現の置き換えとして読み、"$" を渡すと落ちた。D-234）
+		String replacement = java.util.regex.Matcher.quoteReplacement(replace);
+
 		String result = name;
 
 		for (String c : PROHIBITED_SYMBOLS) {
-			result = result.replaceAll(Pattern.quote(c), replace);
+			result = result.replaceAll(Pattern.quote(c), replacement);
 		}
+
+		// 制御文字（NUL を含む）も落とす（D-234）
+		result = result.replaceAll("[\\x00-\\x1F\\x7F]", replacement);
 
 		for (String c : PROHIBITED_CHARACTERS) {
 			if (c.equals(result)) {
@@ -103,7 +109,18 @@ public final class FileUtil {
 		}
 
 		if (!includeExtension) {
-			result = result.replaceAll(Pattern.quote("."), replace);
+			result = result.replaceAll(Pattern.quote("."), replacement);
+		}
+
+		/*
+		 * <b>"." / ".." と、末尾の点と空白を断る</b>（D-234）。かつては拡張子を残すと ".." がそのまま通ったので、
+		 * {@code new File(uploadDir, safeFileName(clientName, true, "_"))} が<b>1つ上のディレクトリ</b>を指した。
+		 * 末尾の点と空白は Windows が黙って落とすので、別の名前と同じファイルになる
+		 */
+		result = result.replaceAll("[. ]+$", "");
+
+		if (result.isEmpty() || result.chars().allMatch(ch -> ch == '.')) {
+			result = replace;
 		}
 
 		return result;
@@ -120,7 +137,10 @@ public final class FileUtil {
 			return;
 		}
 
-		if (file.isDirectory()) {
+		/*
+		 * <b>シンボリックリンクはたどらない</b>（D-234）。かつてはリンク先のディレクトリの中身まで消した
+		 */
+		if (file.isDirectory() && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
 
 			File[] files = file.listFiles();
 			if (files != null) {

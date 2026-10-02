@@ -120,7 +120,7 @@ public class RedisCache extends AbstractCache {
 			}
 			Date createdAt = new Date(Long.parseLong(createdTimestamp));
 
-			String fileName = key + "_" + createdTimestamp;
+			String fileName = cacheFileName(key, createdTimestamp);
 
 			File file = new File(Cache.getTempDirPath(), fileName);
 			if (file.exists() && Cache.isFileResponse(contentLength)) {
@@ -177,7 +177,7 @@ public class RedisCache extends AbstractCache {
 				}
 				Date createdAt = new Date(Long.parseLong(createdTimestamp));
 
-				String fileName = key + "_" + createdTimestamp;
+				String fileName = cacheFileName(key, createdTimestamp);
 
 				File file = new File(Cache.getTempDirPath(), fileName);
 				if (file.exists() && Cache.isFileResponse(contentLength)) {

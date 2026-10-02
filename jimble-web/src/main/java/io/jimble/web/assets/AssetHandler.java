@@ -102,7 +102,11 @@ public final class AssetHandler implements Handler {
 
 		URL url = AssetHandler.class.getResource(resource);
 
-		if (url == null) {
+		/*
+		 * <b>ファイルでないもの（ディレクトリ）は 404</b>（D-238）。クラスパスが file: のとき
+		 * （IDE・jimbleRun・展開して置いたもの）、かつてはディレクトリの中身の一覧を返していた
+		 */
+		if (url == null || !Resources.isFile(resource)) {
 			context.response().send(404);
 			return;
 		}

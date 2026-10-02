@@ -374,6 +374,37 @@ public final class Cookies {
 	}
 
 	/**
+	 * 受け取った Cookie の値を元に戻し、署名を確かめる（D-242）
+	 *
+	 * <p>{@code WebContext} を通らないところ（WebSocket のアップグレードなど）で、{@link #get} と同じ読み方をする。</p>
+	 *
+	 * @param name			名前
+	 * @param encodedValue	受け取ったままの値
+	 * @return	確かめた値。署名が合わなければ null
+	 */
+	public static String verify (String name, String encodedValue) {
+
+		if (encodedValue == null) {
+			return null;
+		}
+
+		String value = CookieValue.decode(encodedValue);
+
+		if (!CookieConf.isSigned()) {
+			return value;
+		}
+
+		KeyMatch match = Signer.unsignAnyFor(name, value, CookieConf.secrets(), CookieConf.acceptLegacySignature());
+
+		if (match != null) {
+			return match.value();
+		}
+
+		return CookieConf.acceptUnsigned() ? value : null;
+
+	}
+
+	/**
 	 * 設定に従って署名する（Cookie の名前に結びつける。D-220）
 	 *
 	 * @param name	Cookie の名前
