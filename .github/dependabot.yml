@@ -65,5 +65,9 @@ updates:
       # v5 は「v4 ＋ Node 24」だけで、機能もライセンスも v4 と同じである。
       #
       # 上げるときは、この行を消す前に Terms of Use を読むこと。
-      - dependency-name: "gradle/actions"
+      #
+      # 名前は「gradle/actions*」にする（D-253）。SHA で固定すると、Dependabot は
+      # 依存の名前を gradle/actions/setup-gradle のように action ごとに分けて扱い、
+      # 「gradle/actions」だけでは当たらず、v6 の PR が出てきた（#58 / #60）。
+      - dependency-name: "gradle/actions*"
         versions: [ ">=6" ]
