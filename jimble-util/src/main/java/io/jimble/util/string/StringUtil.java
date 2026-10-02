@@ -664,10 +664,14 @@ public class StringUtil {
 				break;
 		}
 
+		/*
+		 * <b>暗号用の乱数で選ぶ</b>（D-233）。かつては SplittableRandom で、出てくる値を読めば先を当てられた
+		 * （初期パスワードや、再設定のトークンに使われうる）。{@code Math.abs(nextInt()) % 長さ} の偏りと、
+		 * {@code Math.abs(Integer.MIN_VALUE)} が負のままで落ちることも、nextInt(上限) で無くした
+		 */
 		int sourceLength = source.length();
-		SplittableRandom random = new SplittableRandom();
 		while (result.length() < length) {
-			result.append(source.charAt(Math.abs(random.nextInt()) % sourceLength));
+			result.append(source.charAt(SECURE_RANDOM.nextInt(sourceLength)));
 		}
 
 		return result.toString();
@@ -841,10 +845,22 @@ public class StringUtil {
 	 */
 	public static String randomNumberString (int length) {
 
-		long upperBound = (long) Math.pow(10, length);
-		return String.format("%0" + length + "d",new Random().nextLong(upperBound));
+		/*
+		 * <b>暗号用の乱数で1桁ずつ選ぶ</b>（D-233）。確認コード（メールや SMS）に使われうるので、
+		 * かつての java.util.Random（出てくる値から先を当てられる）にしない。19 桁以上で桁あふれもしない
+		 */
+		StringBuilder result = new StringBuilder(Math.max(length, 0));
+
+		for (int i = 0; i < length; i++) {
+			result.append((char) ('0' + SECURE_RANDOM.nextInt(10)));
+		}
+
+		return result.toString();
 
 	}
+
+	/** 暗号用の乱数（D-233） */
+	private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
 
 	/**
 	 * 4byte文字を削除する

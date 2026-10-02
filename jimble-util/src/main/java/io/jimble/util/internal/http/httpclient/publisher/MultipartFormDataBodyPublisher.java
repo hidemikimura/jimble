@@ -23,13 +23,24 @@ import java.util.function.Supplier;
 public class MultipartFormDataBodyPublisher implements BodyPublisher {
 
 	private static String nextBoundary() {
-		BigInteger random = new BigInteger(128, new Random());
+		// 中身から当てられない境界にする（D-236。かつては java.util.Random）
+		BigInteger random = new BigInteger(128, new java.security.SecureRandom());
 		try (Formatter formatter = new Formatter()) {
 			return formatter.format("-----------------------------%039d", random).toString();
 		}
 	}
 
 	private final String boundary = nextBoundary();
+
+	/**
+	 * パートのヘッダに入れる値をエスケープする（テスト用。中身は {@code MultipartFormDataChannel#escape}。D-236）
+	 *
+	 * @param s	値
+	 * @return	エスケープした値
+	 */
+	static String escapeHeaderValue (String s) {
+		return MultipartFormDataChannel.escape(s);
+	}
 	private final List<Part> parts = new ArrayList<>();
 	private Charset charset;
 	private final BodyPublisher delegate = BodyPublishers.ofInputStream(
@@ -370,8 +381,20 @@ class MultipartFormDataChannel implements ReadableByteChannel {
 		}
 	}
 
+	/**
+	 * パートのヘッダに入れる値をエスケープする（D-236）
+	 *
+	 * <p>
+	 * HTML の仕様が multipart の名前に使うのと同じく、{@code "} と CR / LF を {@code %22} / {@code %0D} / {@code %0A} にする。
+	 * かつては {@code s.replaceAll("\"", "\\\"")}（置き換えの {@code \\"} は {@code "} になる）で<b>何も変えていなかった</b>。
+	 * 改行も通したので、名前やファイル名に改行を入れると、パートのヘッダを差し込めた。
+	 * </p>
+	 *
+	 * @param s	値
+	 * @return	エスケープした値
+	 */
 	static String escape(String s) {
-		return s.replaceAll("\"", "\\\"");
+		return s.replace("\"", "%22").replace("\r", "%0D").replace("\n", "%0A");
 	}
 
 	String currentHeaders() {
