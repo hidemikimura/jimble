@@ -748,20 +748,33 @@ public class StringUtil {
 	// endregion
 
 	/**
-	 * 改行続きを削除する
+	 * 改行続きを削除する（空の行と、空白だけの行を落とし、残った行を {@code \n} でつなぐ）
 	 *
-	 * @param text	文字列
+	 * <p>
+	 * <b>正規表現を使わずに1回なめる</b>（D-231）。かつての正規表現は {@code [ \t\x0B\f] + (\n|...)} と
+	 * {@code +} の前後に空白が入っていて、空白が長く続くと<b>2乗の時間</b>がかかった（空白 10 万個で 47 秒）。
+	 * 空の文字列で例外になることもあった。
+	 * </p>
+	 *
+	 * @param text	文字列（null なら null）
 	 * @return	文字列
 	 */
 	public static String trimBlankLine (String text) {
 
-		String result = text.replaceAll("(\n|\r|\n\r|\r\n){2,}", "\n");
-		result = result.replaceAll("[ \t\\x0B\f] + (\n|\r|\n\r|\r\n)", "");
-		if (result.substring(result.length() - 1).equals("\n")) {
-			result = result.substring(0, result.length() - 1);
+		if (text == null) {
+			return null;
 		}
 
-		return result;
+		StringBuilder result = new StringBuilder(text.length());
+
+		text.lines().filter(line -> !line.isBlank()).forEach(line -> {
+			if (!result.isEmpty()) {
+				result.append('\n');
+			}
+			result.append(line);
+		});
+
+		return result.toString();
 
 	}
 
