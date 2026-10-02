@@ -97,9 +97,10 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		{
 			Data request = res.getDataOptional("http_executor_log").getDataOptional("request");
 			request.put("version", getVersion());
-			request.put("url", getUrl());
+			// 秘密は伏せる（D-240。かつては Authorization も Cookie もそのままログに出した）
+			request.put("url", maskUrl(getUrl()));
 			request.put("method", getMethod());
-			request.put("headers", getHeaders());
+			request.put("headers", maskHeaders(getHeaders()));
 			request.put("charset", getCharset());
 		}
 
@@ -107,7 +108,7 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		{
 			Data response = res.getDataOptional("http_executor_log").getDataOptional("response");
 			response.put("code", responseCode);
-			response.put("headers", getResponseHeader());
+			response.put("headers", maskHeaders(getResponseHeader()));
 			response.put("charset", getResponseCharset());
 			response.put("time_ms", getExecuteTime());
 		}
@@ -116,6 +117,78 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		res.getDataOptional("http_executor_log").put("other", otherLogData);
 
 		return res;
+
+	}
+
+	/** 伏せた値 */
+	static final String MASKED = "***";
+
+	/**
+	 * 秘密を表す名前か（ヘッダ名・クエリの名前。D-240）
+	 *
+	 * @param name	名前
+	 * @return	伏せるなら true
+	 */
+	static boolean isSecretName (String name) {
+
+		if (name == null) {
+			return false;
+		}
+
+		String lower = name.toLowerCase(java.util.Locale.ROOT);
+
+		return lower.equals("authorization") || lower.equals("proxy-authorization")
+			|| lower.equals("cookie") || lower.equals("set-cookie")
+			|| lower.contains("token") || lower.contains("secret") || lower.contains("password")
+			|| lower.contains("api-key") || lower.contains("api_key") || lower.contains("apikey")
+			|| lower.equals("key") || lower.equals("sig") || lower.equals("signature");
+
+	}
+
+	/**
+	 * ヘッダの秘密を伏せる（写しを返す）
+	 */
+	static <V> Map<String, Object> maskHeaders (Map<String, V> headers) {
+
+		Map<String, Object> masked = new java.util.LinkedHashMap<>();
+
+		if (headers != null) {
+			headers.forEach((name, value) -> masked.put(name, isSecretName(name) ? MASKED : value));
+		}
+
+		return masked;
+
+	}
+
+	/**
+	 * URL のクエリの秘密を伏せる
+	 */
+	static String maskUrl (String url) {
+
+		if (url == null || url.indexOf('?') < 0) {
+			return url;
+		}
+
+		int question = url.indexOf('?');
+		StringBuilder sb = new StringBuilder(url.substring(0, question + 1));
+		String[] pairs = url.substring(question + 1).split("&", -1);
+
+		for (int i = 0; i < pairs.length; i++) {
+			if (i > 0) {
+				sb.append('&');
+			}
+			int equals = pairs[i].indexOf('=');
+			String name = equals < 0 ? pairs[i] : pairs[i].substring(0, equals);
+			String decodedName;
+			try {
+				decodedName = java.net.URLDecoder.decode(name, java.nio.charset.StandardCharsets.UTF_8);
+			} catch (IllegalArgumentException ex) {
+				decodedName = name;
+			}
+			sb.append(equals >= 0 && isSecretName(decodedName) ? name + "=" + MASKED : pairs[i]);
+		}
+
+		return sb.toString();
 
 	}
 
