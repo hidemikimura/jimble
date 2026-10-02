@@ -166,7 +166,8 @@ cookie {
 }
 
 csrf {
-	max_age = 1d    # トークンの寿命。cookie.max_age とは別
+	max_age      = 1d      # トークンの寿命。cookie.max_age とは別
+	bind_session = false   # true でトークンをセッションに置き、ログインで作り直す（session.store が要る）
 }
 
 session {

@@ -21,6 +21,12 @@ import java.util.Set;
  * 突き合わせる（double submit cookie）。
  * </p>
  *
+ * <p>
+ * {@code csrf.bind_session = true} にすると、トークンを Cookie ではなく<b>セッションに置く</b>
+ * （{@link #KEY_BIND_SESSION}）。ログインでセッション ID を振り直すとき、トークンも作り直し、
+ * 新しいトークンを応答の {@value #HEADER_NAME} ヘッダで返す（{@link #rotate}）。
+ * </p>
+ *
  * <pre>
  * before(Csrf::verify);          // 全体に掛ける
  * path("/api", () -&gt; {
@@ -73,6 +79,31 @@ public final class Csrf {
 	 */
 	public static final Duration DEFAULT_MAX_AGE = Duration.ofDays(1);
 
+	/**
+	 * 設定キー：トークンをセッションに結びつけるか（D-255。既定 false）
+	 *
+	 * <p>
+	 * 既定の double submit cookie は、トークンが<b>利用者に結びついていない</b>。
+	 * 同じ親ドメインの下に Cookie を書ける場所（別のサブドメインなど）を攻撃者が持っていると、
+	 * <b>攻撃者が自分で受け取った正しいトークン</b>を被害者のブラウザに植え付けて、送らせられる。
+	 * true にすると、トークンをセッションに置き、ログインのたびに作り直すので、これが効かなくなる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>既定で入れていないのは、壊れるものがあるため</b>である。
+	 * </p>
+	 * <ul>
+	 *   <li>{@code session.store = "none"} のアプリには置き場が無い（true にすると、使ったところで例外）</li>
+	 *   <li>ページを読み直さずにログインする SPA は、ログインの前に受け取ったトークンを持ち続けるので、
+	 *       ログインのあとの POST が 403 になる。応答の {@value #HEADER_NAME} ヘッダが来たら差し替えること</li>
+	 *   <li>true にした時点で開いているフォームは、1度だけ 403 になる（トークンの置き場が変わるため）</li>
+	 * </ul>
+	 */
+	public static final String KEY_BIND_SESSION = "csrf.bind_session";
+
+	/** セッションのキー：トークン（csrf.bind_session = true のとき） */
+	static final String SESSION_KEY = "__csrf_token";
+
 	/** トークンの長さ（バイト） */
 	private static final int TOKEN_LENGTH = 32;
 
@@ -92,6 +123,26 @@ public final class Csrf {
 	 * @return	トークン
 	 */
 	public static String token (WebContext context) {
+
+		if (bound(context)) {
+
+			String token = context.session().get(SESSION_KEY);
+
+			if (token == null || token.isEmpty()) {
+				token = generate();
+				context.session().put(SESSION_KEY, token);
+
+				/*
+				 * <b>ここで保存する。</b>セッションは明示保存（要件 F-S-02）なので、
+				 * 保存しないとトークンを出したのに残らず、送り返されたときに必ず 403 になる。
+				 * あとでアプリが put すれば保存済みの印は戻るので、アプリの save() は効く
+				 */
+				context.session().save();
+			}
+
+			return token;
+
+		}
 
 		String token = context.cookies().get(COOKIE_NAME);
 
@@ -144,7 +195,9 @@ public final class Csrf {
 			return;
 		}
 
-		String expected = context.cookies().get(COOKIE_NAME);
+		String expected = bound(context)
+			? context.session().get(SESSION_KEY)
+			: context.cookies().get(COOKIE_NAME);
 		if (expected == null || expected.isEmpty()) {
 			throw new HttpException(403, "CSRF トークンがありません");
 		}
@@ -160,6 +213,74 @@ public final class Csrf {
 			, actual.getBytes(StandardCharsets.UTF_8))) {
 			throw new HttpException(403, "CSRF トークンが一致しません");
 		}
+
+	}
+
+	/**
+	 * トークンを作り直す（csrf.bind_session = true のときだけ）
+	 *
+	 * <p>
+	 * {@link io.jimble.web.session.Session#regenerateId()}（ログイン・二要素認証の完了・一部のログアウト）が呼ぶ。
+	 * 新しいトークンは、応答の {@value #HEADER_NAME} ヘッダでも返す。
+	 * <b>SPA は、応答にこのヘッダがあったら、手元のトークンを差し替える</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 別のオリジンから呼ぶ SPA は、CORS で {@code Access-Control-Expose-Headers: X-CSRF-Token} を出さないと読めない。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @return	新しいトークン（csrf.bind_session = false なら null）
+	 */
+	public static String rotate (WebContext context) {
+
+		if (!bound(context)) {
+			return null;
+		}
+
+		String token = generate();
+		context.session().put(SESSION_KEY, token);
+		context.response().setResponseHeader(HEADER_NAME, token);
+
+		return token;
+
+	}
+
+	/**
+	 * トークンをセッションに結びつけるか
+	 *
+	 * @return	{@code csrf.bind_session}
+	 */
+	public static boolean bindSession () {
+
+		return Conf.conf().getBoolean(KEY_BIND_SESSION, false);
+
+	}
+
+	/**
+	 * このリクエストで、トークンをセッションに置くか
+	 *
+	 * @param context	コンテキスト
+	 * @return	置く場合 = true
+	 * @throws IllegalStateException	csrf.bind_session = true なのにセッションの置き場が無い場合
+	 */
+	private static boolean bound (WebContext context) {
+
+		if (!bindSession()) {
+			return false;
+		}
+
+		/*
+		 * <b>黙って Cookie に戻さない。</b>戻すと、結びつけたつもりで結びついていない、
+		 * という気づけない形になる
+		 */
+		if (!context.session().isAvailable()) {
+			throw new IllegalStateException(
+				"csrf.bind_session = true には、セッションの置き場（session.store = db / redis / cookie）が要ります"
+					+ io.jimble.util.internal.Docs.see("session-security"));
+		}
+
+		return true;
 
 	}
 

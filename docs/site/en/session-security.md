@@ -108,7 +108,9 @@ What it does depends on the store:
 Put `Csrf::verify` in a `before` and the routes below it are protected.
 `GET` `HEAD` `OPTIONS` `TRACE` pass through untouched (`Csrf.SAFE_METHODS`).
 
-Take the token with `context.request().csrfToken()` and put it in a hidden form field.
+Take the token with `Csrf.token(context)` and put it in a hidden form field (named `csrf_token`).
+It issues one (in a cookie) if there is none yet, so **call it on the page that renders the form**.
+(`context.request().csrfToken()` only reads a `csrf-token` header that was sent; it does not issue anything.)
 
 The token sent back is read from **the `X-CSRF-Token` header, then the form body, then the JSON body**.
 **The query string (`?csrf_token=...`) is not accepted** (since 2.2.4): a token in the URL ends up in access logs and `Referer`.
@@ -117,6 +119,41 @@ The token sent back is read from **the `X-CSRF-Token` header, then the form body
 `cookie.max_age` (one year by default), so shortening `cookie.max_age` for your own reasons
 **shortened the CSRF token with it** — and all you got back was a 403 saying the token was
 missing.
+
+### Binding the token to the session (`csrf.bind_session`)
+
+The default is a **double submit cookie**: the request passes if the token sent matches the one in the cookie.
+The cookie is signed, so an attacker cannot make up a value — but the token is **not tied to the user**.
+An attacker who can write cookies under the same parent domain (another subdomain, say) can plant
+**a valid token they obtained themselves** in the victim's browser and have it sent.
+
+```conf
+csrf {
+	bind_session = true   # since 2.2.4. default false
+}
+```
+
+With `true`:
+
+| | |
+| --- | --- |
+| Where it lives | In the **session**, not a cookie. `session.store` must be `db` / `redis` / `cookie`; otherwise using it throws |
+| Login | When the session id is regenerated (`Auth.login`, completing two-factor auth, ...), **the token is regenerated too** |
+| The new token | Returned in the **`X-CSRF-Token` header** of that response |
+
+**A SPA should replace its token whenever a response carries an `X-CSRF-Token` header.**
+A SPA that logs in without reloading keeps the token it got before login, so without replacing it the first POST after login gets 403.
+
+```javascript
+const response = await fetch("/login", { method: "POST", headers: { "X-CSRF-Token": csrfToken }, body });
+csrfToken = response.headers.get("X-CSRF-Token") ?? csrfToken;
+```
+
+> Called from another origin, the header is only readable if CORS sends `Access-Control-Expose-Headers: X-CSRF-Token`.
+>
+> **After logout there is no token** (the session is thrown away). Get a new one by rendering a form or calling a route that returns it.
+>
+> Forms already open when you switch to `true` get **one 403** (the token moved).
 
 ## Flash
 

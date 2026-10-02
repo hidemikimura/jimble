@@ -202,7 +202,8 @@ context.session().save();                  // ← 呼ばないと書かれない
 `Auth.login` を使えば振り直しと保存までやる。
 
 CSRF は `before` に `Csrf::verify`。`GET` `HEAD` `OPTIONS` `TRACE` は素通し。
-トークンは `context.request().csrfToken()` を hidden に入れる。読むのはヘッダ（`X-CSRF-Token`）→ フォーム → JSON の本文。**クエリ文字列では受けない**。
+トークンは `Csrf.token(context)` を hidden（`csrf_token`）に入れる（`context.request().csrfToken()` は送られてきたヘッダを読むだけで、発行しない）。読むのはヘッダ（`X-CSRF-Token`）→ フォーム → JSON の本文。**クエリ文字列では受けない**。
+`csrf.bind_session = true` でトークンをセッションに置き、ログインで作り直す。新しいトークンは応答の `X-CSRF-Token` ヘッダで返るので、**SPA はそれで差し替える**（しないとログイン後の POST が 403）。`session.store = "none"` では使えない（例外）。
 
 Flash は**次の1回のリクエストだけ**残る。読んだ時点で消える。
 

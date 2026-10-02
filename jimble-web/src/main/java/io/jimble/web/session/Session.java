@@ -2,6 +2,7 @@ package io.jimble.web.session;
 
 import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
+import io.jimble.web.csrf.Csrf;
 
 /**
  * セッション
@@ -102,6 +103,7 @@ public final class Session {
 	 * <b>中身は持ち越す。</b>ログインの直前に入れたもの（戻り先の URL、
 	 * 入力途中のフォーム、CSRF トークン）が消えると、
 	 * <b>ログインした瞬間に元いた場所を見失う。</b>
+	 * ただし {@code csrf.bind_session = true} のときは、CSRF トークンだけは作り直す（{@link Csrf#rotate}）。
 	 * </p>
 	 *
 	 * <p>
@@ -149,6 +151,25 @@ public final class Session {
 		 * ログインしたのにログインしていない、が起きる）
 		 */
 		saved = false;
+
+		/*
+		 * <b>CSRF のトークンも回す</b>（csrf.bind_session = true のとき。D-255）。
+		 * ログインの前に植え付けたトークンを、ログインのあとも使わせない
+		 */
+		if (isAvailable() && Csrf.bindSession()) {
+			Csrf.rotate(context);
+		}
+
+	}
+
+	/**
+	 * 保存先があるか
+	 *
+	 * @return	{@code session.store = "none"} なら false
+	 */
+	public boolean isAvailable () {
+
+		return !(store instanceof EmptySessionStore);
 
 	}
 
