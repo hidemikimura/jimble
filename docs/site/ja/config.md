@@ -173,7 +173,7 @@ csrf {
 session {
 	store            = "none"                     # none | db | redis | cookie
 	timeout          = 30m
-	absolute_timeout = 1d                         # store = cookie のとき。発行からの上限（使い続けても延びない）
+	absolute_timeout = 1d                         # 発行からの上限（使い続けても延びない）。cookie は既定 1d。db / redis は書いたときだけ効く
 	cookie_name      = "sid"
 	table            = "session"                  # store = db のとき
 	secret           = ${?SESSION_SECRET}         # store = cookie のとき必須

@@ -100,6 +100,27 @@ What it does depends on the store:
 | `cookie` | **Nothing is keyed by the id**, so the contents cookie is simply rewritten. **The old value does not die at once**: the server drops it `session.timeout` after it was last used, or `session.absolute_timeout` (1 day by default) after it was issued |
 | `none` | Nothing |
 
+### The limit from issue (`session.absolute_timeout`)
+
+`session.timeout` (30 minutes by default) counts from the last use, so **a session in constant use never expires**.
+The limit from issue (that is, from login, since login regenerates the id) is `session.absolute_timeout`.
+
+| store | Default |
+| --- | --- |
+| `cookie` | 1 day |
+| `db` / `redis` | **only when you write it** (since 2.2.4; without it there is no limit) |
+
+```conf
+session {
+	store            = "db"
+	absolute_timeout = 12h   # log in again 12 hours after login, even if in constant use
+}
+```
+
+Writing it **caps how long a stolen session id stays usable**.
+It is not the default for `db` / `redis` so that upgrading does not log out, on the same day, everyone who has been using the app for more than a day.
+An expired session cannot be read and its id is regenerated (with remember-me, the user is logged back in from there).
+
 ## CSRF
 
 ```java snippet=csrf-form

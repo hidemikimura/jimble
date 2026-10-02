@@ -47,6 +47,9 @@ public final class DbSessionStore implements SessionStore {
 	/* タイムアウト（分） */
 	private final long timeoutMinutes;
 
+	/* 発行からの上限（0 なら上限なし。D-260） */
+	private final Duration absoluteTimeout;
+
 	/* テーブル作成済み */
 	private volatile boolean initialized = false;
 
@@ -58,7 +61,7 @@ public final class DbSessionStore implements SessionStore {
 	 */
 	public DbSessionStore () {
 
-		this(SessionConf.table(), SessionConf.timeout().toMinutes());
+		this(SessionConf.table(), SessionConf.timeout().toMinutes(), SessionConf.serverAbsoluteTimeout());
 
 	}
 
@@ -70,8 +73,55 @@ public final class DbSessionStore implements SessionStore {
 	 */
 	public DbSessionStore (String tableName, long timeoutMinutes) {
 
+		this(tableName, timeoutMinutes, Duration.ZERO);
+
+	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param tableName			テーブル名
+	 * @param timeoutMinutes	タイムアウト（分）
+	 * @param absoluteTimeout	発行からの上限（0 なら上限なし）
+	 */
+	public DbSessionStore (String tableName, long timeoutMinutes, Duration absoluteTimeout) {
+
 		this.tableName = tableName;
 		this.timeoutMinutes = timeoutMinutes;
+		this.absoluteTimeout = absoluteTimeout == null || absoluteTimeout.isNegative() ? Duration.ZERO : absoluteTimeout;
+
+	}
+
+	/**
+	 * 発行からの上限を見る条件（上限なしなら空）
+	 *
+	 * @param db	DB
+	 * @return	{@code AND created_at >= ...}
+	 */
+	private String absoluteCondition (DB db) {
+
+		return absoluteTimeout.isZero()
+			? ""
+			: " AND created_at >= " + db.dialect().intervalFromNow("SECOND", true);
+
+	}
+
+	/**
+	 * パラメータ（上限なしなら足さない）
+	 *
+	 * @param params	ほかのパラメータ
+	 * @return	パラメータ
+	 */
+	private Object[] withAbsolute (Object... params) {
+
+		if (absoluteTimeout.isZero()) {
+			return params;
+		}
+
+		Object[] all = java.util.Arrays.copyOf(params, params.length + 1);
+		all[params.length] = absoluteTimeout.toSeconds();
+
+		return all;
 
 	}
 
@@ -88,20 +138,33 @@ public final class DbSessionStore implements SessionStore {
 			return SessionEntry.empty();
 		}
 
-		Data row = DBUtil.getMainDB().select("""
+		DB main = DBUtil.getMainDB();
+
+		Data row = main.select("""
 			SELECT * FROM %s
-			WHERE session_id = ? AND last_accessed_at >= %s
+			WHERE session_id = ? AND last_accessed_at >= %s%s
 			""".formatted(
-				DBUtil.getMainDB().dialect().identifier(tableName)
-				, DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true))
-			, sessionId
-			, timeoutMinutes
+				main.dialect().identifier(tableName)
+				, main.dialect().intervalFromNow("MINUTE", true)
+				, absoluteCondition(main))
+			, withAbsolute(sessionId, timeoutMinutes)
 		).orElse(null);
 
 		cleanupIfDue();
 
 		if (row == null) {
+
+			/*
+			 * <b>発行からの上限を見るときは、ID も捨てる</b>（D-260）。
+			 * 捨てないと、保存するときに同じ ID で書き直し、created_at が古いままの行が残って、
+			 * そのブラウザではセッションが二度と使えなくなる
+			 */
+			if (!absoluteTimeout.isZero()) {
+				SessionId.remove(context);
+			}
+
 			return SessionEntry.empty();
+
 		}
 
 		return new SessionEntry(row.getDataOptional("data"), true);
@@ -147,10 +210,16 @@ public final class DbSessionStore implements SessionStore {
 			return;
 		}
 
-		DBUtil.getMainDB().update(
-			"UPDATE %s SET last_accessed_at = NOW() WHERE session_id = ?"
-				.formatted(DBUtil.getMainDB().dialect().identifier(tableName))
-			, sessionId
+		/*
+		 * 発行からの上限を過ぎた行は延ばさない（D-260）。延ばさなければ、ふつうの掃除
+		 * （last_accessed_at が古いもの）で消える。created_at に索引が無くても済む
+		 */
+		DB main = DBUtil.getMainDB();
+
+		main.update(
+			"UPDATE %s SET last_accessed_at = NOW() WHERE session_id = ?%s"
+				.formatted(main.dialect().identifier(tableName), absoluteCondition(main))
+			, withAbsolute(sessionId)
 		);
 
 	}
