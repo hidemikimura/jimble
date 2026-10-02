@@ -123,6 +123,7 @@ String title = input.getString("title");
 **`Request` は `Data` ではない。**`context.request().getString("x")` は書けない（コンパイルエラー）。
 値は `bodyAll()` / `body()` / `bodyQuery()` などから読む（`query()` はクエリの生の文字列）。
 本文が `application/json` なのに読めなければ、`bodyAll()` などが **400 の `HttpException`** を投げる。
+**512 段より深く入れ子になった JSON も 400**（2.2.4。読まずに断る）。
 
 入れ子は `user.name=taro` でも `user[name]=taro` でも同じ。
 `items[0].price` は添字、`items[].price` は末尾に追加。
@@ -155,6 +156,9 @@ long categoryId = input.getLong(Post.category_id);   // 検査を通したあと
   **空の配列（`{"name": []}`）も「値が無い」として見る**（2.2.3。それまでは1度も検証されず、必須も素通りした）
   「登録のときだけ必須、更新は送られた項目だけ見る」は `insertRequired()` と `insertRequestChecker(...)`
 - `ValidationExecutor`（ルートに積む検査）も同じ 422 の形。こちらは `addError(...)` で積み、`error` は通らず `onCancel` で返す
+- **422 に載せる入力値から、名前に `password` / `secret` / `token` などを含む項目を落とす**（2.2.4）。
+  入力し直してもらう画面で、パスワードの欄を 422 の本文から埋め戻すことはできない
+- **`url()` は 1,024 文字、`email()` は 254 文字まで**（2.2.4。超えたら検証の誤り）
 
 ## 返す
 
@@ -209,6 +213,7 @@ Flash は**次の1回のリクエストだけ**残る。読んだ時点で消え
 
 **署名つき Cookie の署名は Cookie の名前に結びついている**（2.2.3）。自分で署名するなら `Cookies.sign(名前, 値)`（`Cookies.sign(値)` は非推奨）。
 署名は有効期限を含まない。**利用者を表す値を署名つき Cookie だけで信じない**（セッションに入れる）。
+WebSocket の `WsSession.cookie(名前)` も署名を確かめた値を返す（2.2.4。合わなければ空文字）。自分で確かめるなら `Cookies.verify(名前, 値)`。
 
 **`session.store = "cookie"` はログアウトしても、盗まれた写しまでは無効にできない**（サーバーに何も置かないため）。
 最後に使ってから `session.timeout`、発行から `session.absolute_timeout`（既定 1 日）で切れる（2.2.3）。
@@ -265,6 +270,8 @@ post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要�
 | `Auth.FULL_AUTH` | `false` | いまパスワードを入れた人だけか |
 
 **既定は「閉じている」。**書き忘れたルートは開かない。
+`Auth.FULL_AUTH` は既定では「このセッションでパスワードを入れて入った人」なら何時間後でも通す。
+**ログインからの時間で切るなら `auth.full_auth_max_age = 15m` など**（2.2.4。過ぎると 401。パスワードを入れ直させる）。
 `Auth.principal(context)` は **`null` を返さない**（未ログインなら `Principal.ANONYMOUS`）。
 アクセサは record 形式（`me.id()` / `me.name()` / `me.hasRole("x")`）。
 
@@ -312,6 +319,8 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 
 - **コードを入れるまでは「ログインしていない」。**`Auth.principal` は `ANONYMOUS`
 - **`auth.mfa.secret_key` が無ければ `enroll` は例外。**秘密鍵は暗号化して持つ
+- パスワードのハッシュ（bcrypt）のコストは `hash.password.cost`（既定 10、4〜31。2.2.4）。
+  **bcrypt は 72 バイトより後ろを見ない**（超えると1度だけ WARN）。長いパスフレーズを許すなら、画面で上限を決める
 - **`cipher.key` を流用しない。**`cipher.*` を書くと **`hash.password.encrypt` も書かないと起動しない**。
   `true` にすると**保存済みの BCrypt が「暗号化済み」として読まれ、全員入れなくなる**。
   二要素には `auth.mfa.secret_key` を使う
@@ -347,7 +356,8 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
   （302 は返るのに次のリクエストで 401 になる）
 - **`after` で Cookie やヘッダを足せない。**応答を送ったあとに走るので例外になる（`after` の中なのでログに出るだけで、届かない）。
   `before` かハンドラの中で足す
-- **`destroy()` のあとにセッションを変えると `IllegalStateException`。**ログアウトの処理は `destroy()` を最後に
+- **`destroy()` のあとにセッションを変えると `IllegalStateException`。**ログアウトの処理は `destroy()` を最後に。
+  `csrf.bind_session = true` なら、ログアウトのあとはトークンが無いので、次にフォームを出すところで受け取り直す
 - **`json(...)` と `redirect(...)` のように返し方を2種類積むと `IllegalStateException`。**どちらかに決めてから書く
 - **`paging()` のあとに `paging(50)` を呼ぶと `IllegalStateException`。**件数を変えるなら最初から `paging(50)`
 - **`send()` を2回呼ぶとエラー。**`after` や `error` の中では `isSent()` を見てから触る
@@ -363,6 +373,9 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **SPA の書き換え（`SpaRewriter`）で差し込む値は `SpaRewriter.escapeHtml(...)` を通す。**パスの値はデコード済みで、そのまま HTML になる
 - **`ReverseProxy` は `.` / `..` を含むパスを 400 で断る**（2.2.2）。転送先の `Host` やヘッダを決めるなら `preserveHost()` /
   `setHeader(...)`、`Location` の書き換えは既定で入る（`noRedirectRewrite()` で外す）（2.2.0）
+- **`proxy.request_timeout`（既定 30s）は「送り終えてから応答のヘッダが届くまで」の全体の上限**（2.2.4。それまでは1回の読み込みごと）。
+  ヘッダを返すまで長くかかる転送先なら上げる。本文の全体の上限は `proxy.body_timeout` / `ReverseProxy#bodyTimeout`（既定 0 ＝ 上限なし。
+  ダウンロードや SSE を通すルートでは 0 のまま）
 - **`BasicAuth` は、成功したらセッション ID を作り直し、失敗を `Lockout` で数える**（2.2.3）
 - **`/mcp` には認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く。
   **別のブロックの `path("/mcp", () -> before(...))` は効かない**（フィルタは書いたブロックのルートにしか付かない）
