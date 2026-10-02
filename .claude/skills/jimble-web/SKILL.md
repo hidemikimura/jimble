@@ -316,6 +316,7 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
   `true` にすると**保存済みの BCrypt が「暗号化済み」として読まれ、全員入れなくなる**。
   二要素には `auth.mfa.secret_key` を使う
 - 回復コードは **`enroll` の戻り値でしか見られない**（DB には `auth.mfa.secret_key` を鍵にした HMAC だけ）。使うと消える
+- **登録し直し（もう有効な人の `enroll`）は控えに置かれ、新しいコードで `activate` が通るまで、いまの設定が効く**（2.2.4）。途中でやめても外れない
 - `Mfa.disable` は **`attribute(Auth.FULL_AUTH, true)` を付けたルートから**呼ぶ
 - 総当たりは `Lockout` が抑える（超えると 429）。**一度通ったコードは再利用できない**
 - QR 画像は作らない（`enrollment.uri()` を画面側で描く）。SMS / メールは無い
