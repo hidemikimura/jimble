@@ -173,7 +173,8 @@ cookie {
 }
 
 csrf {
-	max_age = 1d    # how long a token lives. separate from cookie.max_age
+	max_age      = 1d      # how long a token lives. separate from cookie.max_age
+	bind_session = false   # true keeps the token in the session and regenerates it on login (needs session.store)
 }
 
 session {
