@@ -207,6 +207,9 @@ try (Tx tx = db.begin()) {
 - **`a.or(b).and(c)` は `(a OR b) AND c`**（左から読んだとおり。2.2.3）。`a OR (b AND c)` は `a.or(b.and(c))` か `Dsl.anyOf`
 - **`view()` のページは、`Accept: application/json` でもテンプレートを描く**（2.2.3。テンプレートに渡したデータを丸ごと返さない）。
   1つの口で JSON も返したいなら `json(...)` で別に返す
+- **`IPUtil.inRange(対象, 範囲)` の対象は IP の字面だけ**（2.2.4。名前は DNS で引かず、範囲外）。送り元の IP は `context.request().address()` を渡す
+- **`StringUtil.createPassword` / `randomNumberString` は暗号用の乱数**（2.2.4）。トークンや初期パスワードに使ってよい。
+  ファイル名に使うなら `FileUtil.safeFileName`（`..` や点だけの名前は置き換える）
 - **`/mcp` そのものには認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く
   （`Origin` の検査はブラウザしか止めない。**別のブロックの `path("/mcp", () -> before(...))` は効かない**）
 

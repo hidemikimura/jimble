@@ -4,6 +4,16 @@
 
 ---
 
+## 2.2.5（未公開）
+
+### AI 向けの skill
+
+| | |
+|---|---|
+| **`jimble new` / `jimbleSkills` が入れる skill を、2.2.4 に揃えました** | 各 PR で足していた CSRF・二要素認証・セッションの期限のほかに、次を足しました。JSON の入れ子と `url()` / `email()` の長さの上限、422 で秘密の項目を返さないこと、`WsSession.cookie` の署名、`auth.full_auth_max_age`、`hash.password.cost` と bcrypt の 72 バイト、ReverseProxy の待ちの上限（`request_timeout` / `body_timeout`）、ログアウトのあとの CSRF トークン、codegen のコメントのエスケープ、ページ番号の上限、MQ の迷子のリトライ、`IPUtil.inRange` は IP の字面だけ、`StringUtil` の乱数 |
+
+---
+
 ## 2.2.4（2026-10-02）
 
 **セキュリティ診断の「低（Low）」を直した版です。**どれも条件つきのものですが、ReverseProxy・OIDC・二要素認証・SQL キャッシュ・MQ を使っているアプリは、早めに上げてください。
