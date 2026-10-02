@@ -276,16 +276,91 @@ class MfaIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("F-W-32 登録し直すと、前の回復コードは消える")
-	void reEnrollReplacesEverything () {
+	@DisplayName("D-259 登録し直しても、新しいコードを合わせるまでは、いまの設定がそのまま効く")
+	void reEnrollKeepsCurrentUntilActivated () {
 
-		Mfa.Enrollment first = Mfa.enroll(USER_ID, "member1@example.com");
-		Mfa.activate(USER_ID, codeFor(first));
-
+		Mfa.Enrollment first = enrollAndActivate();
 		Mfa.Enrollment second = Mfa.enroll(USER_ID, "member1@example.com");
 
 		assertNotEquals(first.secret(), second.secret());
-		assertEquals(10, Mfa.remainingRecoveryCodes(USER_ID), "前の回復コードが残っている");
+
+		/*
+		 * かつてはここで、いまの秘密鍵と回復コードを消していた。
+		 * 途中でやめると二要素認証が外れたままになり、セッションを盗んだ人が登録の画面を開くだけで外せた
+		 */
+		assertTrue(Mfa.isActive(USER_ID), "登録し直しを始めただけで外れた");
+		assertEquals(10, Mfa.remainingRecoveryCodes(USER_ID), "控えの回復コードまで数えている");
+
+		// 新しいほうは、まだ使えない
+		assertFalse(Mfa.verify(USER_ID, codeFor(second)), "合わせる前の新しい秘密鍵で通った");
+		assertFalse(Mfa.verify(USER_ID, second.recoveryCodes().get(0)), "合わせる前の新しい回復コードで通った");
+
+		// いまのほうは使える
+		assertTrue(Mfa.verify(USER_ID, codeFor(first)));
+		assertTrue(Mfa.verify(USER_ID, first.recoveryCodes().get(0)));
+
+	}
+
+	@Test
+	@DisplayName("D-259 新しいコードが合ったら入れ替わり、前の秘密鍵と回復コードは使えなくなる")
+	void reEnrollSwapsOnActivate () {
+
+		Mfa.Enrollment first = enrollAndActivate();
+		Mfa.Enrollment second = Mfa.enroll(USER_ID, "member1@example.com");
+
+		// いまの秘密鍵のコードでは、入れ替わらない
+		assertFalse(Mfa.activate(USER_ID, codeFor(first)), "前の秘密鍵のコードで入れ替わった");
+
+		assertTrue(Mfa.activate(USER_ID, codeAt(second, -MfaConf.period())));
+		assertTrue(Mfa.isActive(USER_ID));
+		assertEquals(10, Mfa.remainingRecoveryCodes(USER_ID));
+
+		assertFalse(Mfa.verify(USER_ID, codeFor(first)), "前の秘密鍵で通った");
+		assertFalse(Mfa.verify(USER_ID, first.recoveryCodes().get(0)), "前の回復コードで通った");
+
+		assertTrue(Mfa.verify(USER_ID, codeFor(second)));
+		assertTrue(Mfa.verify(USER_ID, second.recoveryCodes().get(0)));
+
+		// 入れ替えたあと、もう一度 activate しても何も起きない
+		assertFalse(Mfa.activate(USER_ID, codeAt(second, MfaConf.period())), "入れ替えるものが無いのに true");
+
+	}
+
+	@Test
+	@DisplayName("D-259 途中でやめた控えは、もう一度登録し直すと消える（回復コードが溜まらない）")
+	void abandonedStagingIsReplaced () {
+
+		enrollAndActivate();
+		Mfa.enroll(USER_ID, "member1@example.com");
+		Mfa.Enrollment third = Mfa.enroll(USER_ID, "member1@example.com");
+
+		Data row = DBUtil.getMainDB().select("SELECT count(*) AS cnt FROM %s WHERE user_id = ?"
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa_recovery")), USER_ID).orElse(null);
+
+		assertEquals(20, row.getInt("cnt"), "いまの 10 個と、最後の控えの 10 個だけが残るはず");
+
+		assertTrue(Mfa.activate(USER_ID, codeFor(third)));
+		assertEquals(10, Mfa.remainingRecoveryCodes(USER_ID));
+
+	}
+
+	@Test
+	@DisplayName("D-259 2.2.3 までに登録を始めて、まだ有効にしていない人も、上げたあとに有効にできる")
+	void legacyPendingEnrollmentActivates () {
+
+		// 2.2.3 までの形：秘密鍵を secret にそのまま入れ、activated_at = 0、控えは無い
+		String base32 = Totp.toBase32(Totp.secret());
+
+		Mfa.enroll(USER_ID, "member1@example.com");
+		DBUtil.getMainDB().update("UPDATE %s SET secret = ?, staged_secret = NULL, staged_at = 0, activated_at = 0 WHERE user_id = ?"
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa"))
+			, io.jimble.util.crypto.Aead.encrypt(base32, MfaConf.secretKey()), USER_ID);
+
+		Mfa.Enrollment legacy = new Mfa.Enrollment(base32, "", List.of());
+
+		assertFalse(Mfa.isActive(USER_ID));
+		assertTrue(Mfa.activate(USER_ID, codeFor(legacy)));
+		assertTrue(Mfa.isActive(USER_ID));
 
 	}
 
