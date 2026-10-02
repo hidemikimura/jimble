@@ -58,6 +58,9 @@ public final class SqlCache {
 	 *
 	 * 置き場に書くのは jimble だけだが、<b>Redis や DB が乗っ取られたときに
 	 * 任意のクラスを読ませない</b>ようにしておく。
+	 *
+	 * maxarray は BLOB の列（byte[]）も通すために大きい。そのぶん、読むときに
+	 * 「本文より長い配列」を別に断る（{@link #deserialize(String)}。D-251）。
 	 */
 	private static final ObjectInputFilter FILTER = ObjectInputFilter.Config.createFilter(
 		"maxdepth=64;maxarray=10000000;"
@@ -330,7 +333,7 @@ public final class SqlCache {
 	 * @return	Base64
 	 * @throws Exception	書き出せなかった場合
 	 */
-	private static String serialize (List<Data> rows) throws Exception {
+	static String serialize (List<Data> rows) throws Exception {
 
 		Data wrapper = new Data();
 		wrapper.put(ROWS, new ArrayList<>(rows));
@@ -356,7 +359,7 @@ public final class SqlCache {
 	 * @return	結果
 	 * @throws Exception	読み戻せなかった場合
 	 */
-	private static List<Data> deserialize (String value) throws Exception {
+	static List<Data> deserialize (String value) throws Exception {
 
 		byte[] bytes = Base64.getDecoder().decode(value);
 
@@ -364,7 +367,14 @@ public final class SqlCache {
 			ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes))
 		) {
 
-			in.setObjectInputFilter(FILTER);
+			/*
+			 * <b>本文より長い配列は作らせない</b>（D-251）。配列の長さは本文の数バイトで書けるので、
+			 * maxarray だけでは、数十バイトの値で 1,000 万要素の配列（ArrayList や HashMap の中身も）を
+			 * いくつも確保させられた。本物の配列は、1要素に少なくとも1バイトを本文に持つ
+			 */
+			in.setObjectInputFilter(info -> info.arrayLength() > bytes.length
+				? ObjectInputFilter.Status.REJECTED
+				: FILTER.checkInput(info));
 
 			if (!(in.readObject() instanceof Data wrapper)) {
 				return null;
