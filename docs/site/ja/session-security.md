@@ -101,6 +101,27 @@ context.session().save();                  // ← ここで新しい ID が発�
 | `cookie` | **ID で引いていない**ので、中身の Cookie を書き直すだけ。**古い値はすぐには無効になりません**。最後に使ってから `session.timeout`、発行から `session.absolute_timeout`（既定 1 日）を過ぎると、サーバーが捨てます |
 | `none` | 何も起きない |
 
+### 発行からの上限（`session.absolute_timeout`）
+
+`session.timeout`（既定 30 分）は「最後に使ってから」の期限なので、**使い続ければいつまでも延びます**。
+発行から（＝ログインから。ログインで ID を振り直すため）の上限は `session.absolute_timeout` です。
+
+| store | 既定 |
+| --- | --- |
+| `cookie` | 1 日で効く |
+| `db` / `redis` | **書いたときだけ効く**（2.2.4 から。書かなければ上限なし） |
+
+```conf
+session {
+	store            = "db"
+	absolute_timeout = 12h   # 使い続けていても、ログインから 12 時間で入り直し
+}
+```
+
+書いておくと、**盗まれたセッション ID を使い続けられる時間に上限ができます**。
+`db` / `redis` で既定にしていないのは、上げた日に、1 日以上続けて使っている人がまとめてログアウトされるのを避けるためです。
+過ぎたセッションは読めず、ID も作り直します（remember-me を使っていれば、そこから入り直します）。
+
 ## CSRF
 
 ```java snippet=csrf-form

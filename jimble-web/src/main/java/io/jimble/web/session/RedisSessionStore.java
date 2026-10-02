@@ -23,21 +23,34 @@ import java.util.Map;
  *       期限切れのデータが Redis に残り続ける。TTL を使えばどちらも起きない</li>
  *   <li>{@code __accessed_at} がアプリから見えるセッションデータに混ざっていた</li>
  * </ol>
+ *
+ * <h2>発行からの上限（D-260）</h2>
+ * <p>
+ * 発行した時刻をハッシュの {@value #CREATED_AT} に持つ（アプリから見えるデータには混ぜない）。
+ * {@code session.absolute_timeout} を書いたときは、TTL を「最後に使ってから」と「発行からの残り」の短いほうにし、
+ * 過ぎていたら捨てる。
+ * </p>
  */
 public final class RedisSessionStore implements SessionStore {
 
 	/** キーの接頭辞 */
 	public static final String KEY_PREFIX = "session:";
 
+	/** 発行した時刻（エポック秒）を持つフィールド。アプリのデータには出さない */
+	static final String CREATED_AT = "\u0000jimble.created_at";
+
 	/* タイムアウト */
 	private final Duration timeout;
+
+	/* 発行からの上限（0 なら上限なし） */
+	private final Duration absoluteTimeout;
 
 	/**
 	 * コンストラクタ（設定から作る）
 	 */
 	public RedisSessionStore () {
 
-		this(SessionConf.timeout().toMinutes());
+		this(SessionConf.timeout().toMinutes(), SessionConf.serverAbsoluteTimeout());
 
 	}
 
@@ -48,7 +61,57 @@ public final class RedisSessionStore implements SessionStore {
 	 */
 	public RedisSessionStore (long timeoutMinutes) {
 
+		this(timeoutMinutes, Duration.ZERO);
+
+	}
+
+	/**
+	 * コンストラクタ
+	 *
+	 * @param timeoutMinutes	タイムアウト（分）
+	 * @param absoluteTimeout	発行からの上限（0 なら上限なし）
+	 */
+	public RedisSessionStore (long timeoutMinutes, Duration absoluteTimeout) {
+
 		this.timeout = Duration.ofMinutes(timeoutMinutes);
+		this.absoluteTimeout = absoluteTimeout == null || absoluteTimeout.isNegative() ? Duration.ZERO : absoluteTimeout;
+
+	}
+
+	/**
+	 * 延ばす長さ
+	 *
+	 * @param createdAt	発行した時刻（エポック秒）
+	 * @return	TTL（0 以下なら、もう期限切れ）
+	 */
+	private Duration ttl (long createdAt) {
+
+		if (absoluteTimeout.isZero()) {
+			return timeout;
+		}
+
+		Duration left = absoluteTimeout.minusSeconds(nowSeconds() - createdAt);
+
+		return left.compareTo(timeout) < 0 ? left : timeout;
+
+	}
+
+	private static long nowSeconds () {
+
+		return System.currentTimeMillis() / 1000;
+
+	}
+
+	/**
+	 * 発行した時刻を読む（2.2.3 までに作ったものには無いので、いまにする）
+	 */
+	private static long createdAt (String value) {
+
+		try {
+			return value == null ? nowSeconds() : Long.parseLong(value);
+		} catch (NumberFormatException ex) {
+			return nowSeconds();
+		}
 
 	}
 
@@ -64,17 +127,38 @@ public final class RedisSessionStore implements SessionStore {
 
 		RMap<String, String> map = map(sessionId);
 
+		Map<String, String> all = map.readAllMap();
+		String created = all.get(CREATED_AT);
+
 		Data data = new Data();
-		for (Map.Entry<String, String> entry : map.readAllMap().entrySet()) {
-			data.put(entry.getKey(), entry.getValue());
+		for (Map.Entry<String, String> entry : all.entrySet()) {
+			if (!CREATED_AT.equals(entry.getKey())) {
+				data.put(entry.getKey(), entry.getValue());
+			}
 		}
 
 		if (data.isEmpty()) {
 			return SessionEntry.empty();
 		}
 
+		Duration ttl = ttl(createdAt(created));
+
+		if (ttl.isZero() || ttl.isNegative()) {
+
+			// 発行からの上限を過ぎた。中身も ID も捨てる（D-260）
+			map.delete();
+			SessionId.remove(context);
+
+			return SessionEntry.empty();
+
+		}
+
+		if (created == null) {
+			map.fastPut(CREATED_AT, String.valueOf(nowSeconds()));
+		}
+
 		// 触られたので期限を延ばす
-		map.expire(timeout);
+		map.expire(ttl);
 
 		return new SessionEntry(data, true);
 
@@ -86,6 +170,10 @@ public final class RedisSessionStore implements SessionStore {
 		String sessionId = SessionId.getOrCreate(context);
 
 		RMap<String, String> map = map(sessionId);
+
+		// 発行した時刻は持ち越す（新しいセッションなら、いま）
+		long created = createdAt(map.get(CREATED_AT));
+
 		map.clear();
 
 		if (!entry.data().isEmpty()) {
@@ -95,7 +183,21 @@ public final class RedisSessionStore implements SessionStore {
 			}
 		}
 
-		map.expire(timeout);
+		// 中身が無ければ何も残さない（空のハッシュは Redis から消える）
+		if (entry.data().isEmpty()) {
+			return;
+		}
+
+		map.fastPut(CREATED_AT, String.valueOf(created));
+
+		Duration ttl = ttl(created);
+
+		if (ttl.isZero() || ttl.isNegative()) {
+			map.delete();
+			return;
+		}
+
+		map.expire(ttl);
 
 	}
 
@@ -107,7 +209,16 @@ public final class RedisSessionStore implements SessionStore {
 			return;
 		}
 
-		map(sessionId).expire(timeout);
+		RMap<String, String> map = map(sessionId);
+
+		Duration ttl = ttl(createdAt(map.get(CREATED_AT)));
+
+		if (ttl.isZero() || ttl.isNegative()) {
+			map.delete();
+			return;
+		}
+
+		map.expire(ttl);
 
 	}
 

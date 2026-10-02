@@ -212,6 +212,7 @@ Flash は**次の1回のリクエストだけ**残る。読んだ時点で消え
 
 **`session.store = "cookie"` はログアウトしても、盗まれた写しまでは無効にできない**（サーバーに何も置かないため）。
 最後に使ってから `session.timeout`、発行から `session.absolute_timeout`（既定 1 日）で切れる（2.2.3）。
+`db` / `redis` は **`session.absolute_timeout` を書いたときだけ**発行からの上限が効く（2.2.4。書かなければ上限なし＝使い続ければ延び続ける）。
 すぐに無効にしたいなら `db` / `redis` にするか、`Auth.revoke(id)` を使う。
 
 ## エラー

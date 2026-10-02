@@ -46,7 +46,13 @@ public final class SessionConf {
 	/** 既定のタイムアウト */
 	public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(30);
 
-	/** 設定キー：Cookie セッションの、発行からの上限（使い続けても延びない。D-209） */
+	/**
+	 * 設定キー：発行からの上限（使い続けても延びない）
+	 *
+	 * <p>
+	 * Cookie セッションは既定 1 日で効く（D-209）。DB / Redis セッションは、<b>書いたときだけ</b>効く（D-260）。
+	 * </p>
+	 */
 	public static final String KEY_ABSOLUTE_TIMEOUT = "session.absolute_timeout";
 
 	/** 既定の、発行からの上限 */
@@ -90,6 +96,29 @@ public final class SessionConf {
 	public static Duration absoluteTimeout () {
 
 		return Conf.conf().getDuration(KEY_ABSOLUTE_TIMEOUT, DEFAULT_ABSOLUTE_TIMEOUT);
+
+	}
+
+	/**
+	 * DB / Redis セッションの、発行からの上限（D-260）
+	 *
+	 * <p>
+	 * <b>{@code session.absolute_timeout} を書いたときだけ効く</b>（書かなければ 0 ＝ 上限なし）。
+	 * Cookie セッションと同じ既定（1日）にしないのは、上げた日に、1日以上続けて使っている人が
+	 * まとめてログアウトされるのを避けるため。
+	 * </p>
+	 *
+	 * @return	時間（0 なら上限なし）
+	 */
+	public static Duration serverAbsoluteTimeout () {
+
+		if (!Conf.conf().has(KEY_ABSOLUTE_TIMEOUT)) {
+			return Duration.ZERO;
+		}
+
+		Duration value = absoluteTimeout();
+
+		return value.isNegative() ? Duration.ZERO : value;
 
 	}
 

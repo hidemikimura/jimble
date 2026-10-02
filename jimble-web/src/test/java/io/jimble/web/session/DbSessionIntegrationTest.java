@@ -92,6 +92,60 @@ class DbSessionIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-260 absolute_timeout を書いたら、発行から過ぎたセッションは使い続けていても読めず、ID も作り直す")
+	void absoluteTimeoutWhenWritten () {
+
+		withAbsoluteTimeout("1h", () -> {
+
+			String sessionId = saveUser(42);
+
+			// 使い続けている（last_accessed_at は新しい）が、発行は2時間前
+			age(sessionId);
+
+			Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/");
+			source.cookie(SessionConf.cookieName(), sessionId);
+			Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+			try (WebContext context = new WebContext(source, sink)) {
+				assertEquals("", context.session().get("user_id"), "発行から過ぎたセッションが読めた");
+				context.session().put("user_id", 7);
+				context.session().save();
+				context.response().send("ok");
+			}
+
+			// 同じ ID で書き直すと created_at が古いまま残り、二度と使えなくなるので、ID を作り直している
+			String renewed = lastSessionIdFrom(sink);
+			assertNotNull(renewed);
+			assertNotEquals(sessionId, renewed);
+
+			Fakes.FakeRequestSource again = new Fakes.FakeRequestSource("GET", "/");
+			again.cookie(SessionConf.cookieName(), renewed);
+
+			try (WebContext context = new WebContext(again, new Fakes.FakeResponseSink())) {
+				assertEquals(7, context.session().getInt("user_id"), "作り直したセッションが読めない");
+			}
+
+		});
+
+	}
+
+	@Test
+	@DisplayName("D-260 absolute_timeout を書かなければ、DB セッションは発行からの時間では切らない（2.2.3 までと同じ）")
+	void noAbsoluteTimeoutByDefault () {
+
+		String sessionId = saveUser(42);
+		age(sessionId);
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/");
+		source.cookie(SessionConf.cookieName(), sessionId);
+
+		try (WebContext context = new WebContext(source, new Fakes.FakeResponseSink())) {
+			assertEquals(42, context.session().getInt("user_id"));
+		}
+
+	}
+
+	@Test
 	@DisplayName("2回保存しても行は1つ（同時実行でデータが消えない）")
 	void saveTwiceUpserts () {
 
@@ -408,6 +462,66 @@ class DbSessionIntegrationTest {
 
 		return DBUtil.getMainDB()
 			.select("SELECT COUNT(*) AS cnt FROM %s".formatted(quoted())).orElseThrow().getLong("cnt");
+
+	}
+
+	/** 設定に absolute_timeout を書いて動かす */
+	private static void withAbsoluteTimeout (String value, Runnable body) {
+
+		com.typesafe.config.Config original = Conf.conf().config();
+
+		Conf.replace(com.typesafe.config.ConfigFactory.parseString("session.absolute_timeout = " + value).withFallback(original));
+		SessionStores.reset();
+
+		try {
+			body.run();
+		} finally {
+			Conf.replace(original);
+			SessionStores.reset();
+		}
+
+	}
+
+	/** 保存して ID を返す */
+	private String saveUser (int userId) {
+
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			context.session().put("user_id", userId);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		return sessionIdFrom(sink);
+
+	}
+
+	/** 発行を2時間前にする（最後に使ったのはいま） */
+	private static void age (String sessionId) {
+
+		// DB の時計で書く（JVM と DB のタイムゾーンが違っても、ずれない）
+		DBUtil.getMainDB().update("UPDATE %s SET created_at = %s WHERE session_id = ?"
+			.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("HOUR", true)), 2, sessionId);
+
+	}
+
+	/** 最後に出したセッション ID（消す Cookie は飛ばす） */
+	private String lastSessionIdFrom (Fakes.FakeResponseSink sink) {
+
+		String prefix = SessionConf.cookieName() + "=";
+		String found = null;
+
+		for (String setCookie : sink.setCookies()) {
+			if (setCookie.startsWith(prefix)) {
+				String value = setCookie.substring(prefix.length(), setCookie.indexOf(';'));
+				if (!value.isEmpty()) {
+					found = value;
+				}
+			}
+		}
+
+		return found;
 
 	}
 

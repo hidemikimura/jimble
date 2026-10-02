@@ -82,6 +82,76 @@ class RedisSessionIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-260 absolute_timeout を決めると、発行から過ぎたセッションは読めず、ID も作り直す")
+	void absoluteTimeout () {
+
+		RedisSessionStore limited = new RedisSessionStore(30, java.time.Duration.ofHours(1));
+
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			context.sessionStore(limited);
+			context.session().put("user_id", 42L);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String sessionId = sessionIdFrom(sink);
+
+		// 発行した時刻はアプリのデータには出ない
+		try (WebContext context = withSession(sessionId)) {
+			context.sessionStore(limited);
+			assertEquals(List.of("user_id"), List.copyOf(context.session().data().keySet()));
+		}
+
+		// 発行を2時間前にする
+		RedisClient.client().<String, String>getMap(RedisSessionStore.KEY_PREFIX + sessionId)
+			.put(RedisSessionStore.CREATED_AT, String.valueOf(System.currentTimeMillis() / 1000 - 7200));
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/");
+		source.cookie(SessionConf.cookieName(), sessionId);
+		Fakes.FakeResponseSink renewedSink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(source, renewedSink)) {
+			context.sessionStore(limited);
+			assertEquals(0L, context.session().getLong("user_id"), "発行から過ぎたセッションが読めた");
+			context.session().put("user_id", 7L);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String renewed = null;
+		for (String setCookie : renewedSink.setCookies()) {
+			String prefix = SessionConf.cookieName() + "=";
+			if (setCookie.startsWith(prefix) && !setCookie.startsWith(prefix + ";")) {
+				renewed = setCookie.substring(prefix.length(), setCookie.indexOf(';'));
+			}
+		}
+
+		assertNotNull(renewed);
+		assertTrue(!renewed.equals(sessionId), "同じ ID のまま");
+		assertTrue(!RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).isExists(), "古いものが残っている");
+
+		try (WebContext context = withSession(renewed)) {
+			context.sessionStore(limited);
+			assertEquals(7L, context.session().getLong("user_id"));
+		}
+
+		// TTL は発行からの残りを超えない
+		RedisClient.client().<String, String>getMap(RedisSessionStore.KEY_PREFIX + renewed)
+			.put(RedisSessionStore.CREATED_AT, String.valueOf(System.currentTimeMillis() / 1000 - 3540));
+
+		try (WebContext context = withSession(renewed)) {
+			context.sessionStore(limited);
+			assertEquals(7L, context.session().getLong("user_id"));
+		}
+
+		long ttl = RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + renewed).remainTimeToLive();
+		assertTrue(ttl > 0 && ttl <= 60_000, "発行からの残り（60 秒）を超えている: " + ttl);
+
+	}
+
+	@Test
 	@DisplayName("destroy すると読めなくなる")
 	void destroy () {
 

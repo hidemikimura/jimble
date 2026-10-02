@@ -180,7 +180,7 @@ csrf {
 session {
 	store            = "none"                     # none | db | redis | cookie
 	timeout          = 30m
-	absolute_timeout = 1d                         # when store = cookie: the limit from issue (does not slide)
+	absolute_timeout = 1d                         # limit from issue (does not slide). cookie: 1d by default. db / redis: only when written
 	cookie_name      = "sid"
 	table            = "session"                  # when store = db
 	secret           = ${?SESSION_SECRET}         # required when store = cookie
