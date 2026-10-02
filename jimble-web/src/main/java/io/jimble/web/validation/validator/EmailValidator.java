@@ -17,6 +17,9 @@ import io.jimble.web.validation.error.ValidationErrorType;
  */
 public class EmailValidator implements IValidator {
 
+	/** メールアドレスの長さの上限（RFC 5321） */
+	static final int MAX_LENGTH = 254;
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -32,9 +35,18 @@ public class EmailValidator implements IValidator {
 			return true;
 		}
 
+		/*
+		 * <b>長さを先に見る</b>（D-230）。メールアドレスは 254 文字まで（RFC 5321）。
+		 * かつては見ずに正規表現にかけたので、"a@" + "a.".repeat(10000) で StackOverflowError になり、
+		 * 検証の誤りではなく 500 になった（Error は Exception で受けられない）
+		 */
+		if (str.length() > MAX_LENGTH) {
+			return false;
+		}
+
 		try {
 			return Patterns.EMAIL_ADDRESS.matcher(str).matches();
-		} catch (Exception ex) {
+		} catch (Exception | StackOverflowError ex) {
 			return false;
 		}
 

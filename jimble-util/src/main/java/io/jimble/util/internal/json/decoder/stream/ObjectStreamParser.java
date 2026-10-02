@@ -20,7 +20,13 @@ public class ObjectStreamParser implements IStreamParser {
 	@Override
 	public Object parse(Configration conf, IInputStream stream) {
 
-		return parseMap(conf, stream);
+		stream.enterNesting();
+
+		try {
+			return parseMap(conf, stream);
+		} finally {
+			stream.exitNesting();
+		}
 
 	}
 
