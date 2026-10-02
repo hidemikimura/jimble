@@ -58,6 +58,9 @@ public class BotUtil {
 	/* パターンリスト */
 	private static final List<Pattern> patternList = new ArrayList<>();
 
+	/** 判定に使う UA の長さの上限（D-232） */
+	static final int MAX_UA_LENGTH = 512;
+
 	/* UA結果マップ */
 	private static final Cache<String, Boolean> uaResultMapCache = Caffeine.newBuilder()
 		.maximumSize(10000)
@@ -93,7 +96,14 @@ public class BotUtil {
 	 * @param ua    UA
 	 * @return  bot判定
 	 */
-	private static boolean isBot (String ua) {
+	private static boolean isBot (String rawUa) {
+
+		/*
+		 * <b>先頭の 512 文字だけを見る</b>（D-232）。ふつうの UA は 300 文字に満たない。
+		 * かつては丸ごと 1,500 ほどの正規表現にかけ、丸ごとキャッシュのキーにしていたので、
+		 * 16KB の UA を送るたびに CPU を使わせ、キャッシュに 1 件 16KB ずつ積ませられた
+		 */
+		String ua = rawUa.length() > MAX_UA_LENGTH ? rawUa.substring(0, MAX_UA_LENGTH) : rawUa;
 
 		Boolean cached = uaResultMap.get(ua);
 		if (cached != null) {
