@@ -566,6 +566,22 @@ if (!Mfa.activate(staffId, request.getString("code"))) {
 > **The two steps exist so that nobody gets locked out.** Turning it on at `enroll` time
 > means **anyone whose QR scan silently failed can never get back in.**
 
+### Enrolling again (a new phone, say)
+
+**When someone who already has it on calls `enroll` again, their current secret and recovery codes keep working** (since 2.2.4).
+The new secret and recovery codes are staged, and **swapped in only when `activate` passes with a code from the new one**.
+
+| | Current setup | New setup |
+| --- | --- | --- |
+| After `enroll` | works | not yet (neither `verify` nor its recovery codes pass) |
+| After `activate` passes | stops working (its recovery codes are deleted) | works |
+
+Giving up halfway leaves two-factor auth on. Calling `enroll` again throws the previous staging away and starts over.
+
+> Up to 2.2.3, `enroll` deleted the current setup on the spot. Abandoning it left two-factor auth off,
+> and **someone holding a stolen session could turn it off just by opening the enrolment page.**
+> The staging columns (`auth_mfa.staged_secret` and friends) are added automatically the first time it is used after upgrading.
+
 ### The secret is stored encrypted
 
 **`enroll` throws if `auth.mfa.secret_key` is not configured.**

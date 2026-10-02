@@ -3,6 +3,7 @@ package io.jimble.web.auth.mfa;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.FrameworkTables;
+import io.jimble.db.Tx;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.crypto.Aead;
@@ -152,6 +153,13 @@ public final class Mfa {
 	 * <b>認証アプリに入れ損ねた人が締め出される</b>のを防ぐため。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>もう有効な人が登録し直しても、いまの設定はそのまま効く</b>（D-259）。
+	 * 新しい秘密鍵と回復コードは控えに置き、{@link #activate} でコードが合ったときに入れ替える。
+	 * かつては登録し直しを始めた時点でいまの設定を消していたので、
+	 * 途中でやめると二要素認証が外れたままになり、セッションを盗んだ人が登録の画面を開くだけで外せた。
+	 * </p>
+	 *
 	 * <p><b>回復コードはここでしか見られない。</b>DB にはハッシュしか残らない。</p>
 	 *
 	 * @param userId		利用者 ID
@@ -203,21 +211,31 @@ public final class Mfa {
 		List<String> codes = recoveryCodes();
 		long now = nowSeconds();
 
-		try (DB db = DBUtil.getMainDB()) {
+		try (DB db = DBUtil.getMainDB(); Tx tx = db.begin()) {
 
-			// 途中でやめた人の残りを消してから入れ直す（同じ種別の同じ人だけ）
-			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId);
-			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ?"
+			// 前に途中でやめた控えを消す（いま使っている回復コードは残す）
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND staged = 1"
 				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
 
-			db.insert("INSERT INTO %s (realm, user_id, secret, activated_at, last_counter) VALUES (?, ?, ?, 0, 0)"
-				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId, Aead.encrypt(base32, key));
+			/*
+			 * <b>控えに置く</b>（D-259）。行があれば控えの列だけ書き換え、いまの秘密鍵には触らない。
+			 * 行が無ければ（初めての登録）、まだ有効でない行を作る
+			 */
+			int updated = db.update("UPDATE %s SET staged_secret = ?, staged_at = ? WHERE realm = ? AND user_id = ?"
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), Aead.encrypt(base32, key), now, realm, userId);
+
+			if (updated == 0) {
+				db.insert(("INSERT INTO %s (realm, user_id, secret, activated_at, last_counter, staged_secret, staged_at)"
+					+ " VALUES (?, ?, '', 0, 0, ?, ?)").formatted(table(db, FrameworkTables.AUTH_MFA))
+					, realm, userId, Aead.encrypt(base32, key), now);
+			}
 
 			for (String code : codes) {
-				db.insert("INSERT INTO %s (realm, user_id, code_hash, created_at) VALUES (?, ?, ?, ?)"
+				db.insert("INSERT INTO %s (realm, user_id, code_hash, created_at, staged) VALUES (?, ?, ?, ?, 1)"
 					.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId, recoveryHash(realm, userId, code), now);
 			}
+
+			tx.commit();
 
 		} catch (Exception cause) {
 			throw new IllegalStateException("二要素認証を登録できませんでした", cause);
@@ -260,6 +278,69 @@ public final class Mfa {
 			return false;
 		}
 
+		String staged = row.getStringOptional("staged_secret");
+
+		if (staged.isEmpty()) {
+			return activateLegacy(realm, userId, row, code);
+		}
+
+		long counter = Totp.verify(secretOf(staged), code, nowSeconds()
+			, MfaConf.period(), MfaConf.digits(), MfaConf.window());
+
+		if (counter == Totp.NO_MATCH) {
+			return false;
+		}
+
+		try (DB db = DBUtil.getMainDB(); Tx tx = db.begin()) {
+
+			/*
+			 * <b>控えを本物に入れ替える</b>（D-259）。読んだときと同じ控えのときだけ——
+			 * 同時に登録し直されていたら、どちらのコードが合ったのか分からないので、入れ替えない
+			 */
+			int updated = db.update(("UPDATE %s SET secret = staged_secret, staged_secret = NULL, staged_at = 0"
+				+ ", activated_at = ?, last_counter = ? WHERE realm = ? AND user_id = ? AND staged_secret = ?")
+				.formatted(table(db, FrameworkTables.AUTH_MFA)), nowSeconds(), counter, realm, userId, staged);
+
+			if (updated == 0) {
+				return false;
+			}
+
+			// 前の回復コードを消して、控えの回復コードを使えるようにする
+			db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND staged = 0"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
+			db.update("UPDATE %s SET staged = 0 WHERE realm = ? AND user_id = ? AND staged = 1"
+				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId);
+
+			tx.commit();
+
+		} catch (Exception cause) {
+			throw new IllegalStateException("二要素認証を有効にできませんでした", cause);
+		}
+
+		return true;
+
+	}
+
+	/**
+	 * 2.2.3 までに登録して、まだ有効にしていない行を有効にする
+	 *
+	 * <p>
+	 * 2.2.3 までは、登録した秘密鍵を（控えではなく）そのまま secret に入れていた。
+	 * 上げる前に登録を始めた人が、上げたあとにコードを入れられるようにする。
+	 * </p>
+	 *
+	 * @param realm		種別
+	 * @param userId	利用者 ID
+	 * @param row		行
+	 * @param code		認証アプリのコード
+	 * @return	有効になった場合 = true（もう有効なら、入れ替えるものが無いので false）
+	 */
+	private static boolean activateLegacy (String realm, long userId, Data row, String code) {
+
+		if (row.getLong("activated_at") > 0 || row.getStringOptional("secret").isEmpty()) {
+			return false;
+		}
+
 		long counter = Totp.verify(secretOf(row), code, nowSeconds()
 			, MfaConf.period(), MfaConf.digits(), MfaConf.window());
 
@@ -268,7 +349,7 @@ public final class Mfa {
 		}
 
 		try (DB db = DBUtil.getMainDB()) {
-			db.update("UPDATE %s SET activated_at = ?, last_counter = ? WHERE realm = ? AND user_id = ?"
+			db.update("UPDATE %s SET activated_at = ?, last_counter = ? WHERE realm = ? AND user_id = ? AND activated_at = 0"
 				.formatted(table(db, FrameworkTables.AUTH_MFA)), nowSeconds(), counter, realm, userId);
 		} catch (Exception cause) {
 			throw new IllegalStateException("二要素認証を有効にできませんでした", cause);
@@ -556,7 +637,7 @@ public final class Mfa {
 			 * 「引いてから消す」にすると、<b>同時に2回使える</b>。
 			 */
 			// 新しい形（鍵つき）と、2.2.3 までの形（塩なしの SHA-256）のどちらでも1度だけ使える（D-246）
-			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND (code_hash = ? OR code_hash = ?)"
+			int deleted = db.delete("DELETE FROM %s WHERE realm = ? AND user_id = ? AND staged = 0 AND (code_hash = ? OR code_hash = ?)"
 				.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY))
 				, realm, userId, recoveryHash(realm, userId, normalized), Hash.sha256(normalized));
 
@@ -622,7 +703,7 @@ public final class Mfa {
 	 */
 	private static int remainingRecoveryCodes (DB db, String realm, long userId) {
 
-		Data row = db.select("SELECT count(*) as cnt FROM %s WHERE realm = ? AND user_id = ?"
+		Data row = db.select("SELECT count(*) as cnt FROM %s WHERE realm = ? AND user_id = ? AND staged = 0"
 			.formatted(table(db, FrameworkTables.AUTH_MFA_RECOVERY)), realm, userId).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
@@ -873,7 +954,7 @@ public final class Mfa {
 	private static Data row (String realm, long userId) {
 
 		try (DB db = DBUtil.getMainDB()) {
-			return db.select("SELECT secret, activated_at, last_counter FROM %s WHERE realm = ? AND user_id = ?"
+			return db.select("SELECT secret, activated_at, last_counter, staged_secret FROM %s WHERE realm = ? AND user_id = ?"
 				.formatted(table(db, FrameworkTables.AUTH_MFA)), realm, userId).orElse(null);
 		} catch (Exception cause) {
 			/*
@@ -893,7 +974,19 @@ public final class Mfa {
 	 */
 	private static byte[] secretOf (Data row) {
 
-		String secret = Aead.decrypt(row.getString("secret"), MfaConf.secretKey());
+		return secretOf(row.getString("secret"));
+
+	}
+
+	/**
+	 * 暗号化した秘密鍵を戻す
+	 *
+	 * @param encrypted	暗号化した秘密鍵
+	 * @return	秘密鍵
+	 */
+	private static byte[] secretOf (String encrypted) {
+
+		String secret = Aead.decrypt(encrypted, MfaConf.secretKey());
 
 		/*
 		 * <b>{@code Aead.decrypt} は失敗すると null を返す</b>（例外ではない）。
@@ -1090,6 +1183,19 @@ public final class Mfa {
 					, "alter table \"%s\" drop constraint \"%s_pkey\"".formatted(FrameworkTables.AUTH_MFA, FrameworkTables.AUTH_MFA)
 					, "alter table \"%s\" add primary key (realm, user_id)".formatted(FrameworkTables.AUTH_MFA));
 
+			/*
+			 * 版3：登録し直しの控え（D-259）。控えに置いた秘密鍵は、activate でコードが合ったときに secret と入れ替える
+			 */
+			secret.add(3)
+				.mysql("""
+					alter table `%s`
+						add column staged_secret varchar(512) null
+						, add column staged_at bigint not null default 0
+					""".formatted(FrameworkTables.AUTH_MFA))
+				.postgresql(
+					"alter table \"%s\" add column staged_secret varchar(512) null".formatted(FrameworkTables.AUTH_MFA)
+					, "alter table \"%s\" add column staged_at bigint not null default 0".formatted(FrameworkTables.AUTH_MFA));
+
 			applyOrFail(secret);
 
 			DBVersion recovery = new DBVersion(FrameworkTables.AUTH_MFA_RECOVERY, "二要素認証の回復コード");
@@ -1125,6 +1231,11 @@ public final class Mfa {
 					"alter table \"%s\" add column realm varchar(64) not null default ''".formatted(FrameworkTables.AUTH_MFA_RECOVERY)
 					, "alter table \"%s\" drop constraint \"%s_pkey\"".formatted(FrameworkTables.AUTH_MFA_RECOVERY, FrameworkTables.AUTH_MFA_RECOVERY)
 					, "alter table \"%s\" add primary key (realm, user_id, code_hash)".formatted(FrameworkTables.AUTH_MFA_RECOVERY));
+
+			// 版3：控えの回復コード（D-259）。1 は activate を待っているもので、まだ使えない
+			recovery.add(3)
+				.mysql("alter table `%s` add column staged smallint not null default 0".formatted(FrameworkTables.AUTH_MFA_RECOVERY))
+				.postgresql("alter table \"%s\" add column staged smallint not null default 0".formatted(FrameworkTables.AUTH_MFA_RECOVERY));
 
 			applyOrFail(recovery);
 
