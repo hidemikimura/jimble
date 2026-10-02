@@ -145,6 +145,32 @@ class MfaIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-246 回復コードは鍵つきの形で保存する。2.2.3 までの形（塩なしの SHA-256）で入れたものも1度だけ使える")
+	void recoveryCodesAreKeyed () {
+
+		Mfa.Enrollment enrollment = enrollAndActivate();
+		String first = enrollment.recoveryCodes().get(0);
+
+		// 塩なしの SHA-256 では引けない
+		Data legacy = DBUtil.getMainDB().select("SELECT count(*) as cnt FROM %s WHERE user_id = ? AND code_hash = ?"
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa_recovery")), USER_ID
+			, io.jimble.util.hash.Hash.sha256(first.replaceAll("[\\s-]", "").toUpperCase())).orElse(null);
+		assertEquals(0, legacy.getInt("cnt"), "塩なしの SHA-256 のまま保存しています");
+
+		assertTrue(Mfa.verify(USER_ID, first), "新しい形の回復コードで入れません");
+		assertFalse(Mfa.verify(USER_ID, first), "同じ回復コードで二度入れています");
+
+		// 2.2.3 までに配った回復コード（塩なしの SHA-256 で保存したもの）
+		String old = "OLDCODE12345";
+		DBUtil.getMainDB().execute("INSERT INTO %s (realm, user_id, code_hash, created_at) VALUES ('', ?, ?, 0)"
+			.formatted(DBUtil.getMainDB().dialect().identifier("auth_mfa_recovery")), USER_ID, io.jimble.util.hash.Hash.sha256(old));
+
+		assertTrue(Mfa.verify(USER_ID, old), "2.2.3 までの回復コードで入れません");
+		assertFalse(Mfa.verify(USER_ID, old));
+
+	}
+
+	@Test
 	@DisplayName("F-W-32 暗号鍵が無ければ有効にさせない")
 	void refusesWithoutTheSecretKey () {
 
