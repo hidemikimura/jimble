@@ -397,6 +397,17 @@ public class Paging {
 
 		}
 
+		/*
+		 * <b>ページ番号を、開始位置があふれない数までに抑える</b>（D-257）。
+		 * かつては ?page=9223372036854775807 で (page - 1) * per があふれて負になり、
+		 * OFFSET は 0 に直されて1ページ目のデータが返るのに、page() は巨大な数のまま、
+		 * start() は負の数、という食い違いになった（画面の「何件目から」や「次へ」が壊れる）
+		 */
+		long lastSafePage = Long.MAX_VALUE / this.per;
+		if (this.page > lastSafePage) {
+			this.page = lastSafePage;
+		}
+
 		// データ開始位置
 		start = (this.page - 1) * this.per + 1;
 

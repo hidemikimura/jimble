@@ -441,7 +441,8 @@ batch_manager {
 
 proxy {
 	connect_timeout = 5s     # 転送先に繋ぐまでの上限
-	request_timeout = 30s    # 応答を待つ上限
+	request_timeout = 30s    # 送るときに進まない待ち・応答のヘッダが届くまで（全体）・本文の1回の読み込み
+	body_timeout    = 0s     # 応答の本文の全体の上限。0 なら上限なし（ダウンロードや SSE を切らない）
 }
 
 sse {

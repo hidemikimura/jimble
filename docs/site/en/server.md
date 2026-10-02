@@ -251,6 +251,15 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` is **appended to the existing value** (not overwritten).
 The timeouts are `proxy.connect_timeout` (5 seconds) and `proxy.request_timeout` (30 seconds),
 and a forward that fails returns **502**.
+
+| | Limit |
+| --- | --- |
+| Connecting | `connect_timeout` |
+| Sending the request | cut if not a single byte goes out for `request_timeout` |
+| From the end of sending to the response headers | `request_timeout` in total (since 2.2.4; before that it was per read, so a target trickling bytes never ended) |
+| The response body | `request_timeout` per read. In total, `proxy.body_timeout` (default 0, no limit) or `ReverseProxy#bodyTimeout` |
+
+The body has no total limit by default so large downloads and SSE are not cut off midway.
 The path is re-encoded segment by segment, and **a path containing `.` or `..` gets 400**
 (so a request cannot climb out of the base URL's path).
 

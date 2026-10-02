@@ -15,6 +15,7 @@ import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * ただし<b>引き直しには間隔を置く</b>——置かないと、
  * <b>でたらめな {@code kid} を送りつけるだけで JWKS を叩かせ続けられる</b>。
  * </p>
+ *
+ * <h2>待たせるのは、同じプロバイダの知らない kid だけ</h2>
+ * <p>
+ * 鍵を読むときはロックを取らない（一覧は丸ごと差し替える）。引き直すときだけ、<b>プロバイダごと</b>にロックを取る（D-256）。
+ * かつてはクラス全体の {@code synchronized} で、<b>JWKS を引いている間（最長でタイムアウトまで）、
+ * ほかのプロバイダも含めた OIDC のログインが全部止まった</b>。
+ * </p>
  */
 final class Jwks {
 
@@ -50,10 +58,10 @@ final class Jwks {
 	/** base64url */
 	private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
 
-	/* kid → 鍵 */
-	private final Map<String, Key> keys = new LinkedHashMap<>();
+	/* kid → 鍵（変えない Map。引き直したら丸ごと差し替える） */
+	private volatile Map<String, Key> keys = Collections.unmodifiableMap(new LinkedHashMap<>());
 
-	/* 最後に引いた時刻 */
+	/* 最後に引いた時刻（引き直すときのロックの中でだけ読み書きする） */
 	private Instant fetchedAt = Instant.EPOCH;
 
 	/**
@@ -74,7 +82,7 @@ final class Jwks {
 	 * @param kid		鍵の名前
 	 * @return	鍵。見つからなければ null
 	 */
-	static synchronized Key find (OidcProvider provider, String kid) {
+	static Key find (OidcProvider provider, String kid) {
 
 		Jwks jwks = CACHE.computeIfAbsent(provider.name, name -> new Jwks());
 
@@ -84,24 +92,35 @@ final class Jwks {
 			return key;
 		}
 
-		/*
-		 * 知らない kid。鍵が回ったのかもしれないので引き直す——
-		 * <b>ただし前に引いてから間が空いていれば</b>。
-		 */
-		if (Instant.now().isBefore(jwks.fetchedAt.plus(REFRESH_INTERVAL))) {
-			return null;
+		synchronized (jwks) {
+
+			// 待っている間に、ほかのスレッドが引き直したかもしれない
+			key = jwks.keys.get(kid);
+
+			if (key != null) {
+				return key;
+			}
+
+			/*
+			 * 知らない kid。鍵が回ったのかもしれないので引き直す——
+			 * <b>ただし前に引いてから間が空いていれば</b>。
+			 */
+			if (Instant.now().isBefore(jwks.fetchedAt.plus(REFRESH_INTERVAL))) {
+				return null;
+			}
+
+			jwks.fetch(provider);
+
+			return jwks.keys.get(kid);
+
 		}
-
-		jwks.fetch(provider);
-
-		return jwks.keys.get(kid);
 
 	}
 
 	/**
 	 * 持っているものを捨てる（テスト用）
 	 */
-	static synchronized void reset () {
+	static void reset () {
 
 		CACHE.clear();
 
@@ -114,12 +133,19 @@ final class Jwks {
 	 * @param kid		鍵の名前
 	 * @param key		鍵
 	 */
-	static synchronized void put (String provider, String kid, Key key) {
+	static void put (String provider, String kid, Key key) {
 
 		Jwks jwks = CACHE.computeIfAbsent(provider, name -> new Jwks());
 
-		jwks.keys.put(kid, key);
-		jwks.fetchedAt = Instant.now();
+		synchronized (jwks) {
+
+			Map<String, Key> copy = new LinkedHashMap<>(jwks.keys);
+			copy.put(kid, key);
+
+			jwks.keys = Collections.unmodifiableMap(copy);
+			jwks.fetchedAt = Instant.now();
+
+		}
 
 	}
 
@@ -176,8 +202,7 @@ final class Jwks {
 		 * <b>まるごと入れ替える。</b>足すだけにすると、
 		 * <b>プロバイダが捨てた鍵をこちらが持ち続ける</b>ことになる。
 		 */
-		keys.clear();
-		keys.putAll(found);
+		keys = Collections.unmodifiableMap(found);
 
 	}
 

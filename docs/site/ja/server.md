@@ -249,6 +249,15 @@ install(() -> ReverseProxy.mount("/api", "http://backend:8080"));
 `X-Forwarded-For` は**既存の値に足します**（上書きしません）。
 タイムアウトは `proxy.connect_timeout`（5秒）と `proxy.request_timeout`（30秒）で、
 転送に失敗したら **502** を返します。
+
+| | 待ちの上限 |
+| --- | --- |
+| 繋ぐまで | `connect_timeout` |
+| リクエストを送るあいだ | `request_timeout` のあいだ1バイトも進まなければ切る |
+| 送り終えてから、応答のヘッダが届くまで | 全体で `request_timeout`（2.2.4 から。それまでは1回の読み込みごとだったので、少しずつ返されると終わらなかった） |
+| 応答の本文 | 1回の読み込みごとに `request_timeout`。全体は `proxy.body_timeout`（既定 0 ＝ 上限なし）か、`ReverseProxy#bodyTimeout` |
+
+本文の全体を既定で切らないのは、大きなダウンロードや SSE を途中で切らないためです。
 パスはセグメントごとにエンコードし直して送り、**`.` / `..` を含むパスは 400** で断ります
 （ベース URL のパスの外へ出させないため）。
 
