@@ -38,10 +38,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '25'
@@ -49,7 +49,10 @@ jobs:
       # <b>v5 で止める。</b>v6 はキャッシュが MIT ではない
       # 非公開コンポーネントになり、使うと Terms of Use への同意になる（D-118）
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          # gradle-wrapper.jar が公開されているものと同じかを確かめる（既定でも有効。明示しておく）
+          validate-wrappers: true
 
       # -Werror と doclint が効いているので、警告が1つでも出たらここで落ちる（要件 D-15）
       - name: build（単体テスト・javadoc 込み）
@@ -84,7 +87,7 @@ jobs:
       # 人が前後を見比べるためのもの。<b>中身を見て落とすことはしない</b>
       - name: ベンチマークの結果を残す
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench
           path: '**/build/bench/bench.txt'
@@ -93,7 +96,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-test-results
           path: '**/build/reports/tests/**'
@@ -112,23 +115,26 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          # gradle-wrapper.jar が公開されているものと同じかを確かめる（既定でも有効。明示しておく）
+          validate-wrappers: true
 
       - name: build（テスト・javadoc 込み）
         run: ./gradlew -p gradle-plugin build --stacktrace
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: plugin-test-results
           path: 'gradle-plugin/build/reports/**'
@@ -182,16 +188,19 @@ jobs:
       JIMBLE_SAMPLE_DB_PASSWORD: jimble
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          # gradle-wrapper.jar が公開されているものと同じかを確かめる（既定でも有効。明示しておく）
+          validate-wrappers: true
 
       - name: dbTest（@Tag("db") のテスト）
         run: ./gradlew dbTest --stacktrace
@@ -206,7 +215,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: db-test-results
           path: '**/build/reports/tests/**'
@@ -246,16 +255,19 @@ jobs:
           --health-retries=20
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          # gradle-wrapper.jar が公開されているものと同じかを確かめる（既定でも有効。明示しておく）
+          validate-wrappers: true
 
       - name: pgTest（@Tag("db") のテストを PostgreSQL で）
         run: ./gradlew pgTest --stacktrace
@@ -268,7 +280,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pg-test-results
           path: '**/build/reports/tests/**'

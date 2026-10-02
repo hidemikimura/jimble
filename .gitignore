@@ -34,6 +34,8 @@ secring.*
 .env
 .env.*
 application.local.conf
+# examples のものは公開してよいサンプルの鍵だけで、application.conf に書かないために分けてある（D-254）
+!examples/*/conf/application.local.conf
 
 # 設計メモと要件（公開しない）
 #

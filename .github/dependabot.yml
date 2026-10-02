@@ -43,6 +43,9 @@ updates:
 
   # ワークフローで使う action も古くなる
   #
+  # ワークフローでは action を<b>コミットの SHA で固定</b>している（タグは差し替えられるため。D-253）。
+  # Dependabot は SHA と後ろの「# v7.0.1」のコメントを一緒に上げる。
+  #
   # 上限は 5 にしてある。3 だと<b>4本目が来なくなる</b>：
   # checkout / upload-artifact / gradle/actions の3本が開いたままのあいだ、
   # 非推奨になった setup-java v4 の PR がいつまでも出てこなかった。
