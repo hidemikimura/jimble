@@ -4,6 +4,20 @@
 
 ---
 
+## 2.4.0（未公開）
+
+### 足したこと（メール）
+
+| | |
+|---|---|
+| **SMTP でのメール送信**（`io.jimble.util.mail`：`Mailer` / `MailMessage`） | 宛先（To・Cc・Bcc・Reply-To）、テキストと HTML、添付、ヘッダ。日本語の件名・名前は RFC 2047、添付のファイル名は RFC 2231、本文は UTF-8 の base64。**依存は足していない**——SMTP と MIME を JDK だけで書いた（D-152） |
+| SMTP の暗号化と認証 | STARTTLS（587）・TLS（465）・なし（手元用）。証明書のホスト名を確かめる。AUTH PLAIN / LOGIN。STARTTLS を選んだのに相手が対応していなければ続けない。暗号化しない接続では認証しない。宛先を1人でも断られたら誰にも送らない |
+| 送り先を差し替えられる（`MailTransport`） | `mail.transport` が `smtp` / `log`（送らずにログ。手元用）/ `memory`（テスト用）。HTTP の API で送るなら実装して `Mailer.use(...)`。`MailMessage.toMime()` で生のメールにできる |
+| `MailException.isTransient()` | SMTP の 4xx と通信の失敗は true（MQ でやり直す）、5xx と形の誤りは false |
+| 安全のための確かめ | 件名・名前・ヘッダの改行、山括弧や空白のあるアドレスは、作った時点で例外（ヘッダの差し込みを止める） |
+
+---
+
 ## 2.3.0（2026-10-03）
 
 **パスキー（WebAuthn）でのパスワードなしのログインを足した版です。**これまでの振る舞いは変わりません（使うときだけ `auth.passkey.rp_id` を書くか、`PasskeyRp` を渡します）。

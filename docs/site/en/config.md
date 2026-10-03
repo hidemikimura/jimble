@@ -315,6 +315,24 @@ cache {
 	memory.expire = 0s      # memory only. 0 never expires
 }
 
+mail {
+	transport = "smtp"      # smtp | log (do not send; log it. for local use) | memory (for tests)
+	from      = ""          # the sender for mail without a From
+	from_name = ""
+
+	smtp {
+		host            = ""            # required for smtp (sending without it throws)
+		port            = 587           # without it, from security (starttls 587 / tls 465 / none 25)
+		security        = "starttls"    # starttls | tls | none (none cannot authenticate)
+		username        = ""
+		password        = ${?SMTP_PASSWORD}
+		connect_timeout = 10s
+		timeout         = 30s
+		helo            = ""            # the name given in EHLO (empty means this machine's name)
+		envelope_from   = ""            # where bounces go (empty means From)
+	}
+}
+
 sql_cache {
 	enabled = false
 	store   = "memory"   # memory | redis | db

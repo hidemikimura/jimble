@@ -243,6 +243,21 @@ DB に積むのは中、外へ出すのは外——**コミットの逆側**で�
 
 時間を指定するなら `put(db, data, scheduledAt)`。
 
+### メールは MQ の execute() から送る（2.4.0）
+
+```java
+try {
+	Mailer.send(new MailMessage().to(data.getString("to")).subject("...").text("..."));   // io.jimble.util.mail
+	return MqStatus.completed;
+} catch (MailException ex) {
+	if (ex.isTransient()) throw ex;   // SMTP の 4xx・繋がらない → maxRetry() までやり直す
+	return MqStatus.dead;             // 5xx（宛先が無い・認証が通らない）→ やり直しても同じ
+}
+```
+
+- 設定は `mail.smtp.*`（`host` が要る。書かずに送ると例外）。手元は `application.local.conf` に `mail.transport = "log"`、テストは `Mailer.use(new MemoryTransport())`
+- 件名・名前・ヘッダの改行、山括弧のあるアドレスは作った時点で例外（ヘッダの差し込みを止める）。HTML を送るときも `text(...)` を入れる
+
 ### 同じメッセージは2回来る
 
 **「ちょうど1回」は作れない。jimble はそのふりをしない。**
@@ -306,6 +321,7 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 | --- | --- |
 | バッチ・チャンク・管理画面 | <https://jimble.io/ja/batch.md> |
 | MQ | <https://jimble.io/ja/mq.md> |
+| メール | <https://jimble.io/ja/mail.md> |
 | トランザクション | <https://jimble.io/ja/transaction.md> |
 | SQL ビルダー | <https://jimble.io/ja/sql.md> |
 | 実行の流れとスレッド | <https://jimble.io/ja/execution.md> |
