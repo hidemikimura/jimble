@@ -6,6 +6,12 @@
 
 ## 2.2.5（未公開）
 
+### jimbleCheck
+
+| | |
+|---|---|
+| **2.2.2〜2.2.4 で入れた安全の決まりを見る規則を足しました**（どれも WARN） | J102：`before` / `after` だけでルートの無い `path(...)` のブロック（`/mcp` の認証が効いていない形）。J203：`application.conf` などの `cookie.secure = false`。J204：`trust_proxy = true` だけで `trusted_proxies` / `client_ip_header` が無い。J403：`Lockout.waitSeconds` → `fail` の順のロックアウト。J601：500 番台でも `getMessage()` を返すエラーハンドラ。J602：リクエストを許す列なしで `apply` / `setRow` / `valueRow` へ渡す |
+
 ### AI 向けの skill
 
 | | |
