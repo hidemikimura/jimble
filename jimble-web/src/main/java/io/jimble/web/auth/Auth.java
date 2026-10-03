@@ -279,7 +279,13 @@ public final class Auth {
 		}
 
 		if (context.route().route().attribute(NO_SESSION)) {
-			context.sessionStore(SessionStores.none());
+			/*
+			 * API のトークンで入ったリクエストは、ApiToken.authenticate がもう保存先を「なし」にして
+			 * ログインさせている（D-264）。ここで変え直そうとすると、使い始めたセッションなので例外になる
+			 */
+			if (!ApiToken.isTokenRequest(context)) {
+				context.sessionStore(SessionStores.none());
+			}
 		} else {
 			/*
 			 * <b>PUBLIC を見る前に比べる</b>（F-W-33）。公開のルートでも、ログインしている人の名前を出したり、
@@ -298,6 +304,13 @@ public final class Auth {
 		if (!principal.isAuthenticated()) {
 			// 覚えているのに restore より先に来ていたら言う（順番の取り違え。D-189）
 			Remember.warnIfGuardRanFirst(context, realmOf(context));
+
+			// トークンを送ってきたのに確かめていない（ApiToken.authenticate の置き忘れ。D-264）
+			if (context.route().route().attribute(ApiToken.ACCEPT) && ApiToken.bearerIgnored(context)) {
+				io.jimble.util.internal.WarnOnce.warn("api_token.authenticate_missing"
+					, "Authorization: Bearer が来ましたが、ApiToken.authenticate(...) を before に置いていません。トークンは確かめていません");
+			}
+
 			throw new HttpException(401, "ログインしてください");
 		}
 
@@ -373,6 +386,32 @@ public final class Auth {
 		checkPrincipal(principal);
 
 		store(context, principal, true, realm, Revocations.forLogin(realm, principal.id()));
+
+	}
+
+	/**
+	 * そのリクエストのあいだだけログインさせる（API のトークンで入ったとき。D-264）
+	 *
+	 * <p>
+	 * <b>{@link ApiToken} だけが呼ぶ。</b>保存先が「なし」のセッションに入れるので、Cookie は出ず、次のリクエストには残らない。
+	 * ID は振り直さない（振り直すセッションが無い）。パスワードを入れて入った印は付けない。
+	 * </p>
+	 *
+	 * @param context		コンテキスト
+	 * @param principal		ログインする人
+	 * @param realm			種別
+	 * @param generation	トークンを発行したときの世代
+	 */
+	static void loginForRequest (WebContext context, Principal principal, String realm, long generation) {
+
+		checkPrincipal(principal);
+
+		context.session().put(sessionKey(KEY_ID, realm), principal.id());
+		context.session().put(sessionKey(KEY_NAME, realm), principal.name());
+		context.session().put(sessionKey(KEY_ROLE, realm), principal.role());
+		context.session().put(sessionKey(KEY_FULL, realm), false);
+		context.session().remove(sessionKey(KEY_FULL_AT, realm));
+		context.session().put(sessionKey(KEY_GEN, realm), generation);
 
 	}
 

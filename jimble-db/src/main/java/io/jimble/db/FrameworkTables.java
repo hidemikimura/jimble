@@ -97,6 +97,9 @@ public final class FrameworkTables {
 	/** パスキー（D-261） */
 	public static final String AUTH_PASSKEY = "auth_passkey";
 
+	/** API のトークン（D-264） */
+	public static final String AUTH_API_TOKEN = "auth_api_token";
+
 	/**
 	 * 全部
 	 *
@@ -128,6 +131,7 @@ public final class FrameworkTables {
 		, AUTH_MFA_RECOVERY
 		, AUTH_REVOCATION
 		, AUTH_PASSKEY
+		, AUTH_API_TOKEN
 	);
 
 	private FrameworkTables () {}
