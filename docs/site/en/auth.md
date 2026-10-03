@@ -747,7 +747,7 @@ ApiToken.revoke("", me.id(), id);                   // unusable at once; never r
 
 ## Passkeys (passwordless login)
 
-**A passkey alone logs you in** (since 2.3.0). No login id either: the browser offers the passkeys it has for this site.
+**A passkey alone logs you in** (since 2.4.0). No login id either: the browser offers the passkeys it has for this site.
 A passkey includes on-device user verification (fingerprint, face, PIN), so a user who passes is logged in with `Auth.login`.
 **No two-factor code is asked for** (the passkey already covers "a device you have" and "verifying it is you"), and `Auth.FULL_AUTH` routes are open to them.
 

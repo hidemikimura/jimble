@@ -4,7 +4,24 @@
 
 ---
 
-## 2.4.0（未公開）
+## 2.4.0（2026-10-04）
+
+**パスキー（WebAuthn）でのパスワードなしのログイン、API のトークン（`Authorization: Bearer`）、メールの送信を足した版です。**
+これまでの振る舞いは変わりません（どれも、使うときだけ書きます）。依存は1つも足していません（WebAuthn・SMTP・MIME を JDK だけで書いています）。
+パスキーの動く例は examples/approval-auth（`http://localhost:9000/login` の「パスキーでログイン」と `/passkeys`）です。
+
+> **2.3.0 は公開していません。**パスキーは 2.3.0 として準備しましたが、公開する前にメールと API のトークンが揃ったので、まとめて 2.4.0 にしました。
+
+### 足したこと（パスキー）
+
+| | |
+|---|---|
+| **パスキー（WebAuthn）でのパスワードなしのログイン**（`io.jimble.web.auth.passkey.Passkey`） | 登録（`registrationOptions` / `register`）とログイン（`loginOptions` / `login`）、一覧と削除（`list` / `delete` / `deleteAll`）。ログイン ID を聞かず、ブラウザが出す候補から選ぶ形（入力欄の候補に出す形も）。通ったら `Auth.login` まで済み、二要素認証のコードは聞かない。**依存は足していない**——CBOR の読み取り・COSE の鍵・署名の確かめ（ES256 / EdDSA / RS256）を JDK だけで書いた（D-152） |
+| ブラウザ側の JS を同梱しました（`Passkey.script()`） | `JimblePasskey.register(...)` / `login(...)` を呼ぶだけ。base64url の変換、`X-CSRF-Token` の送信と差し替え（`csrf.bind_session`）をやる |
+| 設定 `auth.passkey.*`（`rp_id`・`rp_name`・`origins`・`timeout`） | 表 `auth_passkey` は最初に使ったときに作る |
+| **クライアントごとにドメインが違う SaaS では、rp_id を渡せます**（`PasskeyRp`） | `Passkey.loginOptions(context, rp)` などに渡す。パスキーは rp_id ごとに持ち、A で登録したものは B では使えない。options を出したときと違う rp で確かめると断る。`PasskeyRp` はオリジンが rp_id の下にあるかを確かめる |
+| examples/approval-auth にパスキーの画面を足しました | ログインの画面の「パスキーでログイン」と入力欄の候補、`/passkeys`（一覧・登録・削除）。`http://localhost:9000` で開いて試せます |
+| `JimblePasskey` の options に `extra`（確かめるときに一緒に送るもの。ラベルなど）と `signal`（入力欄の候補を待っているのを止める）を足しました | |
 
 ### 足したこと（API のトークン）
 
@@ -24,24 +41,6 @@
 | 送り先を差し替えられる（`MailTransport`） | `mail.transport` が `smtp` / `log`（送らずにログ。手元用）/ `memory`（テスト用）。HTTP の API で送るなら実装して `Mailer.use(...)`。`MailMessage.toMime()` で生のメールにできる |
 | `MailException.isTransient()` | SMTP の 4xx と通信の失敗は true（MQ でやり直す）、5xx と形の誤りは false |
 | 安全のための確かめ | 件名・名前・ヘッダの改行、山括弧や空白のあるアドレスは、作った時点で例外（ヘッダの差し込みを止める） |
-
----
-
-## 2.3.0（2026-10-03）
-
-**パスキー（WebAuthn）でのパスワードなしのログインを足した版です。**これまでの振る舞いは変わりません（使うときだけ `auth.passkey.rp_id` を書くか、`PasskeyRp` を渡します）。
-依存は足していません。動く例は examples/approval-auth（`http://localhost:9000/login` の「パスキーでログイン」と `/passkeys`）です。
-
-### 足したこと（パスキー）
-
-| | |
-|---|---|
-| **パスキー（WebAuthn）でのパスワードなしのログイン**（`io.jimble.web.auth.passkey.Passkey`） | 登録（`registrationOptions` / `register`）とログイン（`loginOptions` / `login`）、一覧と削除（`list` / `delete` / `deleteAll`）。ログイン ID を聞かず、ブラウザが出す候補から選ぶ形（入力欄の候補に出す形も）。通ったら `Auth.login` まで済み、二要素認証のコードは聞かない。**依存は足していない**——CBOR の読み取り・COSE の鍵・署名の確かめ（ES256 / EdDSA / RS256）を JDK だけで書いた（D-152） |
-| ブラウザ側の JS を同梱しました（`Passkey.script()`） | `JimblePasskey.register(...)` / `login(...)` を呼ぶだけ。base64url の変換、`X-CSRF-Token` の送信と差し替え（`csrf.bind_session`）をやる |
-| 設定 `auth.passkey.*`（`rp_id`・`rp_name`・`origins`・`timeout`） | 表 `auth_passkey` は最初に使ったときに作る |
-| **クライアントごとにドメインが違う SaaS では、rp_id を渡せます**（`PasskeyRp`） | `Passkey.loginOptions(context, rp)` などに渡す。パスキーは rp_id ごとに持ち、A で登録したものは B では使えない。options を出したときと違う rp で確かめると断る。`PasskeyRp` はオリジンが rp_id の下にあるかを確かめる |
-| examples/approval-auth にパスキーの画面を足しました | ログインの画面の「パスキーでログイン」と入力欄の候補、`/passkeys`（一覧・登録・削除）。`http://localhost:9000` で開いて試せます |
-| `JimblePasskey` の options に `extra`（確かめるときに一緒に送るもの。ラベルなど）と `signal`（入力欄の候補を待っているのを止める）を足しました | |
 
 ---
 
