@@ -1,6 +1,6 @@
 ---
 name: jimble-web
-description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証）、実際に踏んだ落とし穴を含む。
+description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証・パスキー）、実際に踏んだ落とし穴を含む。
 ---
 
 # jimble の Web 層
@@ -338,6 +338,26 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **ログインを自分で書くなら、`Lockout.waitSeconds` → 確かめる → `Lockout.fail` の順にしない**（同時に送られると素通りする）。
   **`Lockout.attempt(key)` で、試す前に数える**（0 なら試してよい。成功したら `Lockout.clear(key)`）。`Auth.attemptLogin` はこれを使っている
 
+### パスキー（パスワードなしのログイン。2.3.0）
+
+```java
+post("/passkey/register/options", c -> c.response().json(Passkey.registrationOptions(c, loginId))).attribute(Auth.FULL_AUTH, true);
+post("/passkey/register", c -> { Passkey.register(c, c.request().bodyJson(), "ノート PC"); c.response().json("ok", true); })
+	.attribute(Auth.FULL_AUTH, true);
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, c.request().bodyJson(), App::findPrincipal)) throw new HttpException(401, "...");
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラウザは JimblePasskey.register / login を呼ぶ
+```
+
+- `import io.jimble.web.auth.passkey.Passkey;`。**`auth.passkey.rp_id`（ドメイン）が要る**。あとから変えると登録したものが全部使えなくなる
+- **登録は `Auth.FULL_AUTH` のルートから**（セッションを盗んだ人に自分のパスキーを足させない）。DB とセッションが要る（`NO_SESSION` を付けない）
+- 通ったら中で `Auth.login` まで済む。**二要素認証のコードは聞かない**（パスキーが本人確認込み）。`FULL_AUTH` も通る
+- ブラウザ側は自分で `navigator.credentials` を書かず、`Passkey.script()` の JS を使う（base64url の変換と CSRF のヘッダをやる）
+- 一覧は `Passkey.list(id)`、削除は `Passkey.delete(id, 一覧の id)`（FULL_AUTH のルートから）。`Auth.revoke` ではパスキーは消えない
+
 ## 落とし穴（実際に踏んだもの）
 
 - **1.x のコードを直すなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す
@@ -402,7 +422,7 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 | 入力と出力 | <https://jimble.io/ja/request-response.md> |
 | エラー処理 | <https://jimble.io/ja/errors.md> |
 | セッション・CSRF・Cookie・鍵の入れ替え | <https://jimble.io/ja/session-security.md> |
-| ログイン・認可・ロックアウト・remember-me・OIDC・二要素認証 | <https://jimble.io/ja/auth.md> |
+| ログイン・認可・ロックアウト・remember-me・OIDC・二要素認証・パスキー | <https://jimble.io/ja/auth.md> |
 | 検証とページング | <https://jimble.io/ja/validation.md> |
 | テンプレート（jte） | <https://jimble.io/ja/view.md> |
 | 静的ファイル・SPA | <https://jimble.io/ja/assets.md> |

@@ -678,6 +678,108 @@ Mfa.remainingRecoveryCodes("operator", staff.id());
 
 動いているものは `examples/approval-auth` にあります（ログイン → コード → 登録 → 解除まで）。
 
+## パスキー（パスワードなしのログイン）
+
+**パスキーだけでログインできます**（2.3.0 から）。ログイン ID も入れません——ブラウザが、このサイトのパスキーの候補を出します。
+パスキーは端末の本人確認（指紋・顔・PIN）込みなので、通った人は `Auth.login` でログインさせます。
+**二要素認証のコードは聞きません**（パスキーそのものが「持っている端末」と「本人確認」の2つを満たします）。`Auth.FULL_AUTH` のルートにも入れます。
+
+```java
+// 登録（ログインしている人。パスワードを入れ直した人だけ）
+post("/passkey/register/options", c -> c.response().json(Passkey.registrationOptions(c, loginIdOf(c))))
+	.attribute(Auth.FULL_AUTH, true);
+post("/passkey/register", c -> {
+	Passkey.register(c, c.request().bodyJson(), "ノート PC");   // 第3引数は利用者が見分ける名前
+	c.response().json("ok", true);
+}).attribute(Auth.FULL_AUTH, true);
+
+// ログイン（誰でも。NO_SESSION は付けない）
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, c.request().bodyJson(), App::findPrincipal)) {   // 利用者 ID → Principal（入れないなら null）
+		throw new HttpException(401, "パスキーでログインできませんでした");
+	}
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+
+// ブラウザ側の JS
+get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
+```
+
+ブラウザ側は、同梱の JS を読んで呼ぶだけです。
+
+```html
+<script src="/passkey.js"></script>
+<script>
+	// 登録
+	await JimblePasskey.register("/passkey/register/options", "/passkey/register", { csrfToken });
+
+	// ログイン（ボタンを押したとき）
+	await JimblePasskey.login("/passkey/login/options", "/passkey/login", { csrfToken });
+	location.href = "/";
+
+	// 入力欄の候補にパスキーを出す（<input autocomplete="username webauthn"> を置いておく）
+	JimblePasskey.login("/passkey/login/options", "/passkey/login", { csrfToken, conditional: true })
+		.then(result => { if (result) location.href = "/"; });
+</script>
+```
+
+失敗すると `Error` を投げます（`error.status` にサーバーの状態コード。利用者が取り消すと `error.name === "NotAllowedError"`）。
+`csrf.bind_session = true` でログインのあとにトークンが変わっても、JS が `X-CSRF-Token` を読んで差し替えます（`onCsrfToken` で受け取れます）。
+
+### 設定
+
+```conf
+auth {
+	passkey {
+		rp_id   = "example.com"             # パスキーを結びつけるドメイン（必須）
+		rp_name = "承認ワークフロー"         # 登録のときにブラウザが出す名前（空なら rp_id）
+		origins = ["https://example.com"]   # 受け付けるオリジン（空なら https:// + rp_id）
+		timeout = 5m                         # 始めてから終えるまで
+	}
+}
+```
+
+> [!TRAP]
+> **`rp_id` をあとから変えると、登録したパスキーが全部使えなくなります。**パスキーはドメインに結びついているためです。
+> サブドメインで動かすなら、親のドメイン（`example.com`）を書いておくと、`app.example.com` からも `admin.example.com` からも使えます。
+>
+> 手元で試すなら `rp_id = "localhost"`、`origins = ["http://localhost:9000"]`（ブラウザは localhost だけ http を許します）。
+
+### 何を確かめるか
+
+| | |
+| --- | --- |
+| チャレンジ | セッションに置き、**1度しか使えません**。`timeout` を過ぎたものは断ります。登録のチャレンジは、出したときにログインしていた人にしか使えません |
+| オリジン | `origins` に無いものは断ります。別のサイトの iframe の中からの呼び出し（`crossOrigin`）も断ります |
+| 本人確認 | **端末の本人確認（UV）を必ず求めます。**押しただけ（UP）のセキュリティキーは通りません |
+| 署名 | 登録した公開鍵で確かめます（ES256 / EdDSA / RS256。どれも JDK だけで確かめます） |
+| 利用者 | ブラウザが返す利用者のハンドルが、登録したものと一致すること |
+| 複製 | 署名の回数が戻っていたら断ります（同期するパスキーはいつも 0 なので、そのときは見ません） |
+
+**認証器の証明書（attestation）は確かめません**（`attestation: "none"`）。パスキーのほとんどは証明書を出さず、
+「どのメーカーの認証器か」で断る必要は、ふつうのアプリにはありません。
+
+### 一覧と削除
+
+```java
+List<Data> passkeys = Passkey.list(me.id());          // id・label・created_at・last_used_at・backed_up
+Passkey.delete(me.id(), id);                           // FULL_AUTH のルートから。ほかの人のものは消さない
+Passkey.deleteAll("", me.id());                        // 退会など
+```
+
+| | |
+| --- | --- |
+| 置き場 | `auth_passkey` テーブル。**DB とセッションが要ります** |
+| 種別 | ルートの `Auth.REALM` で分けます（登録もログインも、そのルートの種別。一覧と削除は種別を渡す形もあります） |
+| 端末を失くした | 本人に別の手段（パスワードなど）でログインしてもらい、`Passkey.delete` で消します。`Auth.revoke` はいまのセッションを止めるだけで、パスキーは残ります |
+
+> [!TRAP]
+> **登録は `Auth.FULL_AUTH` を付けたルートから。**セッションを盗んだ人が自分のパスキーを足すと、
+> パスワードを変えられても、そのパスキーで入り続けられます。
+>
+> **パスキーのログインの口には、流量制限を掛けてください**（`RateLimit`）。総当たりは効きませんが、チャレンジを出すたびにセッションを作ります。
+
 ## Basic 認証
 
 運用向けの口には Basic 認証が使えます（[リクエストとレスポンス](./request-response)）。
