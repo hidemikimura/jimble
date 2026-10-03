@@ -681,6 +681,141 @@ Mfa.remainingRecoveryCodes("operator", staff.id());
 
 A working one is in `examples/approval-auth` — login, code, enrollment and turning it off.
 
+## Passkeys (passwordless login)
+
+**A passkey alone logs you in** (since 2.3.0). No login id either: the browser offers the passkeys it has for this site.
+A passkey includes on-device user verification (fingerprint, face, PIN), so a user who passes is logged in with `Auth.login`.
+**No two-factor code is asked for** (the passkey already covers "a device you have" and "verifying it is you"), and `Auth.FULL_AUTH` routes are open to them.
+
+```java
+// Registration (a logged-in user who just re-entered their password)
+post("/passkey/register/options", c -> c.response().json(Passkey.registrationOptions(c, loginIdOf(c))))
+	.attribute(Auth.FULL_AUTH, true);
+post("/passkey/register", c -> {
+	Passkey.register(c, c.request().bodyJson(), "Laptop");   // the third argument is a name the user recognises
+	c.response().json("ok", true);
+}).attribute(Auth.FULL_AUTH, true);
+
+// Login (anyone; do not add NO_SESSION)
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, c.request().bodyJson(), App::findPrincipal)) {   // user id -> Principal (null to refuse)
+		throw new HttpException(401, "Could not log in with the passkey");
+	}
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+
+// The browser-side JS
+get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
+```
+
+On the browser side, load the bundled JS and call it.
+
+```html
+<script src="/passkey.js"></script>
+<script>
+	// Register
+	await JimblePasskey.register("/passkey/register/options", "/passkey/register", { csrfToken });
+
+	// Log in (on a button)
+	await JimblePasskey.login("/passkey/login/options", "/passkey/login", { csrfToken });
+	location.href = "/";
+
+	// Offer passkeys in the field's autofill (put an <input autocomplete="username webauthn"> on the page)
+	JimblePasskey.login("/passkey/login/options", "/passkey/login", { csrfToken, conditional: true })
+		.then(result => { if (result) location.href = "/"; });
+</script>
+```
+
+Failures throw an `Error` (`error.status` holds the server's status code; a user cancelling gives `error.name === "NotAllowedError"`).
+Send extra fields with the verification (a label, say) via `extra: { label: "Laptop" }`, and pass a `signal` (`AbortController`) to stop a pending autofill request when a button is pressed.
+A working example is `login.jte` and `passkeys.jte` in examples/approval-auth.
+If `csrf.bind_session = true` rotates the token at login, the JS reads `X-CSRF-Token` and swaps it in (you get it via `onCsrfToken`).
+
+### Settings
+
+```conf
+auth {
+	passkey {
+		rp_id   = "example.com"             # the domain passkeys are bound to (required)
+		rp_name = "Approval workflow"       # the name the browser shows at registration (empty means rp_id)
+		origins = ["https://example.com"]   # accepted origins (empty means https:// + rp_id)
+		timeout = 5m                         # from start to finish
+	}
+}
+```
+
+> [!TRAP]
+> **Changing `rp_id` later makes every registered passkey unusable**, because passkeys are bound to the domain.
+> If you run on subdomains, write the parent domain (`example.com`) and passkeys work from both `app.example.com` and `admin.example.com`.
+>
+> To try it locally, use `rp_id = "localhost"` and `origins = ["http://localhost:9000"]` (browsers allow plain http for localhost only).
+
+### When each client has its own domain (SaaS)
+
+**`rp_id` can be passed in the route instead of coming from the settings.** Build a `PasskeyRp` and pass the same one to all four methods.
+
+```java
+PasskeyRp rp(WebContext c) {
+	// Look it up in your client table. Never use the Host header as rp_id directly (unknown domains get 404)
+	Tenant tenant = Tenants.byHost(c.request().host()).orElseThrow(() -> new HttpException(404, "Not found"));
+	return PasskeyRp.of(tenant.domain(), tenant.name());          // the origin is https://<domain>
+}
+
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c, rp(c)))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, rp(c), c.request().bodyJson(), App::findPrincipal)) {
+		throw new HttpException(401, "Could not log in with the passkey");
+	}
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+// Registration too: Passkey.registrationOptions(c, rp(c), name) / Passkey.register(c, rp(c), credential, label)
+```
+
+| | |
+| --- | --- |
+| Separation | Passkeys are kept per rp_id. **A passkey registered for client A does not work for client B** (jimble refuses it by the table's rp_id, and authenticators keep separate keys per rp_id anyway) |
+| Wiring mistakes | The rp_id the options were issued for is kept in the session; a different one at verification is refused (start over) |
+| Format checks | `PasskeyRp` checks at construction that rp_id is a domain and each origin's host is rp_id or a subdomain of it (http only for localhost). Listing another client's domain throws |
+| Listing | `Passkey.list(realm, rp, id)` gives just that client's. `Passkey.list(id)` returns every client's (with `rp_id`) |
+
+> If a client has both a custom domain (`login.client-a.co.jp`) and a shared subdomain (`client-a.saas.example`),
+> a passkey is bound to only one rp_id. Decide first which domain serves the login page.
+
+### What is checked
+
+| | |
+| --- | --- |
+| Challenge | Kept in the session and **usable once**. Refused after `timeout`. A registration challenge only works for the user who was logged in when it was issued |
+| Origin | Anything not in `origins` is refused, and so are calls from inside another site's iframe (`crossOrigin`) |
+| User verification | **On-device user verification (UV) is always required.** A security key that was only touched (UP) does not pass |
+| Signature | Verified with the registered public key (ES256 / EdDSA / RS256, all with the JDK alone) |
+| User | The user handle the browser returns must match the registered one |
+| Cloning | A signature counter that went backwards is refused (synced passkeys always report 0, and then it is not checked) |
+
+**Authenticator attestation is not verified** (`attestation: "none"`). Most passkeys send none, and ordinary apps
+have no reason to refuse an authenticator by its maker.
+
+### Listing and deleting
+
+```java
+List<Data> passkeys = Passkey.list(me.id());          // id, rp_id, label, created_at, last_used_at, backed_up
+Passkey.delete(me.id(), id);                           // from a FULL_AUTH route; never deletes someone else's
+Passkey.deleteAll("", me.id());                        // account deletion, etc.
+```
+
+| | |
+| --- | --- |
+| Storage | The `auth_passkey` table. **Needs a DB and sessions** |
+| Realms | Split by the route's `Auth.REALM` (registration and login use the route's realm; listing and deleting also take a realm) |
+| A lost device | Have the user log in another way (a password, say) and remove it with `Passkey.delete`. `Auth.revoke` only stops current sessions; the passkey stays |
+
+> [!TRAP]
+> **Register from a route with `Auth.FULL_AUTH`.** Someone holding a stolen session who adds their own passkey
+> keeps getting in with it even after the password is changed.
+>
+> **Put a rate limit on the passkey login endpoints** (`RateLimit`). Guessing does not work, but every issued challenge creates a session.
+
 ## Basic auth
 
 Operational endpoints can use Basic auth

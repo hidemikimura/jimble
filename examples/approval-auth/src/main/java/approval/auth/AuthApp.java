@@ -4,6 +4,7 @@ import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.BasicAuth;
 import io.jimble.web.auth.Principal;
 import io.jimble.web.auth.Remember;
+import io.jimble.web.auth.passkey.Passkey;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 import io.jimble.web.router.AttributeKey;
@@ -50,6 +51,9 @@ import io.jimble.web.session.SessionStores;
  *       <td><b>二要素認証を登録する</b>（F-W-32）。パスワードを入れた人だけ</td></tr>
  *   <tr><td>{@code POST /mfa/activate}</td><td>コードが合ったら有効にする</td></tr>
  *   <tr><td>{@code POST /mfa/disable}</td><td>やめる。<b>ここが緩いと二要素の意味が無い</b></td></tr>
+ *   <tr><td>{@code POST /passkey/login}</td>
+ *       <td><b>パスキーでログイン</b>（D-261）。ログインIDもパスワードも二要素のコードも要らない</td></tr>
+ *   <tr><td>{@code GET /passkeys}</td><td>パスキーの一覧と登録。登録と削除はパスワードを入れた人だけ</td></tr>
  *   <tr><td>{@code GET /ops/whoami}</td><td><b>Basic 認証</b>（F-W-13）</td></tr>
  * </table>
  *
@@ -178,6 +182,31 @@ public class AuthApp extends JimbleApp {
 			post("/disable", MfaController::disable);
 
 			get("/status", MfaController::status);
+
+		});
+
+		/*
+		 * <b>パスキーでのログイン</b>（D-261）。ログインの入口と同じく「公開だが、セッションは要る」
+		 * （チャレンジをセッションに置くので、NO_SESSION は付けない）。
+		 * ブラウザ側の JS は jimble が同梱しているものを返す。
+		 */
+		get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
+		post("/passkey/login/options", PasskeyController::loginOptions).attribute(Auth.PUBLIC, true);
+		post("/passkey/login", PasskeyController::login).attribute(Auth.PUBLIC, true);
+
+		get("/passkeys", PasskeyController::show);
+
+		/*
+		 * <b>パスキーの登録と削除は、いまパスワードを入れた人だけ</b>（二要素認証と同じ判断）。
+		 * セッションを盗んだ側が自分のパスキーを足すと、<b>パスワードを変えても入り続けられる</b>。
+		 */
+		path("/passkey", () -> {
+
+			attribute(Auth.FULL_AUTH, true);
+
+			post("/register/options", PasskeyController::registrationOptions);
+			post("/register", PasskeyController::register);
+			post("/delete", PasskeyController::delete);
 
 		});
 

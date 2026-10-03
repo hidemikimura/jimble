@@ -278,7 +278,7 @@ public final class MfaController {
 	 * @param id	社員ID
 	 * @return	ログインID
 	 */
-	private static String loginIdOf (long id) {
+	static String loginIdOf (long id) {
 
 		return ApprovalAuthExample.db().select(
 			SQL.select()

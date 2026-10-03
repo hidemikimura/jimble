@@ -94,6 +94,9 @@ public final class FrameworkTables {
 	/** 利用者ごとの失効の世代（要件 F-W-33） */
 	public static final String AUTH_REVOCATION = "auth_revocation";
 
+	/** パスキー（D-261） */
+	public static final String AUTH_PASSKEY = "auth_passkey";
+
 	/**
 	 * 全部
 	 *
@@ -124,6 +127,7 @@ public final class FrameworkTables {
 		, AUTH_MFA
 		, AUTH_MFA_RECOVERY
 		, AUTH_REVOCATION
+		, AUTH_PASSKEY
 	);
 
 	private FrameworkTables () {}

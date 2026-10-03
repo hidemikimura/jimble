@@ -253,6 +253,14 @@ auth {
 		secret_key     = ${?MFA_SECRET_KEY}
 	}
 
+	passkey {
+		enabled = true
+		rp_id   = ""        # パスキーを結びつけるドメイン（あとから変えると登録したものが全部使えなくなる）。クライアントごとに違うなら PasskeyRp を渡す
+		rp_name = ""        # 登録のときにブラウザが出す名前（空なら rp_id）
+		origins = []        # 受け付けるオリジン（空なら https:// + rp_id）
+		timeout = 5m        # 始めてから終えるまで
+	}
+
 	# プロバイダごとに1ブロック。名前（google）は Oidc.callback に渡す名前
 	oidc {
 		google {
