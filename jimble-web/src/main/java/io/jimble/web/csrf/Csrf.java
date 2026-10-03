@@ -195,6 +195,14 @@ public final class Csrf {
 			return;
 		}
 
+		/*
+		 * <b>API のトークンで入ったリクエストは見ない</b>（D-264）。ブラウザは Authorization を勝手に付けないので、
+		 * 別のサイトのページからトークンつきで送らせることはできない（CSRF が起きない）
+		 */
+		if (io.jimble.web.auth.ApiToken.isTokenRequest(context)) {
+			return;
+		}
+
 		String expected = bound(context)
 			? context.session().get(SESSION_KEY)
 			: context.cookies().get(COOKIE_NAME);

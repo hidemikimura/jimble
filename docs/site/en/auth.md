@@ -681,6 +681,70 @@ Mfa.remainingRecoveryCodes("operator", staff.id());
 
 A working one is in `examples/approval-auth` — login, code, enrollment and turning it off.
 
+## API tokens (Authorization: Bearer)
+
+**Users can issue API tokens for integrations and scripts** (since 2.4.0).
+They are opaque tokens held in the DB (not JWTs: revocable at once, no key management).
+
+```java
+before(ApiToken.authenticate(App::findPrincipal));   // before Remember.restore, Csrf::verify and Auth::guard
+before(Auth::guard);
+
+path("/api", () -> {
+	attribute(ApiToken.ACCEPT, true);                 // only routes that declare it accept tokens
+	get("/requests", Api::list).attribute(ApiToken.SCOPE, "requests:read");
+	post("/requests", Api::create).attribute(ApiToken.SCOPE, "requests:write");
+});
+```
+
+```bash
+curl -H "Authorization: Bearer jbt_..." https://example.com/api/requests
+```
+
+### Issuing, listing, revoking
+
+```java
+// From a page for a user who just entered their password (a FULL_AUTH route)
+ApiToken.Issued issued = ApiToken.issue(me.id(), "Expense integration", Set.of("requests:read"), Duration.ofDays(90));
+// show issued.token() this one time only; the DB keeps only a hash
+
+List<Data> tokens = ApiToken.list("", me.id());     // id, name, scopes, created_at, expires_at, last_used_at (never the token)
+ApiToken.revoke("", me.id(), id);                   // unusable at once; never revokes someone else's
+```
+
+| | |
+| --- | --- |
+| Format | `jbt_` + 256 random bits. The fixed prefix lets leak scanners (GitHub secret scanning and the like) find it |
+| Expiry | Set at issue time (`Duration.ZERO` means none; not recommended) |
+| Scopes | Lowercase letters, digits and `: . _ -`. A route's `ApiToken.SCOPE` missing from the token gives **403** |
+| Storage | The `auth_api_token` table (SHA-256 only). **Needs a DB** |
+
+### A user who came in with a token
+
+| | |
+| --- | --- |
+| Login | Logged in **for that request only**. No session cookie is issued |
+| Roles | `Auth.ROLE` works as usual (the current role `lookup` returned) |
+| `Auth.FULL_AUTH` | **No entry** (401). Changing the password or deleting the account is not done with a token |
+| Scopes | Read them with `ApiToken.scopes(context)`. **Scopes do not apply to users who came in with a session** |
+| CSRF | `Csrf.verify` skips it (browsers never add Authorization on their own, so another site cannot send it) |
+
+### When it refuses
+
+| | Status |
+| --- | --- |
+| A Bearer on a route without `ApiToken.ACCEPT` | 401 |
+| A wrong, expired or revoked token | 401 (`WWW-Authenticate: Bearer error="invalid_token"`) |
+| **After `Auth.revoke` / `Auth.revokeOthers`** (tokens issued before it) | 401. Checked with the same generation as sessions, so it stops the moment you lock someone out or they change their password |
+| `lookup` returned null (user disabled or deleted) | 401 |
+| Missing scope | 403 (`error="insufficient_scope"`) |
+
+> [!TRAP]
+> **Put `ApiToken.authenticate` first among the befores.** If the session was read earlier, a token request
+> would get a session cookie, so it throws to tell you. If you forget it and a Bearer arrives, Auth.guard warns once.
+>
+> **Issue tokens from a route with `Auth.FULL_AUTH`**, so someone holding a stolen session cannot mint one.
+
 ## Passkeys (passwordless login)
 
 **A passkey alone logs you in** (since 2.3.0). No login id either: the browser offers the passkeys it has for this site.
@@ -835,7 +899,7 @@ path("/ops", () -> {
 | --- | --- |
 | Annotations (`@PreAuthorize` and friends) | Not used, per the [principles](./principles). Routes declare it as an attribute |
 | Showing the user how many days are left | Not offered. Read the row yourself |
-| JWT | **Deliberately not offered.** You cannot revoke one, and it adds key management. If you need API auth, use an opaque token held in the DB |
+| JWT | **Deliberately not offered.** You cannot revoke one, and it adds key management. For API auth, use the opaque DB-held tokens above (API tokens) |
 | SAML | Not yet |
 | A permission table | Roles are plain strings |
 

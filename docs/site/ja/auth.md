@@ -678,6 +678,71 @@ Mfa.remainingRecoveryCodes("operator", staff.id());
 
 動いているものは `examples/approval-auth` にあります（ログイン → コード → 登録 → 解除まで）。
 
+## API のトークン（Authorization: Bearer）
+
+**連携やスクリプトのために、利用者が API のトークンを発行できます**（2.4.0 から）。
+DB に持つ不透明なトークンです（JWT ではありません。すぐ失効でき、鍵の管理が要りません）。
+
+```java
+before(ApiToken.authenticate(App::findPrincipal));   // Remember.restore・Csrf::verify・Auth::guard より先に
+before(Auth::guard);
+
+path("/api", () -> {
+	attribute(ApiToken.ACCEPT, true);                 // トークンを受けるのは、宣言したルートだけ
+	get("/requests", Api::list).attribute(ApiToken.SCOPE, "requests:read");
+	post("/requests", Api::create).attribute(ApiToken.SCOPE, "requests:write");
+});
+```
+
+```bash
+curl -H "Authorization: Bearer jbt_..." https://example.com/api/requests
+```
+
+### 発行・一覧・削除
+
+```java
+// パスワードを入れて入った人の画面から（FULL_AUTH のルート）
+ApiToken.Issued issued = ApiToken.issue(me.id(), "経費の連携", Set.of("requests:read"), Duration.ofDays(90));
+// issued.token() を「この一度だけ」見せる。DB にはハッシュしか残らない
+
+List<Data> tokens = ApiToken.list("", me.id());     // id・name・scopes・created_at・expires_at・last_used_at（トークンそのものは無い）
+ApiToken.revoke("", me.id(), id);                   // すぐ使えなくなる。ほかの人のものは消さない
+```
+
+| | |
+| --- | --- |
+| 形 | `jbt_` ＋ 256 ビットの乱数。頭が決まっているので、漏れたトークンを見つける道具（GitHub の secret scanning など）が拾えます |
+| 期限 | 発行のときに決めます（`Duration.ZERO` で無期限。勧めません） |
+| スコープ | 英小文字・数字・`: . _ -`。ルートの `ApiToken.SCOPE` がトークンに無ければ **403** |
+| 置き場 | `auth_api_token` テーブル（SHA-256 だけ）。**DB が要ります** |
+
+### トークンで入った人
+
+| | |
+| --- | --- |
+| ログイン | **そのリクエストのあいだだけ**ログインしています。セッションの Cookie は出しません |
+| 役割 | `Auth.ROLE` はふつうに効きます（`lookup` が返した、いまの役割） |
+| `Auth.FULL_AUTH` | **入れません**（401）。パスワードの変更や退会は、トークンではさせません |
+| スコープ | `ApiToken.scopes(context)` で読めます。**セッションで入った人には、スコープは関係ありません** |
+| CSRF | `Csrf.verify` は見ません（ブラウザは Authorization を勝手に付けないので、別のサイトからは送れません） |
+
+### 断るとき
+
+| | 状態コード |
+| --- | --- |
+| `ApiToken.ACCEPT` の無いルートに Bearer が来た | 401 |
+| トークンが違う・期限切れ・消した | 401（`WWW-Authenticate: Bearer error="invalid_token"`） |
+| **`Auth.revoke` / `Auth.revokeOthers` のあと**（それより前に発行したもの） | 401。セッションと同じ世代で見るので、締め出した・パスワードを変えた瞬間に止まります |
+| `lookup` が null を返した（利用者を止めた・消した） | 401 |
+| スコープが足りない | 403（`error="insufficient_scope"`） |
+
+> [!TRAP]
+> **`ApiToken.authenticate` は before のいちばん先に置きます。**先にセッションを読まれると、
+> トークンのリクエストにセッションの Cookie を出すことになるので、例外にして知らせます。
+> 置き忘れて Bearer が来たときは、Auth.guard が1度だけ WARN を出します。
+>
+> **発行は `Auth.FULL_AUTH` のルートから。**セッションを盗んだ人にトークンを作らせないためです。
+
 ## パスキー（パスワードなしのログイン）
 
 **パスキーだけでログインできます**（2.3.0 から）。ログイン ID も入れません——ブラウザが、このサイトのパスキーの候補を出します。
@@ -831,7 +896,7 @@ path("/ops", () -> {
 | --- | --- |
 | 注釈（`@PreAuthorize` のようなもの） | [原則](./principles)のとおり使いません。ルート属性で宣言します |
 | 「あと何日で切れるか」を利用者に見せる口 | ありません。行を自分で引いてください |
-| JWT | **出しません。**失効できず鍵の管理が増えます。API の認証が要るなら、DB に持つ不透明なトークンにしてください |
+| JWT | **出しません。**失効できず鍵の管理が増えます。API の認証には、DB に持つ不透明なトークン（上の「API のトークン」）を使ってください |
 | SAML | まだありません |
 | 権限（permission）の対応表 | 役割の文字列だけです |
 

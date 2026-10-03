@@ -1,6 +1,6 @@
 ---
 name: jimble-web
-description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証・パスキー）、実際に踏んだ落とし穴を含む。
+description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証・パスキー・API のトークン）、実際に踏んだ落とし穴を含む。
 ---
 
 # jimble の Web 層
@@ -338,6 +338,22 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **ログインを自分で書くなら、`Lockout.waitSeconds` → 確かめる → `Lockout.fail` の順にしない**（同時に送られると素通りする）。
   **`Lockout.attempt(key)` で、試す前に数える**（0 なら試してよい。成功したら `Lockout.clear(key)`）。`Auth.attemptLogin` はこれを使っている
 
+### API のトークン（Authorization: Bearer。2.4.0）
+
+```java
+before(ApiToken.authenticate(App::findPrincipal));   // いちばん先（Remember.restore・Csrf::verify・Auth::guard より前）
+before(Auth::guard);
+path("/api", () -> {
+	attribute(ApiToken.ACCEPT, true);                 // 受けるのは宣言したルートだけ（無いルートに Bearer は 401）
+	get("/requests", Api::list).attribute(ApiToken.SCOPE, "requests:read");   // 足りなければ 403
+});
+ApiToken.Issued issued = ApiToken.issue(me.id(), "連携", Set.of("requests:read"), Duration.ofDays(90));   // FULL_AUTH のルートから。token() は一度だけ見せる
+```
+
+- `io.jimble.web.auth.ApiToken`。DB に持つ不透明なトークン（JWT は出さない）。DB にはハッシュだけ
+- トークンの人はそのリクエストだけログイン（Cookie なし）。**FULL_AUTH には入れない**。CSRF は見ない。スコープはトークンの人にだけ効く
+- **`Auth.revoke` / `revokeOthers` でそれより前のトークンも止まる**。個別に止めるなら `ApiToken.revoke(realm, id, トークンの id)`
+
 ### パスキー（パスワードなしのログイン。2.3.0）
 
 ```java
@@ -424,7 +440,7 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
 | 入力と出力 | <https://jimble.io/ja/request-response.md> |
 | エラー処理 | <https://jimble.io/ja/errors.md> |
 | セッション・CSRF・Cookie・鍵の入れ替え | <https://jimble.io/ja/session-security.md> |
-| ログイン・認可・ロックアウト・remember-me・OIDC・二要素認証・パスキー | <https://jimble.io/ja/auth.md> |
+| ログイン・認可・ロックアウト・remember-me・OIDC・二要素認証・パスキー・API のトークン | <https://jimble.io/ja/auth.md> |
 | 検証とページング | <https://jimble.io/ja/validation.md> |
 | テンプレート（jte） | <https://jimble.io/ja/view.md> |
 | 静的ファイル・SPA | <https://jimble.io/ja/assets.md> |

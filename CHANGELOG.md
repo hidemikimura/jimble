@@ -6,6 +6,15 @@
 
 ## 2.4.0（未公開）
 
+### 足したこと（API のトークン）
+
+| | |
+|---|---|
+| **API のトークン（`Authorization: Bearer`）**（`io.jimble.web.auth.ApiToken`） | DB に持つ不透明なトークン（`jbt_` ＋ 256 ビット。DB には SHA-256 だけ）。発行（`issue`。期限・スコープつき）・一覧・削除。`before(ApiToken.authenticate(lookup))` で確かめ、そのリクエストのあいだだけログインさせる（Cookie は出さない） |
+| 受けるのは `ApiToken.ACCEPT` を付けたルートだけ | 無いルートに Bearer が来たら 401。ルートの `ApiToken.SCOPE` がトークンに無ければ 403（`insufficient_scope`） |
+| トークンの人は `Auth.FULL_AUTH` に入れない。`Csrf.verify` は見ない | 役割（`Auth.ROLE`）はふつうに効く。`NO_SESSION` のルートでも使える |
+| **`Auth.revoke` / `Auth.revokeOthers` でトークンも止まる** | セッションと同じ世代で見る。パスワードを変えたら、それより前に発行したトークンは使えない |
+
 ### 足したこと（メール）
 
 | | |
