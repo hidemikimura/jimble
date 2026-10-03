@@ -4,7 +4,10 @@
 
 ---
 
-## 2.5.0（未公開）
+## 2.5.0（2026-10-04）
+
+**SQL ビルダーにインデックスのヒント（MySQL の `FORCE INDEX` / `USE INDEX` / `IGNORE INDEX`）を足した版です。**これまでの振る舞いは変わりません。
+PostgreSQL にはヒントが無いので、使うと組み立てたところで `DialectException` になります。
 
 ### 足したこと（SQL ビルダー）
 
