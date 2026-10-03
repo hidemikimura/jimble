@@ -749,6 +749,37 @@ auth {
 >
 > To try it locally, use `rp_id = "localhost"` and `origins = ["http://localhost:9000"]` (browsers allow plain http for localhost only).
 
+### When each client has its own domain (SaaS)
+
+**`rp_id` can be passed in the route instead of coming from the settings.** Build a `PasskeyRp` and pass the same one to all four methods.
+
+```java
+PasskeyRp rp(WebContext c) {
+	// Look it up in your client table. Never use the Host header as rp_id directly (unknown domains get 404)
+	Tenant tenant = Tenants.byHost(c.request().host()).orElseThrow(() -> new HttpException(404, "Not found"));
+	return PasskeyRp.of(tenant.domain(), tenant.name());          // the origin is https://<domain>
+}
+
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c, rp(c)))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, rp(c), c.request().bodyJson(), App::findPrincipal)) {
+		throw new HttpException(401, "Could not log in with the passkey");
+	}
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+// Registration too: Passkey.registrationOptions(c, rp(c), name) / Passkey.register(c, rp(c), credential, label)
+```
+
+| | |
+| --- | --- |
+| Separation | Passkeys are kept per rp_id. **A passkey registered for client A does not work for client B** (jimble refuses it by the table's rp_id, and authenticators keep separate keys per rp_id anyway) |
+| Wiring mistakes | The rp_id the options were issued for is kept in the session; a different one at verification is refused (start over) |
+| Format checks | `PasskeyRp` checks at construction that rp_id is a domain and each origin's host is rp_id or a subdomain of it (http only for localhost). Listing another client's domain throws |
+| Listing | `Passkey.list(realm, rp, id)` gives just that client's. `Passkey.list(id)` returns every client's (with `rp_id`) |
+
+> If a client has both a custom domain (`login.client-a.co.jp`) and a shared subdomain (`client-a.saas.example`),
+> a passkey is bound to only one rp_id. Decide first which domain serves the login page.
+
 ### What is checked
 
 | | |
@@ -766,7 +797,7 @@ have no reason to refuse an authenticator by its maker.
 ### Listing and deleting
 
 ```java
-List<Data> passkeys = Passkey.list(me.id());          // id, label, created_at, last_used_at, backed_up
+List<Data> passkeys = Passkey.list(me.id());          // id, rp_id, label, created_at, last_used_at, backed_up
 Passkey.delete(me.id(), id);                           // from a FULL_AUTH route; never deletes someone else's
 Passkey.deleteAll("", me.id());                        // account deletion, etc.
 ```

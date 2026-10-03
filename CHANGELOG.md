@@ -12,7 +12,8 @@
 |---|---|
 | **パスキー（WebAuthn）でのパスワードなしのログイン**（`io.jimble.web.auth.passkey.Passkey`） | 登録（`registrationOptions` / `register`）とログイン（`loginOptions` / `login`）、一覧と削除（`list` / `delete` / `deleteAll`）。ログイン ID を聞かず、ブラウザが出す候補から選ぶ形（入力欄の候補に出す形も）。通ったら `Auth.login` まで済み、二要素認証のコードは聞かない。**依存は足していない**——CBOR の読み取り・COSE の鍵・署名の確かめ（ES256 / EdDSA / RS256）を JDK だけで書いた（D-152） |
 | ブラウザ側の JS を同梱しました（`Passkey.script()`） | `JimblePasskey.register(...)` / `login(...)` を呼ぶだけ。base64url の変換、`X-CSRF-Token` の送信と差し替え（`csrf.bind_session`）をやる |
-| 設定 `auth.passkey.*`（`rp_id`・`rp_name`・`origins`・`timeout`） | `rp_id` は使うなら必須。表 `auth_passkey` は最初に使ったときに作る |
+| 設定 `auth.passkey.*`（`rp_id`・`rp_name`・`origins`・`timeout`） | 表 `auth_passkey` は最初に使ったときに作る |
+| **クライアントごとにドメインが違う SaaS では、rp_id を渡せます**（`PasskeyRp`） | `Passkey.loginOptions(context, rp)` などに渡す。パスキーは rp_id ごとに持ち、A で登録したものは B では使えない。options を出したときと違う rp で確かめると断る。`PasskeyRp` はオリジンが rp_id の下にあるかを確かめる |
 
 ---
 

@@ -357,6 +357,8 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
 - 通ったら中で `Auth.login` まで済む。**二要素認証のコードは聞かない**（パスキーが本人確認込み）。`FULL_AUTH` も通る
 - ブラウザ側は自分で `navigator.credentials` を書かず、`Passkey.script()` の JS を使う（base64url の変換と CSRF のヘッダをやる）
 - 一覧は `Passkey.list(id)`、削除は `Passkey.delete(id, 一覧の id)`（FULL_AUTH のルートから）。`Auth.revoke` ではパスキーは消えない
+- **クライアントごとにドメインが違う（SaaS）なら `PasskeyRp.of(ドメイン, 名前)` を作り、4つのメソッドに同じものを渡す**（`loginOptions(c, rp)` / `login(c, rp, ...)` など）。
+  ドメインはクライアントの表から引く（Host ヘッダをそのまま使わない）。A で登録したパスキーは B では使えない
 
 ## 落とし穴（実際に踏んだもの）
 

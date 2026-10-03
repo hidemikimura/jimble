@@ -262,7 +262,7 @@ auth {
 
 	passkey {
 		enabled = true
-		rp_id   = ""        # the domain passkeys are bound to (required to use them; changing it later breaks every registered one)
+		rp_id   = ""        # the domain passkeys are bound to (changing it later breaks every registered one). Per-client domains: pass a PasskeyRp
 		rp_name = ""        # the name the browser shows at registration (empty means rp_id)
 		origins = []        # accepted origins (empty means https:// + rp_id)
 		timeout = 5m        # from start to finish

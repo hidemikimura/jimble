@@ -21,6 +21,10 @@ import java.util.List;
  * </pre>
  *
  * <p>
+ * クライアントごとにドメインが違う SaaS では、設定ではなく {@link PasskeyRp} を作って渡す（D-262）。
+ * </p>
+ *
+ * <p>
  * <b>{@code rp_id} はドメインそのもの</b>（スキームもポートも付けない）。サブドメインで動かすときに親のドメインを書くと、
  * 兄弟のサブドメインでも同じパスキーが使える。手元で試すなら {@code rp_id = "localhost"}、
  * {@code origins = ["http://localhost:9000"]}（ブラウザは localhost だけ http を許す）。
@@ -61,56 +65,31 @@ public final class PasskeyConf {
 	}
 
 	/**
-	 * パスキーを結びつけるドメイン
+	 * 設定から作ったサイト
 	 *
-	 * @return	ドメイン
-	 * @throws IllegalStateException	書いていない・形が違う場合
+	 * <p>クライアントごとにドメインが違うなら、設定ではなく {@link PasskeyRp#of} で作って渡す。</p>
+	 *
+	 * @return	サイト
+	 * @throws IllegalStateException	{@code auth.passkey.rp_id} を書いていない・形が違う場合
 	 */
-	public static String rpId () {
+	public static PasskeyRp rp () {
 
 		String rpId = Conf.conf().getString(KEY_RP_ID, "").trim();
 
 		if (rpId.isEmpty()) {
 			throw new IllegalStateException(
-				"パスキーには %s が要ります（パスキーを結びつけるドメイン。例 \"example.com\"、手元なら \"localhost\"）".formatted(KEY_RP_ID));
+				"パスキーには %s が要ります（パスキーを結びつけるドメイン。例 \"example.com\"、手元なら \"localhost\"）。"
+					.formatted(KEY_RP_ID)
+					+ "クライアントごとにドメインが違うなら、PasskeyRp.of(...) を作って渡してください");
 		}
-
-		if (rpId.contains("/") || rpId.contains(":")) {
-			throw new IllegalStateException(
-				"%s はドメインだけを書いてください（https:// やポートは付けない）: %s".formatted(KEY_RP_ID, rpId));
-		}
-
-		return rpId.toLowerCase(java.util.Locale.ROOT);
-
-	}
-
-	/**
-	 * 登録のときに出す名前
-	 *
-	 * @return	名前（書いていなければ rp_id）
-	 */
-	public static String rpName () {
-
-		String name = Conf.conf().getString(KEY_RP_NAME, "").trim();
-
-		return name.isEmpty() ? rpId() : name;
-
-	}
-
-	/**
-	 * 受け付けるオリジン
-	 *
-	 * @return	オリジン（書いていなければ https:// + rp_id）
-	 */
-	public static List<String> origins () {
 
 		List<String> origins = Conf.conf().getStringListOptional(KEY_ORIGINS);
 
-		if (origins == null || origins.isEmpty()) {
-			return List.of("https://" + rpId());
+		try {
+			return new PasskeyRp(rpId, Conf.conf().getString(KEY_RP_NAME, ""), origins == null ? List.of() : origins);
+		} catch (IllegalArgumentException ex) {
+			throw new IllegalStateException("%s / %s の書き方が違います: %s".formatted(KEY_RP_ID, KEY_ORIGINS, ex.getMessage()), ex);
 		}
-
-		return origins.stream().map(origin -> origin.trim().replaceAll("/+$", "")).toList();
 
 	}
 

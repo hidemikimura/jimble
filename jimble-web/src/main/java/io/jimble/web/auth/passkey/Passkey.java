@@ -59,6 +59,11 @@ import java.util.function.Function;
  * get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
  * }</pre>
  *
+ * <p>
+ * <b>クライアントごとにドメインが違う SaaS</b> では、設定（{@code auth.passkey.rp_id}）の代わりに {@link PasskeyRp} を作り、
+ * 4つのメソッドに同じものを渡す（D-262）。
+ * </p>
+ *
  * <h2>確かめること（WebAuthn Level 3 の 7.1 / 7.2）</h2>
  * <ul>
  *   <li>チャレンジ：セッションに置き、<b>1度しか使わせない</b>。{@code auth.passkey.timeout} を過ぎたものは断る</li>
@@ -79,6 +84,9 @@ public final class Passkey {
 
 	/* セッション：何のチャレンジか（create / get） */
 	private static final String KEY_PURPOSE = "__passkey_purpose";
+
+	/* セッション：チャレンジを出したサイト（rp_id） */
+	private static final String KEY_RP = "__passkey_rp";
 
 	/* セッション：チャレンジを出した時刻（エポック秒） */
 	private static final String KEY_ISSUED_AT = "__passkey_issued_at";
@@ -137,6 +145,21 @@ public final class Passkey {
 	 */
 	public static Data registrationOptions (WebContext context, String userName) {
 
+		return registrationOptions(context, PasskeyRp.fromConf(), userName);
+
+	}
+
+	/**
+	 * 登録の options を作る（サイトを渡す。クライアントごとにドメインが違う SaaS 向け。D-262）
+	 *
+	 * @param context	コンテキスト
+	 * @param rp		パスキーを結びつけるサイト
+	 * @param userName	パスキーの一覧に出る名前（ログイン ID やメール）
+	 * @return	options（JSON にして返す）
+	 * @throws HttpException	ログインしていない場合（401）
+	 */
+	public static Data registrationOptions (WebContext context, PasskeyRp rp, String userName) {
+
 		requireUsable();
 
 		Principal principal = Auth.principal(context);
@@ -146,8 +169,8 @@ public final class Passkey {
 		}
 
 		String realm = Auth.realmOf(context);
-		String handle = userHandle(realm, principal.id());
-		String challenge = issueChallenge(context, CREATE, realm + ":" + principal.id(), handle);
+		String handle = userHandle(realm, rp.id(), principal.id());
+		String challenge = issueChallenge(context, CREATE, rp, realm + ":" + principal.id(), handle);
 		String name = userName == null || userName.isBlank() ? principal.name() : userName;
 
 		List<Data> params = new ArrayList<>();
@@ -156,13 +179,13 @@ public final class Passkey {
 		}
 
 		List<Data> exclude = new ArrayList<>();
-		for (String id : credentialIds(realm, principal.id())) {
+		for (String id : credentialIds(realm, rp.id(), principal.id())) {
 			exclude.add(new Data().putData("type", "public-key").putData("id", id));
 		}
 
 		return new Data()
 			.putData("challenge", challenge)
-			.putData("rp", new Data().putData("id", PasskeyConf.rpId()).putData("name", PasskeyConf.rpName()))
+			.putData("rp", new Data().putData("id", rp.id()).putData("name", rp.name()))
 			.putData("user", new Data()
 				.putData("id", handle)
 				.putData("name", name)
@@ -188,6 +211,21 @@ public final class Passkey {
 	 */
 	public static void register (WebContext context, Data credential, String label) {
 
+		register(context, PasskeyRp.fromConf(), credential, label);
+
+	}
+
+	/**
+	 * 登録する（サイトを渡す。options を出したときと同じサイトを渡すこと。D-262）
+	 *
+	 * @param context		コンテキスト
+	 * @param rp			パスキーを結びつけるサイト
+	 * @param credential	ブラウザが返したもの（{@code PublicKeyCredential.toJSON()} の形）
+	 * @param label			利用者が見分けるための名前（「ノート PC」など。空でもよい）
+	 * @throws HttpException	確かめられなかった場合（400。理由はログにだけ出す）
+	 */
+	public static void register (WebContext context, PasskeyRp rp, Data credential, String label) {
+
 		requireUsable();
 
 		Principal principal = Auth.principal(context);
@@ -198,12 +236,12 @@ public final class Passkey {
 		}
 
 		String handle = context.session().get(KEY_HANDLE);
-		String challenge = takeChallenge(context, CREATE, realm + ":" + principal.id());
+		String challenge = takeChallenge(context, CREATE, rp, realm + ":" + principal.id());
 
 		Registration registration;
 
 		try {
-			registration = verifyRegistration(PasskeyConf.rpId(), PasskeyConf.origins(), challenge, credential);
+			registration = verifyRegistration(rp.id(), rp.origins(), challenge, credential);
 		} catch (IllegalArgumentException ex) {
 			Log.warn("パスキーを登録できませんでした: %s / %s".formatted(who(realm, principal.id()), ex.getMessage()));
 			throw new HttpException(400, "パスキーを登録できませんでした");
@@ -214,10 +252,10 @@ public final class Passkey {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			db.insert(("INSERT INTO %s (credential_hash, realm, user_id, credential_id, user_handle, public_key, algorithm"
+			db.insert(("INSERT INTO %s (credential_hash, realm, rp_id, user_id, credential_id, user_handle, public_key, algorithm"
 				+ ", sign_count, backup_eligible, backed_up, label, created_at, last_used_at)"
-				+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)").formatted(table(db))
-				, hash(registration.credentialId()), realm, principal.id(), credentialId, handle
+				+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)").formatted(table(db))
+				, hash(registration.credentialId()), realm, rp.id(), principal.id(), credentialId, handle
 				, B64.encodeToString(registration.publicKey()), registration.algorithm(), registration.signCount()
 				, registration.backupEligible() ? 1 : 0, registration.backedUp() ? 1 : 0
 				, label == null ? "" : label.strip(), now);
@@ -310,13 +348,26 @@ public final class Passkey {
 	 */
 	public static Data loginOptions (WebContext context) {
 
+		return loginOptions(context, PasskeyRp.fromConf());
+
+	}
+
+	/**
+	 * ログインの options を作る（サイトを渡す。クライアントごとにドメインが違う SaaS 向け。D-262）
+	 *
+	 * @param context	コンテキスト
+	 * @param rp		パスキーを結びつけるサイト
+	 * @return	options（JSON にして返す）
+	 */
+	public static Data loginOptions (WebContext context, PasskeyRp rp) {
+
 		requireUsable();
 
-		String challenge = issueChallenge(context, GET, Auth.realmOf(context), "");
+		String challenge = issueChallenge(context, GET, rp, Auth.realmOf(context), "");
 
 		return new Data()
 			.putData("challenge", challenge)
-			.putData("rpId", PasskeyConf.rpId())
+			.putData("rpId", rp.id())
 			.putData("timeout", PasskeyConf.timeout().toMillis())
 			.putData("userVerification", "required")
 			.putData("allowCredentials", List.of());
@@ -337,10 +388,29 @@ public final class Passkey {
 	 */
 	public static boolean login (WebContext context, Data credential, Function<Long, Principal> lookup) {
 
+		return login(context, PasskeyRp.fromConf(), credential, lookup);
+
+	}
+
+	/**
+	 * ログインさせる（サイトを渡す。options を出したときと同じサイトを渡すこと。D-262）
+	 *
+	 * <p>
+	 * <b>そのサイト（rp_id）で登録したパスキーしか通さない。</b>別のクライアントで登録したパスキーは断る。
+	 * </p>
+	 *
+	 * @param context		コンテキスト
+	 * @param rp			パスキーを結びつけるサイト
+	 * @param credential	ブラウザが返したもの（{@code PublicKeyCredential.toJSON()} の形）
+	 * @param lookup		利用者 ID からログインさせる人を引く（入れないなら null）
+	 * @return	ログインした場合 = true。<b>断る理由は返さない</b>（ログにだけ出す）
+	 */
+	public static boolean login (WebContext context, PasskeyRp rp, Data credential, Function<Long, Principal> lookup) {
+
 		requireUsable();
 
 		String realm = Auth.realmOf(context);
-		String challenge = takeChallenge(context, GET, realm);
+		String challenge = takeChallenge(context, GET, rp, realm);
 
 		byte[] credentialId;
 
@@ -358,13 +428,20 @@ public final class Passkey {
 			return false;
 		}
 
+		// 別のサイト（クライアント）で登録したパスキーは通さない（D-262）
+		if (!rp.id().equals(row.getStringOptional("rp_id"))) {
+			Log.warn("パスキーでログインできませんでした: 別のサイト（%s）で登録したパスキーです: %s"
+				.formatted(row.getStringOptional("rp_id"), rp.id()));
+			return false;
+		}
+
 		long userId = row.getLong("user_id");
 		long storedCount = row.getLong("sign_count");
 
 		Assertion assertion;
 
 		try {
-			assertion = verifyAssertion(PasskeyConf.rpId(), PasskeyConf.origins(), challenge, credential
+			assertion = verifyAssertion(rp.id(), rp.origins(), challenge, credential
 				, CoseKey.restore(B64_DECODER.decode(row.getString("public_key")), row.getInt("algorithm"))
 				, row.getInt("algorithm"), row.getString("user_handle"), storedCount);
 		} catch (IllegalArgumentException ex) {
@@ -493,22 +570,41 @@ public final class Passkey {
 	 *
 	 * @param realm		種別。空文字なら種別なし
 	 * @param userId	利用者 ID
-	 * @return	一覧（{@code id} は {@link #delete} に渡すもの）
+	 * @return	一覧（{@code id} は {@link #delete} に渡すもの。どのサイトのものも含む。{@code rp_id} で分かる）
 	 */
 	public static List<Data> list (String realm, long userId) {
+
+		return list(realm, null, userId);
+
+	}
+
+	/**
+	 * あるサイト（クライアント）で登録しているパスキーの一覧（D-262）
+	 *
+	 * @param realm		種別。空文字なら種別なし
+	 * @param rp		サイト（null ならどのサイトのものも）
+	 * @param userId	利用者 ID
+	 * @return	一覧（{@code id} は {@link #delete} に渡すもの）
+	 */
+	public static List<Data> list (String realm, PasskeyRp rp, long userId) {
 
 		requireDb();
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			List<Data> rows = db.selectList(("SELECT credential_hash, label, created_at, last_used_at, backed_up FROM %s"
-				+ " WHERE realm = ? AND user_id = ? ORDER BY created_at, credential_hash").formatted(table(db)), realm, userId);
+			List<Data> rows = rp == null
+				? db.selectList(("SELECT credential_hash, rp_id, label, created_at, last_used_at, backed_up FROM %s"
+					+ " WHERE realm = ? AND user_id = ? ORDER BY created_at, credential_hash").formatted(table(db)), realm, userId)
+				: db.selectList(("SELECT credential_hash, rp_id, label, created_at, last_used_at, backed_up FROM %s"
+					+ " WHERE realm = ? AND rp_id = ? AND user_id = ? ORDER BY created_at, credential_hash").formatted(table(db))
+					, realm, rp.id(), userId);
 
 			List<Data> list = new ArrayList<>();
 
 			for (Data row : rows) {
 				list.add(new Data()
 					.putData("id", row.getString("credential_hash"))
+					.putData("rp_id", row.getString("rp_id"))
 					.putData("label", row.getStringOptional("label"))
 					.putData("created_at", row.getLong("created_at"))
 					.putData("last_used_at", row.getLong("last_used_at"))
@@ -630,7 +726,7 @@ public final class Passkey {
 	/**
 	 * チャレンジを出してセッションに置く
 	 */
-	private static String issueChallenge (WebContext context, String purpose, String subject, String handle) {
+	private static String issueChallenge (WebContext context, String purpose, PasskeyRp rp, String subject, String handle) {
 
 		if (!context.session().isAvailable()) {
 			throw new IllegalStateException("パスキーにはセッションが要ります（session.store = db / redis / cookie）");
@@ -643,6 +739,7 @@ public final class Passkey {
 		context.session().put(KEY_CHALLENGE, challenge);
 		context.session().put(KEY_PURPOSE, purpose);
 		context.session().put(KEY_SUBJECT, subject);
+		context.session().put(KEY_RP, rp.id());
 		context.session().put(KEY_HANDLE, handle);
 		context.session().put(KEY_ISSUED_AT, nowSeconds());
 		context.session().save();
@@ -654,25 +751,28 @@ public final class Passkey {
 	/**
 	 * セッションのチャレンジを取り出して消す（1度しか使わせない）
 	 *
-	 * @throws HttpException	無い・目的や相手が違う・時間切れの場合（400）
+	 * @throws HttpException	無い・目的や相手やサイトが違う・時間切れの場合（400）
 	 */
-	private static String takeChallenge (WebContext context, String purpose, String subject) {
+	private static String takeChallenge (WebContext context, String purpose, PasskeyRp rp, String subject) {
 
 		String challenge = context.session().get(KEY_CHALLENGE);
 		String issuedPurpose = context.session().get(KEY_PURPOSE);
 		String issuedSubject = context.session().get(KEY_SUBJECT);
+		String issuedRp = context.session().get(KEY_RP);
 		long issuedAt = context.session().getLong(KEY_ISSUED_AT);
 
 		if (challenge != null && !challenge.isEmpty()) {
 			context.session().remove(KEY_CHALLENGE);
 			context.session().remove(KEY_PURPOSE);
 			context.session().remove(KEY_SUBJECT);
+			context.session().remove(KEY_RP);
 			context.session().remove(KEY_HANDLE);
 			context.session().remove(KEY_ISSUED_AT);
 			context.session().save();
 		}
 
-		if (challenge == null || challenge.isEmpty() || !purpose.equals(issuedPurpose) || !subject.equals(issuedSubject)) {
+		if (challenge == null || challenge.isEmpty() || !purpose.equals(issuedPurpose) || !subject.equals(issuedSubject)
+			|| !rp.id().equals(issuedRp)) {
 			throw new HttpException(400, "パスキーの手続きを最初からやり直してください");
 		}
 
@@ -896,12 +996,12 @@ public final class Passkey {
 	 *
 	 * <p>利用者 ID そのものは使わない（認証器に個人を表す値を置かない。WebAuthn 14.6.1）。</p>
 	 */
-	private static String userHandle (String realm, long userId) {
+	private static String userHandle (String realm, String rpId, long userId) {
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			Data row = db.select("SELECT user_handle FROM %s WHERE realm = ? AND user_id = ? ORDER BY created_at LIMIT 1"
-				.formatted(table(db)), realm, userId).orElse(null);
+			Data row = db.select("SELECT user_handle FROM %s WHERE realm = ? AND rp_id = ? AND user_id = ? ORDER BY created_at LIMIT 1"
+				.formatted(table(db)), realm, rpId, userId).orElse(null);
 
 			if (row != null) {
 				return row.getString("user_handle");
@@ -916,10 +1016,11 @@ public final class Passkey {
 
 	}
 
-	private static List<String> credentialIds (String realm, long userId) {
+	private static List<String> credentialIds (String realm, String rpId, long userId) {
 
 		try (DB db = DBUtil.getMainDB()) {
-			return db.selectList("SELECT credential_id FROM %s WHERE realm = ? AND user_id = ?".formatted(table(db)), realm, userId)
+			return db.selectList("SELECT credential_id FROM %s WHERE realm = ? AND rp_id = ? AND user_id = ?".formatted(table(db))
+				, realm, rpId, userId)
 				.stream().map(row -> row.getString("credential_id")).toList();
 		}
 
@@ -1004,6 +1105,7 @@ public final class Passkey {
 					(
 						credential_hash  varchar(64)   not null primary key
 						, realm            varchar(64)   not null
+						, rp_id            varchar(253)  not null
 						, user_id          bigint        not null
 						, credential_id    varchar(1400) not null
 						, user_handle      varchar(64)   not null
@@ -1017,12 +1119,13 @@ public final class Passkey {
 						, last_used_at     bigint        not null
 					) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
 					""".formatted(name, version.placeholder())
-					, "create index %s__user on `%s` (realm, user_id)".formatted(name, name))
+					, "create index %s__user on `%s` (realm, rp_id, user_id)".formatted(name, name))
 				.postgresql("""
 					create table "%s"
 					(
 						credential_hash  varchar(64)   not null primary key
 						, realm            varchar(64)   not null
+						, rp_id            varchar(253)  not null
 						, user_id          bigint        not null
 						, credential_id    varchar(1400) not null
 						, user_handle      varchar(64)   not null
@@ -1036,7 +1139,7 @@ public final class Passkey {
 						, last_used_at     bigint        not null
 					)
 					""".formatted(name)
-					, "create index %s__user on \"%s\" (realm, user_id)".formatted(name, name));
+					, "create index %s__user on \"%s\" (realm, rp_id, user_id)".formatted(name, name));
 
 			if (!version.apply(DBUtil.getMainDB())) {
 				throw new IllegalStateException("パスキーの表を作れませんでした（直前のエラーログを見てください）");

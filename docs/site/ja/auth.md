@@ -746,6 +746,37 @@ auth {
 >
 > 手元で試すなら `rp_id = "localhost"`、`origins = ["http://localhost:9000"]`（ブラウザは localhost だけ http を許します）。
 
+### クライアントごとにドメインが違うとき（SaaS）
+
+**`rp_id` を設定ではなく、ルートの中で渡せます。**`PasskeyRp` を作って、4つのメソッドに同じものを渡します。
+
+```java
+PasskeyRp rp(WebContext c) {
+	// クライアントの表から引く。Host ヘッダをそのまま rp_id にしない（知らないドメインは 404）
+	Tenant tenant = Tenants.byHost(c.request().host()).orElseThrow(() -> new HttpException(404, "見つかりません"));
+	return PasskeyRp.of(tenant.domain(), tenant.name());          // オリジンは https://<domain>
+}
+
+post("/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c, rp(c)))).attribute(Auth.PUBLIC, true);
+post("/passkey/login", c -> {
+	if (!Passkey.login(c, rp(c), c.request().bodyJson(), App::findPrincipal)) {
+		throw new HttpException(401, "パスキーでログインできませんでした");
+	}
+	c.response().json("ok", true);
+}).attribute(Auth.PUBLIC, true);
+// 登録も Passkey.registrationOptions(c, rp(c), 名前) / Passkey.register(c, rp(c), credential, ラベル)
+```
+
+| | |
+| --- | --- |
+| 分け方 | パスキーは rp_id ごとに持ちます。**クライアント A で登録したパスキーは、クライアント B では使えません**（jimble が表の rp_id で断ります。認証器も rp_id ごとに鍵を分けます） |
+| つなぎ間違い | options を出したときの rp_id をセッションに置き、確かめるときに違えば断ります（手続きのやり直し） |
+| 形の確かめ | `PasskeyRp` は、rp_id がドメインの形か、オリジンのホストが rp_id かそのサブドメインか（http は localhost だけ）を作ったときに確かめます。別のクライアントのドメインを並べると例外です |
+| 一覧 | `Passkey.list(realm, rp, id)` でそのクライアントのものだけ。`Passkey.list(id)` はどのクライアントのものも返します（`rp_id` が付きます） |
+
+> クライアントが独自ドメイン（`login.client-a.co.jp`）と共通のサブドメイン（`client-a.saas.example`）の両方を持つなら、
+> パスキーはどちらか1つの rp_id に結びつきます。ログインの画面をどちらのドメインで出すかを先に決めてください。
+
 ### 何を確かめるか
 
 | | |
@@ -763,7 +794,7 @@ auth {
 ### 一覧と削除
 
 ```java
-List<Data> passkeys = Passkey.list(me.id());          // id・label・created_at・last_used_at・backed_up
+List<Data> passkeys = Passkey.list(me.id());          // id・rp_id・label・created_at・last_used_at・backed_up
 Passkey.delete(me.id(), id);                           // FULL_AUTH のルートから。ほかの人のものは消さない
 Passkey.deleteAll("", me.id());                        // 退会など
 ```

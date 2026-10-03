@@ -47,6 +47,11 @@ class PasskeyIntegrationTest {
 	/* UP + UV */
 	private static final int OK = 0x01 | 0x04;
 
+	/* クライアントごとのサイト（SaaS。D-262） */
+	private static final PasskeyRp CLIENT_A = PasskeyRp.of("client-a.localhost", "クライアント A", List.of("http://client-a.localhost"));
+
+	private static final PasskeyRp CLIENT_B = PasskeyRp.of("client-b.localhost", "クライアント B", List.of("http://client-b.localhost"));
+
 	private static Config originalConf;
 
 	private static JimbleServer server;
@@ -96,6 +101,33 @@ class PasskeyIntegrationTest {
 				}).attribute(Auth.PUBLIC, true);
 
 				get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
+
+				// クライアントごとにサイトを渡す（本物のアプリはクライアントの表から引く）
+				for (String client : List.of("a", "b")) {
+					PasskeyRp rp = client.equals("a") ? CLIENT_A : CLIENT_B;
+					post("/" + client + "/passkey/register/options", context -> context.response().json(Passkey.registrationOptions(context, rp, "kimura")))
+						.attribute(Auth.FULL_AUTH, true);
+					post("/" + client + "/passkey/register", context -> {
+						Passkey.register(context, rp, context.request().bodyJson(), client);
+						context.response().json("ok", true);
+					}).attribute(Auth.FULL_AUTH, true);
+					post("/" + client + "/passkey/login/options", context -> context.response().json(Passkey.loginOptions(context, rp)))
+						.attribute(Auth.PUBLIC, true);
+					post("/" + client + "/passkey/login", context -> {
+						if (!Passkey.login(context, rp, context.request().bodyJson(), id -> Principal.of(id, "kimura"))) {
+							throw new HttpException(401, "パスキーでログインできませんでした");
+						}
+						context.response().json("ok", true);
+					}).attribute(Auth.PUBLIC, true);
+				}
+
+				// options はクライアント A、確かめるのはクライアント B（つなぎ間違い）
+				post("/mixed/passkey/login", context -> {
+					if (!Passkey.login(context, CLIENT_B, context.request().bodyJson(), id -> Principal.of(id, "kimura"))) {
+						throw new HttpException(401, "パスキーでログインできませんでした");
+					}
+					context.response().json("ok", true);
+				}).attribute(Auth.PUBLIC, true);
 
 				error((context, cause, statusCode) -> context.response().code(statusCode).json("error"
 					, statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
@@ -206,6 +238,49 @@ class PasskeyIntegrationTest {
 		assertEquals(first.userHandle, options.getDataOptional("user").getString("id"));
 
 		assertEquals(401, new Browser().post("/passkey/register/options", new Data()).statusCode());
+
+	}
+
+	@Test
+	@DisplayName("D-262 クライアントごとのサイト：A で登録したパスキーは A では使え、B では使えない")
+	void perClientRp () throws Exception {
+
+		FakeAuthenticator authenticator = new FakeAuthenticator(CoseKey.ES256, 0);
+
+		Browser browser = new Browser();
+		browser.get("/test/login");
+
+		Data options = browser.postJson("/a/passkey/register/options", new Data());
+		assertEquals("client-a.localhost", options.getDataOptional("rp").getString("id"));
+		authenticator.userHandle = options.getDataOptional("user").getString("id");
+
+		HttpResponse<String> registered = browser.post("/a/passkey/register"
+			, authenticator.create(options.getString("challenge"), "http://client-a.localhost", "client-a.localhost", OK));
+		assertEquals(200, registered.statusCode(), registered.body());
+
+		assertEquals(1, Passkey.list("", CLIENT_A, USER_ID).size());
+		assertEquals(0, Passkey.list("", CLIENT_B, USER_ID).size());
+		assertEquals("client-a.localhost", Passkey.list(USER_ID).get(0).getString("rp_id"));
+
+		// A でログインできる
+		Browser a = new Browser();
+		Data loginA = a.postJson("/a/passkey/login/options", new Data());
+		assertEquals("client-a.localhost", loginA.getString("rpId"));
+		assertEquals(200, a.post("/a/passkey/login"
+			, authenticator.get(loginA.getString("challenge"), "http://client-a.localhost", "client-a.localhost", OK)).statusCode());
+
+		// B では、同じ資格情報で（B の rp_id に署名させても）入れない
+		Browser b = new Browser();
+		Data loginB = b.postJson("/b/passkey/login/options", new Data());
+		assertEquals(401, b.post("/b/passkey/login"
+			, authenticator.get(loginB.getString("challenge"), "http://client-b.localhost", "client-b.localhost", OK)).statusCode());
+		assertEquals("0", b.get("/me").body());
+
+		// A の options のあとに B で確かめると、手続きのやり直し（400）
+		Browser mixed = new Browser();
+		Data loginMixed = mixed.postJson("/a/passkey/login/options", new Data());
+		assertEquals(400, mixed.post("/mixed/passkey/login"
+			, authenticator.get(loginMixed.getString("challenge"), "http://client-a.localhost", "client-a.localhost", OK)).statusCode());
 
 	}
 
