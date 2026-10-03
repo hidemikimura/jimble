@@ -308,6 +308,24 @@ cache {
 	memory.expire = 0s      # memory のときだけ。0 で無期限
 }
 
+mail {
+	transport = "smtp"      # smtp | log（送らずにログ。手元用）| memory（テスト用）
+	from      = ""          # From を書かないメールの差出人
+	from_name = ""
+
+	smtp {
+		host            = ""            # smtp なら必須（書かずに送ると例外）
+		port            = 587           # 書かなければ security から（starttls 587 / tls 465 / none 25）
+		security        = "starttls"    # starttls | tls | none（none では認証できない）
+		username        = ""
+		password        = ${?SMTP_PASSWORD}
+		connect_timeout = 10s
+		timeout         = 30s
+		helo            = ""            # EHLO で名乗る名前（空ならこの機械の名前）
+		envelope_from   = ""            # バウンスの宛先（空なら From）
+	}
+}
+
 sql_cache {
 	enabled = false
 	store   = "memory"   # memory | redis | db

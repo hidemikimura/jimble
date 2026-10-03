@@ -219,7 +219,7 @@ try (Tx tx = db.begin()) {
 | --- | --- |
 | `jimble-web` | ルーティング・リクエスト/レスポンス・セッション・CSRF・認証・SSE・WebSocket |
 | `jimble-db` | SQL ビルダー・マイグレーション・コード生成・キャッシュ・ロック |
-| `jimble-util` | `Data` / `Log` / `Conf` / `Dson` / ハッシュ |
+| `jimble-util` | `Data` / `Log` / `Conf` / `Dson` / ハッシュ / メール（`Mailer`） |
 | `jimble-core` | `Context` / `Executor` |
 | `jimble-batch` `jimble-mq` | バッチとキュー。**MQ は DB のテーブルがキュー**（Kafka も Rabbit も要らない） |
 | `jimble-mcp` `jimble-otel` `jimble-batch-manager` | MCP サーバー・分散トレーシング・バッチ管理画面 |
@@ -279,6 +279,7 @@ Gradle プラグインは `io.jimble.jte`（テンプレート変換）/ `io.jim
 | よくある落とし穴 | `pitfalls.md` |
 | プロキシの後ろ（`trust_proxy`）・リバースプロキシ | `server.md` |
 | HTTP クライアント・CSV・XML | `util.md` |
+| メール（SMTP） | `mail.md` |
 | MCP サーバー | `mcp.md` |
 | 考え方の理由 | `principles.md` |
 
