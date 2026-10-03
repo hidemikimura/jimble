@@ -71,6 +71,8 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 範囲は `between(a, b)`、別の条件は `.and(Post.id.le(9))`。列に直接 `.and(...)` も落ちる。
 
 結合は `left(...)` / `inner(...)` と `on(...)`。`on()` は**直前の結合に付く**。
+インデックスのヒント（MySQL。2.5.0）はテーブルに付けて渡す：`from(Orders.instance().forceIndex("orders__created_at"))`、`left(Customer.instance().useIndex("customer__code"))`、`ignoreIndex("PRIMARY")`。
+**PostgreSQL では組み立てたところで `DialectException`**（黙って外さない）。最後の手段にし、`EXPLAIN` で効いていることを確かめる。
 結合の無いところの `on()` は落ちる。2度呼ぶと AND。
 
 ## 結果は Data。テーブル名でネストしている

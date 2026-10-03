@@ -343,6 +343,16 @@ public sealed interface Dialect permits MySqlDialect, PostgreSqlDialect {
 	 */
 	void fullTextMatch (StringBuilder sb, Runnable columns, String modifier);
 
+	/**
+	 * インデックスのヒント（テーブル名のあとに書く。D-265）
+	 *
+	 * @param sb			出力先
+	 * @param hint			種類
+	 * @param indexNames	インデックスの名前（1つ以上）
+	 * @throws DialectException	その製品に無い場合（PostgreSQL）
+	 */
+	void indexHint (StringBuilder sb, IndexHint hint, java.util.List<String> indexNames);
+
 	// endregion
 
 	// region INSERT

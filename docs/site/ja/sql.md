@@ -95,6 +95,32 @@ SQL.select()
 
 結果はテーブル名でネストするので、`row.getData("comment")` で取れます。
 
+### インデックスのヒント（MySQL）
+
+テーブルに `forceIndex(...)` / `useIndex(...)` / `ignoreIndex(...)` を付けて、`from` や結合に渡します（2.5.0 から）。
+
+```java
+SQL.select()
+	.from(Orders.instance().forceIndex("orders__created_at"))       // FROM `orders` FORCE INDEX (`orders__created_at`)
+	.left(Customer.instance().useIndex("customer__code"))           // LEFT JOIN `customer` USE INDEX (`customer__code`)
+	.on(Customer.id.eq(Orders.customer_id))
+	.where(Orders.created_at.ge(from))
+```
+
+| | |
+| --- | --- |
+| `forceIndex` | その索引を使わせる（テーブル全体を読むより必ずこちら） |
+| `useIndex` | その索引の中から選ばせる |
+| `ignoreIndex` | その索引を使わせない。主キーは `"PRIMARY"` |
+
+名前はいくつでも並べられます。名前に見えないもの（空白・引用符・括弧）は、組み立てる前に `SqlBuildException` です。
+
+> [!TRAP]
+> **最後の手段にしてください。**オプティマイザが索引を選び違えるのは、統計が古い（`ANALYZE TABLE`）・索引が足りない・条件が索引に合っていない、のどれかが多いです。
+> ヒントを書くと、データが増えて別の索引のほうが速くなっても、ずっとこちらを使い続けます。使うなら、`EXPLAIN` で効いていることを確かめてください。
+>
+> **PostgreSQL にはヒントが無いので、組み立てたところで `DialectException` になります**（黙って外しません。外すと「MySQL では速いのに PostgreSQL では遅い」が気づかれないまま残ります）。
+
 ## 入れる・直す・消す
 
 ```java

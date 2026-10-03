@@ -533,6 +533,21 @@ public final class PostgreSqlDialect implements Dialect {
 
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * PostgreSQL にはインデックスのヒントが無い。<b>黙って外さない</b>——外すと、MySQL では速いのに
+	 * PostgreSQL では遅い、が気づかれないまま残る。統計（{@code ANALYZE}）や索引そのものを見直すこと。
+	 * </p>
+	 */
+	@Override
+	public void indexHint (StringBuilder sb, IndexHint hint, java.util.List<String> indexNames) {
+
+		throw unsupported("インデックスのヒント（%s）".formatted(hint.keyword()));
+
+	}
+
 	@Override
 	public String insertIgnorePrefix () {
 

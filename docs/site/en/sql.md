@@ -90,6 +90,32 @@ Calling it twice joins the conditions with AND. **Calling `on()` where there is 
 
 The result nests under the table name, so you get it with `row.getData("comment")`.
 
+### Index hints (MySQL)
+
+Put `forceIndex(...)` / `useIndex(...)` / `ignoreIndex(...)` on a table and pass it to `from` or a join (since 2.5.0).
+
+```java
+SQL.select()
+	.from(Orders.instance().forceIndex("orders__created_at"))       // FROM `orders` FORCE INDEX (`orders__created_at`)
+	.left(Customer.instance().useIndex("customer__code"))           // LEFT JOIN `customer` USE INDEX (`customer__code`)
+	.on(Customer.id.eq(Orders.customer_id))
+	.where(Orders.created_at.ge(from))
+```
+
+| | |
+| --- | --- |
+| `forceIndex` | Make it use that index (always in preference to reading the whole table) |
+| `useIndex` | Make it choose from those indexes |
+| `ignoreIndex` | Keep it off that index. The primary key is `"PRIMARY"` |
+
+You can list as many names as you like. Anything that does not look like a name (spaces, quotes, parentheses) is a `SqlBuildException` before anything is built.
+
+> [!TRAP]
+> **Treat it as a last resort.** When the optimizer picks the wrong index it is usually stale statistics (`ANALYZE TABLE`), a missing index, or a condition that does not fit the index.
+> A hint keeps using that index even after the data grows and another index would be faster. If you use one, confirm with `EXPLAIN` that it works.
+>
+> **PostgreSQL has no hints, so building it raises `DialectException`** (it is not silently dropped; dropping it would leave "fast on MySQL, slow on PostgreSQL" unnoticed).
+
 ## Inserting, updating, deleting
 
 ```java

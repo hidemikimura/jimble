@@ -4,6 +4,16 @@
 
 ---
 
+## 2.5.0（未公開）
+
+### 足したこと（SQL ビルダー）
+
+| | |
+|---|---|
+| **インデックスのヒント（MySQL）**：`Table.forceIndex(...)` / `useIndex(...)` / `ignoreIndex(...)` | テーブルに付けて `from` や `left` / `inner` に渡すと、テーブル名のあとに `FORCE INDEX (...)` などを書く。名前は複数並べられ、主キーは `"PRIMARY"`。名前に見えないものは組み立てる前に `SqlBuildException`。**PostgreSQL では組み立てたところで `DialectException`**（ヒントが無いので、黙って外さない） |
+
+---
+
 ## 2.4.1（2026-10-04）
 
 **2.4.0 で入った不具合を直した版です。**`ApiToken` を使わず、アプリが自分で `Authorization: Bearer` を確かめていて（MCP の接続など）、そのルートが `Auth.NO_SESSION` なら、すぐに上げてください。
