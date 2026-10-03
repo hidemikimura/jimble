@@ -322,15 +322,21 @@ how to fix it is left out). Any `ERROR` fails the task; `WARN` alone does not.
 | Rule | Level | What it looks for |
 | --- | --- | --- |
 | J101 | ERROR | `context.request().getString(...)` and friends (`Request` is not a `Data`; go through `bodyAll()`) |
+| J102 | WARN | A `path(...)` block with `before` / `after` but no route at all (a filter only attaches to routes in its own block, so it guards nothing; the `path("/mcp", () -> before(...))` shape) |
 | J201 | WARN | `${ENV}` without `?` in configuration (fails at startup wherever the variable is not set) |
 | J202 | ERROR | The same key written again after its `${?ENV}` line (the environment variable never wins) |
+| J203 | WARN | `cookie.secure = false` in `application.conf` or a production file (production inherits it and cookies go over http; write it only in `application.local.conf`) |
+| J204 | WARN | `server.trust_proxy = true` with neither `server.trusted_proxies` nor `server.client_ip_header` (with two or more hops, everyone looks like the nearer proxy's IP) |
 | J301 | ERROR | `Migration.install()` after `DBUtil.load(...)` (migrations never run) |
 | J302 | ERROR | `BatchRegistry.sync` is used but `BatchTables.install` is called nowhere |
 | J303 | ERROR | `BatchRegistry.sync` before `BatchRegistry.add` (every batch becomes `nothing`) |
 | J304 | WARN | codegen is in use but MQ tables (`mq_scheduler` …) are missing from `codegen.exclude_tables` |
 | J401 | ERROR | An outer `before(Auth::guard)` with `Remember.restore` inside an `Auth.REALM` block (401 every time despite remember-me) |
 | J402 | WARN | `Remember.forgetAll(...)` with no `Auth.revoke` / `revokeOthers` in the same file (sessions on other devices stay logged in) |
+| J403 | WARN | `Lockout.waitSeconds` read first and `Lockout.fail` counted after, without `Lockout.attempt` (concurrent requests slip through) |
 | J501 | WARN | The skills are not from the jimble version you use (run `jimbleSkills`) |
+| J601 | WARN | An `error(...)` lambda returns `getMessage()` without comparing against 500 (DB errors and internal paths reach the client) |
+| J602 | WARN | A request value (`request().body…()` or a variable holding one) passed to `apply` / `setRow` / `valueRow` without listing the allowed columns |
 | J701 | WARN | An empty `catch` in a file that uses transactions (`db.begin()` / `db.transaction(...)` / `TransactionException`) (reports success when nothing was committed) |
 
 It also lists **1.x code that 2.0 removed, or whose type or meaning 2.0 changed** (all WARN; the rewrites are in [Moving to 2.0](./migrate-2)).

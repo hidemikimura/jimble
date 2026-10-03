@@ -97,6 +97,28 @@ public final class JimbleChecker {
 	/* 空の catch */
 	private static final Pattern EMPTY_CATCH = Pattern.compile("catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}");
 
+	/* J102: path(...) の呼び出し（Router の router.path も含む） */
+	private static final Pattern PATH_CALL = Pattern.compile("(?<![\\w$])path\\s*\\(");
+
+	/* J102: ルートを登録する呼び出し（入れ子の path も、中にルートがあるものとして数える） */
+	private static final Pattern ROUTE_CALL = Pattern.compile(
+		"(?<![\\w$])(?:get|post|put|delete|patch|head|options|any|ws|sse|install|path|route|mount)\\s*\\(");
+
+	/* J102: フィルタ */
+	private static final Pattern FILTER_CALL = Pattern.compile("(?<![\\w$])(?:before|after)\\s*\\(");
+
+	/* J601: エラーハンドラ（Log.error などは除く） */
+	private static final Pattern ERROR_CALL = Pattern.compile("(?<![\\w$.])error\\s*\\(|(?<![\\w$])router\\s*\\.\\s*error\\s*\\(");
+
+	/* J602: 列を並べずに Data を丸ごと受ける呼び出し */
+	private static final Pattern WHOLE_ROW_CALL = Pattern.compile("\\.\\s*(apply|setRow|valueRow)\\s*\\(");
+
+	/* J602: リクエストの値を入れた変数（Data form = context.request().bodyAll(); など） */
+	private static final Pattern REQUEST_VAR = Pattern.compile("(\\w+)\\s*=\\s*[^;=]*?(?<![\\w$])request\\s*\\(\\s*\\)\\s*\\.\\s*body\\w*\\s*\\(");
+
+	/* J602: リクエストを直に読む式 */
+	private static final Pattern REQUEST_BODY = Pattern.compile("(?<![\\w$])request\\s*\\(\\s*\\)\\s*\\.\\s*body\\w*\\s*\\(");
+
 	private JimbleChecker () {
 	}
 
@@ -382,6 +404,24 @@ public final class JimbleChecker {
 			}
 		}
 
+		// J102: フィルタはあるのに、ルートが1つも無いブロック
+		checkFilterOnlyBlocks(code, rawLines, file, findings);
+
+		// J403: 読んでから数えるロックアウト（同時に送られると素通りする。2.2.3）
+		int wait = code.indexOf("Lockout.waitSeconds(");
+		if (wait >= 0 && code.contains("Lockout.fail(") && !code.contains("Lockout.attempt(")) {
+			add(findings, rawLines, "J403", Level.WARN, file, lineOf(code, wait)
+				, "Lockout.waitSeconds(...) で待ち時間を読んでから、Lockout.fail(...) で数えている。待ち時間が開いた瞬間に同時に送られると、どれも「待たなくてよい」を読み、何回でも試せる"
+				, "試す前に long wait = Lockout.attempt(key) で数える（0 なら試してよい。0 より大きければ 429 などで断る）。成功したら Lockout.clear(key)"
+				, DOCS + "auth.md");
+		}
+
+		// J601: 500 番台でも例外のメッセージを返すエラーハンドラ
+		checkErrorMessage(code, rawLines, file, findings);
+
+		// J602: リクエストを、許す列を並べずに apply / setRow / valueRow へ渡す
+		checkWholeRow(code, rawLines, file, findings);
+
 		// J701: トランザクションを使うファイルの空の catch
 		if (code.contains("DBTransaction") || code.contains(".begin()") || code.contains(".transaction(")
 			|| code.contains("TransactionException")) {
@@ -393,6 +433,163 @@ public final class JimbleChecker {
 					, DOCS + "transaction.md");
 			}
 		}
+
+	}
+
+	/**
+	 * 開き括弧に対応する閉じ括弧（文字列とコメントは潰してある前提）
+	 *
+	 * @param code	ソース
+	 * @param open	開き括弧の位置（{@code (} か {@code {}）
+	 * @return	閉じ括弧の位置（無ければ末尾）
+	 */
+	static int matching (String code, int open) {
+
+		char start = code.charAt(open);
+		char end = start == '(' ? ')' : '}';
+		int depth = 0;
+
+		for (int i = open; i < code.length(); i++) {
+			char c = code.charAt(i);
+			if (c == start) {
+				depth++;
+			} else if (c == end) {
+				depth--;
+				if (depth == 0) {
+					return i;
+				}
+			}
+		}
+
+		return code.length();
+
+	}
+
+	/**
+	 * J102：フィルタ（before / after）はあるのに、ルートが1つも無い path のブロックを見る
+	 *
+	 * <p>
+	 * フィルタは<b>書いたブロックのルートにしか付かない</b>（パスには付かない）。
+	 * 別のブロックで {@code path("/mcp", () -> before(...))} と書いても、MCP のルートには付かず、何にも効かない。
+	 * </p>
+	 */
+	private static void checkFilterOnlyBlocks (String code, String[] rawLines, String file, List<Finding> findings) {
+
+		Matcher call = PATH_CALL.matcher(code);
+
+		while (call.find()) {
+
+			int open = call.end() - 1;
+			int close = matching(code, open);
+			String args = code.substring(open + 1, Math.min(close, code.length()));
+
+			int arrow = args.indexOf("->");
+			if (arrow < 0) {
+				continue;
+			}
+
+			String body = args.substring(arrow + 2);
+
+			if (FILTER_CALL.matcher(body).find() && !ROUTE_CALL.matcher(body).find()) {
+				add(findings, rawLines, "J102", Level.WARN, file, lineOf(code, call.start())
+					, "path(...) のブロックに before / after があるのに、ルートが1つも無い。フィルタは書いたブロックのルートにしか付かないので、何にも効かない（同じパスの別のブロックのルートや、McpController のルートにも付かない）"
+					, "フィルタを、守りたいルートと同じブロックに書く。MCP なら McpController を継承したクラスの初期化ブロックに before(...) を書く"
+					, DOCS + "routing.md");
+			}
+
+		}
+
+	}
+
+	/**
+	 * J601：500 番台でも例外のメッセージを返すエラーハンドラを見る
+	 *
+	 * <p>
+	 * 500 番台の例外のメッセージには、DB の誤り（重複したキーの値など）や内部のパスが入る。
+	 * ラムダの中で {@code getMessage()} を使っていて、500 と比べていなければ出す（メソッド参照は見ない）。
+	 * </p>
+	 */
+	private static void checkErrorMessage (String code, String[] rawLines, String file, List<Finding> findings) {
+
+		Matcher call = ERROR_CALL.matcher(code);
+
+		while (call.find()) {
+
+			int open = call.end() - 1;
+			String args = code.substring(open + 1, Math.min(matching(code, open), code.length()));
+
+			if (args.contains("->") && args.contains("getMessage()") && !args.contains("500")) {
+				add(findings, rawLines, "J601", Level.WARN, file, lineOf(code, call.start())
+					, "error(...) のハンドラが、500 番台でも例外のメッセージ（getMessage()）を返している。DB の誤りや内部のパスが相手に届く"
+					, "500 番台は決まった文言にする：statusCode < 500 ? cause.getMessage() : \"サーバーで問題が起きました\"（中身はログで見る）"
+					, DOCS + "errors.md");
+			}
+
+		}
+
+	}
+
+	/**
+	 * J602：リクエストを、許す列を並べずに apply / setRow / valueRow へ渡しているかを見る
+	 *
+	 * <p>
+	 * 列を並べない形は、どの列名でも受け付ける。リクエストをそのまま渡すと、画面に出していない列を当てられたり
+	 * （{@code password_hash|starts_with}）、{@code role} を足されたりする（2.2.3）。
+	 * 見るのは、引数が {@code request().body〜()} か、それを入れた変数のときだけ。
+	 * </p>
+	 */
+	private static void checkWholeRow (String code, String[] rawLines, String file, List<Finding> findings) {
+
+		java.util.Set<String> requestVars = new java.util.HashSet<>();
+		Matcher var = REQUEST_VAR.matcher(code);
+		while (var.find()) {
+			requestVars.add(var.group(1));
+		}
+
+		Matcher call = WHOLE_ROW_CALL.matcher(code);
+
+		while (call.find()) {
+
+			int open = call.end() - 1;
+			String args = code.substring(open + 1, Math.min(matching(code, open), code.length()));
+
+			// 許す列を並べている（引数が2つ以上）
+			if (hasTopLevelComma(args)) {
+				continue;
+			}
+
+			String arg = args.trim();
+
+			if (REQUEST_BODY.matcher(arg).find() || requestVars.contains(arg)) {
+				add(findings, rawLines, "J602", Level.WARN, file, lineOf(code, call.start())
+					, "リクエストの値を、許す列を並べずに %s(...) へ渡している。どの列名でも受け付けるので、画面に出していない列を当てられたり（password_hash|starts_with）、role などを足されたりする".formatted(call.group(1))
+					, "許す列を並べる：%s(%s, Table.col1, Table.col2)（ほかの列が来たら SqlBuildException）".formatted(call.group(1), arg)
+					, DOCS + "sql.md");
+			}
+
+		}
+
+	}
+
+	/**
+	 * いちばん外側に , があるか（括弧の中は見ない）
+	 */
+	private static boolean hasTopLevelComma (String args) {
+
+		int depth = 0;
+
+		for (int i = 0; i < args.length(); i++) {
+			char c = args.charAt(i);
+			if (c == '(' || c == '{' || c == '[' || c == '<') {
+				depth++;
+			} else if (c == ')' || c == '}' || c == ']' || c == '>') {
+				depth--;
+			} else if (c == ',' && depth == 0) {
+				return true;
+			}
+		}
+
+		return false;
 
 	}
 
@@ -466,6 +663,9 @@ public final class JimbleChecker {
 
 		// J304: MQ の表を codegen から外していない
 		String allConf = String.join("\n", conf.values());
+
+		// J204: trust_proxy = true なのに、信じる中継も、信じるヘッダも決めていない
+		checkTrustProxy(projectDir, conf, findings);
 		boolean usesCodegen = allConf.contains("codegen") || Files.isDirectory(projectDir.resolve("src/main/java/db"));
 		if (usesCodegen) {
 
@@ -498,6 +698,42 @@ public final class JimbleChecker {
 						, "MQ の表 %s を codegen が外さない（名前をアプリが決めるので、jimble の管理テーブルに入っていない）".formatted(table)
 						, "conf/application.conf の codegen.exclude_tables に \"%s\" を足す（ワイルドカードは使えない）".formatted(table)
 						, DOCS + "codegen.md"));
+				}
+			}
+
+		}
+
+	}
+
+	/**
+	 * J204：{@code server.trust_proxy = true} なのに、{@code server.trusted_proxies} も {@code server.client_ip_header} も無いかを見る
+	 *
+	 * <p>
+	 * 書かなければ {@code X-Forwarded-For} の右端（直前の中継が見た相手）を送り元とする。中継が1段なら正しいが、
+	 * CDN とロードバランサのように2段以上あると、<b>全員が手前の中継の IP に見え</b>、{@code RateLimit.perIp} が全員を1人として数える。
+	 * Cloudflare の後ろなら {@code client_ip_header} を書く。
+	 * </p>
+	 */
+	private static void checkTrustProxy (Path projectDir, Map<Path, String> conf, List<Finding> findings) {
+
+		String all = String.join("\n", conf.values());
+
+		if (all.contains("trusted_proxies") || all.contains("client_ip_header")) {
+			return;
+		}
+
+		Pattern trust = Pattern.compile("^\\s*(?:server\\s*\\.\\s*)?trust_proxy\\s*[=:]\\s*true\\b");
+
+		for (Map.Entry<Path, String> file : conf.entrySet()) {
+
+			String[] lines = file.getValue().split("\n", -1);
+
+			for (int i = 0; i < lines.length; i++) {
+				if (trust.matcher(stripConfComment(lines[i])).find()) {
+					add(findings, lines, "J204", Level.WARN, relative(projectDir, file.getKey()), i + 1
+						, "server.trust_proxy = true なのに、server.trusted_proxies も server.client_ip_header も無い。送り元は X-Forwarded-For の右端（直前の中継が見た相手）になるので、中継が2段以上（CDN とロードバランサなど）あると、全員が手前の中継の IP に見える（RateLimit.perIp が全員を1人として数える）"
+						, "中継が2段以上なら server.trusted_proxies に中継の範囲（IP / CIDR）を書く。Cloudflare の後ろなら server.client_ip_header = \"CF-Connecting-IP\"。中継が1段だけなら、このままでよい（# jimble-check:ignore J204）"
+						, DOCS + "server.md");
 				}
 			}
 
@@ -563,6 +799,14 @@ public final class JimbleChecker {
 			String key = fullKey(blocks, unquote(assign.group(1)));
 			String value = assign.group(3).trim();
 
+			// J203: 本番も読むファイルで cookie.secure = false
+			if (key.equals("cookie.secure") && value.equals("false") && !localOnly(path)) {
+				add(findings, lines, "J203", Level.WARN, file, lineNo
+					, "%s に cookie.secure = false がある。環境別のファイルは include \"application.conf\" で共通の設定を読むので、本番もそのまま引き継ぎ、セッションや CSRF の Cookie が http でも送られる".formatted(path.getFileName())
+					, "cookie { secure = false } は conf/application.local.conf（1行目に include \"application.conf\"）にだけ書く"
+					, DOCS + "config.md");
+			}
+
 			if (value.startsWith("${?")) {
 				envOnly.put(key, lineNo);
 			} else if (envOnly.containsKey(key)) {
@@ -575,6 +819,27 @@ public final class JimbleChecker {
 			}
 
 		}
+
+	}
+
+	/**
+	 * 手元（とテスト）でしか読まない設定ファイルか
+	 *
+	 * @param path	ファイル
+	 * @return	{@code application.local.conf} / {@code application.dbtest.conf} など
+	 */
+	static boolean localOnly (Path path) {
+
+		String name = path.getFileName().toString();
+
+		Matcher env = Pattern.compile("^application\\.([A-Za-z0-9_-]+)\\.conf$").matcher(name);
+
+		if (!env.matches()) {
+			// application.conf（どの環境も読む）と、そのほかの名前は手元のものとみなさない
+			return !name.equals("application.conf") && !name.startsWith("application");
+		}
+
+		return java.util.Set.of("local", "dev", "development", "test", "dbtest", "pgtest").contains(env.group(1).toLowerCase());
 
 	}
 

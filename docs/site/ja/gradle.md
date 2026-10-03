@@ -314,15 +314,21 @@ jimbleRun {
 | 規則 | 重さ | 見るもの |
 | --- | --- | --- |
 | J101 | ERROR | `context.request().getString(...)` など（`Request` は `Data` ではない。`bodyAll()` を通す） |
+| J102 | WARN | `path(...)` のブロックに `before` / `after` があるのに、ルートが1つも無い（フィルタは書いたブロックのルートにしか付かず、何にも効かない。`path("/mcp", () -> before(...))` の形） |
 | J201 | WARN | 設定の `${ENV}` に `?` が無い（環境変数が無い環境で起動時に落ちる） |
 | J202 | ERROR | `${?ENV}` の行のあとで同じキーを書き直している（環境変数が効かない） |
+| J203 | WARN | `application.conf` や本番のファイルに `cookie.secure = false`（本番も引き継ぎ、Cookie が http でも送られる。`application.local.conf` にだけ書く） |
+| J204 | WARN | `server.trust_proxy = true` なのに `server.trusted_proxies` も `server.client_ip_header` も無い（中継が2段以上だと、全員が手前の中継の IP に見える） |
 | J301 | ERROR | `Migration.install()` が `DBUtil.load(...)` のあと（マイグレーションが流れない） |
 | J302 | ERROR | `BatchRegistry.sync` はあるのに `BatchTables.install` がどこにも無い |
 | J303 | ERROR | `BatchRegistry.sync` が `BatchRegistry.add` より前（全部のバッチが `nothing` になる） |
 | J304 | WARN | codegen を使っているのに、MQ の表（`mq_scheduler` など）を `codegen.exclude_tables` に書いていない |
 | J401 | ERROR | 外側の `before(Auth::guard)` と、`Auth.REALM` のブロックの中の `Remember.restore`（覚えていても毎回 401） |
 | J402 | WARN | `Remember.forgetAll(...)` があって、同じファイルに `Auth.revoke` / `revokeOthers` が無い（ほかの端末のセッションが残る） |
+| J403 | WARN | `Lockout.waitSeconds` で読んでから `Lockout.fail` で数え、`Lockout.attempt` を使っていない（同時に送られると素通りする） |
 | J501 | WARN | skill が使っている jimble の版のものではない（`jimbleSkills` で揃える） |
+| J601 | WARN | `error(...)` のラムダが `getMessage()` を返していて、500 と比べていない（DB の誤りや内部のパスが相手に届く） |
+| J602 | WARN | リクエストの値（`request().body〜()` か、それを入れた変数）を、許す列を並べずに `apply` / `setRow` / `valueRow` へ渡している |
 | J701 | WARN | トランザクション（`db.begin()` / `db.transaction(...)` / `TransactionException`）を使うファイルの空の `catch`（確定していないのに成功を返す） |
 
 **1.x の書き方で、2.0 で消えたもの・型や意味が変わったもの**も出します（どれも WARN。書き換え先は [2.0 への移行](./migrate-2)）。

@@ -155,6 +155,7 @@ class JimbleCheckerTest {
 				path("/ops", () -> {
 					attribute(Auth.REALM, "operator");
 					before(Remember.restore("operator", Ops::find));
+					get("/home", Ops::home);
 				});
 			}}
 			""");
@@ -164,10 +165,12 @@ class JimbleCheckerTest {
 					attribute(Auth.REALM, "operator");
 					before(Remember.restore("operator", Ops::find));
 					before(Auth::guard);
+					get("/home", Ops::home);
 				});
 				path("", () -> {
 					before(Remember.restore(App::find));
 					before(Auth::guard);
+					install(Home::new);
 				});
 			}}
 			""");
@@ -308,6 +311,183 @@ class JimbleCheckerTest {
 
 		write(root, ".claude/" + SkillsInstaller.RECORD, "version=1.5.0\n");
 		assertTrue(check(root).isEmpty());
+
+	}
+
+	@Test
+	@DisplayName("J102 before だけでルートの無い path のブロック（/mcp の形）。ルートがあれば・入れ子の path があれば出さない")
+	void filterOnlyBlock (@TempDir Path root) throws IOException {
+
+		write(root, "src/main/java/app/A.java", """
+			class A extends JimbleApp {
+				{
+					path("/mcp", () -> before(A::auth));
+					path("/admin", () -> {
+						before(A::auth);
+						get("/users", A::users);
+					});
+					path("/api", () -> {
+						before(A::auth);
+						path("/v1", () -> get("/x", A::x));
+					});
+					path("/ops", () -> {
+						after(A::log);
+					});
+					String p = context.request().path();
+					// path("/c", () -> before(A::auth));
+				}
+			}
+			""");
+
+		List<Finding> findings = check(root);
+
+		assertEquals(List.of("J102:3", "J102:12"), rules(findings), findings.toString());
+		assertEquals(Level.WARN, findings.get(0).level());
+		assertTrue(findings.get(0).fix().contains("McpController"));
+
+	}
+
+	@Test
+	@DisplayName("J203 cookie.secure = false は application.conf と本番のファイルだけで出す（local / dbtest では出さない）")
+	void cookieSecureFalse (@TempDir Path root) throws IOException {
+
+		write(root, "conf/application.conf", """
+			cookie {
+				secure = false
+			}
+			""");
+		write(root, "conf/application.prod.conf", "cookie.secure = false\n");
+		write(root, "conf/application.local.conf", "include \"application.conf\"\ncookie { secure = false }\ncookie.secure = false\n");
+		write(root, "conf/application.dbtest.conf", "cookie.secure = false\n");
+
+		List<Finding> findings = check(root);
+
+		assertEquals(List.of("J203:2", "J203:1"), rules(findings), findings.toString());
+		assertTrue(findings.get(1).message().contains("application.prod.conf"), findings.get(1).message());
+
+		assertTrue(JimbleChecker.localOnly(Path.of("application.local.conf")));
+		assertTrue(!JimbleChecker.localOnly(Path.of("application.staging.conf")));
+
+	}
+
+	@Test
+	@DisplayName("J204 trust_proxy = true だけで、trusted_proxies も client_ip_header も無い")
+	void trustProxy (@TempDir Path root) throws IOException {
+
+		write(root, "conf/application.conf", """
+			server {
+				trust_proxy = true
+			}
+			""");
+
+		assertEquals(List.of("J204:2"), rules(check(root)));
+
+		write(root, "conf/application.prod.conf", "server.trusted_proxies = [\"10.0.0.0/8\"]\n");
+		assertTrue(check(root).isEmpty(), "trusted_proxies を書けば出さない");
+
+		write(root, "conf/application.prod.conf", "server.client_ip_header = \"CF-Connecting-IP\"\n");
+		assertTrue(check(root).isEmpty(), "client_ip_header を書けば出さない");
+
+		write(root, "conf/application.prod.conf", "# server.trusted_proxies はまだ\n");
+		write(root, "conf/application.conf", "server.trust_proxy = false\n");
+		assertTrue(check(root).isEmpty(), "false なら出さない");
+
+	}
+
+	@Test
+	@DisplayName("J403 waitSeconds → fail の順のロックアウト。attempt を使っていれば出さない")
+	void lockoutReadThenCount (@TempDir Path root) throws IOException {
+
+		write(root, "src/main/java/app/A.java", """
+			class A {
+				boolean login (String key, String password) {
+					if (Lockout.waitSeconds(key) > 0) {
+						throw new HttpException(429, "待って");
+					}
+					if (!ok(password)) {
+						Lockout.fail(key);
+						return false;
+					}
+					Lockout.clear(key);
+					return true;
+				}
+			}
+			""");
+		write(root, "src/main/java/app/B.java", """
+			class B {
+				boolean login (String key, String password) {
+					if (Lockout.attempt(key) > 0) {
+						throw new HttpException(429, "待って");
+					}
+					long left = Lockout.waitSeconds(key);
+					Lockout.fail(key);
+					return true;
+				}
+			}
+			""");
+
+		List<Finding> findings = check(root);
+
+		assertEquals(List.of("J403:3"), rules(findings), findings.toString());
+		assertTrue(findings.get(0).file().endsWith("A.java"));
+		assertTrue(findings.get(0).fix().contains("Lockout.attempt"));
+
+	}
+
+	@Test
+	@DisplayName("J601 500 番台でも getMessage() を返すエラーハンドラ。500 と比べていれば・Log.error は出さない")
+	void errorMessage (@TempDir Path root) throws IOException {
+
+		write(root, "src/main/java/app/A.java", """
+			class A extends JimbleApp {
+				{
+					error((context, cause, statusCode) ->
+						context.response().code(statusCode).json("error", cause.getMessage()));
+				}
+			}
+			""");
+		write(root, "src/main/java/app/B.java", """
+			class B extends JimbleApp {
+				{
+					error((context, cause, statusCode) -> context.response().code(statusCode).json("error"
+						, statusCode < 500 ? cause.getMessage() : "サーバーで問題が起きました"));
+					Log.error(ex, "失敗: " + ex.getMessage());
+					error(B::onError);
+				}
+			}
+			""");
+
+		List<Finding> findings = check(root);
+
+		assertEquals(List.of("J601:3"), rules(findings), findings.toString());
+		assertTrue(findings.get(0).file().endsWith("A.java"));
+
+	}
+
+	@Test
+	@DisplayName("J602 リクエストを、許す列を並べずに apply / setRow / valueRow へ渡す。列を並べれば・リクエスト以外なら出さない")
+	void wholeRow (@TempDir Path root) throws IOException {
+
+		write(root, "src/main/java/app/A.java", """
+			class A {
+				void a (WebContext context, DB db) {
+					Data form = context.request().bodyAll();
+					db.update(SQL.update(User.instance()).setRow(form).where(User.id.eq(1)));
+					db.selectList(SQL.select().from(User.instance()).apply(context.request().bodyQuery()));
+					db.insert(SQL.insert(User.instance()).valueRow(form, User.name, User.email));
+					db.selectList(SQL.select().from(User.instance()).apply(context.request().bodyAll(), User.name));
+					Data built = new Data().putData("name", "x");
+					db.insert(SQL.insert(User.instance()).valueRow(built));
+					Principal p = lookup.apply(user);
+				}
+			}
+			""");
+
+		List<Finding> findings = check(root);
+
+		assertEquals(List.of("J602:4", "J602:5"), rules(findings), findings.toString());
+		assertTrue(findings.get(0).message().contains("setRow"));
+		assertTrue(findings.get(0).fix().contains("setRow(form, "), findings.get(0).fix());
 
 	}
 
