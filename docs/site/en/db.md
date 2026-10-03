@@ -121,6 +121,7 @@ error.
 
 | Builder | PostgreSQL |
 |---|---|
+| `forceIndex` / `useIndex` / `ignoreIndex` (index hints) | Not available. PostgreSQL has no hints, and silently dropping them would hide the slowdown, so it refuses |
 | `Dsl.match(...)` (full-text search) | Not available. `to_tsvector` tokenizes differently and scores differently, so we do not silently substitute it |
 | `Dsl.dateFormat(col, "%Y-%m-%d")` | Not available. `to_char` uses a different format language, so substituting it would return **a different string instead of raising**. Format it on the Java side |
 | `Dsl.jsonExtract(col, "$.a[0]")` | Arrays, wildcards and quoted keys are not available. Only the `$.a.b` form |

@@ -386,6 +386,22 @@ public final class MySqlDialect implements Dialect {
 	}
 
 	@Override
+	public void indexHint (StringBuilder sb, IndexHint hint, java.util.List<String> indexNames) {
+
+		sb.append(' ').append(hint.keyword()).append(" (");
+
+		for (int i = 0; i < indexNames.size(); i++) {
+			if (i > 0) {
+				sb.append(", ");
+			}
+			identifier(sb, indexNames.get(i));
+		}
+
+		sb.append(')');
+
+	}
+
+	@Override
 	public String insertIgnorePrefix () {
 
 		return "IGNORE ";

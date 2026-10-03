@@ -116,6 +116,7 @@ SQL.select().from(Post.instance()).where(Post.id.eq(1L));
 
 | ビルダー | PostgreSQL |
 |---|---|
+| `forceIndex` / `useIndex` / `ignoreIndex`（インデックスのヒント） | 書けない。PostgreSQL にヒントは無く、黙って外すと遅いことに気づけないので断ります |
 | `Dsl.match(...)`（全文検索） | 書けない。`to_tsvector` は語彙の分割もスコアも別物なので、黙って置き換えません |
 | `Dsl.dateFormat(col, "%Y-%m-%d")` | 書けない。`to_char` は書式の言語が違うので、置き換えると**例外にならずに違う文字列**が返ります。Java 側で整えてください |
 | `Dsl.jsonExtract(col, "$.a[0]")` | 配列・ワイルドカード・引用符つきキーは書けません。`$.a.b` の形だけ |

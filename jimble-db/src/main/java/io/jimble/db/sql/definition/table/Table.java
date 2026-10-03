@@ -70,6 +70,77 @@ public class Table implements ITable, IFrom {
 
 	// region IFrom
 
+	// region インデックスのヒント（MySQL。D-265）
+
+	/**
+	 * このインデックスを使わせる（{@code FROM t FORCE INDEX (i)}）
+	 *
+	 * <pre>{@code
+	 * SQL.select().from(Orders.instance().forceIndex("orders__created_at")).where(...)
+	 * SQL.select().from(Orders.instance()).left(Customer.instance().forceIndex("customer__code")).on(...)
+	 * }</pre>
+	 *
+	 * <p>
+	 * <b>最後の手段にする。</b>オプティマイザが選び違えるのは、統計が古い・索引が足りない・条件が索引に合っていない、のどれかが多い。
+	 * ヒントを書くと、データが増えて別の索引のほうが速くなっても、ずっとこちらを使い続ける。
+	 * <b>PostgreSQL にはヒントが無いので、組み立てたところで {@code DialectException}</b>（黙って外さない）。
+	 * </p>
+	 *
+	 * @param indexNames	インデックスの名前（1つ以上）
+	 * @return	FROM や JOIN に渡すもの
+	 * @throws io.jimble.db.sql.SqlBuildException	名前が無い・形が違う場合
+	 */
+	public IFrom forceIndex (String... indexNames) {
+
+		return indexHint(io.jimble.db.dialect.IndexHint.FORCE, indexNames);
+
+	}
+
+	/**
+	 * このインデックスの中から選ばせる（{@code USE INDEX (i)}）
+	 *
+	 * @param indexNames	インデックスの名前（1つ以上）
+	 * @return	FROM や JOIN に渡すもの
+	 * @throws io.jimble.db.sql.SqlBuildException	名前が無い・形が違う場合
+	 */
+	public IFrom useIndex (String... indexNames) {
+
+		return indexHint(io.jimble.db.dialect.IndexHint.USE, indexNames);
+
+	}
+
+	/**
+	 * このインデックスを使わせない（{@code IGNORE INDEX (i)}）
+	 *
+	 * @param indexNames	インデックスの名前（1つ以上）
+	 * @return	FROM や JOIN に渡すもの
+	 * @throws io.jimble.db.sql.SqlBuildException	名前が無い・形が違う場合
+	 */
+	public IFrom ignoreIndex (String... indexNames) {
+
+		return indexHint(io.jimble.db.dialect.IndexHint.IGNORE, indexNames);
+
+	}
+
+	private IFrom indexHint (io.jimble.db.dialect.IndexHint hint, String... indexNames) {
+
+		if (indexNames == null || indexNames.length == 0) {
+			throw new io.jimble.db.sql.SqlBuildException("%s にインデックスの名前がありません: %s".formatted(hint.keyword(), name));
+		}
+
+		for (String indexName : indexNames) {
+			// 識別子として囲んで書くが、名前に見えないもの（空・空白・括弧・引用符）はここで断る
+			if (indexName == null || !indexName.matches("[A-Za-z0-9_$]{1,64}")) {
+				throw new io.jimble.db.sql.SqlBuildException("%s のインデックスの名前の形が違います: %s / %s".formatted(hint.keyword(), name, indexName));
+			}
+		}
+
+		return new io.jimble.db.internal.sql.query.from.IndexHintFrom(this, hint, java.util.List.of(indexNames));
+
+	}
+
+	// endregion
+
 	/**
 	 * {@inheritDoc}
 	 */
