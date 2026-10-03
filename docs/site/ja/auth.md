@@ -725,6 +725,8 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);
 ```
 
 失敗すると `Error` を投げます（`error.status` にサーバーの状態コード。利用者が取り消すと `error.name === "NotAllowedError"`）。
+確かめるときに一緒に送りたいもの（ラベルなど）は `extra: { label: "ノート PC" }`、入力欄の候補を待っているのをボタンで止めるなら `signal`（`AbortController`）を渡します。
+動く例は examples/approval-auth の `login.jte` と `passkeys.jte` です。
 `csrf.bind_session = true` でログインのあとにトークンが変わっても、JS が `X-CSRF-Token` を読んで差し替えます（`onCsrfToken` で受け取れます）。
 
 ### 設定

@@ -728,6 +728,8 @@ On the browser side, load the bundled JS and call it.
 ```
 
 Failures throw an `Error` (`error.status` holds the server's status code; a user cancelling gives `error.name === "NotAllowedError"`).
+Send extra fields with the verification (a label, say) via `extra: { label: "Laptop" }`, and pass a `signal` (`AbortController`) to stop a pending autofill request when a button is pressed.
+A working example is `login.jte` and `passkeys.jte` in examples/approval-auth.
 If `csrf.bind_session = true` rotates the token at login, the JS reads `X-CSRF-Token` and swaps it in (you get it via `onCsrfToken`).
 
 ### Settings
