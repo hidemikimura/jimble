@@ -14,6 +14,8 @@
 | ブラウザ側の JS を同梱しました（`Passkey.script()`） | `JimblePasskey.register(...)` / `login(...)` を呼ぶだけ。base64url の変換、`X-CSRF-Token` の送信と差し替え（`csrf.bind_session`）をやる |
 | 設定 `auth.passkey.*`（`rp_id`・`rp_name`・`origins`・`timeout`） | 表 `auth_passkey` は最初に使ったときに作る |
 | **クライアントごとにドメインが違う SaaS では、rp_id を渡せます**（`PasskeyRp`） | `Passkey.loginOptions(context, rp)` などに渡す。パスキーは rp_id ごとに持ち、A で登録したものは B では使えない。options を出したときと違う rp で確かめると断る。`PasskeyRp` はオリジンが rp_id の下にあるかを確かめる |
+| examples/approval-auth にパスキーの画面を足しました | ログインの画面の「パスキーでログイン」と入力欄の候補、`/passkeys`（一覧・登録・削除）。`http://localhost:9000` で開いて試せます |
+| `JimblePasskey` の options に `extra`（確かめるときに一緒に送るもの。ラベルなど）と `signal`（入力欄の候補を待っているのを止める）を足しました | |
 
 ---
 

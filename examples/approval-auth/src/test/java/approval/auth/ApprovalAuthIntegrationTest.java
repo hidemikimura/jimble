@@ -910,6 +910,76 @@ class ApprovalAuthIntegrationTest {
 
 	// endregion
 
+	// region パスキー（D-261）
+
+	@Test
+	@DisplayName("パスキー：ログインの画面にボタンと入力欄の候補があり、同梱の JS を返す")
+	void passkeyLoginPage () throws Exception {
+
+		HttpClient client = newClient();
+
+		String html = get(client, "/login").body();
+		assertTrue(html.contains("パスキーでログイン"), html);
+		assertTrue(html.contains("autocomplete=\"username webauthn\""), html);
+
+		HttpResponse<String> script = get(client, "/passkey.js");
+		assertEquals(200, script.statusCode());
+		assertTrue(script.body().contains("JimblePasskey"));
+
+	}
+
+	@Test
+	@DisplayName("パスキー：ログインの options は誰でも取れる（rp_id は localhost）。CSRF トークンが無ければ 403")
+	void passkeyLoginOptions () throws Exception {
+
+		HttpClient client = newClient();
+
+		HttpResponse<String> options = postJson(client, "/passkey/login/options", csrfToken(client));
+		assertEquals(200, options.statusCode(), options.body());
+		assertEquals("localhost", field(options.body(), "rpId"));
+		assertTrue(!field(options.body(), "challenge").isEmpty());
+
+		assertEquals(403, postJson(newClient(), "/passkey/login/options", null).statusCode());
+
+	}
+
+	@Test
+	@DisplayName("パスキー：登録の options はパスワードで入った人だけ。名前はログイン ID。一覧の画面が出る")
+	void passkeyRegistration () throws Exception {
+
+		HttpClient anonymous = newClient();
+		assertEquals(401, postJson(anonymous, "/passkey/register/options", csrfToken(anonymous)).statusCode());
+
+		HttpClient client = newClient();
+		login(client, "member1", PASSWORD);
+
+		HttpResponse<String> options = postJson(client, "/passkey/register/options", csrfToken(client));
+		assertEquals(200, options.statusCode(), options.body());
+		assertEquals("localhost", field(options.body(), "id"));
+		assertTrue(Pattern.compile("\"user\"\\s*:\\s*\\{[^}]*\"name\"\\s*:\\s*\"member1\"").matcher(options.body()).find()
+			, "パスキーの一覧に出る名前がログイン ID ではない: " + options.body());
+
+		HttpResponse<String> page = get(client, "/passkeys");
+		assertEquals(200, page.statusCode());
+		assertTrue(page.body().contains("このパスキーを登録する"), page.body());
+
+	}
+
+	/**
+	 * JSON で POST する（X-CSRF-Token を付ける。null なら付けない）
+	 */
+	private static HttpResponse<String> postJson (HttpClient client, String path, String token) throws Exception {
+
+		return token == null
+			? send(client, "POST", path, HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8)
+				, "Content-Type", "application/json", "Accept", "application/json")
+			: send(client, "POST", path, HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8)
+				, "Content-Type", "application/json", "Accept", "application/json", "X-CSRF-Token", token);
+
+	}
+
+	// endregion
+
 	// region ここで固定していないこと
 
 	/*

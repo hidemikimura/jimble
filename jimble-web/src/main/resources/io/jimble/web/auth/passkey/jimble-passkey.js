@@ -12,6 +12,13 @@
  *   // 入力欄の候補にパスキーを出す（<input autocomplete="username webauthn"> を置いておく）
  *   JimblePasskey.login("/passkey/login/options", "/passkey/login", { csrfToken: token, conditional: true });
  *
+ * options に渡せるもの：
+ *   csrfToken    X-CSRF-Token に付けるトークン（ログインで変われば差し替える。onCsrfToken で受け取れる）
+ *   body         options を頼むときの本文
+ *   extra        確かめるときに、資格情報と一緒に送るもの（{ label: "ノート PC" } など）
+ *   conditional  入力欄の候補に出す（login だけ。使えないブラウザでは null を返す）
+ *   signal       AbortSignal（入力欄の候補を待っているあいだに、ボタンでログインするときに止める）
+ *
  * どれも成功すれば、サーバーの JSON を返す。断られたり、利用者が取り消したりすれば、Error を投げる
  * （error.status にサーバーの状態コード。取り消しは error.name === "NotAllowedError"）。
  */
@@ -92,6 +99,17 @@
 		return json;
 	}
 
+	function withExtra (json, options) {
+		if (options.extra) {
+			Object.keys(options.extra).forEach(function (key) {
+				if (!(key in json)) {
+					json[key] = options.extra[key];
+				}
+			});
+		}
+		return json;
+	}
+
 	function supported () {
 		return typeof global.PublicKeyCredential === "function" && !!(navigator.credentials && navigator.credentials.create);
 	}
@@ -105,8 +123,12 @@
 		publicKey.challenge = toBuffer(publicKey.challenge);
 		publicKey.user.id = toBuffer(publicKey.user.id);
 		(publicKey.excludeCredentials || []).forEach(function (c) { c.id = toBuffer(c.id); });
-		var credential = await navigator.credentials.create({ publicKey: publicKey });
-		return post(verifyUrl, credentialToJSON(credential), options);
+		var request = { publicKey: publicKey };
+		if (options.signal) {
+			request.signal = options.signal;
+		}
+		var credential = await navigator.credentials.create(request);
+		return post(verifyUrl, withExtra(credentialToJSON(credential), options), options);
 	}
 
 	async function login (optionsUrl, verifyUrl, options) {
@@ -128,8 +150,11 @@
 		if (options.conditional) {
 			request.mediation = "conditional";
 		}
+		if (options.signal) {
+			request.signal = options.signal;
+		}
 		var credential = await navigator.credentials.get(request);
-		return post(verifyUrl, credentialToJSON(credential), options);
+		return post(verifyUrl, withExtra(credentialToJSON(credential), options), options);
 	}
 
 	global.JimblePasskey = { supported: supported, register: register, login: login };
