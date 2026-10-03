@@ -373,6 +373,16 @@ public final class ApiToken {
 			return false;
 		}
 
+		/*
+		 * <b>セッションがまだ始まっていなければ、読まずに false</b>（2.4.1）。authenticate を通ったリクエストは、
+		 * 保存先を「なし」にしたセッションに印を書いているので、必ず始まっている。
+		 * アプリが自分で確かめる Bearer（ApiToken を使わない MCP の接続など）でここを読むと、
+		 * NO_SESSION のルートで Auth.guard が保存先を変えられず 500 になっていた
+		 */
+		if (!context.sessionStarted()) {
+			return false;
+		}
+
 		String id = context.session().get(KEY_TOKEN_ID);
 
 		return id != null && !id.isEmpty();
