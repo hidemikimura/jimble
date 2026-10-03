@@ -354,7 +354,7 @@ ApiToken.Issued issued = ApiToken.issue(me.id(), "連携", Set.of("requests:read
 - トークンの人はそのリクエストだけログイン（Cookie なし）。**FULL_AUTH には入れない**。CSRF は見ない。スコープはトークンの人にだけ効く
 - **`Auth.revoke` / `revokeOthers` でそれより前のトークンも止まる**。個別に止めるなら `ApiToken.revoke(realm, id, トークンの id)`
 
-### パスキー（パスワードなしのログイン。2.3.0）
+### パスキー（パスワードなしのログイン。2.4.0）
 
 ```java
 post("/passkey/register/options", c -> c.response().json(Passkey.registrationOptions(c, loginId))).attribute(Auth.FULL_AUTH, true);
