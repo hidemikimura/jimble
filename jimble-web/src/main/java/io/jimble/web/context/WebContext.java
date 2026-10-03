@@ -368,6 +368,26 @@ public final class WebContext extends Context<WebContext> {
 	}
 
 	/**
+	 * このリクエストでセッションを使い始めたか（{@link #session()} を1度でも呼んだか）
+	 *
+	 * <p>
+	 * <b>セッションを始めずに、中身があるかもしれないかを確かめるのに使う。</b>
+	 * {@link #session()} を呼ぶと始まってしまい、あとから {@link #sessionStore} で保存先を変えられなくなる。
+	 * </p>
+	 *
+	 * @return	使い始めていれば true（内部呼び出しは外側のもの）
+	 */
+	public boolean sessionStarted () {
+
+		if (outer != null) {
+			return outer.sessionStarted();
+		}
+
+		return session != null;
+
+	}
+
+	/**
 	 * セッションの保存先をこのリクエストだけ変える（要件 F-S-11）
 	 *
 	 * <p>
