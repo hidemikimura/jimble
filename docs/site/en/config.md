@@ -139,7 +139,7 @@ server {
 	max_request_size     = 10MiB    # cap on the request body
 	max_header_size      = 16KiB    # cap on all headers together
 	idle_timeout         = 60s      # how long a connection doing nothing is kept
-	compression          = true     # gzip responses
+	compression          = true     # gzip text responses (1KB and up)
 	trust_proxy          = false    # false until it sits behind a load balancer (see below)
 	access_log           = true     # turning it off is faster, and leaves no trace
 	bot_access_log       = true     # keep bot access logs separate

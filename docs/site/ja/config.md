@@ -132,7 +132,7 @@ server {
 	max_request_size     = 10MiB    # リクエスト本文の上限
 	max_header_size      = 16KiB    # ヘッダ全体の上限
 	idle_timeout         = 60s      # 何もしない接続を閉じるまで
-	compression          = true     # 応答を gzip で返すか
+	compression          = true     # 文字の応答（1KB 以上）を gzip で返すか
 	trust_proxy          = false    # ロードバランサの後ろに置くまで false（下を参照）
 	access_log           = true     # 切ると速くなるが、何が起きたか残らない
 	bot_access_log       = true     # ボットのアクセスログを分けるか

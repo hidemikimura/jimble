@@ -15,7 +15,7 @@ server {
 	max_header_size      = 16KiB      # Limit on the headers as a whole
 	idle_timeout = 60s
 	trust_proxy          = false      # Whether to believe X-Forwarded-*
-	compression          = true       # Whether to gzip responses
+	compression          = true       # Whether to gzip text responses (1KB and up)
 	access_log           = true       # Whether to write the access log ([Logging](./log))
 	bot_access_log       = true       # Whether to split out the bot access log
 	strict_routes        = false      # Throw on routes nothing can reach (turn this on in CI)
@@ -162,10 +162,15 @@ With `true`, `proxyAddress()` returns the source in this order.
 ## Compression
 
 `server.compression` (default `true`) turns it **on / off**.
-What gets compressed is the server's (Helidon's) decision, from `Accept-Encoding`.
+When the client says it accepts it in `Accept-Encoding`, **only text responses (`text/*`, JSON, JavaScript, XML, SVG) of 1KB or more**
+are compressed (since 2.5.2).
+
+- Images, video, zip files and downloads are not compressed (they do not shrink, it costs CPU, and `Content-Length` is lost)
+- Small responses are not compressed (setting up the compressor costs more than it saves)
+- SSE (`text/event-stream`) is not compressed (it would be held back and arrive late)
 
 > [!NOTE]
-> **There is no compression level and no per-type exclusion.** Do the fine-grained control in front of jimble.
+> **There is no compression level and no setting to add types.** Do the fine-grained control in front of jimble.
 
 ## Blocking bots
 
