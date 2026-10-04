@@ -11,16 +11,21 @@ import io.jimble.web.http.HttpException;
 import io.jimble.web.http.RequestSource;
 import io.jimble.web.upload.UploadConf;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -336,12 +341,19 @@ final class HelidonRequestSource implements RequestSource {
 			while (multiPart.hasNext()) {
 
 				ReadablePart part = multiPart.next();
+				Disposition disposition = disposition(part);
 
-				if (part.fileName().isEmpty()) {
+				if (disposition.fileName() == null) {
 					// ファイル名が無いパートはフォーム項目
 					multipartForm
-						.computeIfAbsent(part.name(), key -> new ArrayList<>())
+						.computeIfAbsent(disposition.name(), key -> new ArrayList<>())
 						.add(new String(part.inputStream().readAllBytes(), StandardCharsets.UTF_8));
+					continue;
+				}
+
+				if (disposition.fileName().isEmpty()) {
+					// ファイルを選んでいないファイル入力（filename=""）。捨てる。フォーム項目にも入れない
+					part.inputStream().readAllBytes();
 					continue;
 				}
 
@@ -351,7 +363,7 @@ final class HelidonRequestSource implements RequestSource {
 				}
 
 				long remaining = Math.min(maxFileSize, maxTotalSize - totalSize);
-				UploadFile uploadFile = save(part, remaining);
+				UploadFile uploadFile = save(part, disposition, remaining);
 
 				totalSize += uploadFile.fileSize();
 				multipartFiles.add(uploadFile);
@@ -381,13 +393,14 @@ final class HelidonRequestSource implements RequestSource {
 	 * 上限を超えた分もディスクに書いてしまう。
 	 * </p>
 	 *
-	 * @param part		パート
-	 * @param maxBytes	この1件に許す最大バイト数
+	 * @param part			パート
+	 * @param disposition	Content-Disposition から読んだ名前
+	 * @param maxBytes		この1件に許す最大バイト数
 	 * @return	アップロードファイル
 	 * @throws IOException		書き込みに失敗した場合
 	 * @throws HttpException	上限を超えた場合（413）
 	 */
-	private UploadFile save (ReadablePart part, long maxBytes) throws IOException {
+	private UploadFile save (ReadablePart part, Disposition disposition, long maxBytes) throws IOException {
 
 		Path tempFile = Files.createTempFile(UploadConf.tempDir(), UploadConf.TEMP_PREFIX, ".tmp");
 
@@ -414,14 +427,265 @@ final class HelidonRequestSource implements RequestSource {
 
 		}
 
+		String path = disposition.fileName();
+
 		return new UploadFile(
-			part.name()
-			, part.fileName().orElse("")
+			disposition.name()
+			, path.substring(path.lastIndexOf('/') + 1)
 			, part.contentType() == null ? "" : part.contentType().text()
 			, written
-			, tempFile.toFile());
+			, tempFile.toFile()
+			, path);
 
 	}
+
+	// region Content-Disposition（D-266）
+
+	/**
+	 * パートの名前とファイル名
+	 *
+	 * @param name		項目名
+	 * @param fileName	ファイル名（フォルダを含む。区切りは /）。ファイルでないパートは null、ファイルを選んでいない入力は空文字
+	 */
+	record Disposition(String name, String fileName) {}
+
+	/**
+	 * パートの Content-Disposition を読む
+	 *
+	 * <p>
+	 * <b>helidon の {@code ReadablePart.name()} / {@code fileName()} は使わない</b>。ブラウザが送る名前を、次のとおり壊すため。
+	 * </p>
+	 * <ol>
+	 *   <li>ヘッダは ISO-8859-1 で読まれる。ブラウザは UTF-8 のまま送るので、日本語は化け、
+	 *       ファイル名は「制御文字を含む」として例外になる（{@code 請求書.pdf} が送れない。項目名の日本語も化ける）</li>
+	 *   <li>URL デコードする。{@code a+b.png} が {@code a b.png} に、{@code 100%.txt} は例外になる</li>
+	 *   <li>引用符の中の {@code ;} で切る（{@code a;b.txt} が {@code "a} になる）。helidon の {@code ContentDisposition.parse} も同じ</li>
+	 * </ol>
+	 *
+	 * @param part	パート
+	 * @return	名前とファイル名
+	 * @throws HttpException	ファイル名が正しくない場合（400）
+	 */
+	static Disposition disposition (ReadablePart part) {
+
+		if (!part.partHeaders().contains(HeaderNames.CONTENT_DISPOSITION)) {
+			return new Disposition(part.name(), null);
+		}
+
+		return disposition(part.partHeaders().get(HeaderNames.CONTENT_DISPOSITION).get());
+
+	}
+
+	/**
+	 * Content-Disposition の値を読む
+	 *
+	 * @param header	ヘッダの値（ISO-8859-1 で読まれたもの）
+	 * @return	名前とファイル名
+	 * @throws HttpException	ファイル名が正しくない場合（400）
+	 */
+	static Disposition disposition (String header) {
+
+		Map<String, String> parameters = parameters(decodeUtf8(header));
+
+		String name = unescapeHtmlForm(parameters.getOrDefault("name", ""));
+		String fileName = parameters.containsKey("filename*")
+			? extendedValue(parameters.get("filename*"))
+			: parameters.containsKey("filename") ? unescapeHtmlForm(parameters.get("filename")) : null;
+
+		if (fileName == null) {
+			return new Disposition(name, null);
+		}
+
+		if (fileName.isEmpty()) {
+			return new Disposition(name, "");
+		}
+
+		return new Disposition(name, normalizePath(fileName));
+
+	}
+
+	/**
+	 * パラメータを読む（{@code form-data; name="x"; filename="a;b.txt"}。名前は小文字）
+	 *
+	 * <p>
+	 * 引用符の中の {@code ;} と {@code =} は区切りにしない。<b>バックスラッシュはエスケープとして扱わない</b>
+	 * ——ブラウザは {@code "} を {@code %22} にして送り、バックスラッシュはそのまま送る（古い IE の {@code C:\...}）。
+	 * </p>
+	 *
+	 * @param value	ヘッダの値
+	 * @return	パラメータ
+	 */
+	static Map<String, String> parameters (String value) {
+
+		Map<String, String> parameters = new LinkedHashMap<>();
+		int i = value.indexOf(';');
+
+		while (i >= 0 && i < value.length()) {
+
+			// ; を飛ばして名前を読む
+			int start = i + 1;
+			int equals = value.indexOf('=', start);
+			int nextSemicolon = value.indexOf(';', start);
+
+			if (equals < 0 || (nextSemicolon >= 0 && nextSemicolon < equals)) {
+				i = nextSemicolon;
+				continue;
+			}
+
+			String key = value.substring(start, equals).trim().toLowerCase(Locale.ROOT);
+			int cursor = equals + 1;
+
+			while (cursor < value.length() && value.charAt(cursor) == ' ') {
+				cursor++;
+			}
+
+			String parameterValue;
+
+			if (cursor < value.length() && value.charAt(cursor) == '"') {
+				int close = value.indexOf('"', cursor + 1);
+				close = close < 0 ? value.length() : close;
+				parameterValue = value.substring(cursor + 1, close);
+				i = value.indexOf(';', Math.min(close + 1, value.length()));
+			} else {
+				int end = value.indexOf(';', cursor);
+				parameterValue = value.substring(cursor, end < 0 ? value.length() : end).trim();
+				i = end;
+			}
+
+			parameters.putIfAbsent(key, parameterValue);
+
+		}
+
+		return parameters;
+
+	}
+
+	/**
+	 * ブラウザが名前に掛けるエスケープを戻す（HTML の multipart/form-data。{@code "} → {@code %22}）
+	 *
+	 * <p>
+	 * <b>{@code %22} だけを戻す</b>。{@code 100%.txt} の {@code %} はそのまま。改行（{@code %0D} / {@code %0A}）は
+	 * ファイル名に入れさせたくないので戻さない。
+	 * </p>
+	 */
+	private static String unescapeHtmlForm (String value) {
+
+		return value.replace("%22", "\"");
+
+	}
+
+	/**
+	 * RFC 5987 の値（{@code UTF-8''%E8%AB%8B...}）を読む（ブラウザ以外のクライアントが送る）
+	 */
+	private static String extendedValue (String value) {
+
+		int first = value.indexOf('\'');
+		int second = first < 0 ? -1 : value.indexOf('\'', first + 1);
+
+		if (second < 0) {
+			throw new HttpException(400, "ファイル名（filename*）の形が違います");
+		}
+
+		Charset charset;
+
+		try {
+			charset = Charset.forName(value.substring(0, first));
+		} catch (RuntimeException ex) {
+			throw new HttpException(400, "ファイル名（filename*）の文字コードが分かりません");
+		}
+
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		String encoded = value.substring(second + 1);
+
+		for (int i = 0; i < encoded.length(); i++) {
+			char c = encoded.charAt(i);
+			if (c == '%' && i + 2 < encoded.length()) {
+				try {
+					bytes.write(Integer.parseInt(encoded.substring(i + 1, i + 3), 16));
+				} catch (NumberFormatException ex) {
+					throw new HttpException(400, "ファイル名（filename*）の形が違います");
+				}
+				i += 2;
+			} else if (c == '%') {
+				throw new HttpException(400, "ファイル名（filename*）の形が違います");
+			} else {
+				bytes.write(c);
+			}
+		}
+
+		return bytes.toString(charset);
+
+	}
+
+	/**
+	 * ファイル名を確かめて、区切りを / にそろえる
+	 *
+	 * <p>
+	 * フォルダを含むもの（{@code sub/b.txt}）はそのまま持つ（{@link UploadFile#relativePath()}）。
+	 * 古い IE が送るフルパス（{@code C:\Users\a.png}）は、ドライブを外す。
+	 * {@code .} / {@code ..}・空の段・制御文字は断る。
+	 * </p>
+	 *
+	 * @param fileName	ファイル名
+	 * @return	確かめたもの
+	 * @throws HttpException	正しくない場合（400）
+	 */
+	private static String normalizePath (String fileName) {
+
+		String path = fileName.replace('\\', '/');
+
+		// 古い IE のフルパス（C:/...）と、頭の /（絶対パス）を外す
+		if (path.length() >= 2 && path.charAt(1) == ':' && Character.isLetter(path.charAt(0))) {
+			path = path.substring(path.lastIndexOf('/') + 1);
+		}
+
+		if (path.startsWith("/")) {
+			path = path.substring(path.lastIndexOf('/') + 1);
+		}
+
+		for (int i = 0; i < path.length(); i++) {
+			if (Character.isISOControl(path.charAt(i))) {
+				throw new HttpException(400, "ファイル名に使えない文字が入っています");
+			}
+		}
+
+		for (String segment : path.split("/", -1)) {
+			if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
+				throw new HttpException(400, "ファイル名が正しくありません");
+			}
+		}
+
+		return path;
+
+	}
+
+	/**
+	 * ISO-8859-1 で読まれたヘッダの値を UTF-8 として読み直す
+	 *
+	 * <p>
+	 * <b>UTF-8 として読めないものは、読まれたまま返す</b>（Latin-1 で送ってきた {@code café} の {@code é} を
+	 * 置換文字に化けさせないため）。0xFF を超える文字があれば、もう文字として読めている。
+	 * </p>
+	 */
+	static String decodeUtf8 (String raw) {
+
+		if (raw.chars().anyMatch(c -> c > 0xFF)) {
+			return raw;
+		}
+
+		try {
+			return StandardCharsets.UTF_8.newDecoder()
+				.onMalformedInput(CodingErrorAction.REPORT)
+				.onUnmappableCharacter(CodingErrorAction.REPORT)
+				.decode(ByteBuffer.wrap(raw.getBytes(StandardCharsets.ISO_8859_1)))
+				.toString();
+		} catch (CharacterCodingException ex) {
+			return raw;
+		}
+
+	}
+
+	// endregion
 
 	// endregion
 
