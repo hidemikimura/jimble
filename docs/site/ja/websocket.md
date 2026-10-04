@@ -52,6 +52,13 @@ public boolean onUpgrade (WsSession session) {
 
 `false` を返すと 403 で断ります。
 
+> [!NOTE]
+> **別のサイトのページからの接続は、`onUpgrade` より前に断られます。**
+> WebSocket には CORS が効かず、ブラウザは別のサイトからの接続にも Cookie を付けて送ります。
+> サーバー（helidon）が `Origin` を `Host` と比べ、違えば 403 にするので、Cookie で認証しても別のサイトに乗っ取られません。
+> `Origin` の無い要求（ブラウザ以外のクライアント）は通ります。
+> プロキシの後ろに置くなら、**プロキシが `Host` をそのまま渡すように**してください（`proxy_set_header Host $host;`）。書き換えると、同じサイトからの接続も断られます。
+
 ## メッセージごとに Context
 
 **1メッセージにつき `Context` が1つ作られます。**

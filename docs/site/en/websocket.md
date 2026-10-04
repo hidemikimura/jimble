@@ -52,6 +52,13 @@ public boolean onUpgrade (WsSession session) {
 
 Return `false` and it is turned away with a 403.
 
+> [!NOTE]
+> **Connections from pages on other sites are refused before `onUpgrade`.**
+> CORS does not apply to WebSocket, and browsers send cookies on cross-site connections too.
+> The server (helidon) compares `Origin` with `Host` and answers 403 when they differ, so cookie authentication cannot be hijacked by another site.
+> Requests without `Origin` (non-browser clients) go through.
+> Behind a proxy, **make the proxy pass `Host` through unchanged** (`proxy_set_header Host $host;`); if it rewrites it, connections from your own site are refused too.
+
 ## A Context per message
 
 **One `Context` is created for each message.**
