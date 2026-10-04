@@ -4,6 +4,7 @@ import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
+import io.jimble.db.sqlcache.SqlCache;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
@@ -87,6 +88,9 @@ public final class DbSessionStore implements SessionStore {
 	public DbSessionStore (String tableName, long timeoutMinutes, Duration absoluteTimeout) {
 
 		this.tableName = tableName;
+
+		// 生 SQL で毎リクエスト更新するので、SQL結果キャッシュを消させない（D-273）
+		SqlCache.excludeTable(tableName);
 		this.timeoutMinutes = timeoutMinutes;
 		this.absoluteTimeout = absoluteTimeout == null || absoluteTimeout.isNegative() ? Duration.ZERO : absoluteTimeout;
 

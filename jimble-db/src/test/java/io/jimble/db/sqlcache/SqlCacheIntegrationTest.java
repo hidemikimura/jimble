@@ -424,6 +424,107 @@ class SqlCacheIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-273 キャッシュと関係ないテーブル（jimble 自身の表）への生 SQL では消えない")
+	void rawSqlOnUncachedTableKeepsCache () {
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			db.execute("DROP TABLE IF EXISTS sqlcache_internal");
+			db.execute("CREATE TABLE sqlcache_internal (id bigint primary key, n bigint not null)");
+			SqlCache.excludeTable("sqlcache_internal");
+
+			selectCustomer1(db);
+
+			// jimble のセッション・MQ・レート制限などが、リクエストのたびにこの形で書く
+			db.insert("INSERT INTO sqlcache_internal (id, n) VALUES (?, ?)", 1, 1);
+			db.update("UPDATE sqlcache_internal SET n = ? WHERE id = ?", 2, 1);
+			db.executeBatch("UPDATE sqlcache_internal SET n = ? WHERE id = ?", List.of(List.of(3, 1)));
+			db.transaction(tx -> db.execute("DELETE FROM sqlcache_internal"));
+
+			long sql = countSql("当たるはず", () -> assertNotNull(selectCustomer1(db)));
+
+			assertEquals(0, sql, "jimble 自身の表への生 SQL で、キャッシュが全部消えている");
+
+			// アプリの表への生 SQL は、これまでどおり全部消す
+			db.update("UPDATE customer SET name = ? WHERE id = ?", "生SQL", 1);
+			assertEquals("生SQL", selectCustomer1(db).getData("customer").getString("name"));
+
+		} catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		} finally {
+			try (DB db = DBUtil.getMainDB()) {
+				db.execute("DROP TABLE IF EXISTS sqlcache_internal");
+			}
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-273 キャッシュを消すのは、コネクションを返してから（置き場が db でも2本目を待たない）")
+	void invalidatesAfterReleasingConnection () {
+
+		List<Integer> activeAtInvalidate = new ArrayList<>();
+
+		MemorySqlCacheStore memory = new MemorySqlCacheStore();
+
+		SqlCache.replace(new SqlCacheStore() {
+			@Override
+			public String get (String key) {
+				return memory.get(key);
+			}
+			@Override
+			public void put (String key, java.util.Set<String> tags, String value, java.time.Duration ttl) {
+				memory.put(key, tags, value, ttl);
+			}
+			@Override
+			public void invalidate (java.util.Set<String> tags) {
+				activeAtInvalidate.add(activeConnections());
+				memory.invalidate(tags);
+			}
+			@Override
+			public void clear () {
+				activeAtInvalidate.add(activeConnections());
+				memory.clear();
+			}
+		});
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			int before = activeConnections();
+
+			selectCustomer1(db);
+			db.update(SQL.update(Customer.instance()).set(Customer.name, "外").where(Customer.id.eq(1)));
+			db.update("UPDATE customer SET name = ? WHERE id = ?", "生SQL", 1);
+			db.transaction(tx ->
+				db.update(SQL.update(Customer.instance()).set(Customer.name, "中").where(Customer.id.eq(1))));
+
+			assertEquals(3, activeAtInvalidate.size(), "消していない: " + activeAtInvalidate);
+			assertEquals(List.of(before, before, before), activeAtInvalidate, "コネクションを持ったまま消している");
+
+			assertEquals("中", selectCustomer1(db).getData("customer").getString("name"));
+
+		} catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		} finally {
+			SqlCache.replace(new MemorySqlCacheStore());
+		}
+
+	}
+
+	/**
+	 * プールで使っているコネクションの数
+	 */
+	private static int activeConnections () {
+
+		if (DBUtil.getMainDataSource().dataSource() instanceof com.zaxxer.hikari.HikariDataSource hikari) {
+			return hikari.getHikariPoolMXBean().getActiveConnections();
+		}
+
+		throw new AssertionError("Hikari ではないので本数が見られません");
+
+	}
+
+	@Test
 	@DisplayName("ロールバックしたらキャッシュは消えない")
 	void rollbackKeepsCache () {
 

@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   <li><b>トランザクションの中</b>では読みも書きもしない
  *       （まだ確定していない値を残さないため）</li>
  *   <li><b>生 SQL の更新</b>（{@code db.execute("UPDATE ...")}）は
- *       どこに当たるか読めないので<b>全部消す</b></li>
+ *       どこに当たるか読めないので<b>全部消す</b>。jimble 自身の表だけを更新する文は消さない（{@link #isUncachedTarget}）</li>
  *   <li>{@code sql_cache.store = "memory"} は<b>その台の中だけ</b>。
  *       複数台なら {@code redis} か {@code db} にすること</li>
  * </ul>
@@ -422,6 +422,106 @@ public final class SqlCache {
 		}
 
 	}
+
+	// region キャッシュと関係ないテーブル（D-273）
+
+	/*
+	 * 生 SQL で更新しても、キャッシュを消さなくてよいテーブル（小文字）。
+	 * jimble 自身のテーブルは、テーブル定義クラスを作らない（codegen が除く。D-68）ので、
+	 * selectCached で読まれることが無い。
+	 */
+	private static final Set<String> UNCACHED_TABLES = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	static {
+		for (String name : io.jimble.db.FrameworkTables.ALL) {
+			UNCACHED_TABLES.add(name.toLowerCase(java.util.Locale.ROOT));
+		}
+	}
+
+	/*
+	 * 生 SQL の更新先（INSERT / REPLACE / UPDATE / DELETE の、最初のテーブル）。
+	 * スキーマ付き・引用符付きも読む。読めない形（WITH・コメントで始まる・DELETE t FROM ...）は合わない
+	 */
+	private static final java.util.regex.Pattern WRITE_TARGET = java.util.regex.Pattern.compile(
+		"^\\s*(insert\\s+(?:ignore\\s+)?into|replace\\s+into|update|delete\\s+from)\\s+"
+			+ "(?:[`\"]?[A-Za-z0-9_$]+[`\"]?\\s*\\.\\s*)?[`\"]?([A-Za-z0-9_$]+)[`\"]?(.*)$"
+		, java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL);
+
+	/* 更新先のすぐあとにカンマ（別名つきも）＝ 複数のテーブルを更新する形 */
+	private static final java.util.regex.Pattern MULTI_TABLE = java.util.regex.Pattern.compile(
+		"^\\s*(?:as\\s+)?[A-Za-z0-9_$`\"]*\\s*,", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+	/* 結合 */
+	private static final java.util.regex.Pattern JOIN = java.util.regex.Pattern.compile(
+		"\\bjoin\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+	/**
+	 * キャッシュと関係ないテーブルを届け出る（D-273）
+	 *
+	 * <p>
+	 * jimble が名前を決められないテーブル（設定で名前を変えられるセッションの表、キューごとの MQ の表）を作るところで呼ぶ。
+	 * <b>{@code selectCached} で読むテーブルを届け出てはいけない</b>（生 SQL の更新でキャッシュが消えなくなる）。
+	 * </p>
+	 *
+	 * @param name	テーブル名
+	 */
+	public static void excludeTable (String name) {
+
+		if (name != null && !name.isEmpty()) {
+			UNCACHED_TABLES.add(name.toLowerCase(java.util.Locale.ROOT));
+		}
+
+	}
+
+	/**
+	 * 生 SQL の更新が、キャッシュと関係ないテーブルだけに当たるか（D-273）
+	 *
+	 * <p>
+	 * <b>2.5.1 までは、生 SQL の更新はどれも「全部消す」だった。</b>jimble 自身も DB のセッション・MQ・レート制限・
+	 * remember-me などを生 SQL で更新するので、SQL 結果キャッシュを有効にすると<b>リクエストのたびに全部消えていた</b>
+	 * （Redis の置き場ではそのたびにキーを全部走査していた）。
+	 * </p>
+	 *
+	 * <p>
+	 * 確かに1つのテーブルだけを更新する形（{@code INSERT INTO t} / {@code UPDATE t SET} / {@code DELETE FROM t}）で、
+	 * そのテーブルが届け出たものなら true。<b>読めない形はすべて false</b>（これまでどおり全部消す）：
+	 * 複文、{@code UPDATE a, b}・{@code UPDATE ... JOIN}・{@code DELETE ... JOIN}、WITH、コメントで始まるもの。
+	 * </p>
+	 *
+	 * @param sql	SQL
+	 * @return	消さなくてよい場合 = true
+	 */
+	public static boolean isUncachedTarget (String sql) {
+
+		if (sql == null || sql.indexOf(';') >= 0) {
+			return false;
+		}
+
+		java.util.regex.Matcher matcher = WRITE_TARGET.matcher(sql);
+
+		if (!matcher.matches()) {
+			return false;
+		}
+
+		if (!UNCACHED_TABLES.contains(matcher.group(2).toLowerCase(java.util.Locale.ROOT))) {
+			return false;
+		}
+
+		String rest = matcher.group(3);
+
+		if (MULTI_TABLE.matcher(rest).find()) {
+			return false;
+		}
+
+		// INSERT ... SELECT の結合は読むだけ。UPDATE / DELETE の結合は、結合先も書き換えうる
+		boolean insert = matcher.group(1).toLowerCase(java.util.Locale.ROOT).startsWith("insert")
+			|| matcher.group(1).toLowerCase(java.util.Locale.ROOT).startsWith("replace");
+
+		return insert || !JOIN.matcher(rest).find();
+
+	}
+
+	// endregion
 
 	/**
 	 * 全部消す

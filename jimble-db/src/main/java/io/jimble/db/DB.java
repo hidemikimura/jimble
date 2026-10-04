@@ -427,6 +427,9 @@ public class DB implements Closeable, AutoCloseable {
 		// 返したので、拾ってもらう必要はもう無い
 		unregisterCloseTask();
 
+		// SQL結果キャッシュは、返してから消す（D-273）
+		flushCache();
+
 		logLongConnection();
 
 	}
@@ -511,10 +514,10 @@ public class DB implements Closeable, AutoCloseable {
 
 	}
 
-	/* トランザクション中に溜めた、消すもの（使うまで作らない） */
+	/* 溜めた、消すもの（使うまで作らない。コネクションを返したら消す） */
 	private Set<String> pendingTags = null;
 
-	/* トランザクション中に「全部消す」が出たか */
+	/* 「全部消す」が出たか */
 	private boolean pendingAll = false;
 
 	/**
@@ -555,11 +558,20 @@ public class DB implements Closeable, AutoCloseable {
 	 * キャッシュを消す
 	 *
 	 * <p>
-	 * 更新が成功した直後に呼ぶ。<b>トランザクション中は溜めておいてコミットで消す</b>
+	 * 更新が成功した直後に呼ぶ。<b>消すのは、コネクションを返してから</b>（D-273）：
+	 * トランザクションの外なら {@link #closeAfterQuery()} で、中ならコミットして返したあとで消す
 	 * （ロールバックしたら消さない）。
 	 * </p>
+	 *
+	 * <p>
+	 * 2.5.1 までは<b>コネクションを持ったまま消していた</b>。置き場が {@code db} だと消すために2本目を取りにいくので、
+	 * 書くリクエストがプールの数だけ重なると、<b>全員が2本目を待って止まった</b>（既定の 30 秒）。
+	 * Redis でも、そのあいだコネクションを遊ばせていた。
+	 * </p>
+	 *
+	 * @param sql	流した SQL（ビルダー版で消すものが決まっていれば見ない）
 	 */
-	private void invalidateCache () {
+	private void invalidateCache (String sql) {
 
 		// いちばん安い判定を先に置く（切っていれば1行も走らない）
 		if (!isSqlCacheEnabled()) {
@@ -570,63 +582,81 @@ public class DB implements Closeable, AutoCloseable {
 		Set<String> tags = this.plannedTags;
 		this.plannedTags = null;
 
-		boolean all = tags == null;
+		if (tags == null) {
 
-		if (isTransaction()) {
-
-			if (all) {
-				pendingAll = true;
-			} else {
-				if (pendingTags == null) {
-					pendingTags = new LinkedHashSet<>();
-				}
-				pendingTags.addAll(tags);
-			}
-
-			return;
-
-		}
-
-		if (all) {
 			/*
 			 * 生 SQL の更新。<b>どの行に当たるか読めない。</b>
-			 * 古いデータを返すより、全部引き直させるほうがよい。
+			 * jimble 自身のテーブルだけに当たるなら、消すものは無い（D-273）。
+			 * それ以外は、古いデータを返すより、全部引き直させるほうがよい。
 			 */
-			SqlCache.clear();
+			if (SqlCache.isUncachedTarget(sql)) {
+				return;
+			}
+
+			pendingAll = true;
 			return;
+
 		}
 
-		SqlCache.invalidate(tags);
+		if (pendingTags == null) {
+			pendingTags = new LinkedHashSet<>();
+		}
+
+		pendingTags.addAll(tags);
 
 	}
 
 	/**
-	 * 溜めておいた削除を実行する（コミット時）
+	 * 溜めておいた削除を実行する（コネクションを返したあと・コミットしたあと）
 	 */
 	private void flushCache () {
 
+		runInvalidation(takePendingCache());
+
+	}
+
+	/**
+	 * 溜めておいた削除を取り出す
+	 *
+	 * @return	消すもの。無ければ null
+	 */
+	private PendingCache takePendingCache () {
+
 		if (!pendingAll && pendingTags == null) {
-			return;
+			return null;
 		}
 
-		boolean all = pendingAll;
-		Set<String> tags = pendingTags == null ? Set.of() : Set.copyOf(pendingTags);
+		PendingCache pending = new PendingCache(pendingAll, pendingTags == null ? Set.of() : Set.copyOf(pendingTags));
 
 		pendingAll = false;
 		pendingTags = null;
 
-		if (!isSqlCacheEnabled() || (!all && tags.isEmpty())) {
+		return pending;
+
+	}
+
+	/**
+	 * 消す
+	 *
+	 * @param pending	消すもの（null なら何もしない）
+	 */
+	private void runInvalidation (PendingCache pending) {
+
+		if (pending == null || !isSqlCacheEnabled() || (!pending.all() && pending.tags().isEmpty())) {
 			return;
 		}
 
-		if (all) {
+		if (pending.all()) {
 			SqlCache.clear();
 			return;
 		}
 
-		SqlCache.invalidate(tags);
+		SqlCache.invalidate(pending.tags());
 
 	}
+
+	/* 溜めておいた削除 */
+	private record PendingCache (boolean all, Set<String> tags) {}
 
 	/**
 	 * 溜めておいた削除を捨てる（ロールバック時）
@@ -1469,7 +1499,7 @@ public class DB implements Closeable, AutoCloseable {
 			DBSticky.updated();
 
 			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
+			invalidateCache(sql);
 
 			if (count > 0) {
 
@@ -1642,7 +1672,7 @@ public class DB implements Closeable, AutoCloseable {
 			DBSticky.updated();
 
 			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
+			invalidateCache(sql);
 
 			return result;
 
@@ -1710,7 +1740,7 @@ public class DB implements Closeable, AutoCloseable {
 			DBSticky.updated();
 
 			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
+			invalidateCache(sql);
 
 			return count;
 
@@ -1837,7 +1867,7 @@ public class DB implements Closeable, AutoCloseable {
 			DBSticky.updated();
 
 			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
+			invalidateCache(sql);
 
 			return res;
 
@@ -1979,7 +2009,7 @@ public class DB implements Closeable, AutoCloseable {
 			DBSticky.updated();
 
 			// SQL結果キャッシュを消す（要件 F-D-28）
-			invalidateCache();
+			invalidateCache(sql);
 
 			return res;
 
@@ -2388,14 +2418,8 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	void txCommit () throws SQLException {
 
-		if (connection == null) {
+		if (!commitOnly()) {
 			return;
-		}
-
-		requireNoErrorSinceTransaction();
-
-		if (isTransaction()) {
-			connection.commit();
 		}
 
 		/*
@@ -2411,14 +2435,45 @@ public class DB implements Closeable, AutoCloseable {
 
 	/*
 	 * 確定して終わる（Tx#commit から呼ぶ）
+	 *
+	 * SQL結果キャッシュは、<b>コネクションを返してから消す</b>（D-273。置き場が db だと2本目を取りにいくため）
 	 */
 	void txCommitEnd () throws SQLException {
 
+		PendingCache committed = null;
+
 		try {
-			txCommit();
+			if (commitOnly()) {
+				committed = takePendingCache();
+			}
 		} finally {
-			txEnd();
+			try {
+				txEnd();
+			} finally {
+				runInvalidation(committed);
+			}
 		}
+
+	}
+
+	/*
+	 * 確定だけする
+	 *
+	 * @return	コネクションを持っていた場合 = true
+	 */
+	private boolean commitOnly () throws SQLException {
+
+		if (connection == null) {
+			return false;
+		}
+
+		requireNoErrorSinceTransaction();
+
+		if (isTransaction()) {
+			connection.commit();
+		}
+
+		return true;
 
 	}
 

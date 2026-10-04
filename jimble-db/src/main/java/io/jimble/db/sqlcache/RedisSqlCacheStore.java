@@ -2,10 +2,13 @@ package io.jimble.db.sqlcache;
 
 import io.jimble.db.redis.RedisClient;
 import org.redisson.api.RBatch;
-import org.redisson.api.RSet;
+import org.redisson.api.RFuture;
 import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -82,36 +85,55 @@ public final class RedisSqlCacheStore implements SqlCacheStore {
 	 * {@code put} で足したキーの<b>索引だけが消えて値が残る</b>。
 	 * 残った値はどのタグからも辿れず、期限が来るまで古いまま返り続ける。
 	 * </p>
+	 *
+	 * <p>
+	 * <b>全部のタグの取り出しを、1回の往復にまとめる</b>（D-273）。2.5.1 まではタグごとに往復していたので、
+	 * {@code UPDATE ... WHERE id IN (100 個)} は 100 回以上の往復を順に待っていた。
+	 * </p>
 	 */
 	@Override
 	public void invalidate (Set<String> tags) {
 
-		for (String tag : tags) {
+		List<String> pending = new ArrayList<>(tags);
 
-			RSet<String> index = RedisClient.client().getSet(TAG_PREFIX + tag, StringCodec.INSTANCE);
+		while (!pending.isEmpty()) {
 
-			while (true) {
+			RBatch batch = RedisClient.client().createBatch();
+			List<RFuture<Set<String>>> drained = new ArrayList<>(pending.size());
 
-				Set<String> members = index.removeRandom(DRAIN_SIZE);
+			for (String tag : pending) {
+				drained.add(batch.<String>getSet(TAG_PREFIX + tag, StringCodec.INSTANCE).removeRandomAsync(DRAIN_SIZE));
+			}
+
+			batch.execute();
+
+			Set<String> names = new LinkedHashSet<>();
+			List<String> more = new ArrayList<>();
+
+			for (int i = 0; i < pending.size(); i++) {
+
+				Set<String> members = drained.get(i).toCompletableFuture().join();
 
 				if (members == null || members.isEmpty()) {
-					break;
+					continue;
 				}
 
-				String[] names = new String[members.size()];
-
-				int i = 0;
 				for (String member : members) {
-					names[i++] = PREFIX + member;
+					names.add(PREFIX + member);
 				}
 
-				RedisClient.client().getKeys().delete(names);
-
-				if (members.size() < DRAIN_SIZE) {
-					break;
+				// 取り切れていなければ、次の回でもう一度
+				if (members.size() >= DRAIN_SIZE) {
+					more.add(pending.get(i));
 				}
 
 			}
+
+			if (!names.isEmpty()) {
+				RedisClient.client().getKeys().delete(names.toArray(String[]::new));
+			}
+
+			pending = more;
 
 		}
 
