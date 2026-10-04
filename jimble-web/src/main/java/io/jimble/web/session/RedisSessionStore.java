@@ -3,6 +3,8 @@ package io.jimble.web.session;
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
+import org.redisson.api.RBatch;
+import org.redisson.api.RFuture;
 import org.redisson.api.RMap;
 import org.redisson.api.RScript;
 import org.redisson.client.codec.StringCodec;
@@ -132,7 +134,27 @@ public final class RedisSessionStore implements SessionStore {
 
 		RMap<String, String> map = map(sessionId);
 
-		Map<String, String> all = map.readAllMap();
+		Map<String, String> all;
+		boolean extended = false;
+
+		if (absoluteTimeout.isZero()) {
+
+			/*
+			 * <b>読むのと延ばすのを1回の往復で</b>（D-288）。発行からの上限が無ければ、延ばす長さは発行時刻によらない。
+			 * 2.5.1 までは HGETALL と EXPIRE を別々に送っていた（セッションのあるリクエストごとに往復1回ぶん余計）
+			 */
+			RBatch batch = RedisClient.client().createBatch();
+			RFuture<Map<String, String>> read = batch.<String, String>getMap(KEY_PREFIX + sessionId).readAllMapAsync();
+			batch.getMap(KEY_PREFIX + sessionId).expireAsync(timeout);
+			batch.execute();
+
+			all = read.toCompletableFuture().join();
+			extended = true;
+
+		} else {
+			all = map.readAllMap();
+		}
+
 		String created = all.get(CREATED_AT);
 
 		Data data = new Data();
@@ -158,14 +180,19 @@ public final class RedisSessionStore implements SessionStore {
 
 		}
 
+		long createdSeconds = createdAt(created);
+
 		if (created == null) {
-			map.fastPut(CREATED_AT, String.valueOf(nowSeconds()));
+			map.fastPut(CREATED_AT, String.valueOf(createdSeconds));
 		}
 
-		// 触られたので期限を延ばす
-		map.expire(ttl);
+		// 触られたので期限を延ばす（上でまとめて延ばしていなければ）
+		if (!extended) {
+			map.expire(ttl);
+		}
 
-		return new SessionEntry(data, true);
+		// 発行時刻を持たせておく（保存するときに読み直さない。D-288）
+		return new SessionEntry(data, true, createdSeconds * 1000);
 
 	}
 
@@ -176,8 +203,9 @@ public final class RedisSessionStore implements SessionStore {
 
 		RMap<String, String> map = map(sessionId);
 
-		// 発行した時刻は持ち越す（新しいセッションなら、いま）
-		long created = createdAt(map.get(CREATED_AT));
+		// 発行した時刻は持ち越す（読み込んだときに持たせたもの。新しいセッションなら、いま）
+		long created = entry.issuedAt() > 0 ? entry.issuedAt() / 1000
+			: entry.isExisting() ? createdAt(map.get(CREATED_AT)) : nowSeconds();
 		Duration ttl = ttl(created);
 
 		// 中身が無い・発行からの上限を過ぎたなら、何も残さない
@@ -248,6 +276,12 @@ public final class RedisSessionStore implements SessionStore {
 		}
 
 		RMap<String, String> map = map(sessionId);
+
+		// 発行からの上限が無ければ、発行時刻を読まずに延ばす（D-288）
+		if (absoluteTimeout.isZero()) {
+			map.expire(timeout);
+			return;
+		}
 
 		Duration ttl = ttl(createdAt(map.get(CREATED_AT)));
 
