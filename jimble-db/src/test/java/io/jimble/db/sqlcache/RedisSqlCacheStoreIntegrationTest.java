@@ -83,4 +83,21 @@ class RedisSqlCacheStoreIntegrationTest {
 
 	}
 
+
+	@Test
+	@DisplayName("D-282 タグの集合にも期限が付く（値の期限より少し長い）")
+	void tagSetsExpire () throws Exception {
+
+		RedisSqlCacheStore store = new RedisSqlCacheStore();
+		String run = UUID.randomUUID().toString();
+		String tag = run + "/customer#*";
+
+		store.put(run + ":a", Set.of(tag), "a", Duration.ofMinutes(5));
+
+		long ttl = RedisClient.client().getSet(RedisSqlCacheStore.TAG_PREFIX + tag).remainTimeToLive();
+
+		assertTrue(ttl > Duration.ofMinutes(5).toMillis() && ttl <= Duration.ofMinutes(6).toMillis(), "タグの集合の期限: " + ttl);
+
+	}
+
 }

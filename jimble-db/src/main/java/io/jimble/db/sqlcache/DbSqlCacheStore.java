@@ -85,6 +85,8 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 
 		long expiresAt = ttl == null || ttl.isZero() ? 0 : System.currentTimeMillis() + ttl.toMillis();
 
+		purgeIfDue();
+
 		try (DB db = DBUtil.getMainDB().withoutSqlCache()) {
 
 			db.transaction(tx -> {
@@ -184,6 +186,96 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 
 	}
 
+	/** 期限切れを消す間隔 */
+	static final long PURGE_INTERVAL_MILLIS = 10 * 60 * 1000L;
+
+	/** 1回に消す件数 */
+	static final int PURGE_BATCH = 1000;
+
+	/** 1回の掃除で回す上限（それ以上は次の回に） */
+	static final int PURGE_ROUNDS = 20;
+
+	/* 最後に掃除を始めた時刻 */
+	private static final java.util.concurrent.atomic.AtomicLong LAST_PURGE = new java.util.concurrent.atomic.AtomicLong(0);
+
+	/**
+	 * 期限切れを消す（{@value #PURGE_INTERVAL_MILLIS} ミリ秒に1回。別のスレッドで）
+	 *
+	 * <p>
+	 * <b>2.5.1 までは誰も消していなかった</b>（D-282）。読むときに期限を見て返さないだけだったので、
+	 * 違うパラメータで引いた結果が1行ずつ溜まり続けた。入れたリクエストを待たせないよう、別のスレッドで消す。
+	 * </p>
+	 */
+	private static void purgeIfDue () {
+
+		long now = System.currentTimeMillis();
+		long last = LAST_PURGE.get();
+
+		if (now - last < PURGE_INTERVAL_MILLIS || !LAST_PURGE.compareAndSet(last, now)) {
+			return;
+		}
+
+		Thread.ofVirtual().name("jimble-sql-cache-purge").start(() -> {
+			try {
+				purgeExpired(now);
+			} catch (Exception ex) {
+				Log.error(ex, "期限切れの SQL結果キャッシュを消せませんでした");
+			}
+		});
+
+	}
+
+	/**
+	 * 期限切れを消す
+	 *
+	 * @param now	いまの時刻（ミリ秒）
+	 * @return	消した件数
+	 */
+	static int purgeExpired (long now) {
+
+		int purged = 0;
+
+		try (DB db = DBUtil.getMainDB().withoutSqlCache()) {
+
+			for (int round = 0; round < PURGE_ROUNDS; round++) {
+
+				List<Data> rows = db.selectList(
+					"SELECT cache_key FROM %s WHERE expires_at > 0 AND expires_at < ? LIMIT %d".formatted(TABLE, PURGE_BATCH)
+					, now);
+
+				if (rows.isEmpty()) {
+					break;
+				}
+
+				List<List<Object>> params = new ArrayList<>();
+				for (Data row : rows) {
+					params.add(List.of(row.getString("cache_key")));
+				}
+
+				/*
+				 * <b>行を先に消し、タグは行が無くなったキーのものだけ消す。</b>
+				 * あいだに同じキーを入れ直した人がいると、行の期限は延びていて（消えない）、タグも入れ直されている。
+				 * タグを先に消すと、入れ直したタグまで消えて、更新しても消えないキャッシュが残る
+				 */
+				db.executeBatch("DELETE FROM %s WHERE cache_key = ? AND expires_at > 0 AND expires_at < ?".formatted(TABLE)
+					, params.stream().map(param -> List.<Object>of(param.get(0), now)).toList());
+				db.executeBatch("DELETE FROM %s WHERE cache_key = ? AND NOT EXISTS (SELECT 1 FROM %s WHERE cache_key = ?)".formatted(TAG_TABLE, TABLE)
+					, params.stream().map(param -> List.<Object>of(param.get(0), param.get(0))).toList());
+
+				purged += rows.size();
+
+				if (rows.size() < PURGE_BATCH) {
+					break;
+				}
+
+			}
+
+		}
+
+		return purged;
+
+	}
+
 	/**
 	 * テーブルを作る
 	 *
@@ -224,6 +316,11 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 							, created_at bigint not null
 						)
 						""".formatted(TABLE));
+
+				// 期限切れを消すときの順路（D-282）
+				version.add(2)
+					.mysql("create index %s__index_1 on %s (expires_at)".formatted(TABLE, TABLE))
+					.postgresql("create index %s__index_1 on %s (expires_at)".formatted(TABLE, TABLE));
 
 				if (!version.apply(db)) {
 					Log.error("%s テーブルを作れませんでした".formatted(TABLE));
