@@ -133,7 +133,7 @@ public final class RateLimits {
 		RateLimitResult result;
 
 		try {
-			result = store().consume(key, limit.limit(), limit.duration());
+			result = store().consume(bucketKey(limit, key), limit.limit(), limit.duration());
 		} catch (Exception cause) {
 			Log.error(cause, "流量制限を数えられませんでした（通します）: %s".formatted(RateLimitConf.store()));
 			return;
@@ -150,6 +150,30 @@ public final class RateLimits {
 
 		context.response().setResponseHeader(HEADER_RETRY_AFTER, String.valueOf(seconds));
 		context.response().send(STATUS_CODE);
+
+	}
+
+	/**
+	 * 置き場で数えるキー（回数と時間を頭に付ける。D-270）
+	 *
+	 * <p>
+	 * <b>宣言が違えば、同じ人でも別に数える。</b>2.5.1 までは単位（IP など）だけで数えていたので、
+	 * ログインに {@code perIp(5, 1m)}、{@code /api} 全体に {@code perIp(60, 1m)} と書くと、
+	 * <b>{@code /api} を叩くたびに同じ枠が 60 回/分の速さで戻り、ログインの 5 回/分が効かなかった</b>
+	 * （戻す速さは、そのとき数えた宣言のもので計算していた）。
+	 * </p>
+	 *
+	 * <p>
+	 * 回数と時間が同じ宣言どうしは、同じ枠を分け合う（厳しくなるほうに倒れるだけで、すり抜けはしない）。
+	 * </p>
+	 *
+	 * @param limit	宣言
+	 * @param key	単位
+	 * @return	キー
+	 */
+	static String bucketKey (RateLimit limit, String key) {
+
+		return limit.limit() + "/" + limit.duration().toMillis() + "ms:" + key;
 
 	}
 
