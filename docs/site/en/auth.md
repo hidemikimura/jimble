@@ -873,7 +873,7 @@ Passkey.deleteAll("", me.id());                        // account deletion, etc.
 
 | | |
 | --- | --- |
-| Storage | The `auth_passkey` table. **Needs a DB and sessions** |
+| Storage | The `auth_passkey` table. **Needs a DB and sessions**. Used challenges are kept in `auth_passkey_challenge` and never accepted twice (since 2.5.2; so a captured request cannot be replayed with cookie sessions) |
 | Realms | Split by the route's `Auth.REALM` (registration and login use the route's realm; listing and deleting also take a realm) |
 | A lost device | Have the user log in another way (a password, say) and remove it with `Passkey.delete`. `Auth.revoke` only stops current sessions; the passkey stays |
 

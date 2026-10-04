@@ -187,6 +187,43 @@ class PasskeyIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-290 cookie のセッションでも、ログイン前の Cookie と同じ応答を送り直して入れない（チャレンジは DB で1度きり）")
+	void replayWithCookieSession () throws Exception {
+
+		Conf.replace(ConfigFactory.parseString("""
+			session.store = "cookie"
+			session.secret = "passkey-replay-test-secret"
+			""").withFallback(Conf.conf().config()));
+		SessionStores.reset();
+
+		try {
+
+			FakeAuthenticator authenticator = new FakeAuthenticator(CoseKey.ES256, 0);
+			register(authenticator);
+
+			Browser victim = new Browser();
+			Data options = victim.postJson("/passkey/login/options", new Data());
+
+			// ログインの前の Cookie（チャレンジが入っている）を取られた
+			Browser attacker = victim.copy();
+
+			Data credential = authenticator.get(options.getString("challenge"), ORIGIN, RP_ID, OK);
+			assertEquals(200, victim.post("/passkey/login", credential).statusCode());
+
+			// 同じ要求（Cookie と本文）を送り直す
+			HttpResponse<String> replay = attacker.post("/passkey/login", credential);
+
+			assertEquals(400, replay.statusCode(), "取られた要求の送り直しでログインできた: " + replay.body());
+			assertEquals("0", attacker.get("/me").body());
+
+		} finally {
+			Conf.replace(Conf.conf().config().withoutPath("session.store").withoutPath("session.secret").withFallback(originalConf));
+			SessionStores.reset();
+		}
+
+	}
+
+	@Test
 	@DisplayName("署名が違えば、ログインさせない（401）")
 	void wrongSignature () throws Exception {
 
@@ -324,6 +361,15 @@ class PasskeyIntegrationTest {
 	private static final class Browser {
 
 		private final List<String> cookies = new ArrayList<>();
+
+		/** いまの Cookie を写した、別のブラウザ（取られた Cookie のつもり） */
+		Browser copy () {
+
+			Browser copied = new Browser();
+			copied.cookies.addAll(cookies);
+			return copied;
+
+		}
 
 		HttpResponse<String> get (String path) throws Exception {
 
