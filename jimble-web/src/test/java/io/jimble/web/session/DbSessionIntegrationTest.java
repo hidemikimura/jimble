@@ -11,6 +11,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+import java.util.ArrayList;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -177,6 +181,32 @@ class DbSessionIntegrationTest {
 		try (WebContext context = new WebContext(again, new Fakes.FakeResponseSink())) {
 			assertEquals(2, context.session().getInt("user_id"), "2回目の保存が捨てられている");
 		}
+
+	}
+
+	@Test
+	@DisplayName("D-284 期限切れの行を少しずつ消し切る（1回に消す件数を区切る）。生きている行は残す")
+	void cleanupInBatches () {
+
+		DbSessionStore store = new DbSessionStore(TABLE, 30);
+
+		// 表を作らせる
+		store.cleanupExpired();
+
+		List<List<Object>> rows = new ArrayList<>();
+		for (int i = 0; i < DbSessionStore.CLEANUP_BATCH * 2 + 500; i++) {
+			rows.add(List.of("old-" + i));
+		}
+
+		DBUtil.getMainDB().executeBatch(
+			"INSERT INTO %s (session_id, data, created_at, last_accessed_at) VALUES (?, NULL, '2000-01-01 00:00:00', '2000-01-01 00:00:00')"
+				.formatted(quoted())
+			, rows);
+		DBUtil.getMainDB().execute(
+			"INSERT INTO %s (session_id, data, created_at, last_accessed_at) VALUES ('live', NULL, NOW(), NOW())".formatted(quoted()));
+
+		assertEquals(DbSessionStore.CLEANUP_BATCH * 2 + 500, store.cleanupExpired());
+		assertEquals(1, count(), "生きている行まで消えた");
 
 	}
 
