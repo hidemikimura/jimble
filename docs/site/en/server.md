@@ -14,7 +14,7 @@ server {
 	max_request_size     = 10MiB      # Limit on the request body
 	max_header_size      = 16KiB      # Limit on the headers as a whole
 	idle_timeout = 60s
-	trust_proxy          = false      # Whether to believe X-Forwarded-*
+	trust_proxy          = false      # Whether to believe X-Forwarded-For / X-Forwarded-Proto
 	compression          = true       # Whether to gzip text responses (1KB and up)
 	access_log           = true       # Whether to write the access log ([Logging](./log))
 	bot_access_log       = true       # Whether to split out the bot access log
@@ -149,10 +149,16 @@ With `true`, `proxyAddress()` returns the source in this order.
 > **Bot detection (`isBotAccess()`) looks at `address()`.**
 > Behind a proxy, the IP it judges on is the load balancer's.
 
-> [!TRAP]
-> **`scheme()` does not look at `X-Forwarded-Proto` either.**
-> Terminate TLS in front and the app sees `http`.
-> Watch for that when you build a redirect target.
+With `true`, `scheme()` / `isSecure()` also read **`X-Forwarded-Proto`** (since 2.5.3).
+Even with TLS terminated in front, the app can tell the client came over https (this is also what makes the HSTS header go out).
+
+- With `trusted_proxies` set, it is only read when the connection comes from one of them
+- With several values, the **rightmost** one is used (added by the nearest hop); the left ones can be made up by the client
+- Values other than `http` / `https` are ignored and the connection's scheme is used
+
+> [!NOTE]
+> **Make the proxy in front set `X-Forwarded-Proto`.** For nginx: `proxy_set_header X-Forwarded-Proto $scheme;`.
+> ALB, Cloud Run and the like set it for you.
 
 > [!WARN]
 > **Do not set `true` while the server can still be reached directly.**

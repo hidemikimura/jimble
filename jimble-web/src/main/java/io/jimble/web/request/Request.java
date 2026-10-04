@@ -104,7 +104,7 @@ public final class Request {
 				data.put("method", method());
 				data.put("url", source.url());
 				data.put("protocol", source.protocol());
-				data.put("scheme", source.scheme());
+				data.put("scheme", effectiveScheme());
 				data.put("host", source.host());
 				data.put("port", source.port());
 				/*
@@ -348,7 +348,13 @@ public final class Request {
 	}
 
 	/**
-	 * Scheme
+	 * Scheme（{@code http} / {@code https}）
+	 *
+	 * <p>
+	 * {@code server.trust_proxy = true} なら、前段のプロキシが付けた {@code X-Forwarded-Proto} を見る（D-292）。
+	 * TLS をロードバランサで終端していると、接続そのものは {@code http} なので、2.5.2 までは
+	 * <b>いつも {@code http} に見えていた</b>（HSTS のヘッダが出なかった）。
+	 * </p>
 	 *
 	 * @return  Scheme
 	 */
@@ -356,6 +362,48 @@ public final class Request {
 
 		header();
 		return request().getStringOptional("scheme");
+
+	}
+
+	/**
+	 * HTTPS で来たか（{@link #scheme()} が {@code https}。プロキシの後ろなら {@code X-Forwarded-Proto} を見る）
+	 *
+	 * @return	HTTPS の場合 = true
+	 */
+	public boolean isSecure () {
+
+		return "https".equalsIgnoreCase(scheme());
+
+	}
+
+	/**
+	 * 見かけの Scheme を決める（D-292）
+	 *
+	 * <ul>
+	 *   <li>{@code server.trust_proxy} が false なら、接続の Scheme</li>
+	 *   <li>{@code server.trusted_proxies} を書いていて、直に来た相手が入っていなければ、接続の Scheme（ヘッダは名乗りにすぎない）</li>
+	 *   <li>{@code X-Forwarded-Proto} が複数なら<b>右端</b>（いちばん近い中継が付けたもの。左はクライアントが名乗れる）。
+	 *       {@code http} / {@code https} 以外なら、接続の Scheme</li>
+	 * </ul>
+	 */
+	private String effectiveScheme () {
+
+		String connection = source.scheme();
+
+		if (!ServerConf.trustProxy() || !ClientIp.fromTrustedProxy(source.remoteAddress())) {
+			return connection;
+		}
+
+		String forwarded = source.headers().getOrDefault(X_FORWARDED_PROTO_LOW, "");
+
+		if (forwarded.isBlank()) {
+			return connection;
+		}
+
+		int comma = forwarded.lastIndexOf(',');
+		String last = (comma < 0 ? forwarded : forwarded.substring(comma + 1)).trim().toLowerCase(java.util.Locale.ROOT);
+
+		return "http".equals(last) || "https".equals(last) ? last : connection;
 
 	}
 
