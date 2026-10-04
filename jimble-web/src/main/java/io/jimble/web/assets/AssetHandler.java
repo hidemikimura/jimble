@@ -123,16 +123,13 @@ public final class AssetHandler implements Handler {
 
 		try {
 
-			URLConnection connection = url.openConnection();
-			connection.setUseCaches(false);
-
-			long lastModified = connection.getLastModified();
-			long contentLength = connection.getContentLengthLong();
+			Meta meta = meta(resource, url);
+			long contentLength = meta.contentLength();
 
 			applyCacheControl(context, resource);
 
-			String etag = etag(resource, lastModified, contentLength);
-			String lastModifiedText = lastModified > 0 ? HTTP_DATE.format(Instant.ofEpochMilli(lastModified)) : null;
+			String etag = meta.etag();
+			String lastModifiedText = meta.lastModifiedText();
 
 			if (etag != null) {
 				context.response().setResponseHeader("ETag", etag);
@@ -157,7 +154,7 @@ public final class AssetHandler implements Handler {
 				return;
 			}
 
-			try (InputStream in = connection.getInputStream()) {
+			try (InputStream in = open(resource, url)) {
 				if (contentLength >= 0) {
 					context.response().send(in, ContentTypes.of(resource), contentLength);
 				} else {
@@ -172,6 +169,104 @@ public final class AssetHandler implements Handler {
 		}
 
 	}
+
+	// region 中身の情報（D-286）
+
+	/**
+	 * 長さ・更新時刻・ETag
+	 *
+	 * @param contentLength		長さ（分からなければ負）
+	 * @param etag				ETag（使わない設定なら null）
+	 * @param lastModifiedText	Last-Modified（分からなければ null）
+	 */
+	record Meta (long contentLength, String etag, String lastModifiedText) {}
+
+	/* jar の中のものの情報（jar の中身は変わらないので覚えておく） */
+	private static final java.util.concurrent.ConcurrentHashMap<String, Meta> JAR_META = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** 覚えておく上限（溢れたら全部捨てる。引き直すだけなので正しさは変わらない） */
+	static final int JAR_META_LIMIT = 10_000;
+
+	/**
+	 * 長さ・更新時刻・ETag を引く
+	 *
+	 * <p>
+	 * <b>jar の中のものは覚えておく</b>。2.5.1 までは毎回 {@code URLConnection} を
+	 * キャッシュなし（{@code setUseCaches(false)}）で開いていたので、<b>1リクエストごとに jar を開き直し</b>
+	 * （ファイルの stat と JDK 全体の ZipFile のロック）、ETag の MD5 も毎回作っていた。304 と HEAD では本文を読まないので、
+	 * 開いた jar を閉じずに GC 任せにしていた。
+	 * ファイルのクラスパス（IDE・jimbleRun）は書き換わるので、これまでどおり毎回見る。
+	 * </p>
+	 */
+	Meta meta (String resource, URL url) throws java.io.IOException {
+
+		boolean jar = "jar".equals(url.getProtocol());
+
+		if (jar) {
+			Meta cached = JAR_META.get(resource);
+			if (cached != null && cached.etag() != null == AssetConf.etag()) {
+				return cached;
+			}
+		}
+
+		URLConnection connection = url.openConnection();
+		connection.setUseCaches(false);
+
+		long lastModified;
+		long contentLength;
+
+		try {
+			lastModified = connection.getLastModified();
+			contentLength = connection.getContentLengthLong();
+		} finally {
+			// 本文を読まないので、開いたものをここで閉じる（jar なら JarFile）
+			if (connection instanceof java.net.JarURLConnection jarConnection) {
+				try {
+					jarConnection.getJarFile().close();
+				} catch (java.io.IOException ignore) {
+					// もう閉じている
+				}
+			}
+		}
+
+		Meta meta = new Meta(
+			contentLength
+			, etag(resource, lastModified, contentLength)
+			, lastModified > 0 ? HTTP_DATE.format(Instant.ofEpochMilli(lastModified)) : null);
+
+		if (jar) {
+			if (JAR_META.size() >= JAR_META_LIMIT) {
+				JAR_META.clear();
+			}
+			JAR_META.put(resource, meta);
+		}
+
+		return meta;
+
+	}
+
+	/**
+	 * 本文を開く
+	 *
+	 * <p>jar の中のものは、クラスローダが開いたままにしている jar から読む（開き直さない）。</p>
+	 */
+	private static InputStream open (String resource, URL url) throws java.io.IOException {
+
+		if ("jar".equals(url.getProtocol())) {
+			InputStream in = AssetHandler.class.getResourceAsStream(resource);
+			if (in != null) {
+				return in;
+			}
+		}
+
+		URLConnection connection = url.openConnection();
+		connection.setUseCaches(false);
+
+		return connection.getInputStream();
+
+	}
+
+	// endregion
 
 	// region キャッシュ
 
