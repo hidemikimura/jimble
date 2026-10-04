@@ -424,25 +424,32 @@ public final class Auth {
 	 * {@link #FULL_AUTH} を付けたルートには入れない。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>種別は、ルートのものではなく記憶のもの</b>（D-271）。2.5.1 まではルートの種別に入れていたので、
+	 * 種別の無いルートで {@code restore("operator", ...)} が走ると、運用者 #7 が<b>利用者 #7 として</b>入れた。
+	 * </p>
+	 *
 	 * @param context	コンテキスト
+	 * @param realm		記憶の種別
 	 * @param principal	ログインする人
+	 * @param generation	{@link #generationForLogin(String, long)} で引いた世代
 	 */
-	static void loginWithoutPassword (WebContext context, Principal principal, long generation) {
+	static void loginWithoutPassword (WebContext context, String realm, Principal principal, long generation) {
 
-		store(context, principal, false, realmOf(context), generation);
+		store(context, principal, false, realm, generation);
 
 	}
 
 	/**
 	 * ログインのときに入れる世代（{@link Remember} が、記憶を確かめる前に引くため）
 	 *
-	 * @param context	コンテキスト
+	 * @param realm		記憶の種別
 	 * @param userId	利用者 ID
 	 * @return	世代
 	 */
-	static long generationForLogin (WebContext context, long userId) {
+	static long generationForLogin (String realm, long userId) {
 
-		return Revocations.forLogin(realmOf(context), userId);
+		return Revocations.forLogin(realm, userId);
 
 	}
 

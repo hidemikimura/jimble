@@ -384,6 +384,7 @@ Cookie には **`selector:validator`** の2つが入っていて、
 
 ```java
 path("/ops", () -> {
+	attribute(Auth.REALM, "operator");                // ログインの種別も同じにする
 	before(Remember.restore("operator", Ops::findStaff));
 	before(Auth::guard);
 });
@@ -395,6 +396,8 @@ Auth.revoke("operator", staffId);                 // 締め出すとき（記憶
 - **Cookie の名前が種別ごとに分かれます**（`remember_operator` のように、設定の名前 + `_` + 種別）。
   同じホストで両方にログインしていても、互いの Cookie を上書きしません
 - **思い出すときは、記憶の種別も見ます。**Cookie の名前を取り違えても、別の種別の人としては入れません
+- **思い出した人は、記憶の種別でログインします**（2.5.2 から）。種別の無いルートで `restore("operator", ...)` が走っても、
+  種別なしの利用者としては入りません
 - `forgetAll` と盗用の検知で消えるのは、**その種別のその人の記憶だけ**です
 - **`Auth.logout` は、種別なしと、このアプリが使っている種別の記憶をすべて消します**
   （セッションごと捨てるので、どの種別のログインも終わります）

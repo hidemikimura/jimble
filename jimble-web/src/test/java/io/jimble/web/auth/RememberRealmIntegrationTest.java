@@ -158,12 +158,36 @@ class RememberRealmIntegrationTest {
 
 		assertFalse(asMember.isAuthenticated(), "運用者の記憶で、利用者の画面に別人として入っています");
 
-		Principal asStaff = browser.get(context -> {
+		Principal asStaff = browser.get("/ops/me", context -> {
 			Remember.restore(context, OPERATOR, STAFF_LOOKUP);
 			return Auth.principal(context);
 		});
 
 		assertEquals("運用 有栖", asStaff.name(), "運用者の画面で思い出せていません");
+
+	}
+
+	@Test
+	@DisplayName("D-271 種別の無いルートで思い出しても、記憶の種別にログインする（種別なしの利用者としては入らない）")
+	void restoreOnPlainRouteLogsIntoTheCookieRealm () {
+
+		Browser browser = new Browser();
+
+		browser.visit(context -> Remember.issue(context, STAFF, OPERATOR));
+		browser.forgetSession();
+
+		/*
+		 * アプリ全体に before(Remember.restore("operator", ...)) を置いた形。
+		 * 2.5.1 までは<b>ルートの種別（種別なし）に入れていた</b>ので、運用者 8301 が
+		 * 種別なしの画面で「8301 番の利用者」としてログインしていた
+		 */
+		Principal[] seen = browser.get(context -> {
+			Remember.restore(context, OPERATOR, STAFF_LOOKUP);
+			return new Principal[] {Auth.principal(context), Auth.principal(context, OPERATOR)};
+		});
+
+		assertFalse(seen[0].isAuthenticated(), "運用者の記憶で、種別なしの利用者としてログインしています");
+		assertEquals("運用 有栖", seen[1].name(), "運用者としてログインしていません");
 
 	}
 
@@ -184,14 +208,14 @@ class RememberRealmIntegrationTest {
 
 		assertEquals("運用 有栖", browser.get(context -> {
 			Remember.restore(context, OPERATOR, STAFF_LOOKUP);
-			return Auth.principal(context);
+			return Auth.principal(context, OPERATOR);
 		}).name());
 
 		browser.forgetSession();
 
 		assertEquals("会員 有栖", browser.get(context -> {
 			Remember.restore(context, MEMBER, MEMBER_LOOKUP);
-			return Auth.principal(context);
+			return Auth.principal(context, MEMBER);
 		}).name());
 
 	}
@@ -212,7 +236,7 @@ class RememberRealmIntegrationTest {
 
 		Principal restored = other.get(context -> {
 			Remember.restore(context, MEMBER, MEMBER_LOOKUP);
-			return Auth.principal(context);
+			return Auth.principal(context, MEMBER);
 		});
 
 		/*

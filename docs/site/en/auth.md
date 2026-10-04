@@ -384,6 +384,7 @@ remembered for an operator is restored on the member screen as "the member with 
 
 ```java
 path("/ops", () -> {
+	attribute(Auth.REALM, "operator");                // the login realm matches
 	before(Remember.restore("operator", Ops::findStaff));
 	before(Auth::guard);
 });
@@ -396,6 +397,8 @@ Auth.revoke("operator", staffId);                 // to lock them out (memories 
   so being logged in to both on the same host does not overwrite either cookie
 - **Restoring also checks the realm stored with the memory.** A cookie sent under the wrong name
   still cannot get in as someone from another realm
+- **A restored user is logged in under the memory's realm** (since 2.5.2). Even when
+  `restore("operator", ...)` runs on a route with no realm, nobody gets in as a no-realm member
 - `forgetAll` and theft detection only remove **that realm's memories for that person**
 - **`Auth.logout` forgets "no realm" and every realm the application uses** (the whole session is
   dropped, so every kind of login ends)
