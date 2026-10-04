@@ -3,13 +3,14 @@ package io.jimble.web.session;
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
-import org.redisson.api.BatchOptions;
-import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
-import org.redisson.api.RMapAsync;
+import org.redisson.api.RScript;
+import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -196,21 +197,47 @@ public final class RedisSessionStore implements SessionStore {
 		fields.put(CREATED_AT, String.valueOf(created));
 
 		/*
-		 * <b>消す・入れる・期限を、1つのトランザクション（MULTI / EXEC）で送る</b>（D-268）。
+		 * <b>消す・入れる・期限を、1つの Lua で送る</b>（D-268）。
 		 *
 		 * 2.5.1 までは clear・キーの数だけ put・fastPut・expire を1つずつ送っていた。
 		 * <b>clear と put のあいだに同じ人の別のリクエストが読むと、空のセッション（ログアウトした状態）が見えた</b>。
 		 * 途中で落ちると、期限の無いハッシュも残った。
+		 *
+		 * <b>読み込んだセッションは、まだあるときだけ書く</b>（D-275）。読んでから保存するまでのあいだに
+		 * ログアウト（destroy）されたら、書き戻さない——書き戻すと、盗まれた ID でログアウトしても
+		 * 同時に流れていたリクエストがログインを生き返らせた。
 		 */
-		RBatch batch = RedisClient.client().createBatch(
-			BatchOptions.defaults().executionMode(BatchOptions.ExecutionMode.IN_MEMORY_ATOMIC));
-		RMapAsync<String, String> async = batch.getMap(KEY_PREFIX + sessionId);
-		async.deleteAsync();
-		async.putAllAsync(fields);
-		async.expireAsync(ttl);
-		batch.execute();
+		List<Object> args = new ArrayList<>(2 + fields.size() * 2);
+		args.add(entry.isExisting() ? "1" : "0");
+		args.add(String.valueOf(Math.max(ttl.toMillis(), 1)));
+		fields.forEach((key, value) -> {
+			args.add(key);
+			args.add(value);
+		});
+
+		RedisClient.client().getScript(StringCodec.INSTANCE).eval(
+			RScript.Mode.READ_WRITE
+			, SAVE_SCRIPT
+			, RScript.ReturnType.LONG
+			, List.of(KEY_PREFIX + sessionId)
+			, args.toArray());
 
 	}
+
+	/*
+	 * 保存する（ARGV[1] が "1" なら、まだあるときだけ。ARGV[2] は期限のミリ秒、ARGV[3..] は項目と値）
+	 */
+	private static final String SAVE_SCRIPT = """
+		if ARGV[1] == '1' and redis.call('EXISTS', KEYS[1]) == 0 then
+			return 0
+		end
+		redis.call('DEL', KEYS[1])
+		for i = 3, #ARGV, 2 do
+			redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
+		end
+		redis.call('PEXPIRE', KEYS[1], ARGV[2])
+		return 1
+		""";
 
 	@Override
 	public void touch (WebContext context, SessionEntry entry) {

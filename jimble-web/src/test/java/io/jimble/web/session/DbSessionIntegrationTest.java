@@ -181,6 +181,55 @@ class DbSessionIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-275 読んだあとでログアウト（destroy）されたら、そのリクエストの保存は書き戻さない")
+	void saveAfterDestroyDoesNotResurrect () {
+
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			context.session().put("user_id", 1);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String sessionId = sessionIdFrom(sink);
+
+		// 攻撃者のリクエスト（盗んだ ID）。先に読み込む
+		Fakes.FakeRequestSource attackerSource = new Fakes.FakeRequestSource("GET", "/cart");
+		attackerSource.cookie(SessionConf.cookieName(), sessionId);
+
+		try (WebContext attacker = new WebContext(attackerSource, new Fakes.FakeResponseSink())) {
+
+			assertEquals(1, attacker.session().getInt("user_id"));
+
+			// そのあいだに本人がログアウトした
+			Fakes.FakeRequestSource victimSource = new Fakes.FakeRequestSource("POST", "/logout");
+			victimSource.cookie(SessionConf.cookieName(), sessionId);
+
+			try (WebContext victim = new WebContext(victimSource, new Fakes.FakeResponseSink())) {
+				victim.session().destroy();
+			}
+
+			assertEquals(0, count());
+
+			// 攻撃者のリクエストが保存する（カートに入れた、など）
+			attacker.session().put("cart", "x");
+			attacker.session().save();
+
+		}
+
+		assertEquals(0, count(), "ログアウトしたセッションが書き戻された");
+
+		Fakes.FakeRequestSource again = new Fakes.FakeRequestSource("GET", "/");
+		again.cookie(SessionConf.cookieName(), sessionId);
+
+		try (WebContext context = new WebContext(again, new Fakes.FakeResponseSink())) {
+			assertEquals(0, context.session().getInt("user_id"), "ログアウトしたのに、まだログインしている");
+		}
+
+	}
+
+	@Test
 	@DisplayName("F-S-13 regenerateId() で ID が変わり、中身は残り、古い行は消える")
 	void regenerateId () {
 

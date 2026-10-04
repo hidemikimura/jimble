@@ -258,7 +258,7 @@ class RedisSessionIntegrationTest {
 		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
 
 		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
-			store.save(context, new SessionEntry(data, true));
+			store.save(context, new SessionEntry(data, false));
 			context.response().send("ok");
 		}
 
@@ -317,7 +317,7 @@ class RedisSessionIntegrationTest {
 			Data data = new Data();
 			data.put("a", "1");
 			data.put("b", "2");
-			store.save(context, new SessionEntry(data, true));
+			store.save(context, new SessionEntry(data, false));
 			context.response().send("ok");
 		}
 
@@ -343,6 +343,50 @@ class RedisSessionIntegrationTest {
 		}
 
 		assertFalse(RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).isExists(), "空にしたのに残っている");
+
+	}
+
+	@Test
+	@DisplayName("D-275 読んだあとでログアウト（destroy）されたら、そのリクエストの保存は書き戻さない")
+	void saveAfterDestroyDoesNotResurrect () {
+
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			Data data = new Data();
+			data.put("user_id", "1");
+			store.save(context, new SessionEntry(data, false));
+			context.response().send("ok");
+		}
+
+		String sessionId = sessionIdFrom(sink);
+
+		try (WebContext attacker = withSession(sessionId)) {
+
+			SessionEntry loaded = store.load(attacker);
+			assertTrue(loaded.isExisting());
+
+			try (WebContext victim = withSession(sessionId)) {
+				store.destroy(victim);
+			}
+
+			Data data = new Data();
+			data.putAll(loaded.data());
+			data.put("cart", "x");
+			store.save(attacker, new SessionEntry(data, true));
+
+		}
+
+		assertFalse(RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).isExists(), "ログアウトしたセッションが書き戻された");
+
+		// 新しいセッション（読み込んでいない）は、これまでどおり書ける
+		try (WebContext context = withSession(sessionId)) {
+			Data data = new Data();
+			data.put("fresh", "1");
+			store.save(context, new SessionEntry(data, false));
+		}
+
+		assertTrue(RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).isExists());
 
 	}
 

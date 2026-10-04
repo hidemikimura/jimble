@@ -188,6 +188,23 @@ public final class DbSessionStore implements SessionStore {
 		 */
 		try (DB db = DBUtil.getMainDB()) {
 
+			if (entry.isExisting()) {
+
+				/*
+				 * <b>読み込んだセッションは、まだあるときだけ書く</b>（D-275）。
+				 * 読んでから保存するまでのあいだにログアウト（destroy）されたら、行が無いので何も起きない。
+				 * 2.5.1 までは upsert だったので、同時に流れていたリクエストが<b>ログインを生き返らせた</b>
+				 * （盗まれた ID でログアウトしても、攻撃者のリクエストが書き戻した）
+				 */
+				db.update("UPDATE %s SET data = ?, last_accessed_at = NOW() WHERE session_id = ?"
+						.formatted(db.dialect().identifier(tableName))
+					, entry.data()
+					, sessionId);
+
+				return;
+
+			}
+
 			db.insert("""
 				INSERT INTO %s (session_id, data, created_at, last_accessed_at)
 				VALUES (?, ?, NOW(), NOW())
