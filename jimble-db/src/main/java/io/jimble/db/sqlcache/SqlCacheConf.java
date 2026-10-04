@@ -11,7 +11,7 @@ import java.time.Duration;
  * sql_cache {
  *   enabled = true       # 既定は false。書かないとキャッシュは動かない
  *   store   = "memory"   # memory | redis | db
- *   ttl     = 300        # 秒。0 で無期限
+ *   ttl     = 5m         # 単位を書く（300 は起動時に落ちる）。0s で無期限
  *   max     = 10000      # memory のときだけ。持つ件数の上限
  * }
  * </pre>
@@ -39,7 +39,7 @@ public final class SqlCacheConf {
 	/** 設定キー：有効か */
 	public static final String KEY_ENABLED = "sql_cache.enabled";
 
-	/** 設定キー：期限（秒） */
+	/** 設定キー：期限（単位つき。{@code 5m} / {@code 300s}） */
 	public static final String KEY_TTL = "sql_cache.ttl";
 
 	/** 設定キー：件数の上限（memory のみ） */

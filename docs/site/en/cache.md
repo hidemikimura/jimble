@@ -18,7 +18,7 @@ cache {
 | | Where it lives | Crosses processes | Expiry |
 | --- | --- | --- | --- |
 | `db` (**default**) | The `db_cache` table | **yes** | **none** |
-| `memory` | JVM memory | no | `cache.memory.expire` (seconds) |
+| `memory` | JVM memory | no | `cache.memory.expire` (with a unit, e.g. `10m`) |
 | `redis` | Redis | **yes** | **none** |
 
 Write a value it does not know and it does not fail.
@@ -167,7 +167,7 @@ evicted.
 | --- | --- |
 | Raw SQL updates (`db.execute("UPDATE ...")`) | Where they land cannot be read, so **everything is evicted** |
 | `ON DUPLICATE KEY UPDATE` / `INSERT ... SELECT` | Existing rows may change, so everything touching that table is evicted |
-| The DB written directly by another process | Cannot be followed. `sql_cache.ttl` (300 seconds by default) is your safety net |
+| The DB written directly by another process | Cannot be followed. `sql_cache.ttl` (5 minutes by default) is your safety net |
 | `sql_cache.store = "memory"` | **That machine only.** With more than one machine, use `redis` or `db` |
 
 ### Configuration
@@ -176,7 +176,7 @@ evicted.
 sql_cache {
 	enabled = true       # false by default
 	store   = "memory"   # memory | redis | db
-	ttl     = 300        # seconds. 0 means no expiry
+	ttl     = 5m         # write the unit (300s / 5m / 1h). 0s means no expiry
 	max     = 10000      # memory only. The cap on how many entries to hold
 }
 ```
@@ -303,7 +303,7 @@ explicitly.
 cache {
 	type          = "db"     # db | memory | redis
 	temp_dir      = ""       # where large values are spilled. Empty means the temp directory
-	memory.expire = 0        # memory only. Seconds. 0 means no expiry
+	memory.expire = 0s       # memory only. write the unit (60s / 10m). 0s means no expiry
 }
 
 redis {

@@ -11,8 +11,8 @@ order: 6
 server {
 	host                 = ""         # 待ち受けるアドレス。空なら全部
 	port                 = 9000
-	max_request_size     = 10485760   # リクエスト本文の上限（10MiB）
-	max_header_size      = 16384      # ヘッダ全体の上限（16KiB）
+	max_request_size     = 10MiB      # リクエスト本文の上限
+	max_header_size      = 16KiB      # ヘッダ全体の上限
 	idle_timeout = 60s
 	trust_proxy          = false      # X-Forwarded-* を信じるか
 	compression          = true       # 応答を gzip で返すか

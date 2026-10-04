@@ -18,7 +18,7 @@ cache {
 | | 置き場所 | プロセスをまたぐ | 期限 |
 | --- | --- | --- | --- |
 | `db`（**既定**） | `db_cache` テーブル | **またぐ** | **無い** |
-| `memory` | JVM のメモリ | またがない | `cache.memory.expire`（秒） |
+| `memory` | JVM のメモリ | またがない | `cache.memory.expire`（単位つき。`10m` など） |
 | `redis` | Redis | **またぐ** | **無い** |
 
 知らない値を書いても落ちません。**警告を出して `db` になります。**
@@ -153,7 +153,7 @@ db.selectListCached(SQL.select().from(Customer.instance()).where(Customer.shop_i
 | --- | --- |
 | 生 SQL の更新（`db.execute("UPDATE ...")`） | どこに当たるか読めないので**全部消します** |
 | `ON DUPLICATE KEY UPDATE` / `INSERT ... SELECT` | 既存の行が変わりうるので、そのテーブルに触るものを全部消します |
-| 別のプロセスから DB を直接書き換えた | 追えません。`sql_cache.ttl`（既定 300 秒）が保険です |
+| 別のプロセスから DB を直接書き換えた | 追えません。`sql_cache.ttl`（既定 5 分）が保険です |
 | `sql_cache.store = "memory"` | **その台の中だけ**です。複数台なら `redis` か `db` にしてください |
 
 ### 設定
@@ -162,7 +162,7 @@ db.selectListCached(SQL.select().from(Customer.instance()).where(Customer.shop_i
 sql_cache {
 	enabled = true       # 既定は false
 	store   = "memory"   # memory | redis | db
-	ttl     = 300        # 秒。0 で無期限
+	ttl     = 5m         # 単位を書く（300s / 5m / 1h）。0s で無期限
 	max     = 10000      # memory のときだけ。持つ件数の上限
 }
 ```
@@ -280,7 +280,7 @@ db.transaction(tx -> {
 cache {
 	type          = "db"     # db | memory | redis
 	temp_dir      = ""       # 大きい値を落とす場所。空なら一時ディレクトリ
-	memory.expire = 0        # memory のときだけ。秒。0 で無期限
+	memory.expire = 0s       # memory のときだけ。単位を書く（60s / 10m）。0s で無期限
 }
 
 redis {

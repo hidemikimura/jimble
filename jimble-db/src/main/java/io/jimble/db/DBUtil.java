@@ -30,6 +30,7 @@ import io.jimble.db.internal.version.DBVersion;
 import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.util.log.Log;
 import io.jimble.db.redis.lock.RedisLock;
+import io.jimble.db.sqlcache.SqlCacheConf;
 
 import javax.sql.DataSource;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -251,6 +252,7 @@ public class DBUtil {
 	 * @param conf		Conf
 	 * @param appCls	クラスパスの起点（マイグレーション SQL をここから探す）
 	 * @throws SqlExecuteException	データソースを作れなかったとき（コード {@code DB_007}。元の例外は cause の cause）
+	 * @throws IllegalStateException	{@code sql_cache.ttl} に単位が書いていないとき
 	 */
 	public static void load (Config conf, Class<?> appCls) {
 
@@ -266,6 +268,13 @@ public class DBUtil {
 		 * <b>打ち間違いが「接続に失敗しました」に化ける</b>。
 		 */
 		checkAllKeys(conf.getConfig("db"));
+
+		/*
+		 * <b>sql_cache.ttl の書き間違いも、ここで落とす</b>（D-267）。
+		 * 読むのは入れるときなので、{@code ttl = 300}（単位なし）は入れるたびに失敗してログに出るだけで、
+		 * <b>キャッシュが黙って効かない</b>。切っているときも見る（あとで有効にした日に落ちないように）。
+		 */
+		SqlCacheConf.ttl();
 
 		// 「全部止める」に預ける（要件 D-77）。プールは最後に閉じたい
 		Shutdown.add("DB", DBUtil::stop);

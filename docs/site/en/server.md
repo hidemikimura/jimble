@@ -11,8 +11,8 @@ order: 6
 server {
 	host                 = ""         # Address to listen on. Empty means all of them
 	port                 = 9000
-	max_request_size     = 10485760   # Limit on the request body (10MiB)
-	max_header_size      = 16384      # Limit on the headers as a whole (16KiB)
+	max_request_size     = 10MiB      # Limit on the request body
+	max_header_size      = 16KiB      # Limit on the headers as a whole
 	idle_timeout = 60s
 	trust_proxy          = false      # Whether to believe X-Forwarded-*
 	compression          = true       # Whether to gzip responses
