@@ -4,6 +4,22 @@
 
 ---
 
+## 未リリース
+
+### 足したこと
+
+| | |
+|---|---|
+| **HTTPS の判定に `X-Forwarded-Proto` を使う**（D-292） | `server.trust_proxy = true` なら、`request().scheme()` と新しい `request().isSecure()` が、前段のプロキシが付けた `X-Forwarded-Proto` を見ます。TLS をロードバランサで終端していても、https で来たことが分かります。`server.trusted_proxies` を書いていれば接続元がそこにいるときだけ見て、値が複数なら右端（いちばん近い中継が付けたもの）を使います |
+
+### 直したこと
+
+| | |
+|---|---|
+| **プロキシの後ろで、HSTS のヘッダが出ていませんでした** | `security_headers.hsts` を書いても、https で来たかを接続そのもので見ていたので、TLS を前段で終端する構成では一度も出ていませんでした。`trust_proxy` なら `X-Forwarded-Proto` を見ます。jimble の `ReverseProxy` が転送先へ渡す `X-Forwarded-Proto` も、クライアントが使ったもの（前段から受けた値）になります |
+
+---
+
 ## 2.5.2（2026-10-04）
 
 **性能とセキュリティを見直した版です。**OIDC の `callback` を2引数・3引数で使っている（2.2.3 から起動時に例外）、レート制限でログインを守っている、remember-me で種別を使っている、パスキーを cookie のセッションで使っている、のどれかに当たるなら、すぐに上げてください。

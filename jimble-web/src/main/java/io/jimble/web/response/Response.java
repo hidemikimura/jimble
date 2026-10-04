@@ -999,7 +999,8 @@ public final class Response extends Data {
 		String hsts = SecurityHeadersConf.hsts();
 
 		// http で受けた応答の HSTS はブラウザが無視する。https のときだけ付ける
-		if (hsts != null && "https".equalsIgnoreCase(request.scheme())) {
+		// プロキシの後ろでも出す（trust_proxy なら X-Forwarded-Proto を見る。D-292）
+		if (hsts != null && request.isSecure()) {
 			defaultHeader("Strict-Transport-Security", hsts);
 		}
 

@@ -94,6 +94,20 @@ final class ClientIp {
 
 	}
 
+	/**
+	 * 直に来た相手を、中継として信じてよいか（{@code server.trusted_proxies} を書いていなければ信じる）
+	 *
+	 * @param remote	直に来た相手の IP
+	 * @return	信じてよい場合 = true
+	 */
+	static boolean fromTrustedProxy (String remote) {
+
+		Cached conf = conf();
+
+		return conf.trusted().isEmpty() || contains(conf.trusted(), remote);
+
+	}
+
 	private static Cached conf () {
 
 		Conf current = Conf.conf();

@@ -186,13 +186,15 @@ class UploadIntegrationTest {
 			.parseString(UploadConf.KEY_MAX_FILE_SIZE + " = 10B")
 			.withFallback(Conf.conf().config()));
 
+		// 前のテストの一時ファイルは、応答のあとで消える。消え切ってから数える（CI で前が 2・後が 0 になった）
+		Thread.sleep(200);
 		long before = countTempFiles();
 
 		post(multipart(file("big", "big.bin", "0123456789ABCDEF")));
 
 		Thread.sleep(200);
 
-		assertEquals(before, countTempFiles(), "一時ファイルが残っている");
+		assertTrue(countTempFiles() <= before, "一時ファイルが残っている");
 
 	}
 

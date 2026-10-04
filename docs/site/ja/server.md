@@ -147,10 +147,16 @@ server {
 > **ボット判定（`isBotAccess()`）は `address()` を見ます。**
 > プロキシの後ろでは、判定に使う IP がロードバランサのものになります。
 
-> [!TRAP]
-> **`scheme()` も `X-Forwarded-Proto` を見ません。**
-> TLS を前段で終端していると、アプリからは `http` に見えます。
-> リダイレクト先を組み立てるときに気をつけてください。
+`true` にすると、`scheme()` / `isSecure()` も **`X-Forwarded-Proto`** を見ます（2.5.3 から）。
+TLS を前段で終端していても、クライアントが https で来たことが分かります（HSTS のヘッダもこれで出ます）。
+
+- `trusted_proxies` を書いていれば、接続元がそこに入っているときだけ見ます
+- 値が複数なら**右端**（いちばん近い中継が付けたもの）を使います。左はクライアントが名乗れます
+- `http` / `https` 以外の値は無視して、接続の Scheme を使います
+
+> [!NOTE]
+> **前段が `X-Forwarded-Proto` を付けるようにしてください。**nginx なら `proxy_set_header X-Forwarded-Proto $scheme;`。
+> ALB や Cloud Run などは付けてくれます。
 
 > [!WARN]
 > **直接叩ける状態で `true` にしないでください。**
