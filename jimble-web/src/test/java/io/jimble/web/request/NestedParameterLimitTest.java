@@ -77,6 +77,27 @@ class NestedParameterLimitTest {
 	}
 
 	@Test
+	@DisplayName("D-272 深すぎる入れ子のキーは 400（かつては 422 を返すところで StackOverflowError）")
+	void tooDeep () {
+
+		String deep = "a" + ".a".repeat(50_000);
+
+		assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
+			assertEquals(400, status(new Fakes.FakeRequestSource("POST", "/x").form(deep, "1")));
+			assertEquals(400, status(new Fakes.FakeRequestSource("GET", "/x").query("a" + "[a]".repeat(50_000), "1")));
+		});
+
+		// 上限ちょうどまでは読める
+		String limit = "a" + ".a".repeat(NestedParameterParser.MAX_DEPTH - 1);
+		try (WebContext context = context(new Fakes.FakeRequestSource("POST", "/x").form(limit, "1"))) {
+			context.request().bodyAll();
+		}
+
+		assertEquals(400, status(new Fakes.FakeRequestSource("POST", "/x").form(limit + ".a", "1")));
+
+	}
+
+	@Test
 	@DisplayName("上限の内側なら、今までどおり読める")
 	void withinLimit () {
 

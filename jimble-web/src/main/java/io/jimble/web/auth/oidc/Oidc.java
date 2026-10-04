@@ -184,8 +184,11 @@ public final class Oidc {
 		 * <b>二要素認証の種別は、このルートの Auth.REALM にする</b>（D-219）。かつては "" で決め打ちだったので、
 		 * Auth.REALM = "operator" のルートで operator として登録した人が、<b>コードを聞かれずに入れた</b>
 		 * （"" の種別には登録が無いので、二要素認証をしていない人に見えた）
+		 *
+		 * <b>4 引数の形を通さない。</b>あちらは null を断るので、2.2.3 から 2.5.1 まで
+		 * この形（と 2 引数の形）は<b>ルートを登録したところで必ず例外になっていた</b>（D-269）
 		 */
-		return callback(provider, lookup, mfaPath, null);
+		return handler(provider, lookup, mfaPath, null);
 
 	}
 
@@ -217,6 +220,22 @@ public final class Oidc {
 		if (mfaRealm == null) {
 			throw new IllegalArgumentException("二要素認証の種別が null です（種別なしなら空文字か、種別を渡さない形を使ってください）");
 		}
+
+		return handler(provider, lookup, mfaPath, mfaRealm);
+
+	}
+
+	/**
+	 * 戻ってきたところ（中身）
+	 *
+	 * @param provider	設定に書いた名前
+	 * @param lookup	名乗ってきた相手を、アプリの利用者に結び付ける
+	 * @param mfaPath	コードを入れる画面のパス。{@code null} なら二要素の人を断る
+	 * @param mfaRealm	二要素認証の種別。{@code null} ならルートの {@link Auth#REALM}
+	 * @return	{@code get(...)} に渡すもの
+	 */
+	private static Handler handler (String provider, Function<OidcUser, Principal> lookup
+		, String mfaPath, String mfaRealm) {
 
 		if (lookup == null) {
 			throw new IllegalArgumentException("利用者に結び付ける方法がありません");

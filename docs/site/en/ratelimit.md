@@ -48,6 +48,9 @@ RateLimit.of(context -> context.session().id(), 10, Duration.ofMinutes(1));   //
 > `false` and **everyone is counted as one client — the load balancer's IP**
 > ([Server configuration](./server)).
 
+**Different declarations are counted separately, even for the same client** (since 2.5.2). In the example above, hitting `/api` does not give the login its 5 attempts back.
+Declarations with exactly the same limit and duration share one bucket.
+
 Things you do not want counted, such as access from inside the office, can be excluded.
 
 ```java

@@ -172,14 +172,29 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 	 * 名前に password / secret / token などを含む項目を落とす（入れ子も見る）。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>リストの中も見る</b>（D-272）。2.5.1 までは {@code Data} の中だけを見ていたので、
+	 * {@code users[0][password]=...} や JSON の {@code {"users":[{"password":"..."}]}} はそのまま返っていた。
+	 * {@value #ECHO_MAX_DEPTH} 段より深いところは写さない（深い入れ子で {@code StackOverflowError} にしない）。
+	 * </p>
+	 *
 	 * @param input	入力値
 	 * @return	秘密を落とした写し
 	 */
 	public static io.jimble.util.data.Data echoable (io.jimble.util.data.Data input) {
 
+		return echoable(input, 0);
+
+	}
+
+	/** 422 で写す入れ子の深さの上限 */
+	static final int ECHO_MAX_DEPTH = 64;
+
+	private static io.jimble.util.data.Data echoable (io.jimble.util.data.Data input, int depth) {
+
 		io.jimble.util.data.Data copy = new io.jimble.util.data.Data();
 
-		if (input == null) {
+		if (input == null || depth >= ECHO_MAX_DEPTH) {
 			return copy;
 		}
 
@@ -189,12 +204,44 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 				continue;
 			}
 
-			Object value = entry.getValue();
-			copy.put(entry.getKey(), value instanceof io.jimble.util.data.Data nested ? echoable(nested) : value);
+			copy.put(entry.getKey(), echoableValue(entry.getValue(), depth + 1));
 
 		}
 
 		return copy;
+
+	}
+
+	private static Object echoableValue (Object value, int depth) {
+
+		if (value instanceof io.jimble.util.data.Data nested) {
+			return echoable(nested, depth);
+		}
+
+		if (value instanceof java.util.List<?> list) {
+
+			if (depth >= ECHO_MAX_DEPTH) {
+				return java.util.List.of();
+			}
+
+			java.util.List<Object> copy = new java.util.ArrayList<>(list.size());
+
+			for (Object item : list) {
+				copy.add(echoableValue(item, depth + 1));
+			}
+
+			return copy;
+
+		}
+
+		if (value instanceof java.util.Map<?, ?> map) {
+			// Data でない Map（アプリが入れたもの）も同じに扱う
+			io.jimble.util.data.Data data = new io.jimble.util.data.Data();
+			map.forEach((key, item) -> data.put(String.valueOf(key), item));
+			return echoable(data, depth);
+		}
+
+		return value;
 
 	}
 

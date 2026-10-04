@@ -271,8 +271,8 @@ public final class Remember {
 			return;
 		}
 
-		if (Auth.principal(context).isAuthenticated()) {
-			// もうログインしている。Cookie は次に切れるまでそのまま
+		if (Auth.principal(context, realm).isAuthenticated()) {
+			// その種別でもうログインしている。Cookie は次に切れるまでそのまま（D-271。ルートの種別で見ると、毎回思い出し直していた）
 			return;
 		}
 
@@ -663,7 +663,7 @@ public final class Remember {
 		 * 世代を引いたあとで記憶が残っていれば、その世代は上がる前のもの——入れても次の guard で弾かれる。
 		 * 見直さないと、確かめた直後に締め出されたとき、<b>上がったあとの世代をもらって生き残る</b>。
 		 */
-		long generation = Auth.generationForLogin(context, userId);
+		long generation = Auth.generationForLogin(realm, userId);
 
 		if (row(selector) == null) {
 			context.cookies().remove(cookieName(realm));
@@ -680,7 +680,7 @@ public final class Remember {
 			touch(selector);
 		}
 
-		Auth.loginWithoutPassword(context, principal, generation);
+		Auth.loginWithoutPassword(context, realm, principal, generation);
 
 	}
 

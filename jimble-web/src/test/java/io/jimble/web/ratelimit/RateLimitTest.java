@@ -140,6 +140,60 @@ class RateLimitTest {
 	}
 
 	@Test
+	@DisplayName("D-270 緩い宣言のルートを挟んでも、厳しい宣言のルートの枠は戻らない")
+	void looserLimitDoesNotRefillStricter () throws Exception {
+
+		JimbleApp app = new JimbleApp() {
+			{
+				path("/api", () -> {
+					// 1 ミリ秒で 1 万回ぶん戻る、ほぼ制限なしの宣言
+					rateLimit(RateLimit.perIp(1_000_000, Duration.ofMinutes(1)));
+					get("/items", context -> context.response().send("items"));
+					get("/login", context -> context.response().send("login"))
+						.attribute(RateLimit.KEY, RateLimit.perIp(2, Duration.ofMinutes(1)));
+				});
+			}
+		};
+
+		int allowed = 0;
+
+		for (int i = 0; i < 10; i++) {
+			assertEquals(200, request(app, "/api/items").status());
+			Thread.sleep(2);
+			if (request(app, "/api/login").status() == 200) {
+				allowed++;
+			}
+		}
+
+		// 2.5.1 までは同じ枠を分け合い、/api/items を叩くたびに満タンまで戻っていた（10 回とも通った）
+		assertEquals(2, allowed, "ログインの上限（2 回/分）を超えて通った");
+
+	}
+
+	@Test
+	@DisplayName("D-270 厳しい宣言で止められても、緩い宣言のルートは止まらない")
+	void stricterLimitDoesNotDrainLooser () {
+
+		JimbleApp app = new JimbleApp() {
+			{
+				path("/api", () -> {
+					rateLimit(RateLimit.perIp(1000, Duration.ofMinutes(1)));
+					get("/items", context -> context.response().send("items"));
+					get("/login", context -> context.response().send("login"))
+						.attribute(RateLimit.KEY, RateLimit.perIp(2, Duration.ofMinutes(1)));
+				});
+			}
+		};
+
+		assertEquals(200, request(app, "/api/login").status());
+		assertEquals(200, request(app, "/api/login").status());
+		assertEquals(RateLimits.STATUS_CODE, request(app, "/api/login").status());
+
+		assertEquals(200, request(app, "/api/items").status(), "ログインで止められた枠を、/api 全体と分け合っている");
+
+	}
+
+	@Test
 	@DisplayName("D-90 内側のブロックが勝つ")
 	void innerScopeWins () {
 
