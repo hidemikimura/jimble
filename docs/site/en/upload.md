@@ -28,7 +28,7 @@ What you pull out is an `UploadFile`. It is **a container with no methods**, and
 | --- | --- |
 | `name` | The form's `name` attribute |
 | `fileName` | The file name **the client claimed**; only the last name when it includes folders (`""` when absent) |
-| `relativePath` | The file name **the client claimed**, folders kept (`photos/2026/a.png`, separated by `/`). For folder uploads (`<input type="file" webkitdirectory>`) |
+| `relativePath` | The file name **the client claimed**, folders kept (`photos/2026/a.png`, separated by `/`). For folder uploads (`<input type="file" webkitdirectory>`) (since 2.5.1) |
 | `contentType` | The Content-Type **the client claimed** (`""` when absent) |
 | `fileSize` | The number of bytes actually written out |
 | `file` | The temp file (`java.io.File`) |

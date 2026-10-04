@@ -28,7 +28,7 @@ Data files = context.request().bodyFile();
 | --- | --- |
 | `name` | フォームの `name` 属性 |
 | `fileName` | **クライアントが名乗った**ファイル名。フォルダを含むときは最後の名前だけ（無ければ `""`） |
-| `relativePath` | **クライアントが名乗った**ファイル名を、フォルダを含めたまま（`写真/2026/a.png`。区切りは `/`）。フォルダごとのアップロード（`<input type="file" webkitdirectory>`）で使う |
+| `relativePath` | **クライアントが名乗った**ファイル名を、フォルダを含めたまま（`写真/2026/a.png`。区切りは `/`）。フォルダごとのアップロード（`<input type="file" webkitdirectory>`）で使う（2.5.1 から） |
 | `contentType` | **クライアントが名乗った** Content-Type（無ければ `""`） |
 | `fileSize` | 実際に書き出したバイト数 |
 | `file` | 一時ファイル（`java.io.File`） |
