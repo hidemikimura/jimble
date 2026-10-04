@@ -213,7 +213,8 @@ public final class JimbleServer {
 			.writeQueueLength(ServerConf.writeQueueLength())
 			.smartAsyncWrites(ServerConf.smartAsyncWrites())
 			// 応答の圧縮（要件 F-H-03）
-			.contentEncoding(encoding -> encoding.contentEncodingsDiscoverServices(ServerConf.compression()))
+			// 文字の応答で 1KB 以上のものだけ（画像やダウンロードは圧縮し直さない。D-279）
+			.contentEncoding(SelectiveContentEncoding.create(ServerConf.compression()))
 			/*
 			 * ヘッダ全体の上限（要件 NF-S-05 / D-86）。
 			 *
@@ -321,8 +322,10 @@ public final class JimbleServer {
 		 * コンテナは SIGTERM を送って待つ。受け取らずに死ぬと、
 		 * 処理中のリクエストが途中で切れる。
 		 * ホットリロード（jimbleRun）のときは付けない。
+		 *
+		 * 最後にログの出し先を閉じる。AsyncAppender に溜まった行（アクセスログなど）を書き出すため
 		 */
-		Shutdown.installJvmHook();
+		Shutdown.installJvmHook(Log::closeBackend);
 
 		return started;
 

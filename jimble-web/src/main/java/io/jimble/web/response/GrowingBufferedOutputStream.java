@@ -26,8 +26,17 @@ final class GrowingBufferedOutputStream extends OutputStream {
 	/** 始めの大きさ */
 	static final int INITIAL_SIZE = 8 * 1024;
 
-	/* 書き出し先 */
-	private final OutputStream out;
+	/* 書き出し先を開く（最初に溢れたときに1回だけ。D-279） */
+	private final java.util.function.Supplier<OutputStream> opener;
+
+	/* 溢れずに閉じたときの送り先（まとめて1回で） */
+	private final IOConsumer whole;
+
+	/* 書き出し先（開くまで null） */
+	private OutputStream out;
+
+	/* 閉じたか（書き手が閉じたあと、try-with-resources がもう一度閉じる） */
+	private boolean closed = false;
 
 	/* 伸ばす上限 */
 	private final int maxSize;
@@ -46,13 +55,57 @@ final class GrowingBufferedOutputStream extends OutputStream {
 	 */
 	GrowingBufferedOutputStream (OutputStream out, int maxSize) {
 
+		this(() -> out, null, maxSize);
+
+		// 渡されたものは、もう開いている
+		this.out = out;
+
+	}
+
+	/**
+	 * コンストラクタ（書き出し先は、溢れたときに開く）
+	 *
+	 * <p>
+	 * <b>溢れずに閉じたら、書き出し先を開かずに {@code whole} へまとめて渡す</b>（D-279）。
+	 * 長さが分かるので、小さい JSON を圧縮せず、Content-Length も付けられる
+	 * （開いてから書くと、長さが分からないまま圧縮するかを決めることになる）。
+	 * </p>
+	 *
+	 * @param opener	書き出し先を開く
+	 * @param whole		溢れずに閉じたときの送り先
+	 * @param maxSize	伸ばす上限
+	 */
+	GrowingBufferedOutputStream (java.util.function.Supplier<OutputStream> opener, IOConsumer whole, int maxSize) {
+
 		if (maxSize <= 0) {
 			throw new IllegalArgumentException("maxSize は 1 以上にしてください: " + maxSize);
 		}
 
-		this.out = out;
+		this.opener = opener;
+		this.whole = whole;
 		this.maxSize = maxSize;
 		this.buf = new byte[Math.min(INITIAL_SIZE, maxSize)];
+
+	}
+
+	/** まとめて送る */
+	@FunctionalInterface
+	interface IOConsumer {
+
+		void accept (byte[] bytes) throws IOException;
+
+	}
+
+	/**
+	 * 書き出し先（無ければ開く）
+	 */
+	private OutputStream out () {
+
+		if (out == null) {
+			out = opener.get();
+		}
+
+		return out;
 
 	}
 
@@ -89,7 +142,7 @@ final class GrowingBufferedOutputStream extends OutputStream {
 
 		// 上限まで伸ばしても入らないほど大きいものは、溜めずにそのまま書く
 		if (len > buf.length - count) {
-			out.write(b, off, len);
+			out().write(b, off, len);
 			return;
 		}
 
@@ -134,14 +187,23 @@ final class GrowingBufferedOutputStream extends OutputStream {
 	private void flushBuffer () throws IOException {
 
 		if (count > 0) {
-			out.write(buf, 0, count);
+			out().write(buf, 0, count);
 			count = 0;
 		}
 
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>まだ開いていなければ何もしない（閉じるときにまとめて送る）。</p>
+	 */
 	@Override
 	public void flush () throws IOException {
+
+		if (out == null) {
+			return;
+		}
 
 		flushBuffer();
 		out.flush();
@@ -151,8 +213,23 @@ final class GrowingBufferedOutputStream extends OutputStream {
 	@Override
 	public void close () throws IOException {
 
-		try (out) {
+		if (closed) {
+			return;
+		}
+
+		closed = true;
+
+		if (out == null) {
+			// 溢れなかった。開かずにまとめて送る
+			whole.accept(Arrays.copyOf(buf, count));
+			count = 0;
+			return;
+		}
+
+		try {
 			flushBuffer();
+		} finally {
+			out.close();
 		}
 
 	}

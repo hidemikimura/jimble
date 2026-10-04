@@ -93,14 +93,53 @@ final class HelidonResponseSink implements ResponseSink {
 	@Override
 	public void send (String text) {
 
-		response.send(text);
+		// 長さは文字数で見る（1KB の境目を決めるだけなので、バイト数でなくてよい）
+		ScopedValue.where(SelectiveContentEncoding.ENCODE, compressible(text == null ? 0 : text.length()))
+			.run(() -> response.send(text));
 
 	}
 
 	@Override
 	public void send (byte[] body) {
 
-		response.send(body);
+		ScopedValue.where(SelectiveContentEncoding.ENCODE, compressible(body == null ? 0 : body.length))
+			.run(() -> response.send(body));
+
+	}
+
+	/**
+	 * この応答を圧縮するか（D-279）
+	 *
+	 * @param length	長さ（分からなければ負）
+	 * @return	圧縮する場合 = true
+	 */
+	private boolean compressible (long length) {
+
+		String contentType = response.headers().contentType().map(type -> type.text()).orElse(null);
+
+		// 長さを渡さない道でも、先に Content-Length を書いていればそれを使う（ファイルを送るとき）
+		if (length < 0 && response.headers().contains(HeaderNames.CONTENT_LENGTH)) {
+			try {
+				length = Long.parseLong(response.headers().get(HeaderNames.CONTENT_LENGTH).get());
+			} catch (NumberFormatException ignore) {
+				// 読めなければ分からないまま
+			}
+		}
+
+		return SelectiveContentEncoding.compressible(contentType, length);
+
+	}
+
+	/**
+	 * 出力を開く（圧縮するかを決めてから。helidon は開くときに圧縮器を選ぶ）
+	 *
+	 * @param length	長さ（分からなければ負）
+	 * @return	出力
+	 */
+	private OutputStream open (long length) {
+
+		return ScopedValue.where(SelectiveContentEncoding.ENCODE, compressible(length))
+			.call(response::outputStream);
 
 	}
 
@@ -120,7 +159,7 @@ final class HelidonResponseSink implements ResponseSink {
 
 		streamed = true;
 
-		try (OutputStream out = response.outputStream()) {
+		try (OutputStream out = open(contentLength)) {
 			copy(stream, out, bufferSize);
 		} catch (Exception ex) {
 			throw new IllegalStateException("ストリームの送信に失敗しました", ex);
@@ -220,7 +259,7 @@ final class HelidonResponseSink implements ResponseSink {
 
 		streamed = true;
 
-		return response.outputStream();
+		return open(-1);
 
 	}
 

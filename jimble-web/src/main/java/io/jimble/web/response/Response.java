@@ -1813,7 +1813,7 @@ public final class Response extends Data {
 		}
 
 		try (
-			OutputStream bos = new GrowingBufferedOutputStream(sink.outputStream(), getIoBufferSize())
+			OutputStream bos = new GrowingBufferedOutputStream(sink::outputStream, sink::send, getIoBufferSize())
 		) {
 			Configration configration = new Configration();
 			configration.isAutoClose(true);
@@ -1858,7 +1858,7 @@ public final class Response extends Data {
 
 		byte[] ln = "\n".getBytes(StandardCharsets.UTF_8);
 		try (
-			OutputStream bos = new GrowingBufferedOutputStream(sink.outputStream(), getIoBufferSize())
+			OutputStream bos = new GrowingBufferedOutputStream(sink::outputStream, sink::send, getIoBufferSize())
 		) {
 			boolean isFirst = true;
 			for (Data json : jsonL) {

@@ -216,6 +216,22 @@ public final class Shutdown {
 	 */
 	public static void installJvmHook () {
 
+		installJvmHook(() -> {});
+
+	}
+
+	/**
+	 * SIGTERM で全部止まるようにする（全部止めたあとに、最後の1つを走らせる）
+	 *
+	 * <p>
+	 * <b>{@code last} は、ほかが全部止まってから走る。</b>ログの出し先を閉じる（溜めた行を書き出す）のに使う。
+	 * ほかより先に閉じると、止めるあいだのログが消える。
+	 * </p>
+	 *
+	 * @param last	最後に走らせるもの
+	 */
+	public static void installJvmHook (Runnable last) {
+
 		if (Boolean.getBoolean(PROPERTY_HOT_RELOAD)) {
 			return;
 		}
@@ -224,7 +240,13 @@ public final class Shutdown {
 			return;
 		}
 
-		Runtime.getRuntime().addShutdownHook(new Thread(Shutdown::runAll, "jimble-shutdown"));
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			try {
+				runAll();
+			} finally {
+				last.run();
+			}
+		}, "jimble-shutdown"));
 
 	}
 

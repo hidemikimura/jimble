@@ -15,7 +15,7 @@ server {
 	max_header_size      = 16KiB      # ヘッダ全体の上限
 	idle_timeout = 60s
 	trust_proxy          = false      # X-Forwarded-* を信じるか
-	compression          = true       # 応答を gzip で返すか
+	compression          = true       # 文字の応答（1KB 以上）を gzip で返すか
 	access_log           = true       # アクセスログを出すか（[ログ](./log)）
 	bot_access_log       = true       # ボットのアクセスログを分けるか
 	strict_routes        = false      # 一生呼ばれないルートを例外にするか（CI では true に）
@@ -160,10 +160,14 @@ server {
 ## 圧縮
 
 `server.compression`（既定 `true`）で **on / off** します。
-何を圧縮するかはサーバー（Helidon）が `Accept-Encoding` を見て決めます。
+クライアントが `Accept-Encoding` で受け取れると言ったときに、**文字の応答（`text/*`・JSON・JavaScript・XML・SVG）で 1KB 以上のものだけ**を圧縮します（2.5.2 から）。
+
+- 画像・動画・zip・ダウンロードのファイルは圧縮しません（縮まないのに CPU を使い、`Content-Length` も消えるため）
+- 小さい応答も圧縮しません（圧縮器を作る手間のほうが大きいため）
+- SSE（`text/event-stream`）は圧縮しません（溜めてから送ることになり、届くのが遅れるため）
 
 > [!NOTE]
-> **圧縮レベルや、種類ごとの除外はありません。**細かく制御したいときは前段でやってください。
+> **圧縮レベルや、種類を足す設定はありません。**細かく制御したいときは前段でやってください。
 
 ## ボットを弾く
 

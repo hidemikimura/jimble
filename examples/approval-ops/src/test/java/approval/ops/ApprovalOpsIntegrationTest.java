@@ -298,10 +298,17 @@ class ApprovalOpsIntegrationTest {
 	@DisplayName("F-W-27 内部呼び出しは1リクエストとして二重に数えない")
 	void internalCallIsNotCountedTwice () throws Exception {
 
+		/*
+		 * メトリクスは応答を返したあとで記録する。前のテストのリクエストの記録が reset のあとに入らないよう、
+		 * また /internal の記録が入ってから読むよう、それぞれ少し待つ
+		 */
+		Thread.sleep(200);
 		Metrics.reset();
 		OpsApp.registerGauges();
 
 		get("/internal");
+
+		Thread.sleep(200);
 
 		String body = get("/metrics").body();
 
@@ -313,9 +320,13 @@ class ApprovalOpsIntegrationTest {
 		 *
 		 * いま叩いている {@code /metrics} 自身も入らない。
 		 * <b>メトリクスを記録するのはリクエストを閉じるときで、
-		 * 中身を返すのはその前</b>だからである
+		 * 中身を返すのはその前</b>だからである。
+		 *
+		 * 全体の数（http.request）では比べない。前のテストのリクエストは応答を返したあとで記録するので、
+		 * reset のあとに入り込むことがある（CI で GET / が1回混ざった）。ルートごとの数で見る
 		 */
-		assertTrue(body.contains("\"http.request\":1"), body);
+		assertTrue(body.contains("\"http.GET \\/internal\":{\"count\":1,"), body);
+		assertFalse(body.contains("http.GET \\/metrics"), "中で呼んだ /metrics を数えている: " + body);
 
 	}
 
