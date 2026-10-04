@@ -3,6 +3,7 @@ package io.jimble.mq;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
 import io.jimble.db.internal.version.DBVersion;
+import io.jimble.db.sqlcache.SqlCache;
 
 /**
  * MQ が使うテーブル
@@ -41,6 +42,9 @@ public final class MqTables {
 	 * @param queueName	テーブル名
 	 */
 	public static void install (DB db, String queueName) {
+
+		// 取り出すたびに生 SQL で更新するので、SQL結果キャッシュを消させない（D-273）
+		SqlCache.excludeTable(queueName);
 
 		DBVersion dbVersion = new DBVersion(queueName, "MQ (%s)".formatted(queueName));
 

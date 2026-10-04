@@ -54,10 +54,20 @@ public final class AssetHandler implements Handler {
 	 * コンストラクタ
 	 *
 	 * @param baseDir	クラスパス上のベースディレクトリ（例 {@code assets}）
+	 * @throws IllegalArgumentException	空（{@code ""} / {@code "/"}）の場合
 	 */
 	public AssetHandler (String baseDir) {
 
 		this.baseDir = AssetPath.normalizeBase(baseDir);
+
+		/*
+		 * <b>空は断る</b>（D-277）。空だとクラスパスの根から返すので、
+		 * {@code /static/application.conf}（鍵・DB のパスワード）や {@code .class} がそのまま取れた
+		 */
+		if (this.baseDir.isEmpty()) {
+			throw new IllegalArgumentException("静的ファイルの置き場が空です。クラスパスの根を返すと設定ファイルやクラスまで取れてしまうので、"
+				+ "専用のディレクトリ（例 \"assets\"）を渡してください: " + baseDir);
+		}
 
 	}
 

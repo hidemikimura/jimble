@@ -369,13 +369,52 @@ class AuthRevocationIntegrationTest {
 		assertEquals(200, pc.status("/me"));
 
 		// ほかの台が締め出した（この台の控えは知らない）
-		bumpLikeAnotherNode(ID);
+		bumpLikeOldNode(ID);
 
 		assertEquals(200, pc.status("/me"), "控えが効いていません（毎回 DB を引いています）");
 
 		Revocations.clearCache();
 
 		assertEquals(401, pc.status("/me"), "控えが切れたのに、締め出しが効きません");
+
+	}
+
+	@Test
+	@DisplayName("D-274 全体の世代が変わらなければ、cache_ttl を過ぎても控えを使う。変われば次のリクエストで効く")
+	void watermarkKeepsTheCache () throws Exception {
+
+		conf("auth.revocation.cache_ttl = 100ms");
+
+		Browser pc = Browser.loggedIn(ALICE);
+
+		assertEquals(200, pc.status("/me"));
+
+		/*
+		 * 利用者の行だけが変わり、全体の世代は変わらない。
+		 * 2.5.1 までは 100ms で控えが切れて引き直していた（ここで 401 になった）。いまは引き直さない
+		 */
+		bumpLikeOldNode(ID);
+		Thread.sleep(250);
+
+		assertEquals(200, pc.status("/me"), "全体の世代が変わっていないのに、利用者ごとに引き直しています");
+
+		// 2.5.2 以降の台が締め出すと、全体の世代も上がるので、cache_ttl のうちに効く
+		bumpLikeAnotherNode(ID);
+		Thread.sleep(250);
+
+		assertEquals(401, pc.status("/me"), "全体の世代が変わったのに、控えを使い続けています");
+
+	}
+
+	@Test
+	@DisplayName("D-274 この台の revoke は全体の世代も上げる")
+	void revokeBumpsTheGlobalGeneration () {
+
+		long before = globalGeneration();
+
+		Auth.revoke(ID);
+
+		assertEquals(before + 1, globalGeneration());
 
 	}
 
@@ -389,7 +428,7 @@ class AuthRevocationIntegrationTest {
 
 		assertEquals(200, pc.status("/me"));
 
-		bumpLikeAnotherNode(ID);
+		bumpLikeOldNode(ID);
 
 		assertEquals(401, pc.status("/me"), "cache_ttl = 0s なのに控えを使っています");
 
@@ -406,7 +445,7 @@ class AuthRevocationIntegrationTest {
 		// この台の控えに世代 0 が載る
 		assertEquals(200, first.status("/me"));
 
-		bumpLikeAnotherNode(ID);
+		bumpLikeOldNode(ID);
 
 		// 締め出された直後に、この台でログインし直す
 		Browser second = Browser.loggedIn(ALICE);
@@ -544,11 +583,9 @@ class AuthRevocationIntegrationTest {
 	// region 補助
 
 	/**
-	 * ほかの台が締め出したのと同じにする（この台の控えを触らずに、表だけ上げる）
-	 *
-	 * @param userId	利用者 ID
+	 * 2.5.1 以前の台が締め出したことにする（利用者の行だけを上げる。全体の世代は上げない）
 	 */
-	private static void bumpLikeAnotherNode (long userId) {
+	private static void bumpLikeOldNode (long userId) {
 
 		try (DB db = DBUtil.getMainDB()) {
 
@@ -560,6 +597,39 @@ class AuthRevocationIntegrationTest {
 					.formatted(table(db)), userId);
 			}
 
+		}
+
+	}
+
+	/**
+	 * ほかの台（2.5.2 以降）が締め出したことにする（利用者の行と全体の世代を上げる。D-274）
+	 */
+	private static void bumpLikeAnotherNode (long userId) {
+
+		bumpLikeOldNode(userId);
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			int updated = db.update("UPDATE %s SET generation = generation + 1 WHERE realm = ? AND user_id = 0"
+				.formatted(table(db)), Revocations.GLOBAL_REALM);
+
+			if (updated == 0) {
+				db.execute("INSERT INTO %s (realm, user_id, generation, revoked_at) VALUES (?, 0, 1, 0)"
+					.formatted(table(db)), Revocations.GLOBAL_REALM);
+			}
+
+		}
+
+	}
+
+	/**
+	 * 全体の世代（行が無ければ 0）
+	 */
+	private static long globalGeneration () {
+
+		try (DB db = DBUtil.getMainDB()) {
+			return db.select("SELECT generation FROM %s WHERE realm = ? AND user_id = 0".formatted(table(db)), Revocations.GLOBAL_REALM)
+				.map(row -> row.getLong("generation")).orElse(0L);
 		}
 
 	}

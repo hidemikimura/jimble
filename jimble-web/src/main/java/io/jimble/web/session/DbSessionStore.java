@@ -4,6 +4,7 @@ import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.DB;
 import io.jimble.db.DBUtil;
+import io.jimble.db.sqlcache.SqlCache;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
@@ -87,6 +88,9 @@ public final class DbSessionStore implements SessionStore {
 	public DbSessionStore (String tableName, long timeoutMinutes, Duration absoluteTimeout) {
 
 		this.tableName = tableName;
+
+		// 生 SQL で毎リクエスト更新するので、SQL結果キャッシュを消させない（D-273）
+		SqlCache.excludeTable(tableName);
 		this.timeoutMinutes = timeoutMinutes;
 		this.absoluteTimeout = absoluteTimeout == null || absoluteTimeout.isNegative() ? Duration.ZERO : absoluteTimeout;
 
@@ -183,6 +187,23 @@ public final class DbSessionStore implements SessionStore {
 		 * 同時実行のとき INSERT が黙って捨てられていた。
 		 */
 		try (DB db = DBUtil.getMainDB()) {
+
+			if (entry.isExisting()) {
+
+				/*
+				 * <b>読み込んだセッションは、まだあるときだけ書く</b>（D-275）。
+				 * 読んでから保存するまでのあいだにログアウト（destroy）されたら、行が無いので何も起きない。
+				 * 2.5.1 までは upsert だったので、同時に流れていたリクエストが<b>ログインを生き返らせた</b>
+				 * （盗まれた ID でログアウトしても、攻撃者のリクエストが書き戻した）
+				 */
+				db.update("UPDATE %s SET data = ?, last_accessed_at = NOW() WHERE session_id = ?"
+						.formatted(db.dialect().identifier(tableName))
+					, entry.data()
+					, sessionId);
+
+				return;
+
+			}
 
 			db.insert("""
 				INSERT INTO %s (session_id, data, created_at, last_accessed_at)

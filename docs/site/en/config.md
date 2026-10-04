@@ -243,7 +243,7 @@ auth {
 
 	revocation {
 		enabled     = true         # without a DB nothing is checked (Auth.revoke throws)
-		cache_ttl   = 5s           # how long a looked-up generation is kept; the delay on other servers. 0s reads every time
+		cache_ttl   = 5s           # how often to check whether anyone was locked out; the delay on other servers. 0s reads every time
 	}
 
 	mfa {
