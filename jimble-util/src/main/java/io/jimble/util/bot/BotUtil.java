@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Pattern;
 
 /**
  * BOT 判定
@@ -55,8 +54,8 @@ public class BotUtil {
 	/* ロック */
 	private static final ReentrantLock loadLock = new ReentrantLock();
 
-	/* パターンリスト */
-	private static final List<Pattern> patternList = new ArrayList<>();
+	/* 一度に突き合わせるもの（D-287） */
+	private static volatile BotMatcher matcher = null;
 
 	/** 判定に使う UA の長さの上限（D-232） */
 	static final int MAX_UA_LENGTH = 512;
@@ -110,15 +109,12 @@ public class BotUtil {
 			return cached;
 		}
 
-		for (Pattern pattern : patternList) {
-			if (pattern.matcher(ua).find()) {
-				uaResultMap.put(ua, Boolean.TRUE);
-				return true;
-			}
-		}
+		BotMatcher current = matcher;
 
-		uaResultMap.put(ua, Boolean.FALSE);
-		return false;
+		boolean bot = current != null && current.matches(ua);
+
+		uaResultMap.put(ua, bot);
+		return bot;
 
 	}
 
@@ -172,12 +168,14 @@ public class BotUtil {
 		}
 
 		if (jsonList != null) {
+			List<String> definitions = new ArrayList<>();
 			for (Data data : jsonList) {
-				patternList.add(Pattern.compile(data.getString("pattern")));
+				definitions.add(data.getString("pattern"));
 			}
+			matcher = new BotMatcher(definitions);
 		}
 
-		Log.info("loaded bot definition ua pattern: " + patternList.size());
+		Log.info("loaded bot definition ua pattern: " + (matcher == null ? 0 : matcher.size()));
 		Log.info("loaded bot definition time: " + (System.currentTimeMillis() - start) + "ms");
 
 	}
