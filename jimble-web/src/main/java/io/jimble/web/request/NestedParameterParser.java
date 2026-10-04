@@ -63,6 +63,17 @@ public final class NestedParameterParser {
 	 */
 	static final int MAX_GROWTH = 100_000;
 
+	/**
+	 * キーの段の数の上限（D-272）
+	 *
+	 * <p>
+	 * <b>かつては上限が無かった。</b>{@code a.a.a....=1}（5 万段、100KB ほど）を送ると 5 万段の入れ子ができ、
+	 * 入力チェックに落ちて 422 を返すところ（入力値を写す）で {@code StackOverflowError} になった。
+	 * JSON には 2.2.4 で深さの上限を入れていたが、フォームとクエリが漏れていた。
+	 * </p>
+	 */
+	static final int MAX_DEPTH = 32;
+
 	private NestedParameterParser () {}
 
 	/**
@@ -329,6 +340,7 @@ public final class NestedParameterParser {
 	 *
 	 * @param key	キー
 	 * @return	分解した位置
+	 * @throws HttpException	{@link #MAX_DEPTH} 段を超えるとき（400）
 	 */
 	static List<Segment> segments (String key) {
 
@@ -377,6 +389,10 @@ public final class NestedParameterParser {
 		}
 
 		flush(segments, name);
+
+		if (segments.size() > MAX_DEPTH) {
+			throw new HttpException(400, "リクエストのパラメータの入れ子が深すぎます（%d 段まで）".formatted(MAX_DEPTH));
+		}
 
 		return segments;
 
