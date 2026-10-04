@@ -292,7 +292,7 @@ hash {
 	password {
 		# cipher.* を書くなら、これも必ず書く（書かないと起動時に落ちる）
 		encrypt = false
-		pepper  = ${?PASSWORD_PEPPER}   # ハッシュに混ぜる秘密。入れ替えられない
+		pepper  = ${?PASSWORD_PEPPER}   # 1.x との互換のためだけ。守りにならない（下記）。入れ替えられない
 		cost    = 10   # bcrypt のコスト（4〜31）。1 上げると倍の時間。72 バイトより後ろは bcrypt が読まない
 	}
 }

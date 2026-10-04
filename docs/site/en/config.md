@@ -299,7 +299,7 @@ hash {
 	password {
 		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = false
-		pepper  = ${?PASSWORD_PEPPER}   # mixed into the hash. cannot be rotated
+		pepper  = ${?PASSWORD_PEPPER}   # only for 1.x compatibility. gives no protection (below). cannot be rotated
 		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}
 }

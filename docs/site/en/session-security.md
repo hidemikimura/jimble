@@ -337,6 +337,11 @@ if (context.cookies().isStale("last_post")) {
 
 They still read fine if you skip this; you just cannot drop the old key until they expire.
 
+### `hash.password.pepper` gives no protection
+
+**Despite the name, it is not mixed into the input before hashing.** It is **appended to** the bcrypt hash when stored and stripped off again when checking (a shape inherited from 1.x; changing it would make every stored hash fail to verify).
+It does **nothing** to make brute force harder if the DB leaks. If you need protection against a DB leak, store the hash encrypted with `hash.password.encrypt = true` and `cipher.key`.
+
 ### Password keys cannot be rotated this way
 
 **`cipher.key` and `hash.password.pepper` are outside this mechanism.**
