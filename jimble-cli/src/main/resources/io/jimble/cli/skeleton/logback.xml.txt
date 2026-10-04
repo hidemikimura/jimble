@@ -30,12 +30,28 @@
 	</appender>
 
 	<!--
+		アクセスログは、別のスレッドで書き出す。
+
+		1リクエストに1行なので、同期で書くとそれだけで秒あたりの本数が 3 割ほど落ちる（D-172）。
+		discardingThreshold = 0 … 既定は「8 割埋まったら INFO を捨てる」で、アクセスログが黙って消える。捨てない
+		neverBlock = false      … 溜まりきったら待つ（同期で書くのと同じになるだけで、消えない）
+		止めるときは jimble が最後に閉じて、溜まった行を書き出す
+	-->
+	<appender name="json-async" class="ch.qos.logback.classic.AsyncAppender">
+		<queueSize>8192</queueSize>
+		<discardingThreshold>0</discardingThreshold>
+		<neverBlock>false</neverBlock>
+		<includeCallerData>false</includeCallerData>
+		<appender-ref ref="json"/>
+	</appender>
+
+	<!--
 		アクセスログ。1リクエストに1行。
 		実行 ID・SQL 実行回数・SQL 実行時間が入っているので、
 		JSON で出して集計できるようにしておく。
 	-->
 	<logger name="access" level="INFO" additivity="false">
-		<appender-ref ref="json"/>
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<!--
@@ -45,7 +61,7 @@
 		両方に出る。
 	-->
 	<logger name="access.bot" level="INFO" additivity="false">
-		<appender-ref ref="json"/>
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<!-- Log.error(...) はこのロガー -->

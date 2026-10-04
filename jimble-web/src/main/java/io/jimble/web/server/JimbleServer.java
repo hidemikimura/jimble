@@ -321,8 +321,10 @@ public final class JimbleServer {
 		 * コンテナは SIGTERM を送って待つ。受け取らずに死ぬと、
 		 * 処理中のリクエストが途中で切れる。
 		 * ホットリロード（jimbleRun）のときは付けない。
+		 *
+		 * 最後にログの出し先を閉じる。AsyncAppender に溜まった行（アクセスログなど）を書き出すため
 		 */
-		Shutdown.installJvmHook();
+		Shutdown.installJvmHook(Log::closeBackend);
 
 		return started;
 

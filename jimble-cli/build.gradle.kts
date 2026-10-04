@@ -14,6 +14,9 @@ dependencies {
 	 * ここが持つのは入口と雛形だけである。
 	 */
 	api(project(":jimble-db"))
+
+	// 雛形の logback.xml を読んで確かめる
+	testImplementation(libs.logback.classic)
 }
 
 /*

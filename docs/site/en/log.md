@@ -109,6 +109,8 @@ From there, **building the line costs -10% (+10µs at p50)** and
 So most of the price is not jimble; it is logback writing synchronously.
 Before turning the log off, look at **how it is written**
 (wrap it in an `AsyncAppender`, send it somewhere else, drop some fields).
+Since 2.5.2 the `jimble new` skeleton writes the access log through an `AsyncAppender` (below). For applications
+created with an earlier version, update `conf/logback.xml`.
 
 **That figure varies by machine, so measure it on yours**
 (`jimble-load/load.sh` puts raw Helidon, the log written, the log built but discarded,
@@ -174,12 +176,21 @@ The `jimble new` skeleton creates `conf/logback.xml` (`conf/` goes into the jar)
 		<encoder class="io.jimble.util.log.encoder.LogbackJsonEncoder"/>
 	</appender>
 
-	<logger name="access" level="INFO" additivity="false">
+	<!-- The access log is written on another thread, and nothing is dropped (see below) -->
+	<appender name="json-async" class="ch.qos.logback.classic.AsyncAppender">
+		<queueSize>8192</queueSize>
+		<discardingThreshold>0</discardingThreshold>
+		<neverBlock>false</neverBlock>
+		<includeCallerData>false</includeCallerData>
 		<appender-ref ref="json"/>
+	</appender>
+
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<logger name="access.bot" level="INFO" additivity="false">
-		<appender-ref ref="json"/>
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<logger name="error" level="ERROR" additivity="false">
@@ -192,6 +203,13 @@ The `jimble new` skeleton creates `conf/logback.xml` (`conf/` goes into the jar)
 
 </configuration>
 ```
+
+> [!TRAP]
+> **Do not leave `AsyncAppender` on its defaults.** By default it drops INFO and below once the queue is 80% full,
+> so **the busier you are, the more access log lines silently vanish** (with a 64-entry queue and a slow sink,
+> only 64 of 1,000 lines survived). Set `discardingThreshold` to `0` and `neverBlock` to `false`; when the queue
+> fills, it waits, which is no worse than writing synchronously.
+> On shutdown, jimble closes logback last and the queued lines are written out (since 2.5.2).
 
 > [!TRAP]
 > **`access.bot` is a child of `access`.** Drop the `additivity="false"` and
