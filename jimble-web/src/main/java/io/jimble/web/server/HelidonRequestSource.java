@@ -644,7 +644,8 @@ final class HelidonRequestSource implements RequestSource {
 		}
 
 		for (int i = 0; i < path.length(); i++) {
-			if (Character.isISOControl(path.charAt(i))) {
+			char c = path.charAt(i);
+			if (Character.isISOControl(c) || isSpoofing(c)) {
 				throw new HttpException(400, "ファイル名に使えない文字が入っています");
 			}
 		}
@@ -653,9 +654,40 @@ final class HelidonRequestSource implements RequestSource {
 			if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
 				throw new HttpException(400, "ファイル名が正しくありません");
 			}
+			/*
+			 * <b>ドライブ指定（C:evil.jsp）を断る</b>（D-276）。上の「古い IE のフルパス」は C:/... の形しか外さないので、
+			 * / を含まない C:evil.jsp が fileName() に残った。Windows で uploadDir.resolve(fileName()) とすると、
+			 * <b>置き場所の外（C ドライブのいまのフォルダ）に書けた</b>
+			 */
+			if (segment.length() >= 2 && segment.charAt(1) == ':' && isAsciiLetter(segment.charAt(0))) {
+				throw new HttpException(400, "ファイル名が正しくありません");
+			}
 		}
 
 		return path;
+
+	}
+
+	/**
+	 * 見た目を偽れる文字か（D-276）
+	 *
+	 * <p>
+	 * 文字の向きを変える制御文字（{@code invoice\u202Efdp.exe} が {@code invoiceexe.pdf} に見える）と、
+	 * 行・段落の区切り。ゼロ幅接合子（U+200D）は絵文字の組み合わせに使うので通す。
+	 * </p>
+	 */
+	private static boolean isSpoofing (char c) {
+
+		return (c >= '\u202A' && c <= '\u202E')
+			|| (c >= '\u2066' && c <= '\u2069')
+			|| c == '\u200E' || c == '\u200F' || c == '\u061C'
+			|| c == '\u2028' || c == '\u2029';
+
+	}
+
+	private static boolean isAsciiLetter (char c) {
+
+		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 
 	}
 

@@ -108,7 +108,7 @@ Three things matter.
 
 > [!TRAP]
 > **Do not use `uploadFile.fileName` / `relativePath` as the destination.**
-> jimble rejects only `.` / `..` segments, empty segments and control characters (400). Everything else is exactly what the client claimed.
+> jimble rejects only `.` / `..` segments, empty segments, drive prefixes (`C:evil.jsp`), control characters and characters that flip text direction (400). Everything else is exactly what the client claimed.
 > Overlong names, characters the OS cannot use (`:` or `?` on Windows) and overwriting a file with the same name are not prevented.
 
 > [!WARN]

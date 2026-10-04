@@ -280,6 +280,26 @@ class UploadIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-276 ドライブ指定（C:evil.jsp）と、文字の向きを変える文字は 400。絵文字の組み合わせと途中の : は通す")
+	void rejectsDriveAndSpoofing () throws Exception {
+
+		for (String name : List.of("C:evil.jsp", "sub/D:x.txt", "invoice\u202Efdp.exe", "a\u2066b.txt", "a\u2028b.txt")) {
+			HttpResponse<String> response = post(multipart(file("doc", name, "A")));
+			assertEquals(400, response.statusCode(), name + " を通した: " + received);
+		}
+
+		HttpResponse<String> ok = post(multipart(
+			file("doc", "\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67.png", "A")
+			, file("doc", "会議 10:00.txt", "B")
+		));
+
+		assertEquals(200, ok.statusCode(), ok.body());
+		assertTrue(received.contains("doc:\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67.png:1"), received.toString());
+		assertTrue(received.contains("doc:会議 10:00.txt:1"), received.toString());
+
+	}
+
+	@Test
 	@DisplayName(".. や空の段・制御文字を含むファイル名は 400。一時ファイルも残さない")
 	void rejectsBadFileNames () throws Exception {
 
