@@ -6,6 +6,7 @@ import io.jimble.db.FrameworkTables;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.data.Data;
 import io.jimble.util.json.Dson;
+import io.jimble.util.hash.Hash;
 import io.jimble.util.log.Log;
 import io.jimble.web.auth.Auth;
 import io.jimble.web.auth.Principal;
@@ -780,7 +781,63 @@ public final class Passkey {
 			throw new HttpException(400, "時間が経ちすぎました。パスキーの手続きを最初からやり直してください");
 		}
 
+		consumeChallenge(challenge, issuedAt);
+
 		return challenge;
+
+	}
+
+	/** 使ったチャレンジを掃除する間隔（秒） */
+	private static final long CHALLENGE_PURGE_INTERVAL = 10 * 60;
+
+	/* 最後に掃除した時刻（秒） */
+	private static final java.util.concurrent.atomic.AtomicLong LAST_CHALLENGE_PURGE = new java.util.concurrent.atomic.AtomicLong(0);
+
+	/**
+	 * チャレンジを使ったことを DB に残す（2度目は断る）
+	 *
+	 * <p>
+	 * <b>セッションから消すだけでは、1度きりにならない</b>（D-290）。
+	 * {@code session.store = cookie} では、チャレンジはブラウザが持つ暗号化された Cookie の中にあるので、
+	 * <b>ログインの前の Cookie を送り直せば、チャレンジが戻ってくる</b>。DB / Redis でも、同時に送られた2つは
+	 * どちらも消す前に読める。同期するパスキーは署名の回数を 0 のまま返すので、回数でも止まらない。
+	 * 取られたログインの要求（プロキシや APM の記録、HAR）を、時間切れまで何度でも使えた。
+	 * </p>
+	 *
+	 * @param challenge	チャレンジ
+	 * @param issuedAt	出した時刻（秒）
+	 * @throws HttpException	もう使われていた場合（400）
+	 */
+	private static void consumeChallenge (String challenge, long issuedAt) {
+
+		install();
+
+		long now = nowSeconds();
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			db.execute("INSERT INTO %s (challenge_hash, expires_at) VALUES (?, ?)"
+					.formatted(db.dialect().identifier(FrameworkTables.AUTH_PASSKEY_CHALLENGE))
+				, Hash.sha256(challenge)
+				, issuedAt + PasskeyConf.timeout().toSeconds() + 60);
+
+		} catch (io.jimble.db.DuplicateKeyException replayed) {
+			Log.warn("パスキーのチャレンジが2度使われました（送り直し・取られた要求の使い回し）");
+			throw new HttpException(400, "パスキーの手続きを最初からやり直してください");
+		}
+
+		long last = LAST_CHALLENGE_PURGE.get();
+
+		if (now - last >= CHALLENGE_PURGE_INTERVAL && LAST_CHALLENGE_PURGE.compareAndSet(last, now)) {
+			Thread.ofVirtual().name("jimble-passkey-challenge-purge").start(() -> {
+				try (DB db = DBUtil.getMainDB()) {
+					db.execute("DELETE FROM %s WHERE expires_at < ?"
+						.formatted(db.dialect().identifier(FrameworkTables.AUTH_PASSKEY_CHALLENGE)), now);
+				} catch (Exception ex) {
+					Log.warn("使ったパスキーのチャレンジを消せませんでした: " + ex.getMessage());
+				}
+			});
+		}
 
 	}
 
@@ -1143,6 +1200,32 @@ public final class Passkey {
 
 			if (!version.apply(DBUtil.getMainDB())) {
 				throw new IllegalStateException("パスキーの表を作れませんでした（直前のエラーログを見てください）");
+			}
+
+			// 使ったチャレンジ（D-290）
+			String used = FrameworkTables.AUTH_PASSKEY_CHALLENGE;
+			DBVersion usedVersion = new DBVersion(used, "パスキーの使ったチャレンジ");
+
+			usedVersion.add(1)
+				.mysql("""
+					create table `%s`
+					(
+						challenge_hash  varchar(64)  not null primary key
+						, expires_at      bigint       not null
+					) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin comment '%s'
+					""".formatted(used, usedVersion.placeholder())
+					, "create index %s__expires on `%s` (expires_at)".formatted(used, used))
+				.postgresql("""
+					create table "%s"
+					(
+						challenge_hash  varchar(64)  not null primary key
+						, expires_at      bigint       not null
+					)
+					""".formatted(used)
+					, "create index %s__expires on \"%s\" (expires_at)".formatted(used, used));
+
+			if (!usedVersion.apply(DBUtil.getMainDB())) {
+				throw new IllegalStateException("パスキーの使ったチャレンジの表を作れませんでした（直前のエラーログを見てください）");
 			}
 
 			initialized = true;

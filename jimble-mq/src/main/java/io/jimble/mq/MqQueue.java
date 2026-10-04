@@ -570,21 +570,48 @@ public final class MqQueue {
 
 		try (Tx tx = db.begin()) {
 
-			Data row = db.select("""
-					SELECT
-						*
-					FROM
-						%s
-					WHERE
-						execute_type = ?
-						AND status = ?
-						AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-					ORDER BY
-						id ASC
+			/*
+			 * <b>「予定なし」と「予定が来たもの」を別々に引いて、id の小さいほうを取る</b>（D-280）。
+			 *
+			 * 2.5.1 までは scheduled_at IS NULL OR scheduled_at &lt;= NOW() を1本で引いて id で並べていた。
+			 * OR があると索引の順に読めないので、溜まった分を並べ替えるか、主キーを頭から読み飛ばすかになり、
+			 * <b>1件取るたびに溜まった件数ぶん読んでいた</b>（ほかの種別が 10 万件・この種別が 10 万件溜まった表で 1 本 47ms。
+			 * 分けると 0.1ms ほど）。
+			 *
+			 * 並べ方は製品で変える。MySQL は IS NULL のあとの id の順を索引から読めるが、
+			 * PostgreSQL は「主キーを読めばすぐ見つかる」と見積もって外すので、索引の列の順そのままで並べさせる。
+			 */
+			boolean postgres = db.dialect() instanceof io.jimble.db.dialect.PostgreSqlDialect;
+			String table = db.dialect().identifier(queueName);
+
+			Data immediate = db.select("""
+					SELECT * FROM %s
+					WHERE execute_type = ? AND status = ? AND scheduled_at IS NULL
+					ORDER BY %s
 					LIMIT 1 FOR UPDATE SKIP LOCKED
-				""".formatted(db.dialect().identifier(queueName))
+				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "id")
 				, type.name()
 				, MqStatus.waiting.name()).orElse(null);
+
+			/*
+			 * <b>いまの時刻は DB の NOW() ではなく、この JVM の時刻を渡す</b>（D-281）。
+			 * scheduled_at は put が JVM の時刻で書くので、DB の NOW() と比べると、
+			 * JVM と DB の時間帯が違うとき（JST の JVM と UTC の DB など）<b>時差のぶん遅れて拾っていた</b>
+			 */
+			Data due = db.select("""
+					SELECT * FROM %s
+					WHERE execute_type = ? AND status = ? AND scheduled_at <= ?
+					ORDER BY %s
+					LIMIT 1 FOR UPDATE SKIP LOCKED
+				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "scheduled_at, id")
+				, type.name()
+				, MqStatus.waiting.name()
+				, new java.util.Date()).orElse(null);
+
+			// 両方取れたら、先に積まれたほう（取らなかったほうの行ロックは、すぐ下のコミットで外れる）
+			Data row = immediate == null ? due
+				: due == null ? immediate
+				: immediate.getLong("id") <= due.getLong("id") ? immediate : due;
 
 			if (row == null) {
 				// 何も取らずに抜ける（close で巻き戻る）
@@ -785,20 +812,20 @@ public final class MqQueue {
 		Log.warn("MQ をやり直します: %s / id=%d / %d 回目 / %d 秒後"
 			.formatted(queueName, id, nextRetry, waitSeconds));
 
+		// 次にやる時刻も JVM の時刻で書く（取り出しと同じ時計で比べる。D-281）
 		db.update("""
 				UPDATE %s SET
 					status = ?
 					, retry_count = ?
-					, scheduled_at = %s
+					, scheduled_at = ?
 					, log_info = ?
 					, updated_at = NOW()
 				WHERE
 					id = ?
-			""".formatted(db.dialect().identifier(queueName)
-				, db.dialect().intervalFromNow("SECOND", false))
+			""".formatted(db.dialect().identifier(queueName))
 			, MqStatus.waiting.name()
 			, nextRetry
-			, waitSeconds
+			, new java.util.Date(System.currentTimeMillis() + waitSeconds * 1000)
 			, logInfo
 			, id);
 

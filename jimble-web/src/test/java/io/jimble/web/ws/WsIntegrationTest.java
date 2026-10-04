@@ -389,6 +389,33 @@ class WsIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("別のサイトの Origin からの接続は、握手の時点で断られる（helidon が Host と比べる）。同じオリジンは通る")
+	void crossOriginRejected () throws Exception {
+
+		/*
+		 * helidon 4.5 は、Origin が付いていれば Host と比べ、違えば 403 にする（WsConfig.origins が空のとき）。
+		 * Cookie で認証する WebSocket を、別のサイトのページから張らせないための守りなので、上げたときに変わっていないかを見張る
+		 */
+		Exception ex = assertThrows(Exception.class, () -> client.newWebSocketBuilder()
+			.connectTimeout(Duration.ofSeconds(5))
+			.header("Origin", "https://evil.example")
+			.buildAsync(URI.create("ws://127.0.0.1:" + server.port() + "/echo"), new Recorder(1))
+			.join());
+
+		Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+		assertInstanceOf(WebSocketHandshakeException.class, cause, String.valueOf(cause));
+		assertEquals(403, ((WebSocketHandshakeException) cause).getResponse().statusCode());
+
+		WebSocket ws = client.newWebSocketBuilder()
+			.connectTimeout(Duration.ofSeconds(5))
+			.header("Origin", "http://127.0.0.1:" + server.port())
+			.buildAsync(URI.create("ws://127.0.0.1:" + server.port() + "/echo"), new Recorder(1))
+			.join();
+		closeAndWait(ws, "");
+
+	}
+
+	@Test
 	@DisplayName("Cookie があれば通る")
 	void upgradeAccepted () throws Exception {
 

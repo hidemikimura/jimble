@@ -327,6 +327,26 @@ class MqIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("D-280 予定が来たものと予定の無いものは拾い、予定が先のものは拾わない（2 本に分けて引く）")
+	void dueAndImmediateAreClaimed () throws Exception {
+
+		DB db = DBUtil.getMainDB();
+
+		new OkExecutor().put(db, new Data().putData("name", "future"), new Date(System.currentTimeMillis() + 60_000));
+		new OkExecutor().put(db, new Data().putData("name", "due"), new Date(System.currentTimeMillis() - 60_000));
+		new OkExecutor().put(db, new Data().putData("name", "now"));
+
+		runUntil(10000, () -> DONE.get() >= 2);
+		runUntil(1000, () -> DONE.get() >= 3);
+
+		assertEquals(2, DONE.get(), "拾った数が違う: " + HANDLED);
+		assertTrue(HANDLED.contains("due"), HANDLED.toString());
+		assertTrue(HANDLED.contains("now"), HANDLED.toString());
+		assertFalse(HANDLED.contains("future"), "予定が先のものを拾った");
+
+	}
+
 	// endregion
 
 	// region トランザクション（要件 F-M-03）

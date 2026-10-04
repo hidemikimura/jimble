@@ -157,6 +157,43 @@ class MemoryCacheTest {
 	}
 
 	@Test
+	@DisplayName("D-283 期限を過ぎたものは、誰も入れなくても返さない（読むときに見る）")
+	void expiredIsNotReturned () throws Exception {
+
+		Conf.replace(com.typesafe.config.ConfigFactory.parseString("cache.memory.expire = 1s").withFallback(Conf.conf().config()));
+
+		cache.set("expiring", "v", "text/plain", "group");
+		assertEquals("v", cache.getString("expiring"));
+
+		Thread.sleep(1100);
+
+		assertEquals("", cache.getString("expiring"));
+		assertFalse(cache.has("expiring", null));
+		assertTrue(cache.getGroup("group") == null || cache.getGroup("group").stream().noneMatch(data -> "v".equals(data.contentString())));
+
+	}
+
+	@Test
+	@DisplayName("D-283 同じキーを入れ直してもグループに重ならない。別のグループで入れ直せば前のグループから外れる。消せばグループからも外れる")
+	void groupsDoNotGrow () {
+
+		for (int i = 0; i < 100; i++) {
+			cache.set("k", "v" + i, "text/plain", "group");
+		}
+
+		assertEquals(1, cache.getGroup("group").size(), "入れ直すたびにグループが伸びている");
+		assertEquals("v99", cache.getGroup("group").get(0).contentString());
+
+		cache.set("k", "w", "text/plain", "other");
+		assertTrue(cache.getGroup("group") == null || cache.getGroup("group").isEmpty(), "前のグループに残っている");
+		assertEquals(1, cache.getGroup("other").size());
+
+		cache.remove("k");
+		assertTrue(cache.getGroup("other") == null || cache.getGroup("other").isEmpty(), "消したのにグループに残っている");
+
+	}
+
+	@Test
 	@DisplayName("同時に書いても例外にならない")
 	void concurrentSet () throws Exception {
 

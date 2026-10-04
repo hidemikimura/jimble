@@ -427,7 +427,8 @@ public final class Cookies {
 	 *
 	 * @param value	値
 	 * @return	署名つきの値（鍵が無ければそのまま）
-	 * @deprecated	名前に結びつかないので、別の名前の Cookie に移し替えて使える。{@link #sign(String, String)} を使う（D-220）
+	 * @deprecated	名前に結びつかないので、別の名前の Cookie に移し替えて使える。{@link #sign(String, String)} を使う（D-220）。
+	 *              2.5.2 からは、{@code cookie.accept_legacy_signature = true} にしないと、この署名は読まれない（D-291）
 	 */
 	@Deprecated(since = "2.2.3")
 	public static String sign (String value) {

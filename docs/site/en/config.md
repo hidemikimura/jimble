@@ -169,7 +169,7 @@ cookie {
 	secret           = ${?COOKIE_SECRET}         # signing key. empty means no signing
 	previous_secrets = [${?COOKIE_SECRET_OLD}]   # only while a key is being rotated
 	accept_unsigned  = false                     # true only while signing is being turned on
-	accept_legacy_signature = true               # also read pre-2.2.3 signatures not bound to the name (during the move)
+	accept_legacy_signature = false              # also read pre-2.2.3 signatures not bound to the name (true only while moving from 2.2.2 or earlier)
 }
 
 csrf {
@@ -299,7 +299,7 @@ hash {
 	password {
 		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = false
-		pepper  = ${?PASSWORD_PEPPER}   # mixed into the hash. cannot be rotated
+		pepper  = ${?PASSWORD_PEPPER}   # only for 1.x compatibility. gives no protection (below). cannot be rotated
 		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}
 }

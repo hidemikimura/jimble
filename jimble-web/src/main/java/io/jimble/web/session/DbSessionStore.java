@@ -281,22 +281,47 @@ public final class DbSessionStore implements SessionStore {
 
 		lastCleanup.set(Instant.now());
 
-		return DBUtil.getMainDB().delete("""
-			DELETE FROM %s
-			WHERE last_accessed_at < %s
-			""".formatted(
-				DBUtil.getMainDB().dialect().identifier(tableName)
-				, DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true))
-			, timeoutMinutes
-		);
+		/*
+		 * <b>少しずつ消す</b>（D-284）。1本の DELETE で全部消すと、溜まった表（ボットが作ったセッションなど）では
+		 * 何秒もかかり、そのあいだ行や索引を押さえる
+		 */
+		DB main = DBUtil.getMainDB();
+		String table = main.dialect().identifier(tableName);
+		String expired = "last_accessed_at < " + main.dialect().intervalFromNow("MINUTE", true);
+
+		String sql = main.dialect() instanceof io.jimble.db.dialect.PostgreSqlDialect
+			? "DELETE FROM %s WHERE ctid IN (SELECT ctid FROM %s WHERE %s LIMIT %d)".formatted(table, table, expired, CLEANUP_BATCH)
+			: "DELETE FROM %s WHERE %s LIMIT %d".formatted(table, expired, CLEANUP_BATCH);
+
+		int total = 0;
+
+		for (int round = 0; round < CLEANUP_ROUNDS; round++) {
+
+			int deleted = main.delete(sql, timeoutMinutes);
+
+			total += deleted;
+
+			if (deleted < CLEANUP_BATCH) {
+				break;
+			}
+
+		}
+
+		return total;
 
 	}
+
+	/** 掃除で1回に消す件数 */
+	static final int CLEANUP_BATCH = 1000;
+
+	/** 1回の掃除で回す上限（それ以上は次の回に） */
+	static final int CLEANUP_ROUNDS = 100;
 
 	/**
 	 * 間隔が来ていれば掃除する
 	 *
 	 * <p>
-	 * 常駐スレッドを持たない代わりに、リクエストのついでに間隔を見て消す。
+	 * 常駐スレッドを持たない代わりに、リクエストのついでに間隔を見て、別のスレッドで消す。
 	 * <b>失敗してもリクエストは通す</b>（掃除はリクエストの本題ではない）。
 	 * </p>
 	 */
@@ -314,11 +339,17 @@ public final class DbSessionStore implements SessionStore {
 			return;
 		}
 
-		try {
-			cleanupExpired();
-		} catch (Exception ex) {
-			Log.warn("セッションの掃除に失敗しました: " + ex.getMessage());
-		}
+		/*
+		 * <b>リクエストを待たせない</b>（D-284）。2.5.1 までは、間隔が来たときのリクエストが
+		 * 掃除を終えるまで応答を返さなかった
+		 */
+		Thread.ofVirtual().name("jimble-session-cleanup").start(() -> {
+			try {
+				cleanupExpired();
+			} catch (Exception ex) {
+				Log.warn("セッションの掃除に失敗しました: " + ex.getMessage());
+			}
+		});
 
 	}
 

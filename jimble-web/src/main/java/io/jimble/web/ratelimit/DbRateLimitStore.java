@@ -46,49 +46,144 @@ public final class DbRateLimitStore implements RateLimitStore {
 		initialize();
 
 		long hash = Hash.sipHash(key);
-		long now = System.currentTimeMillis();
 		long durationMillis = duration.toMillis();
+
+		MAX_DURATION.accumulateAndGet(durationMillis, Math::max);
+
+		purgeIfDue();
 
 		try (DB db = DBUtil.getMainDB()) {
 
-			return db.transactionResult(tx -> {
+			for (int attempt = 0; ; attempt++) {
 
-				Data row = db.select(
-					"SELECT tokens, updated_at FROM %s WHERE rate_key = ? FOR UPDATE".formatted(TABLE)
-					, hash).orElse(null);
+				RateLimitResult result = db.transactionResult(tx -> {
 
-				double tokens = limit;
+					Data row = db.select(
+						"SELECT tokens, updated_at FROM %s WHERE rate_key = ? FOR UPDATE".formatted(TABLE)
+						, hash).orElse(null);
 
-				if (row != null && !row.isEmpty()) {
+					if (row == null || row.isEmpty()) {
+						// 行が無い。ここでは作らない（下で、トランザクションの外で作ってからやり直す）
+						return null;
+					}
 
+					long now = System.currentTimeMillis();
 					long at = row.getLong("updated_at");
 
-					tokens = Math.min(limit
+					double tokens = Math.min(limit
 						, row.getDouble("tokens") + (double) (now - at) * limit / durationMillis);
 
+					RateLimitResult decided;
+
+					if (tokens >= 1) {
+						tokens -= 1;
+						decided = RateLimitResult.allow((long) tokens);
+					} else {
+						decided = RateLimitResult.deny(
+							(long) Math.ceil((1 - tokens) * durationMillis / limit));
+					}
+
+					db.execute("UPDATE %s SET tokens = ?, updated_at = ? WHERE rate_key = ?".formatted(TABLE)
+						, tokens, now, hash);
+
+					return decided;
+
+				});
+
+				if (result != null || attempt >= 2) {
+					return result != null ? result : RateLimitResult.allow(limit - 1);
 				}
 
-				RateLimitResult result;
+				/*
+				 * <b>初めてのキーは、トランザクションの外で満タンの行を作ってから数え直す</b>（D-285）。
+				 * 2.5.1 までは「無い行の SELECT ... FOR UPDATE」のあと同じトランザクションで入れていた。
+				 * MySQL は無い行を押さえるときに隙間（ギャップロック）を押さえるので、近いキーへ同時に初めて来た人どうしが
+				 * 互いの隙間を待って<b>行き詰まり（デッドロック）</b>えた。満タンの行は「行が無い」と同じ意味なので、作っても数え方は変わらない
+				 */
+				db.execute(Sqls.insertIgnoreInto(db.dialect(), TABLE)
+						+ " (rate_key, tokens, updated_at) VALUES (?, ?, ?)"
+						+ Sqls.insertIgnoreTail(db.dialect())
+					, hash, (double) limit, System.currentTimeMillis());
 
-				if (tokens >= 1) {
-					tokens -= 1;
-					result = RateLimitResult.allow((long) tokens);
-				} else {
-					result = RateLimitResult.deny(
-						(long) Math.ceil((1 - tokens) * durationMillis / limit));
-				}
-
-				db.execute("""
-					INSERT INTO %s (rate_key, tokens, updated_at) VALUES (?, ?, ?)
-					""".formatted(TABLE)
-					+ Sqls.upsert(db.dialect(), List.of("rate_key"), "tokens", "updated_at")
-					, hash, tokens, now);
-
-				return result;
-
-			});
+			}
 
 		}
+
+	}
+
+	/** 掃除の間隔 */
+	static final long PURGE_INTERVAL_MILLIS = 10 * 60 * 1000L;
+
+	/** 消すのは、最後に数えてからこれより長く経った行だけ（ほかの台が長い宣言を使っていても消しすぎない） */
+	static final long PURGE_MIN_IDLE_MILLIS = 24 * 60 * 60 * 1000L;
+
+	/** 1回に消す件数 */
+	static final int PURGE_BATCH = 1000;
+
+	/* この台で見た、いちばん長い宣言の時間 */
+	private static final java.util.concurrent.atomic.AtomicLong MAX_DURATION = new java.util.concurrent.atomic.AtomicLong(0);
+
+	/* 最後に掃除を始めた時刻 */
+	private static final java.util.concurrent.atomic.AtomicLong LAST_PURGE = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+
+	/**
+	 * 満タンに戻った行を消す（{@value #PURGE_INTERVAL_MILLIS} ミリ秒に1回。別のスレッドで）
+	 *
+	 * <p>
+	 * <b>2.5.1 までは誰も消していなかった</b>（D-285）。送信元ごとに1行できるので、表は増える一方だった。
+	 * 最後に数えてから宣言の時間が過ぎた行は満タンで、「行が無い」と同じなので、消しても数え方は変わらない。
+	 * </p>
+	 */
+	private static void purgeIfDue () {
+
+		long now = System.currentTimeMillis();
+		long last = LAST_PURGE.get();
+
+		if (now - last < PURGE_INTERVAL_MILLIS || !LAST_PURGE.compareAndSet(last, now)) {
+			return;
+		}
+
+		Thread.ofVirtual().name("jimble-rate-limit-purge").start(() -> {
+			try {
+				purgeIdle(now - Math.max(MAX_DURATION.get(), PURGE_MIN_IDLE_MILLIS));
+			} catch (Exception ex) {
+				Log.warn("流量制限の掃除に失敗しました: " + ex.getMessage());
+			}
+		});
+
+	}
+
+	/**
+	 * 最後に数えたのがこれより前の行を消す
+	 *
+	 * @param before	時刻（ミリ秒）
+	 * @return	消した件数
+	 */
+	static int purgeIdle (long before) {
+
+		int total = 0;
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			String sql = db.dialect() instanceof io.jimble.db.dialect.PostgreSqlDialect
+				? "DELETE FROM %s WHERE ctid IN (SELECT ctid FROM %s WHERE updated_at < ? LIMIT %d)".formatted(TABLE, TABLE, PURGE_BATCH)
+				: "DELETE FROM %s WHERE updated_at < ? LIMIT %d".formatted(TABLE, PURGE_BATCH);
+
+			for (int round = 0; round < 100; round++) {
+
+				int deleted = db.delete(sql, before);
+
+				total += deleted;
+
+				if (deleted < PURGE_BATCH) {
+					break;
+				}
+
+			}
+
+		}
+
+		return total;
 
 	}
 
@@ -128,6 +223,11 @@ public final class DbRateLimitStore implements RateLimitStore {
 							, updated_at bigint not null
 						)
 						""".formatted(TABLE));
+
+				// 満タンに戻った行を消すときの順路（D-285）
+				version.add(2)
+					.mysql("create index %s__index_1 on %s (updated_at)".formatted(TABLE, TABLE))
+					.postgresql("create index %s__index_1 on %s (updated_at)".formatted(TABLE, TABLE));
 
 				if (!version.apply(db)) {
 					Log.error("%s テーブルを作れませんでした".formatted(TABLE));

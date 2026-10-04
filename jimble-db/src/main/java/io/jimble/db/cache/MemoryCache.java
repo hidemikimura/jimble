@@ -5,7 +5,6 @@ import io.jimble.util.conf.Conf;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * メモリキャッシュ
@@ -35,8 +34,17 @@ public class MemoryCache extends AbstractCache {
 	/* キャッシュ情報 */
 	private static final Map<String, CacheData> cacheMap = new ConcurrentHashMap<>();
 
-	/* グループ情報 */
-	private static final Map<String, List<String>> cacheGroupMap = new ConcurrentHashMap<>();
+	/*
+	 * グループ情報（グループ → 入れた順のキー。重ねない）。
+	 * 2.5.1 までは List で、同じキーを入れ直すたびに足し、期限で消えても外さなかったので増え続けた（D-283）
+	 */
+	private static final Map<String, Set<String>> cacheGroupMap = new ConcurrentHashMap<>();
+
+	/* 期限切れを最後に掃除した時刻 */
+	private static final java.util.concurrent.atomic.AtomicLong lastClean = new java.util.concurrent.atomic.AtomicLong(0);
+
+	/** 期限切れを掃除する間隔の下限（ミリ秒） */
+	static final long CLEAN_INTERVAL_MILLIS = 1000;
 
 	/**
 	 * 有効期限（秒）
@@ -50,16 +58,95 @@ public class MemoryCache extends AbstractCache {
 	}
 
 	/**
+	 * 生きているものを引く（期限が切れていれば消して null）
+	 *
+	 * <p>
+	 * <b>読むときにも期限を見る</b>（D-283）。2.5.1 までは掃除（入れるときに走る）でしか消えなかったので、
+	 * 入れる人がいなければ、期限を過ぎたものをいつまでも返した。
+	 * </p>
+	 */
+	private static CacheData live (String key) {
+
+		CacheData cacheData = cacheMap.get(key);
+
+		if (cacheData == null) {
+			return null;
+		}
+
+		long expireSecond = expireSecond();
+
+		if (expireSecond > 0 && cacheData.objectCreatedAt().getTime() <= System.currentTimeMillis() - expireSecond * 1000) {
+			removeEntry(key, cacheData);
+			return null;
+		}
+
+		return cacheData;
+
+	}
+
+	/**
+	 * 1件消す（グループからも外す）
+	 */
+	private static void removeEntry (String key, CacheData cacheData) {
+
+		if (!cacheMap.remove(key, cacheData)) {
+			return;
+		}
+
+		ungroup(key, cacheData.groupKey());
+
+	}
+
+	/**
+	 * グループから外す
+	 */
+	private static void ungroup (String key, String group) {
+
+		if (group == null || group.isEmpty()) {
+			return;
+		}
+
+		Set<String> keys = cacheGroupMap.get(group);
+
+		if (keys == null) {
+			return;
+		}
+
+		synchronized (keys) {
+			keys.remove(key);
+			if (keys.isEmpty()) {
+				cacheGroupMap.remove(group, keys);
+			}
+		}
+
+	}
+
+	/**
+	 * グループのキー（写し）
+	 */
+	private static List<String> groupKeys (String group) {
+
+		Set<String> keys = cacheGroupMap.get(group);
+
+		if (keys == null) {
+			return null;
+		}
+
+		synchronized (keys) {
+			return new ArrayList<>(keys);
+		}
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	public String getString(String key) {
 
-		if (cacheMap.containsKey(key)) {
-			return cacheMap.get(key).contentString();
-		}
+		CacheData cacheData = live(key);
 
-		return "";
+		return cacheData == null ? "" : cacheData.contentString();
 
 	}
 
@@ -79,20 +166,15 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public List<String> getStringGroup(String group) {
 
-		List<String> list = cacheGroupMap.get(group);
+		List<String> list = groupKeys(group);
 		if (list == null) {
 			return null;
 		}
 
 		List<String> res = new ArrayList<>();
 		for (String key : list) {
-
-			if (cacheMap.containsKey(key)) {
-				res.add(cacheMap.get(key).contentString());
-			} else {
-				res.add("");
-			}
-
+			CacheData cacheData = live(key);
+			res.add(cacheData == null ? "" : cacheData.contentString());
 		}
 
 		return res;
@@ -115,11 +197,9 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public CacheData get(String key, String group) {
 
-		if (cacheMap.containsKey(key)) {
-			return cacheMap.get(key);
-		}
+		CacheData cacheData = live(key);
 
-		return new CacheData(key, group);
+		return cacheData == null ? new CacheData(key, group) : cacheData;
 
 	}
 
@@ -129,20 +209,15 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public List<CacheData> getGroup(String group) {
 
-		List<String> list = cacheGroupMap.get(group);
+		List<String> list = groupKeys(group);
 		if (list == null) {
 			return null;
 		}
 
 		List<CacheData> res = new ArrayList<>();
 		for (String key : list) {
-
-			if (cacheMap.containsKey(key)) {
-				res.add(cacheMap.get(key));
-			} else {
-				res.add(new CacheData(key, group));
-			}
-
+			CacheData cacheData = live(key);
+			res.add(cacheData == null ? new CacheData(key, group) : cacheData);
 		}
 
 		return res;
@@ -165,11 +240,19 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public boolean set(String key, String value, String contentType, String group) {
 
-		if (group != null && !group.isEmpty()) {
-			cacheGroupMap.computeIfAbsent(group, k -> Collections.synchronizedList(new ArrayList<>())).add(key);
+		CacheData previous = cacheMap.put(key, new CacheData(key, group, value, contentType, new Date()));
+
+		// 別のグループで入れ直したら、前のグループから外す
+		if (previous != null && !Objects.equals(previous.groupKey(), group)) {
+			ungroup(key, previous.groupKey());
 		}
 
-		cacheMap.put(key, new CacheData(key, group, value, contentType, new Date()));
+		if (group != null && !group.isEmpty()) {
+			Set<String> keys = cacheGroupMap.computeIfAbsent(group, k -> Collections.synchronizedSet(new LinkedHashSet<>()));
+			synchronized (keys) {
+				keys.add(key);
+			}
+		}
 
 		cleanExpired();
 
@@ -184,10 +267,11 @@ public class MemoryCache extends AbstractCache {
 	@Override
 	public void remove(String key) {
 
-		cacheMap.remove(key);
+		CacheData cacheData = cacheMap.remove(key);
 
-		for (Map.Entry<String, List<String>> entry : cacheGroupMap.entrySet()) {
-			entry.getValue().remove(key);
+		// 2.5.1 までは全部のグループを見て回っていた
+		if (cacheData != null) {
+			ungroup(key, cacheData.groupKey());
 		}
 
 	}
@@ -202,16 +286,15 @@ public class MemoryCache extends AbstractCache {
 			return;
 		}
 
-		List<String> keys = new ArrayList<>();
-		for (String key : cacheMap.keySet()) {
-			CacheData cacheData = cacheMap.get(key);
-			if (group.equals(cacheData.groupKey())) {
-				keys.add(key);
-			}
-		}
+		List<String> keys = groupKeys(group);
 
-		for (String key : keys) {
-			cacheMap.remove(key);
+		if (keys != null) {
+			for (String key : keys) {
+				CacheData cacheData = cacheMap.get(key);
+				if (cacheData != null && group.equals(cacheData.groupKey())) {
+					cacheMap.remove(key, cacheData);
+				}
+			}
 		}
 
 		cacheGroupMap.remove(group);
@@ -225,7 +308,7 @@ public class MemoryCache extends AbstractCache {
 	public boolean has(String key, String group) {
 
 		// 移送元は cacheGroupMap.containsKey(key) で、まったく判定できていなかった
-		CacheData cacheData = cacheMap.get(key);
+		CacheData cacheData = live(key);
 
 		if (cacheData == null) {
 			return false;
@@ -235,12 +318,13 @@ public class MemoryCache extends AbstractCache {
 
 	}
 
-
-	/* 期限チェック用ロック */
-	private static final ReentrantLock cleanLock = new ReentrantLock();
-
 	/**
-	 * 期限チェック
+	 * 期限切れを掃除する（多くて {@value #CLEAN_INTERVAL_MILLIS} ミリ秒に1回）
+	 *
+	 * <p>
+	 * <b>2.5.1 までは入れるたびに全件を見ていた</b>（D-283）。件数が多いと、入れるたびに全部をなめる。
+	 * 読むときにも期限を見るようになったので、掃除はメモリを返すためだけで、間が空いても正しさは変わらない。
+	 * </p>
 	 */
 	private static void cleanExpired () {
 
@@ -250,38 +334,34 @@ public class MemoryCache extends AbstractCache {
 			return;
 		}
 
-		/*
-		 * 掃除は誰か1人がやれば足りる。取れなければ何もしない。
-		 *
-		 * 移送元は tryLock() が false でも finally で unlock() していたため、
-		 * ロックを持っていないスレッドが IllegalMonitorStateException を投げていた。
-		 */
-		if (!cleanLock.tryLock()) {
+		long now = System.currentTimeMillis();
+		long last = lastClean.get();
+
+		// 掃除は誰か1人がやれば足りる。間が空いていなければ、取れなければ何もしない
+		if (now - last < CLEAN_INTERVAL_MILLIS || !lastClean.compareAndSet(last, now)) {
 			return;
 		}
 
-		try {
+		// 移送元はミリ秒から「秒」を引いていた（expire=60 で 60 ミリ秒で消える）
+		long expire = now - expireSecond * 1000;
 
-			// 移送元はミリ秒から「秒」を引いていた（expire=60 で 60 ミリ秒で消える）
-			long expire = System.currentTimeMillis() - expireSecond * 1000;
-
-			List<String> keys = new ArrayList<>();
-			for (Map.Entry<String, CacheData> entry : cacheMap.entrySet()) {
-				CacheData cacheData = entry.getValue();
-				if (cacheData != null && cacheData.objectCreatedAt().getTime() <= expire) {
-					keys.add(entry.getKey());
-				}
+		for (Map.Entry<String, CacheData> entry : cacheMap.entrySet()) {
+			CacheData cacheData = entry.getValue();
+			if (cacheData != null && cacheData.objectCreatedAt().getTime() <= expire) {
+				removeEntry(entry.getKey(), cacheData);
 			}
-
-			for (String key : keys) {
-				cacheMap.remove(key);
-			}
-
-		} finally {
-
-			cleanLock.unlock();
-
 		}
+
+	}
+
+	/**
+	 * 中身を全部捨てる（テストから）
+	 */
+	static void clearAll () {
+
+		cacheMap.clear();
+		cacheGroupMap.clear();
+		lastClean.set(0);
 
 	}
 

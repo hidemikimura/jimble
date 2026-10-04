@@ -37,6 +37,9 @@ public final class RedisSqlCacheStore implements SqlCacheStore {
 	/** 1回に取り出す数 */
 	private static final int DRAIN_SIZE = 500;
 
+	/* タグの集合を、値より長く持つ分 */
+	private static final Duration TAG_MARGIN = Duration.ofMinutes(1);
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -66,7 +69,19 @@ public final class RedisSqlCacheStore implements SqlCacheStore {
 		}
 
 		for (String tag : tags) {
+
 			batch.getSet(TAG_PREFIX + tag, StringCodec.INSTANCE).addAsync(key);
+
+			/*
+			 * <b>タグの集合にも期限を付ける</b>（D-282）。2.5.1 までは付けておらず、書き換えの少ない表を
+			 * いろいろなパラメータで引くと、もう無い値のキーが集合に溜まり続けた。
+			 * 値の期限は全体で1つ（sql_cache.ttl）なので、足すたびに「値の期限 + 1 分」へ延ばせば、
+			 * 集合が中の値より先に消えることは無い
+			 */
+			if (ttl != null && !ttl.isZero()) {
+				batch.getSet(TAG_PREFIX + tag, StringCodec.INSTANCE).expireAsync(ttl.plus(TAG_MARGIN));
+			}
+
 		}
 
 		batch.execute();

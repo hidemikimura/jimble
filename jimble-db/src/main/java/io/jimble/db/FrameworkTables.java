@@ -95,6 +95,9 @@ public final class FrameworkTables {
 	public static final String AUTH_REVOCATION = "auth_revocation";
 
 	/** パスキー（D-261） */
+	/** パスキーの、使ったチャレンジ（D-290） */
+	public static final String AUTH_PASSKEY_CHALLENGE = "auth_passkey_challenge";
+
 	public static final String AUTH_PASSKEY = "auth_passkey";
 
 	/** API のトークン（D-264） */
@@ -131,6 +134,7 @@ public final class FrameworkTables {
 		, AUTH_MFA_RECOVERY
 		, AUTH_REVOCATION
 		, AUTH_PASSKEY
+		, AUTH_PASSKEY_CHALLENGE
 		, AUTH_API_TOKEN
 	);
 

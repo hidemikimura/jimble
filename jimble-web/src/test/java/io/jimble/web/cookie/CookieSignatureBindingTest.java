@@ -62,10 +62,14 @@ class CookieSignatureBindingTest {
 	}
 
 	@Test
-	@DisplayName("2.2.2 までの署名は、移す間だけ読み、古いものとして書き直させる。断る設定なら読まない")
+	@DisplayName("D-291 2.2.2 までの署名は既定では読まない。移す間だけ true にすれば読み、古いものとして書き直させる")
 	void legacySignature () {
 
 		String legacy = Signer.sign("abc", "test-cookie-secret");
+
+		assertNull(read("sid", legacy), "既定で古い署名を読んでいる（別の名前へ移し替えられる）");
+
+		Conf.replace(ConfigFactory.parseString("cookie.accept_legacy_signature = true").withFallback(Conf.conf().config()));
 
 		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/").cookie("sid", legacy);
 
@@ -73,10 +77,6 @@ class CookieSignatureBindingTest {
 			assertEquals("abc", context.cookies().get("sid"));
 			assertTrue(context.cookies().isStale("sid"), "書き直させるため、古いものとして扱う");
 		}
-
-		Conf.replace(ConfigFactory.parseString("cookie.accept_legacy_signature = false").withFallback(Conf.conf().config()));
-
-		assertNull(read("sid", legacy));
 
 	}
 
