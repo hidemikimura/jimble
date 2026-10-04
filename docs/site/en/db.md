@@ -318,6 +318,12 @@ The code is in `getCode()` (`DB_999` etc.), and the original JDBC exception is a
 
 **`executeBatch` / `insertBatch` require every statement to be the same SQL.** A mix throws with `DB_998`.
 
+> [!NOTE]
+> **On PostgreSQL, driver settings change the speed.** jimble adds no driver settings to the connection URL.
+>
+> - **Bulk inserts**: put `reWriteBatchedInserts=true` in the URL and the INSERTs of `insertBatch` are sent as one multi-row statement
+> - **Reading large results in pieces**: `fetch_size` **only works inside a transaction** (with autocommit on, the driver holds the whole result). Read inside `db.transaction(...)`
+
 ### "No rows" and "could not read"
 
 **They come back as different things.** An empty `Optional` means "no rows" and nothing else; a failure to read throws.
