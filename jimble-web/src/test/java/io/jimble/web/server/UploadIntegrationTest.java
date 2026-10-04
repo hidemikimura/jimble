@@ -62,6 +62,7 @@ class UploadIntegrationTest {
 					Data body = context.request().bodyAll();
 
 					received.add("title=" + body.getStringOptional("title"));
+					received.add("見出し=" + body.getStringOptional("見出し"));
 
 					// docs:begin upload-read
 					for (Object value : context.request().bodyFile().values()) {
@@ -71,6 +72,7 @@ class UploadIntegrationTest {
 								received.add("%s:%s:%d".formatted(
 									uploadFile.name(), uploadFile.fileName(), uploadFile.fileSize()));
 								received.add("content=" + read(uploadFile.file().toPath()));
+								received.add("path=" + uploadFile.relativePath());
 								tempFiles.add(uploadFile.file().toPath());
 							}
 						}
@@ -210,6 +212,96 @@ class UploadIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("ファイル名はブラウザが送ったとおりに受け取る（日本語・+・%・引用符の中の ;。D-266）")
+	void fileNamesAsSent () throws Exception {
+
+		// ブラウザはファイル名を UTF-8 のまま送る。helidon の fileName() は、日本語を 400 にし、+ を空白に、% を 400 にしていた
+		HttpResponse<String> response = post(multipart(
+			file("doc", "請求書.pdf", "A")
+			, file("doc", "a+b.png", "B")
+			, file("doc", "100%.txt", "C")
+			, file("doc", "a;b.txt", "D")
+			, file("doc", "C:\\Users\\kimura\\café.txt", "E")
+		));
+
+		assertEquals(200, response.statusCode(), response.body());
+		assertTrue(received.contains("doc:請求書.pdf:1"), received.toString());
+		assertTrue(received.contains("doc:a+b.png:1"), received.toString());
+		assertTrue(received.contains("doc:100%.txt:1"), received.toString());
+		assertTrue(received.contains("doc:a;b.txt:1"), received.toString());
+		// 古い IE のフルパスは、最後の名前だけ
+		assertTrue(received.contains("doc:café.txt:1"), received.toString());
+		assertTrue(received.contains("path=café.txt"), received.toString());
+
+	}
+
+	@Test
+	@DisplayName("ブラウザのエスケープ（\" → %22）を戻す。filename* は RFC 5987 で読む。項目名の日本語も化けない")
+	void escapesAndExtendedValue () throws Exception {
+
+		HttpResponse<String> response = post(multipart(
+			field("見出し", "請求")
+			, file("書類", "a%22b.txt", "A")
+			, part("form-data; name=\"ext\"; filename=\"fallback.txt\"; filename*=UTF-8''%E8%AB%8B%E6%B1%82.txt", "B")
+		));
+
+		assertEquals(200, response.statusCode(), response.body());
+		assertTrue(received.contains("見出し=請求"), received.toString());
+		assertTrue(received.contains("書類:a\"b.txt:1"), received.toString());
+		assertTrue(received.contains("ext:請求.txt:1"), received.toString());
+
+	}
+
+	@Test
+	@DisplayName("フォルダごとのアップロードは、fileName が最後の名前、relativePath がフォルダを含む名前")
+	void folderUpload () throws Exception {
+
+		post(multipart(file("dir", "写真/2026/a.png", "AA")));
+
+		assertTrue(received.contains("dir:a.png:2"), received.toString());
+		assertTrue(received.contains("path=写真/2026/a.png"), received.toString());
+
+	}
+
+	@Test
+	@DisplayName("ファイルを選んでいないファイル入力（filename=\"\"）は捨てる。フォーム項目にもならない")
+	void emptyFileNameIsSkipped () throws Exception {
+
+		HttpResponse<String> response = post(multipart(
+			field("title", "x")
+			, file("logo", "", "")
+		));
+
+		assertEquals(200, response.statusCode(), response.body());
+		assertTrue(received.contains("title=x"), received.toString());
+		assertTrue(received.stream().noneMatch(line -> line.startsWith("logo:")), received.toString());
+
+	}
+
+	@Test
+	@DisplayName(".. や空の段・制御文字を含むファイル名は 400。一時ファイルも残さない")
+	void rejectsBadFileNames () throws Exception {
+
+		// 前のテストの一時ファイルは、レスポンスのあとで消える
+		Thread.sleep(200);
+		long before = countTempFiles();
+
+		for (String name : List.of("../a.txt", "a/../b.txt", "sub//a.txt", "..", "sub/", "a\tb.txt")) {
+			HttpResponse<String> response = post(multipart(file("doc", name, "A")));
+			assertEquals(400, response.statusCode(), name + " を通した: " + received);
+		}
+
+		// 改行は %0D / %0A で送られてくる。戻さないので、名前の一部として残る（ヘッダを割らない）
+		HttpResponse<String> crlf = post(multipart(file("doc", "a%0D%0Ab.txt", "A")));
+		assertEquals(200, crlf.statusCode());
+		assertTrue(received.contains("doc:a%0D%0Ab.txt:1"), received.toString());
+
+		Thread.sleep(200);
+		assertTrue(countTempFiles() <= before, "一時ファイルが残っている");
+
+	}
+
 	// endregion
 
 	// region ヘルパー
@@ -293,6 +385,23 @@ class UploadIntegrationTest {
 
 		return ("--" + BOUNDARY + "\r\n"
 			+ "Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + fileName + "\"\r\n"
+			+ "Content-Type: application/octet-stream\r\n"
+			+ "\r\n"
+			+ content + "\r\n").getBytes(StandardCharsets.UTF_8);
+
+	}
+
+	/**
+	 * Content-Disposition を手で書いたパート
+	 *
+	 * @param disposition	Content-Disposition の値
+	 * @param content		中身
+	 * @return	パート
+	 */
+	private byte[] part (String disposition, String content) {
+
+		return ("--" + BOUNDARY + "\r\n"
+			+ "Content-Disposition: " + disposition + "\r\n"
 			+ "Content-Type: application/octet-stream\r\n"
 			+ "\r\n"
 			+ content + "\r\n").getBytes(StandardCharsets.UTF_8);

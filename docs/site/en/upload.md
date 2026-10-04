@@ -27,10 +27,15 @@ What you pull out is an `UploadFile`. It is **a container with no methods**, and
 | Field | What it holds |
 | --- | --- |
 | `name` | The form's `name` attribute |
-| `fileName` | The file name **the client claimed** (`""` when absent) |
+| `fileName` | The file name **the client claimed**; only the last name when it includes folders (`""` when absent) |
+| `relativePath` | The file name **the client claimed**, folders kept (`photos/2026/a.png`, separated by `/`). For folder uploads (`<input type="file" webkitdirectory>`) |
 | `contentType` | The Content-Type **the client claimed** (`""` when absent) |
 | `fileSize` | The number of bytes actually written out |
 | `file` | The temp file (`java.io.File`) |
+
+File names arrive **exactly as the browser sent them**: Japanese, the `+` in `a+b.png` and the `%` in `100%.txt` are kept as is.
+`filename*=UTF-8''...` (RFC 5987), which non-browser clients send, is read too.
+A file input submitted with no file chosen (`filename=""`) is dropped (it appears in neither `bodyFile()` nor `bodyAll()`).
 
 > [!WARN]
 > **Even a single file is wrapped in a `List`.**
@@ -102,9 +107,9 @@ Three things matter.
 | `Files.copy` | The original is deleted anyway, so copy or move — either is fine |
 
 > [!TRAP]
-> **Do not use `uploadFile.fileName` as the destination.**
-> jimble **does not inspect this name at all** (it is exactly what the client claimed).
-> A name like `../../etc/passwd` lets the write land outside your storage directory.
+> **Do not use `uploadFile.fileName` / `relativePath` as the destination.**
+> jimble rejects only `.` / `..` segments, empty segments and control characters (400). Everything else is exactly what the client claimed.
+> Overlong names, characters the OS cannot use (`:` or `?` on Windows) and overwriting a file with the same name are not prevented.
 
 > [!WARN]
 > **`contentType` is not inspected either.** It is the client's own declaration.
