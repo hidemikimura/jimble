@@ -2,6 +2,7 @@ package io.jimble.web.session;
 
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.support.Fakes;
 import org.junit.jupiter.api.AfterAll;
@@ -11,8 +12,11 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -237,6 +241,108 @@ class RedisSessionIntegrationTest {
 				, context.session().data().keySet().toString());
 
 		}
+
+	}
+
+	@Test
+	@DisplayName("D-268 保存している最中に読んでも、空のセッション（ログアウトした状態）は見えない")
+	void saveIsAtomic () throws Exception {
+
+		// キーが多いほど、1つずつ送っていたときの隙間が広い
+		Data data = new Data();
+		for (int i = 0; i < 30; i++) {
+			data.put("key" + i, "value" + i);
+		}
+
+		String sessionId;
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			store.save(context, new SessionEntry(data, true));
+			context.response().send("ok");
+		}
+
+		sessionId = sessionIdFrom(sink);
+		assertNotNull(sessionId);
+
+		AtomicBoolean done = new AtomicBoolean(false);
+		AtomicInteger saves = new AtomicInteger();
+
+		Thread writer = Thread.ofVirtual().start(() -> {
+			try {
+				for (int i = 0; i < 300; i++) {
+					try (WebContext context = withSession(sessionId)) {
+						store.save(context, new SessionEntry(data, true));
+					}
+					saves.incrementAndGet();
+				}
+			} finally {
+				done.set(true);
+			}
+		});
+
+		int reads = 0;
+		int empties = 0;
+		int partial = 0;
+
+		while (!done.get()) {
+			try (WebContext context = withSession(sessionId)) {
+				Data loaded = store.load(context).data();
+				reads++;
+				if (loaded.isEmpty()) {
+					empties++;
+				} else if (loaded.size() != data.size()) {
+					partial++;
+				}
+			}
+		}
+
+		writer.join();
+
+		assertEquals(300, saves.get());
+		assertTrue(reads > 0, "読めていない");
+		assertEquals(0, empties, reads + " 回読んで " + empties + " 回、空のセッションが見えた");
+		assertEquals(0, partial, reads + " 回読んで " + partial + " 回、書きかけのセッションが見えた");
+
+	}
+
+	@Test
+	@DisplayName("D-268 保存すると、消したキーは残らず、期限も付く。中身を空にすると Redis から消える")
+	void saveReplacesAll () {
+
+		String sessionId;
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			Data data = new Data();
+			data.put("a", "1");
+			data.put("b", "2");
+			store.save(context, new SessionEntry(data, true));
+			context.response().send("ok");
+		}
+
+		sessionId = sessionIdFrom(sink);
+
+		try (WebContext context = withSession(sessionId)) {
+			Data data = new Data();
+			data.put("a", "3");
+			store.save(context, new SessionEntry(data, true));
+		}
+
+		try (WebContext context = withSession(sessionId)) {
+			Data loaded = store.load(context).data();
+			assertEquals("3", loaded.getString("a"));
+			assertNull(loaded.get("b"), "消したキーが残っている");
+		}
+
+		long ttl = RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).remainTimeToLive();
+		assertTrue(ttl > 0 && ttl <= 30 * 60 * 1000L, "期限が付いていない: " + ttl);
+
+		try (WebContext context = withSession(sessionId)) {
+			store.save(context, new SessionEntry(new Data(), true));
+		}
+
+		assertFalse(RedisClient.client().getMap(RedisSessionStore.KEY_PREFIX + sessionId).isExists(), "空にしたのに残っている");
 
 	}
 

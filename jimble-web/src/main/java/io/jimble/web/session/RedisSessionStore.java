@@ -3,9 +3,13 @@ package io.jimble.web.session;
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.data.Data;
 import io.jimble.web.context.WebContext;
+import org.redisson.api.BatchOptions;
+import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
+import org.redisson.api.RMapAsync;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -173,31 +177,38 @@ public final class RedisSessionStore implements SessionStore {
 
 		// 発行した時刻は持ち越す（新しいセッションなら、いま）
 		long created = createdAt(map.get(CREATED_AT));
-
-		map.clear();
-
-		if (!entry.data().isEmpty()) {
-			Data data = entry.data();
-			for (String key : data.keySet()) {
-				map.put(key, data.getString(key));
-			}
-		}
-
-		// 中身が無ければ何も残さない（空のハッシュは Redis から消える）
-		if (entry.data().isEmpty()) {
-			return;
-		}
-
-		map.fastPut(CREATED_AT, String.valueOf(created));
-
 		Duration ttl = ttl(created);
 
-		if (ttl.isZero() || ttl.isNegative()) {
+		// 中身が無い・発行からの上限を過ぎたなら、何も残さない
+		if (entry.data().isEmpty() || ttl.isZero() || ttl.isNegative()) {
 			map.delete();
 			return;
 		}
 
-		map.expire(ttl);
+		Map<String, String> fields = new LinkedHashMap<>();
+		Data data = entry.data();
+		for (String key : data.keySet()) {
+			String value = data.getString(key);
+			if (value != null) {
+				fields.put(key, value);
+			}
+		}
+		fields.put(CREATED_AT, String.valueOf(created));
+
+		/*
+		 * <b>消す・入れる・期限を、1つのトランザクション（MULTI / EXEC）で送る</b>（D-268）。
+		 *
+		 * 2.5.1 までは clear・キーの数だけ put・fastPut・expire を1つずつ送っていた。
+		 * <b>clear と put のあいだに同じ人の別のリクエストが読むと、空のセッション（ログアウトした状態）が見えた</b>。
+		 * 途中で落ちると、期限の無いハッシュも残った。
+		 */
+		RBatch batch = RedisClient.client().createBatch(
+			BatchOptions.defaults().executionMode(BatchOptions.ExecutionMode.IN_MEMORY_ATOMIC));
+		RMapAsync<String, String> async = batch.getMap(KEY_PREFIX + sessionId);
+		async.deleteAsync();
+		async.putAllAsync(fields);
+		async.expireAsync(ttl);
+		batch.execute();
 
 	}
 
