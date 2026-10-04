@@ -188,7 +188,7 @@ That is why it works **even with cookie sessions**, whose contents live in the u
 | | |
 | --- | --- |
 | Where it applies | Requests that go through `Auth.guard`. **Even on `Auth.PUBLIC` routes** a locked-out person no longer looks logged in (`Auth.NO_SESSION` routes do not read the session, so they do not check) |
-| Delay | Immediate on the server that called it. **With several servers, up to 5 seconds on the others** (`auth.revocation.cache_ttl`; `0s` reads the DB every time) |
+| Delay | Immediate on the server that called it. **With several servers, up to 5 seconds on the others** (`auth.revocation.cache_ttl`; `0s` reads the DB every time). At that interval only one row ("was anyone locked out?") is read; with no lockouts, nothing is re-read per user (since 2.5.2; at most once a minute) |
 | Where it lives | The `auth_revocation` table (created the first time it is needed). **Only people who have been locked out** get a row |
 | Realms | `revoke` with a realm ends **only that kind of login**. Other kinds of login in the same session stay |
 | Upgrading | Sessions from before the upgrade keep working unless you lock someone out (**nobody is logged out on upgrade day**) |

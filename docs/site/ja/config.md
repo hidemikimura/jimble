@@ -236,7 +236,7 @@ auth {
 
 	revocation {
 		enabled     = true         # DB が無ければ比べない（Auth.revoke は例外）
-		cache_ttl   = 5s           # 引いた世代を控える時間。複数台ではほかの台で効くまでの遅れ。0s で毎回引く
+		cache_ttl   = 5s           # 締め出しがあったかを見に行く間隔。複数台ではほかの台で効くまでの遅れ。0s で毎回引く
 	}
 
 	mfa {

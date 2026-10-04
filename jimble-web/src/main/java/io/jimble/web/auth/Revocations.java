@@ -35,14 +35,54 @@ import java.util.concurrent.ConcurrentHashMap;
  * 「この時刻より前のログインは無効」だと、<b>台ごとの時計のずれで、入ったばかりの人が弾かれる</b>。
  * 番号なら DB の1行を足すだけで、比べるのも {@code <} だけである。
  * </p>
+ *
+ * <h2>控え（D-274）</h2>
+ * <p>
+ * 締め出すたびに、利用者の行と一緒に<b>全体の世代</b>（種別 {@value #GLOBAL_REALM}・ID 0 の行）も上げる。
+ * 各台は {@code auth.revocation.cache_ttl}（既定 5 秒）ごとに<b>全体の世代の1行だけ</b>を引き、
+ * 変わっていなければ利用者ごとの控えを使い続ける（最長 {@link #MAX_AGE}）。変わっていたら控えを全部捨てる。
+ * </p>
+ *
+ * <p>
+ * 2.5.1 までは利用者ごとの控えが 5 秒で切れていたので、10〜60 秒おきに操作する人が多いサイトでは
+ * <b>ログイン中のほぼすべてのリクエストが DB を引いていた</b>。控えが 1 万件で丸ごと消えるのも、混んだサイトで重なった。
+ * </p>
  */
 final class Revocations {
 
 	/** 控えの上限。溢れたら全部捨てる（引き直すだけなので、正しさは変わらない） */
-	static final int CACHE_LIMIT = 10_000;
+	static final int CACHE_LIMIT = 100_000;
 
-	/* 控え：(種別, ID) → 世代と、引いた時刻 */
+	/**
+	 * 利用者ごとの控えを使う最長の時間
+	 *
+	 * <p>
+	 * 全体の世代が変わらなくても、これを過ぎたら引き直す。<b>版を上げている途中の保険</b>である
+	 * （2.5.1 以前の台は全体の世代を上げないので、そちらで締め出した人に気づくのは、これが過ぎたとき）。
+	 * </p>
+	 */
+	static final java.time.Duration MAX_AGE = java.time.Duration.ofMinutes(1);
+
+	/** 全体の世代を持つ行の種別（{@link Auth} の種別には使えない文字） */
+	static final String GLOBAL_REALM = "*";
+
+	/* 控え：(種別, ID) → 世代と、引いたときの代と時刻 */
 	private static final ConcurrentHashMap<String, Cached> CACHE = new ConcurrentHashMap<>();
+
+	/* 控えの代。全体の世代が変わったら進める（それより前の控えは使わない） */
+	private static volatile long epoch = 0;
+
+	/* 最後に見た全体の世代 */
+	private static volatile long watermark = Long.MIN_VALUE;
+
+	/* 最後に全体の世代を見た時刻（System.nanoTime） */
+	private static volatile long checkedAt = 0;
+
+	/* 全体の世代を見にいくのは1人だけ */
+	private static final java.util.concurrent.locks.ReentrantLock WATERMARK_LOCK = new java.util.concurrent.locks.ReentrantLock();
+
+	/* まだ全体の世代を見ていない */
+	private static volatile boolean watermarkChecked = false;
 
 	/* 表を作ったか */
 	private static volatile boolean initialized = false;
@@ -54,9 +94,10 @@ final class Revocations {
 	 * 控え
 	 *
 	 * @param generation	世代
+	 * @param epoch			引いたときの控えの代
 	 * @param loadedAt		引いた時刻（{@link System#nanoTime()}）
 	 */
-	private record Cached (long generation, long loadedAt) {}
+	private record Cached (long generation, long epoch, long loadedAt) {}
 
 	private Revocations () {
 	}
@@ -139,11 +180,19 @@ final class Revocations {
 			sql.append("generation = %s.generation + 1, revoked_at = ".formatted(table));
 			db.dialect().insertedValue(sql, null, "revoked_at");
 
-			db.execute(sql.toString(), realm, userId, now);
+			long at = epoch;
 
-			long generation = select(db, realm, userId);
+			/*
+			 * 利用者の行と全体の世代を、<b>一緒に</b>上げる（D-274）。
+			 * 全体の世代だけ上がらないと、ほかの台は控えを最長 MAX_AGE まで使い続ける
+			 */
+			long generation = db.transactionResult(tx -> {
+				db.execute(sql.toString(), realm, userId, now);
+				db.execute(sql.toString(), GLOBAL_REALM, 0L, now);
+				return select(db, realm, userId);
+			});
 
-			put(realm, userId, generation);
+			put(realm, userId, generation, at);
 
 			return generation;
 
@@ -162,6 +211,9 @@ final class Revocations {
 	static void clearCache () {
 
 		CACHE.clear();
+		epoch++;
+		watermark = Long.MIN_VALUE;
+		watermarkChecked = false;
 
 	}
 
@@ -206,17 +258,76 @@ final class Revocations {
 
 		long ttl = RevocationConf.cacheTtl().toNanos();
 
-		if (ttl > 0) {
+		if (ttl <= 0) {
+			return load(realm, userId);
+		}
 
-			Cached hit = CACHE.get(key(realm, userId));
+		refreshWatermarkIfDue(ttl);
 
-			if (hit != null && System.nanoTime() - hit.loadedAt() < ttl) {
-				return hit.generation();
-			}
+		Cached hit = CACHE.get(key(realm, userId));
 
+		if (hit != null && hit.epoch() == epoch && System.nanoTime() - hit.loadedAt() < MAX_AGE.toNanos()) {
+			return hit.generation();
 		}
 
 		return load(realm, userId);
+
+	}
+
+	/**
+	 * 全体の世代を見る（cache_ttl ごとに1回。変わっていたら控えの代を進める）
+	 *
+	 * <p>
+	 * 見ている人がいれば待たない（いまの控えを使う）。<b>まだ1度も見ていなければ、見終わるまで待つ</b>。
+	 * </p>
+	 *
+	 * @param ttl	見る間隔（ナノ秒）
+	 */
+	private static void refreshWatermarkIfDue (long ttl) {
+
+		if (watermarkChecked && System.nanoTime() - checkedAt < ttl) {
+			return;
+		}
+
+		if (watermarkChecked) {
+			if (!WATERMARK_LOCK.tryLock()) {
+				return;
+			}
+		} else {
+			WATERMARK_LOCK.lock();
+		}
+
+		try {
+
+			if (watermarkChecked && System.nanoTime() - checkedAt < ttl) {
+				return;
+			}
+
+			long global;
+
+			try (DB db = DBUtil.getMainDB()) {
+				global = select(db, GLOBAL_REALM, 0L);
+			} catch (RuntimeException ex) {
+				// 引けないなら閉じる（load と同じ）
+				throw new IllegalStateException("締め出しの世代（全体）を引けませんでした" + Docs.see("auth"), ex);
+			}
+
+			if (global != watermark) {
+				/*
+				 * <b>先に代を進めてから、控えを捨てる。</b>
+				 * 引いている最中の人は、進める前の代で控えるので、捨てたあとに入っても使われない
+				 */
+				epoch++;
+				CACHE.clear();
+				watermark = global;
+			}
+
+			checkedAt = System.nanoTime();
+			watermarkChecked = true;
+
+		} finally {
+			WATERMARK_LOCK.unlock();
+		}
 
 	}
 
@@ -225,11 +336,14 @@ final class Revocations {
 	 */
 	private static long load (String realm, long userId) {
 
+		// 引く前の代で控える（引いている最中に全体の世代が変わったら、この控えは使われない）
+		long at = epoch;
+
 		try (DB db = DBUtil.getMainDB()) {
 
 			long generation = select(db, realm, userId);
 
-			put(realm, userId, generation);
+			put(realm, userId, generation, at);
 
 			return generation;
 
@@ -259,13 +373,13 @@ final class Revocations {
 	/**
 	 * 控える
 	 */
-	private static void put (String realm, long userId, long generation) {
+	private static void put (String realm, long userId, long generation, long at) {
 
 		if (CACHE.size() >= CACHE_LIMIT) {
 			CACHE.clear();
 		}
 
-		CACHE.put(key(realm, userId), new Cached(generation, System.nanoTime()));
+		CACHE.put(key(realm, userId), new Cached(generation, at, System.nanoTime()));
 
 	}
 
