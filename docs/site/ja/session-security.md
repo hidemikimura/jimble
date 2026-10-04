@@ -232,7 +232,7 @@ context.cookies().putUnsigned(new Cookie("theme", "dark").httpOnly(false));     
 **署名は Cookie の名前に結びついています**（2.2.3 から）。ある名前の Cookie に付いた署名を、別の名前の Cookie に移しても通りません。
 2.2.2 までは値だけに署名していたので、アプリが入力をフラッシュに入れるなど、攻撃者の決めた値に署名させる場所が1つでもあると、
 その署名を `user` などの Cookie に移し替えて使えました。
-2.2.2 までの署名は、移す間だけ読みます（`cookie.accept_legacy_signature`、既定 true）。`sid` と `csrf_token` は読んだときに書き直します。
+2.2.2 までの署名は、**既定では読みません**（`cookie.accept_legacy_signature`、2.5.2 から既定 false）。2.2.2 以前から上げるときだけ、移す間 `true` にしてください。`sid` と `csrf_token` は読んだときに書き直します。
 **署名は有効期限を含みません。**`Max-Age` を守るのはブラウザなので、利用者を表す値を署名つき Cookie だけで信じないでください（セッションに入れてください）。
 
 **応答を送ったあとに Cookie を書くと `IllegalStateException` です**（もう届きません）。`send()` より前に書いてください。

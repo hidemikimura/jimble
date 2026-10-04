@@ -141,11 +141,17 @@ public final class CookieConf {
 	/**
 	 * 名前に結びついていない古い署名も読むか（D-220）
 	 *
-	 * @return	読むなら true（既定 true）
+	 * <p>
+	 * <b>既定は false</b>（2.5.2 から。D-291）。2.2.2 までの署名は名前に結びつかないので、
+	 * 取られた署名（フラッシュに入れさせた値など）を<b>別の名前の Cookie に移し替えて使えた</b>。
+	 * 2.2.2 以前から上げるときだけ、移す間 true にする（{@code sid} と {@code csrf_token} は読んだときに書き直す）。
+	 * </p>
+	 *
+	 * @return	読むなら true（既定 false）
 	 */
 	public static boolean acceptLegacySignature () {
 
-		return Conf.conf().getBoolean(KEY_ACCEPT_LEGACY_SIGNATURE, true);
+		return Conf.conf().getBoolean(KEY_ACCEPT_LEGACY_SIGNATURE, false);
 
 	}
 

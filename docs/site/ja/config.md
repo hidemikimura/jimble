@@ -162,7 +162,7 @@ cookie {
 	secret           = ${?COOKIE_SECRET}         # 署名鍵。空なら署名しない
 	previous_secrets = [${?COOKIE_SECRET_OLD}]   # 鍵の入れ替え中だけ
 	accept_unsigned  = false                     # 署名を入れる移行期間だけ true にする
-	accept_legacy_signature = true               # 名前に結びついていない 2.2.2 までの署名も読む（移す間だけ）
+	accept_legacy_signature = false              # 名前に結びついていない 2.2.2 までの署名も読むか（2.2.2 以前から上げる間だけ true）
 }
 
 csrf {
