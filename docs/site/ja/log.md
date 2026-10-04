@@ -106,6 +106,7 @@ server {
 **その1行を JSON にして書き出すぶんが -29%（p50 で +110µs）** です。
 つまり**代金のほとんどは、jimble ではなく logback が同期で書き出すところ**にあります。
 切る前に、まず**出し方**（`AsyncAppender` を挟む、出す先を変える、項目を減らす）を見てください。
+`jimble new` の雛形は、2.5.2 からアクセスログを `AsyncAppender` で出します（下記）。前の版で作ったアプリは、`conf/logback.xml` を書き換えてください。
 
 **台によって違うので、自分の台で測ってください**
 （`jimble-load/load.sh` が、出す版・組み立てるだけの版・出さない版・素の helidon を並べて測ります）。
@@ -171,12 +172,21 @@ jimble は logback とエンコーダを持っていますが、**設定ファ�
 		<encoder class="io.jimble.util.log.encoder.LogbackJsonEncoder"/>
 	</appender>
 
-	<logger name="access" level="INFO" additivity="false">
+	<!-- アクセスログは別のスレッドで書き出す。捨てない（下記） -->
+	<appender name="json-async" class="ch.qos.logback.classic.AsyncAppender">
+		<queueSize>8192</queueSize>
+		<discardingThreshold>0</discardingThreshold>
+		<neverBlock>false</neverBlock>
+		<includeCallerData>false</includeCallerData>
 		<appender-ref ref="json"/>
+	</appender>
+
+	<logger name="access" level="INFO" additivity="false">
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<logger name="access.bot" level="INFO" additivity="false">
-		<appender-ref ref="json"/>
+		<appender-ref ref="json-async"/>
 	</logger>
 
 	<logger name="error" level="ERROR" additivity="false">
@@ -189,6 +199,12 @@ jimble は logback とエンコーダを持っていますが、**設定ファ�
 
 </configuration>
 ```
+
+> [!TRAP]
+> **`AsyncAppender` の既定のままにしないでください。**既定は「キューが 8 割埋まったら INFO 以下を捨てる」で、
+> **混んだときほどアクセスログが黙って消えます**（キュー 64 件・書き出しの遅い出し先で試すと、1000 行のうち 64 行しか残りませんでした）。
+> `discardingThreshold` を `0`、`neverBlock` を `false` にしてください。溜まりきったときは待つので、同期で書くのと同じになるだけです。
+> 止めるときは、jimble が最後に logback を閉じて溜まった行を書き出します（2.5.2 から）。
 
 > [!TRAP]
 > **`access.bot` は `access` の子です。**`additivity="false"` を外すと、

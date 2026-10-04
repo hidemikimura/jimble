@@ -2,15 +2,14 @@ package io.jimble.util.log.encoder;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.encoder.EncoderBase;
-import io.jimble.util.convertor.Configration;
 import io.jimble.util.json.Dson;
 import io.jimble.util.data.Data;
 
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 public class LogbackJsonEncoder extends EncoderBase<ILoggingEvent> {
 
@@ -19,6 +18,9 @@ public class LogbackJsonEncoder extends EncoderBase<ILoggingEvent> {
 
 	/* 改行 */
 	private static final byte[] LINE_SEPARATOR = "\n".getBytes(StandardCharsets.UTF_8);
+
+	/* 日時の書式（この機械の時間帯。SimpleDateFormat と違い、使い回せる） */
+	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
 	/**
 	 * {@inheritDoc}
@@ -48,7 +50,7 @@ public class LogbackJsonEncoder extends EncoderBase<ILoggingEvent> {
 
 		Data logData = new Data();
 
-		logData.put("@timestamp", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(iLoggingEvent.getTimeStamp())));
+		logData.put("@timestamp", TIMESTAMP.format(Instant.ofEpochMilli(iLoggingEvent.getTimeStamp())));
 		logData.put("@version", iLoggingEvent.getSequenceNumber());
 		logData.put("message", iLoggingEvent.getMessage());
 		logData.put("logger_name", iLoggingEvent.getLoggerName());
@@ -67,18 +69,14 @@ public class LogbackJsonEncoder extends EncoderBase<ILoggingEvent> {
 			}
 		}
 
-		try (
-			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			BufferedOutputStream bos = new BufferedOutputStream(baos);
-		) {
+		/*
+		 * 1行ごとに BufferedOutputStream（8KB）を重ねない。書き先がもうメモリなので、重ねても写しが増えるだけ。
+		 * 日時の書式も使い回す（SimpleDateFormat を毎回作っていた）
+		 */
+		try (ByteArrayOutputStream baos = new ByteArrayOutputStream(512)) {
 
-			Configration configration = new Configration();
-			configration.isOutputUnknown(false);
-			configration.maxHierarchy(3);
-
-			Dson.encodes(logData, bos, "UTF-8");
-			bos.write("\n".getBytes(StandardCharsets.UTF_8));
-			bos.flush();
+			Dson.encodes(logData, baos, "UTF-8");
+			baos.write(LINE_SEPARATOR);
 			return baos.toByteArray();
 
 		} catch (Exception ex) {

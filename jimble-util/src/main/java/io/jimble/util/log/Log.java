@@ -23,6 +23,27 @@ import java.util.Objects;
 public class Log {
 
 	/**
+	 * ログの出し先を閉じる（溜めた行を書き出す）
+	 *
+	 * <p>
+	 * logback の {@code AsyncAppender} は、閉じないと溜めた行を書き出さずに終わる
+	 * （止めるときの最後のアクセスログが消える）。logback 以外を使っていれば何もしない。
+	 * <b>閉じたあとのログは出ない</b>ので、止める処理のいちばん最後に呼ぶ。
+	 * </p>
+	 */
+	public static void closeBackend () {
+
+		try {
+			if (LoggerFactory.getILoggerFactory() instanceof ch.qos.logback.classic.LoggerContext context) {
+				context.stop();
+			}
+		} catch (LinkageError notLogback) {
+			// logback を外したアプリ
+		}
+
+	}
+
+	/**
 	 * 出力先
 	 *
 	 * <p>既定は SLF4J。テストや特殊な出力先のための差し替え点。</p>
