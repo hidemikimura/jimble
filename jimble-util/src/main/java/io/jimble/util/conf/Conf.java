@@ -119,6 +119,18 @@ public final class Conf {
 	/** 既定の環境 */
 	public static final String DEFAULT_ENV = "local";
 
+	/**
+	 * 読む設定ファイルを名前で指すシステムプロパティ（D-293）
+	 *
+	 * <p>
+	 * {@code -Djimble.conf=application.batch} なら、<b>環境（{@code env}）に関係なく</b>
+	 * クラスパスの {@code application.batch.conf} だけを読む。環境はそのまま（{@code local} なら {@code isLocal()} も true）。
+	 * 同じアプリをバッチとして動かすときなど、環境は変えずに設定だけ替えたいときに使う。
+	 * 拡張子は書いても書かなくてもよい。<b>見つからなければ起動時に落とす</b>（黙って別のファイルを読まない）。
+	 * </p>
+	 */
+	public static final String PROPERTY_CONF = "jimble.conf";
+
 	/** 設定ファイルの基本名 */
 	private static final String BASE_NAME = "application";
 
@@ -260,6 +272,31 @@ public final class Conf {
 	 */
 	private static Config load () {
 
+		String named = confName();
+
+		if (named != null) {
+
+			Config namedFile = ConfigFactory.parseResourcesAnySyntax(named);
+
+			if (namedFile.isEmpty()) {
+				throw new IllegalStateException(
+					"-D%s=%s の設定ファイルがクラスパスにありません（conf/%s.conf を置いてください）"
+						.formatted(PROPERTY_CONF, named, named));
+			}
+
+			List<String> found = new ArrayList<>();
+			collectSources(named, found);
+			sources = List.copyOf(found);
+
+			missing = BASE_NAME.equals(named) ? List.of()
+				: missingKeys(namedFile, ConfigFactory.parseResourcesAnySyntax(BASE_NAME));
+
+			return namedFile
+				.withFallback(ConfigFactory.systemProperties())
+				.resolve();
+
+		}
+
 		/*
 		 * 環境別ファイルの中の include "application.conf" は、
 		 * ここでの parse のときに typesafe config が解決する。
@@ -280,6 +317,40 @@ public final class Conf {
 		return (useEnvFile ? envFile : baseFile)
 			.withFallback(ConfigFactory.systemProperties())
 			.resolve();
+
+	}
+
+	/**
+	 * {@code -Djimble.conf} で指した名前（拡張子は外す）。指していなければ null
+	 *
+	 * @return	名前
+	 * @throws IllegalStateException	クラスパスの外を指している場合
+	 */
+	static String confName () {
+
+		String value = System.getProperty(PROPERTY_CONF);
+
+		if (value == null || value.isBlank()) {
+			return null;
+		}
+
+		String name = value.trim();
+
+		for (String extension : EXTENSIONS) {
+			if (name.endsWith(extension)) {
+				name = name.substring(0, name.length() - extension.length());
+				break;
+			}
+		}
+
+		// jar の外は見ない（クラスパスの中の名前だけ）
+		if (name.isEmpty() || name.startsWith("/") || name.contains("..") || name.contains("\\") || name.contains(":")) {
+			throw new IllegalStateException(
+				"-D%s には、クラスパスの中の設定ファイルの名前を書いてください（例: application.batch）: %s"
+					.formatted(PROPERTY_CONF, value));
+		}
+
+		return name;
 
 	}
 

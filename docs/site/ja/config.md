@@ -83,6 +83,21 @@ application.prod.conf     本番。1行目で共通を読み、続きで上書�
  / application.prod.conf の先頭に include "application.conf" を書いてください
 ```
 
+### 環境は変えずに、読むファイルだけ替える
+
+`-Djimble.conf=application.batch` を渡すと、**環境（`env`）に関係なく** `application.batch.conf` だけを読みます（2.5.3 から）。
+環境はそのままなので、`env = local` なら `isLocal()` も true のままです。
+同じアプリをバッチとして動かすときなど、環境は変えずに設定だけ替えたいときに使います。
+
+```bash
+java -Djimble.conf=application.batch -jar app.jar
+```
+
+- 拡張子は書いても書かなくてもかまいません
+- 置き場所は環境別ファイルと同じ `conf/`（クラスパスの中）です。jar の外は指せません
+- **見つからなければ起動時に落ちます**（黙って `application.conf` を読みません）
+- 共通を読み込むのは、ここでもファイルの `include "application.conf"` です
+
 ## 秘密はファイルに書かない
 
 ```conf

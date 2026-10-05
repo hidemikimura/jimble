@@ -219,8 +219,21 @@ The `jimble new` skeleton creates `conf/logback.xml` (`conf/` goes into the jar)
 > Leave the configuration file out and you get logback's defaults, where
 > **the access log and the app's own logs land in the same place, mixed together.**
 
-To split by environment, pass `-Dlogback.configurationFile=conf/logback.prod.xml`
-instead of using `logback.xml`.
+To split by environment or by how you run it (as a batch, say), put another file such as `conf/logback.batch.xml`
+and point at it **by its name on the classpath** when starting.
+
+```bash
+java -Djimble.conf=application.batch -Dlogback.configurationFile=logback.batch.xml -jar app.jar
+```
+
+`conf/` goes into the jar, so the bare name is found inside the jar.
+**Written as a path** like `conf/logback.batch.xml`, it is looked up from the working directory,
+and starting the jar from somewhere else will not find it.
+
+> [!TRAP]
+> **logback does not stop when the file you point at is missing.**
+> It warns and carries on with its defaults (everything to the console), so a wrong name mixes your logs together.
+> Check how the logs come out right after startup (`-Djimble.conf`, by contrast, fails at startup when its file is missing).
 
 ## Catching it in tests
 
