@@ -214,8 +214,20 @@ jimble は logback とエンコーダを持っていますが、**設定ファ�
 > 設定ファイルを置かないと logback の既定になり、
 > **アクセスログもアプリのログも同じところに混ざります。**
 
-環境で分けたいときは、`logback.xml` の代わりに
-`-Dlogback.configurationFile=conf/logback.prod.xml` を渡してください。
+環境や動かし方（バッチなど）で分けたいときは、`conf/logback.batch.xml` のように別のファイルを置き、
+起動するときに**クラスパスの中の名前**で指してください。
+
+```bash
+java -Djimble.conf=application.batch -Dlogback.configurationFile=logback.batch.xml -jar app.jar
+```
+
+`conf/` は jar に入るので、名前だけで jar の中から読めます。
+`conf/logback.batch.xml` のように**パスで書くと、作業ディレクトリから探す**ので、jar を別の場所から起動すると見つかりません。
+
+> [!TRAP]
+> **logback は、指したファイルが見つからなくても止まりません。**
+> 警告を出して既定（全部まとめてコンソール）で動き続けるので、名前を間違えるとログが混ざります。
+> 起動直後のログの出方で確かめてください（`-Djimble.conf` は見つからなければ起動時に落ちます）。
 
 ## テストで拾う
 
