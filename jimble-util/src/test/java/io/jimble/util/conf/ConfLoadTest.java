@@ -39,6 +39,7 @@ class ConfLoadTest {
 	void restore () {
 
 		System.clearProperty(OLD_CONF_DIR);
+		System.clearProperty(Conf.PROPERTY_CONF);
 		System.clearProperty(Conf.PROPERTY_ENV);
 		System.clearProperty(Conf.KEY_ENV);
 		Conf.reload();
@@ -233,6 +234,54 @@ class ConfLoadTest {
 		assertEquals(1, Conf.sources().size(), Conf.sources().toString());
 		assertTrue(Conf.sources().get(0).endsWith("application.conf"), Conf.sources().toString());
 		assertFalse(Conf.sources().get(0).contains("nowhere"), Conf.sources().toString());
+
+	}
+
+
+	@Test
+	@DisplayName("D-293 -Djimble.conf で、環境はそのままに読むファイルだけ替える")
+	void namedConf () {
+
+		System.setProperty(Conf.PROPERTY_CONF, "application.unittest");
+		Conf.reload();
+
+		assertEquals("local", Conf.env(), "環境まで変わった");
+		assertTrue(Conf.conf().isLocal());
+		assertEquals("unittest", Conf.conf().getString("conf.test.origin", ""));
+		// include も効く
+		assertEquals("共通だけ", Conf.conf().getString("conf.test.base_only", ""));
+		assertTrue(Conf.sources().stream().anyMatch(source -> source.contains("application.unittest")), Conf.sources().toString());
+
+	}
+
+	@Test
+	@DisplayName("D-293 -Djimble.conf は環境別ファイルより勝つ。拡張子を書いてもよい")
+	void namedConfWinsOverEnv () {
+
+		System.setProperty(Conf.PROPERTY_ENV, "partial");
+		System.setProperty(Conf.PROPERTY_CONF, "application.unittest.conf");
+		Conf.reload();
+
+		assertEquals("partial", Conf.env());
+		assertEquals("unittest", Conf.conf().getString("conf.test.origin", ""));
+
+	}
+
+	@Test
+	@DisplayName("D-293 指したファイルが無ければ落とす。クラスパスの外は指せない")
+	void namedConfMissingOrOutside () {
+
+		System.setProperty(Conf.PROPERTY_CONF, "application.nowhere");
+		Conf.reload();
+
+		IllegalStateException missing = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, Conf::conf);
+		assertTrue(missing.getMessage().contains("application.nowhere"), missing.getMessage());
+
+		for (String outside : List.of("../application", "/etc/application", "C:\\conf\\application")) {
+			System.setProperty(Conf.PROPERTY_CONF, outside);
+			Conf.reload();
+			org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, Conf::conf, outside);
+		}
 
 	}
 

@@ -10,6 +10,7 @@
 
 | | |
 |---|---|
+| **`-Djimble.conf` で、環境は変えずに読む設定ファイルだけ替える**（D-293） | `-Djimble.conf=application.batch` なら、環境（`env`）に関係なくクラスパスの `application.batch.conf` だけを読みます。環境はそのまま（`local` なら `isLocal()` も true）なので、同じアプリをバッチとして動かすときなどに使えます。見つからなければ起動時に落とします |
 | **HTTPS の判定に `X-Forwarded-Proto` を使う**（D-292） | `server.trust_proxy = true` なら、`request().scheme()` と新しい `request().isSecure()` が、前段のプロキシが付けた `X-Forwarded-Proto` を見ます。TLS をロードバランサで終端していても、https で来たことが分かります。`server.trusted_proxies` を書いていれば接続元がそこにいるときだけ見て、値が複数なら右端（いちばん近い中継が付けたもの）を使います |
 
 ### 直したこと

@@ -89,6 +89,21 @@ missing.
 > In English: keys that exist only in application.conf are not being read — cipher,
 > session, server. Put `include "application.conf"` at the top of application.prod.conf.
 
+### Switching only the file, not the environment
+
+Pass `-Djimble.conf=application.batch` and only `application.batch.conf` is read, **whatever the environment (`env`) is** (since 2.5.3).
+The environment stays as it is, so with `env = local`, `isLocal()` is still true.
+Use it when you want different settings without changing the environment, such as running the same app as a batch.
+
+```bash
+java -Djimble.conf=application.batch -jar app.jar
+```
+
+- The extension is optional
+- It lives in the same `conf/` as the environment files (on the classpath); nothing outside the jar can be named
+- **If it is not found, startup fails** (it does not quietly read `application.conf` instead)
+- Pulling in the common settings is still the file's own `include "application.conf"`
+
 ## Do not write secrets in the file
 
 ```conf
