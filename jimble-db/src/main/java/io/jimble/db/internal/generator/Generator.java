@@ -348,29 +348,54 @@ public class Generator {
 				}
 			}
 
+			/*
+			 * <b>テーブルごとのメソッドで、1行ずつ append して組み立てる</b>（D-294）。
+			 *
+			 * かつては全テーブルぶんを「+」でつないだ1つの式にしていた。javac は「+」の連なりを入れ子の木として
+			 * 再帰でたどるので、テーブルと列が多い DB（1,400 行・数千の「+」）では<b>スタックの限界すれすれ</b>になった。
+			 * 1つのメソッドにまとめると、今度はメソッドの大きさ（64KB）に当たりうるので、テーブルごとに分ける。
+			 * 出来上がる文字列は前と同じ。
+			 */
 			textOutput.writeLine("\t/**");
 			textOutput.writeLine("\t * schema SQL");
 			textOutput.writeLine("\t */");
-			textOutput.writeLine("\tpublic static final String SchemaSQL = ");
+			textOutput.writeLine("\tpublic static final String SchemaSQL = schemaSql();");
+			textOutput.writeLine("");
+			textOutput.writeLine("\t/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */");
+			textOutput.writeLine("\tprivate static String schemaSql () {");
+			textOutput.writeLine("");
+			textOutput.writeLine("\t\tStringBuilder sql = new StringBuilder();");
+			textOutput.writeLine("");
 			for (TableInfo tableInfo : tableInfoList) {
+				textOutput.writeLine("\t\tschemaSql_%s(sql);".formatted(tableInfo.name));
+			}
+			textOutput.writeLine("");
+			textOutput.writeLine("\t\treturn sql.toString();");
+			textOutput.writeLine("");
+			textOutput.writeLine("\t}");
+
+			for (TableInfo tableInfo : tableInfoList) {
+
 				textOutput.writeLine("");
 
 				String tableComment = tableInfo.getCommentNoVersion();
-				textOutput.write("\t\t/* " + tableInfo.name);
+				textOutput.write("\t/* " + tableInfo.name);
 				if (tableComment != null && !tableComment.isEmpty()) {
-					textOutput.write("（" + tableComment + "）");
+					textOutput.write("（" + javaComment(tableComment) + "）");
 				}
 				textOutput.write(" */\n");
 
-				textOutput.write("\t\t\"create table \" + ");
-				textOutput.write(tableInfo.name + " + \" ( \" + \n");
+				textOutput.writeLine("\tprivate static void schemaSql_%s (StringBuilder sql) {".formatted(tableInfo.name));
+				textOutput.writeLine("");
+
+				textOutput.writeLine("\t\tsql.append(\"create table \").append(%s).append(\" ( \");".formatted(tableInfo.name));
 
 				for (int i = 0; i < tableInfo.columnList.size(); i++) {
 					ColumnInfo columnInfo = tableInfo.columnList.get(i);
 
-					textOutput.write("\t\t\t");
+					textOutput.write("\t\tsql.append(");
 					textOutput.write(tableInfo.className + "." + columnInfo.name);
-					textOutput.write(" + \" " + columnInfo.type);
+					textOutput.write(").append(\" " + columnInfo.type);
 					if (columnInfo.extra != null && !columnInfo.extra.isEmpty()) {
 						textOutput.write(" " + columnInfo.extra);
 					}
@@ -388,22 +413,22 @@ public class Generator {
 					if (i < tableInfo.columnList.size() - 1) {
 						textOutput.write(",");
 					}
-					textOutput.write("\" + \n");
+					textOutput.write("\");\n");
 				}
 
-				textOutput.write("\t\t\")");
+				textOutput.write("\t\tsql.append(\")");
 				if (reader.inlineComment() && tableComment != null && !tableComment.isEmpty()) {
 					textOutput.write(" comment '" + escapeComment(sqlLiteral(tableComment)) + "'");
 				}
-				textOutput.write("; \" + \n");
+				textOutput.write("; \");\n");
 
 				for (IndexInfo indexInfo : tableInfo.indexList) {
 					if (indexInfo.isPrimary) {
-						textOutput.writeLine("\t\t\"" + reader.addPrimaryKeySql(tableInfo.name, indexInfo.columnNameList) + "\" +");
+						textOutput.writeLine("\t\tsql.append(\"" + reader.addPrimaryKeySql(tableInfo.name, indexInfo.columnNameList) + "\");");
 					} else if (indexInfo.isUnique) {
-						textOutput.writeLine("\t\t\"" + reader.addUniqueSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList) + "\" +");
+						textOutput.writeLine("\t\tsql.append(\"" + reader.addUniqueSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList) + "\");");
 					} else {
-						textOutput.writeLine("\t\t\"" + reader.addIndexSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList, indexInfo.predicate) + "\" +");
+						textOutput.writeLine("\t\tsql.append(\"" + reader.addIndexSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList, indexInfo.predicate) + "\");");
 					}
 				}
 
@@ -411,20 +436,23 @@ public class Generator {
 				if (!reader.inlineComment()) {
 
 					if (tableComment != null && !tableComment.isEmpty()) {
-						textOutput.writeLine("\t\t\"" + escapeComment(reader.tableCommentSql(tableInfo.name, tableComment)) + "\" +");
+						textOutput.writeLine("\t\tsql.append(\"" + escapeComment(reader.tableCommentSql(tableInfo.name, tableComment)) + "\");");
 					}
 
 					for (ColumnInfo columnInfo : tableInfo.columnList) {
 						if (columnInfo.comment != null && !columnInfo.comment.isEmpty()) {
-							textOutput.writeLine("\t\t\""
+							textOutput.writeLine("\t\tsql.append(\""
 								+ escapeComment(reader.columnCommentSql(tableInfo.name, columnInfo.name, columnInfo.comment))
-								+ "\" +");
+								+ "\");");
 						}
 					}
 
 				}
+
+				textOutput.writeLine("");
+				textOutput.writeLine("\t}");
+
 			}
-			textOutput.writeLine("\t\"\";");
 
 
 			textOutput.writeLine("}");

@@ -436,6 +436,42 @@ class GeneratorIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-294 SchemaSQL はテーブルごとのメソッドで1行ずつ組み立てる（「+」の長い式にしない）。中身は同じ")
+	void schemaSqlIsBuiltPerTable () throws Exception {
+
+		Generator.generate(outputDir.toFile(), PACKAGE);
+
+		Path schemaSource;
+		try (Stream<Path> files = Files.walk(outputDir)) {
+			schemaSource = files.filter(path -> path.getFileName().toString().equals("JimbleTest.java")).findFirst().orElseThrow();
+		}
+
+		String source = Files.readString(schemaSource);
+
+		assertTrue(source.contains("public static final String SchemaSQL = schemaSql();"), source);
+		assertTrue(source.contains("private static void schemaSql_gen_item (StringBuilder sql)"), source);
+
+		// 「+」でつなぐ行が無い（javac が深く再帰する形にしない）
+		assertFalse(source.lines().anyMatch(line -> line.stripTrailing().endsWith("+")), "「+」でつないでいる行がある");
+
+		List<String> errors = compile(outputDir);
+		assertTrue(errors.isEmpty(), String.join("\n", errors));
+
+		try (java.net.URLClassLoader loader = new java.net.URLClassLoader(
+				new java.net.URL[]{ outputDir.resolve("__classes").toUri().toURL() }, getClass().getClassLoader())) {
+
+			String sql = (String) Class.forName(PACKAGE + ".jimble_test.JimbleTest", true, loader).getField("SchemaSQL").get(null);
+
+			assertTrue(sql.contains("create table gen_item ( gen_item.id "), sql);
+			assertTrue(sql.contains("code "), sql);
+			assertTrue(sql.contains("alter table gen_item add primary key (id);"), sql);
+			assertTrue(sql.contains("gen_item_code"), sql);
+
+		}
+
+	}
+
+	@Test
 	@DisplayName("生成した Java が実際にコンパイルできる")
 	void generatedSourceCompiles () {
 
