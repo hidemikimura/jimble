@@ -47,58 +47,82 @@ public class ApprovalDataExample extends ApprovalDataExampleSchema {
 	/**
 	 * schema SQL
 	 */
-	public static final String SchemaSQL = 
+	public static final String SchemaSQL = schemaSql();
 
-		/* notice（通知） */
-		"create table " + notice + " ( " + 
-			Notice.id + " bigserial not null," + 
-			Notice.request_id + " bigint not null," + 
-			Notice.to_staff_id + " bigint not null," + 
-			Notice.kind + " character varying(30) not null," + 
-			Notice.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table notice add primary key (id);" +
-		"alter table notice add constraint notice__request_kind unique (request_id, kind);" +
-		"comment on table notice is '通知';" +
-		"comment on column notice.id is 'id';" +
-		"comment on column notice.request_id is 'request_id';" +
-		"comment on column notice.to_staff_id is 'to_staff_id';" +
-		"comment on column notice.kind is 'kind';" +
-		"comment on column notice.created_at is 'created_at';" +
+	/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */
+	private static String schemaSql () {
 
-		/* rate（レート） */
-		"create table " + rate + " ( " + 
-			Rate.id + " bigserial not null," + 
-			Rate.code + " character varying(20) not null," + 
-			Rate.value + " bigint not null," + 
-			Rate.updated_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table rate add primary key (id);" +
-		"alter table rate add constraint rate_code_key unique (code);" +
-		"comment on table rate is 'レート';" +
-		"comment on column rate.id is 'id';" +
-		"comment on column rate.code is 'code';" +
-		"comment on column rate.value is 'value';" +
-		"comment on column rate.updated_at is 'updated_at';" +
+		StringBuilder sql = new StringBuilder();
 
-		/* request（申請） */
-		"create table " + request + " ( " + 
-			Request.id + " bigserial not null," + 
-			Request.staff_id + " bigint not null," + 
-			Request.amount + " bigint not null," + 
-			Request.status + " character varying(20) not null," + 
-			Request.decided_by + " bigint," + 
-			Request.decided_at + " timestamp without time zone," + 
-			Request.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table request add primary key (id);" +
-		"comment on table request is '申請';" +
-		"comment on column request.id is 'id';" +
-		"comment on column request.staff_id is 'staff_id';" +
-		"comment on column request.amount is 'amount';" +
-		"comment on column request.status is 'status';" +
-		"comment on column request.decided_by is 'decided_by';" +
-		"comment on column request.decided_at is 'decided_at';" +
-		"comment on column request.created_at is 'created_at';" +
-	"";
+		schemaSql_notice(sql);
+		schemaSql_rate(sql);
+		schemaSql_request(sql);
+
+		return sql.toString();
+
+	}
+
+	/* notice（通知） */
+	private static void schemaSql_notice (StringBuilder sql) {
+
+		sql.append("create table ").append(notice).append(" ( ");
+		sql.append(Notice.id).append(" bigserial not null,");
+		sql.append(Notice.request_id).append(" bigint not null,");
+		sql.append(Notice.to_staff_id).append(" bigint not null,");
+		sql.append(Notice.kind).append(" character varying(30) not null,");
+		sql.append(Notice.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table notice add primary key (id);");
+		sql.append("alter table notice add constraint notice__request_kind unique (request_id, kind);");
+		sql.append("comment on table notice is '通知';");
+		sql.append("comment on column notice.id is 'id';");
+		sql.append("comment on column notice.request_id is 'request_id';");
+		sql.append("comment on column notice.to_staff_id is 'to_staff_id';");
+		sql.append("comment on column notice.kind is 'kind';");
+		sql.append("comment on column notice.created_at is 'created_at';");
+
+	}
+
+	/* rate（レート） */
+	private static void schemaSql_rate (StringBuilder sql) {
+
+		sql.append("create table ").append(rate).append(" ( ");
+		sql.append(Rate.id).append(" bigserial not null,");
+		sql.append(Rate.code).append(" character varying(20) not null,");
+		sql.append(Rate.value).append(" bigint not null,");
+		sql.append(Rate.updated_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table rate add primary key (id);");
+		sql.append("alter table rate add constraint rate_code_key unique (code);");
+		sql.append("comment on table rate is 'レート';");
+		sql.append("comment on column rate.id is 'id';");
+		sql.append("comment on column rate.code is 'code';");
+		sql.append("comment on column rate.value is 'value';");
+		sql.append("comment on column rate.updated_at is 'updated_at';");
+
+	}
+
+	/* request（申請） */
+	private static void schemaSql_request (StringBuilder sql) {
+
+		sql.append("create table ").append(request).append(" ( ");
+		sql.append(Request.id).append(" bigserial not null,");
+		sql.append(Request.staff_id).append(" bigint not null,");
+		sql.append(Request.amount).append(" bigint not null,");
+		sql.append(Request.status).append(" character varying(20) not null,");
+		sql.append(Request.decided_by).append(" bigint,");
+		sql.append(Request.decided_at).append(" timestamp without time zone,");
+		sql.append(Request.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table request add primary key (id);");
+		sql.append("comment on table request is '申請';");
+		sql.append("comment on column request.id is 'id';");
+		sql.append("comment on column request.staff_id is 'staff_id';");
+		sql.append("comment on column request.amount is 'amount';");
+		sql.append("comment on column request.status is 'status';");
+		sql.append("comment on column request.decided_by is 'decided_by';");
+		sql.append("comment on column request.decided_at is 'decided_at';");
+		sql.append("comment on column request.created_at is 'created_at';");
+
+	}
 }

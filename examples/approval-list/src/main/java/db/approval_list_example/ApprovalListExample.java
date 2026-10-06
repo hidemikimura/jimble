@@ -40,55 +40,79 @@ public class ApprovalListExample extends ApprovalListExampleSchema {
 	/**
 	 * schema SQL
 	 */
-	public static final String SchemaSQL = 
+	public static final String SchemaSQL = schemaSql();
 
-		/* department（部署） */
-		"create table " + department + " ( " + 
-			Department.id + " bigserial not null," + 
-			Department.name + " character varying(100) not null," + 
-			Department.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table department add primary key (id);" +
-		"comment on table department is '部署';" +
-		"comment on column department.id is 'id';" +
-		"comment on column department.name is 'name';" +
-		"comment on column department.created_at is 'created_at';" +
+	/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */
+	private static String schemaSql () {
 
-		/* request（申請） */
-		"create table " + request + " ( " + 
-			Request.id + " bigserial not null," + 
-			Request.staff_id + " bigint not null," + 
-			Request.kind + " character varying(20) not null," + 
-			Request.amount + " bigint not null," + 
-			Request.needed_on + " date not null," + 
-			Request.status + " character varying(20) not null," + 
-			Request.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table request add primary key (id);" +
-		"create index request_staff on request (staff_id, created_at);" +
-		"create index request_status on request (status, created_at);" +
-		"comment on table request is '申請';" +
-		"comment on column request.id is 'id';" +
-		"comment on column request.staff_id is 'staff_id';" +
-		"comment on column request.kind is 'kind';" +
-		"comment on column request.amount is 'amount';" +
-		"comment on column request.needed_on is 'needed_on';" +
-		"comment on column request.status is 'status';" +
-		"comment on column request.created_at is 'created_at';" +
+		StringBuilder sql = new StringBuilder();
 
-		/* staff（社員） */
-		"create table " + staff + " ( " + 
-			Staff.id + " bigserial not null," + 
-			Staff.department_id + " bigint not null," + 
-			Staff.name + " character varying(100) not null," + 
-			Staff.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table staff add primary key (id);" +
-		"create index staff_department on staff (department_id);" +
-		"comment on table staff is '社員';" +
-		"comment on column staff.id is 'id';" +
-		"comment on column staff.department_id is 'department_id';" +
-		"comment on column staff.name is 'name';" +
-		"comment on column staff.created_at is 'created_at';" +
-	"";
+		schemaSql_department(sql);
+		schemaSql_request(sql);
+		schemaSql_staff(sql);
+
+		return sql.toString();
+
+	}
+
+	/* department（部署） */
+	private static void schemaSql_department (StringBuilder sql) {
+
+		sql.append("create table ").append(department).append(" ( ");
+		sql.append(Department.id).append(" bigserial not null,");
+		sql.append(Department.name).append(" character varying(100) not null,");
+		sql.append(Department.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table department add primary key (id);");
+		sql.append("comment on table department is '部署';");
+		sql.append("comment on column department.id is 'id';");
+		sql.append("comment on column department.name is 'name';");
+		sql.append("comment on column department.created_at is 'created_at';");
+
+	}
+
+	/* request（申請） */
+	private static void schemaSql_request (StringBuilder sql) {
+
+		sql.append("create table ").append(request).append(" ( ");
+		sql.append(Request.id).append(" bigserial not null,");
+		sql.append(Request.staff_id).append(" bigint not null,");
+		sql.append(Request.kind).append(" character varying(20) not null,");
+		sql.append(Request.amount).append(" bigint not null,");
+		sql.append(Request.needed_on).append(" date not null,");
+		sql.append(Request.status).append(" character varying(20) not null,");
+		sql.append(Request.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table request add primary key (id);");
+		sql.append("create index request_staff on request (staff_id, created_at);");
+		sql.append("create index request_status on request (status, created_at);");
+		sql.append("comment on table request is '申請';");
+		sql.append("comment on column request.id is 'id';");
+		sql.append("comment on column request.staff_id is 'staff_id';");
+		sql.append("comment on column request.kind is 'kind';");
+		sql.append("comment on column request.amount is 'amount';");
+		sql.append("comment on column request.needed_on is 'needed_on';");
+		sql.append("comment on column request.status is 'status';");
+		sql.append("comment on column request.created_at is 'created_at';");
+
+	}
+
+	/* staff（社員） */
+	private static void schemaSql_staff (StringBuilder sql) {
+
+		sql.append("create table ").append(staff).append(" ( ");
+		sql.append(Staff.id).append(" bigserial not null,");
+		sql.append(Staff.department_id).append(" bigint not null,");
+		sql.append(Staff.name).append(" character varying(100) not null,");
+		sql.append(Staff.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table staff add primary key (id);");
+		sql.append("create index staff_department on staff (department_id);");
+		sql.append("comment on table staff is '社員';");
+		sql.append("comment on column staff.id is 'id';");
+		sql.append("comment on column staff.department_id is 'department_id';");
+		sql.append("comment on column staff.name is 'name';");
+		sql.append("comment on column staff.created_at is 'created_at';");
+
+	}
 }

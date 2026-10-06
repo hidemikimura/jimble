@@ -40,61 +40,85 @@ public class ApprovalFormsExample extends ApprovalFormsExampleSchema {
 	/**
 	 * schema SQL
 	 */
-	public static final String SchemaSQL = 
+	public static final String SchemaSQL = schemaSql();
 
-		/* attachment（添付） */
-		"create table " + attachment + " ( " + 
-			Attachment.id + " bigserial not null," + 
-			Attachment.request_id + " bigint not null," + 
-			Attachment.file_name + " character varying(250) not null," + 
-			Attachment.content_type + " character varying(100) not null," + 
-			Attachment.bytes + " bigint not null," + 
-			Attachment.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table attachment add primary key (id);" +
-		"comment on table attachment is '添付';" +
-		"comment on column attachment.id is '添付ID';" +
-		"comment on column attachment.request_id is '申請ID';" +
-		"comment on column attachment.file_name is '保存したファイル名';" +
-		"comment on column attachment.content_type is '種類';" +
-		"comment on column attachment.bytes is '大きさ';" +
-		"comment on column attachment.created_at is '作成日時';" +
+	/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */
+	private static String schemaSql () {
 
-		/* request（申請） */
-		"create table " + request + " ( " + 
-			Request.id + " bigserial not null," + 
-			Request.kind + " character varying(20) not null," + 
-			Request.amount + " bigint not null," + 
-			Request.needed_on + " date," + 
-			Request.note + " text," + 
-			Request.status + " character varying(20) not null," + 
-			Request.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table request add primary key (id);" +
-		"comment on table request is '申請';" +
-		"comment on column request.id is '申請ID';" +
-		"comment on column request.kind is '種別（travel / supply / book）';" +
-		"comment on column request.amount is '金額（円）';" +
-		"comment on column request.needed_on is '希望日';" +
-		"comment on column request.note is '備考';" +
-		"comment on column request.status is '状態（draft / pending）';" +
-		"comment on column request.created_at is '作成日時';" +
+		StringBuilder sql = new StringBuilder();
 
-		/* request_item（申請の明細） */
-		"create table " + request_item + " ( " + 
-			RequestItem.id + " bigserial not null," + 
-			RequestItem.request_id + " bigint not null," + 
-			RequestItem.name + " character varying(100) not null," + 
-			RequestItem.amount + " bigint not null," + 
-			RequestItem.sort_no + " integer not null" + 
-		"); " + 
-		"alter table request_item add primary key (id);" +
-		"create index request_item_request on request_item (request_id, sort_no);" +
-		"comment on table request_item is '申請の明細';" +
-		"comment on column request_item.id is '明細ID';" +
-		"comment on column request_item.request_id is '申請ID';" +
-		"comment on column request_item.name is '品目';" +
-		"comment on column request_item.amount is '金額（円）';" +
-		"comment on column request_item.sort_no is '並び順';" +
-	"";
+		schemaSql_attachment(sql);
+		schemaSql_request(sql);
+		schemaSql_request_item(sql);
+
+		return sql.toString();
+
+	}
+
+	/* attachment（添付） */
+	private static void schemaSql_attachment (StringBuilder sql) {
+
+		sql.append("create table ").append(attachment).append(" ( ");
+		sql.append(Attachment.id).append(" bigserial not null,");
+		sql.append(Attachment.request_id).append(" bigint not null,");
+		sql.append(Attachment.file_name).append(" character varying(250) not null,");
+		sql.append(Attachment.content_type).append(" character varying(100) not null,");
+		sql.append(Attachment.bytes).append(" bigint not null,");
+		sql.append(Attachment.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table attachment add primary key (id);");
+		sql.append("comment on table attachment is '添付';");
+		sql.append("comment on column attachment.id is '添付ID';");
+		sql.append("comment on column attachment.request_id is '申請ID';");
+		sql.append("comment on column attachment.file_name is '保存したファイル名';");
+		sql.append("comment on column attachment.content_type is '種類';");
+		sql.append("comment on column attachment.bytes is '大きさ';");
+		sql.append("comment on column attachment.created_at is '作成日時';");
+
+	}
+
+	/* request（申請） */
+	private static void schemaSql_request (StringBuilder sql) {
+
+		sql.append("create table ").append(request).append(" ( ");
+		sql.append(Request.id).append(" bigserial not null,");
+		sql.append(Request.kind).append(" character varying(20) not null,");
+		sql.append(Request.amount).append(" bigint not null,");
+		sql.append(Request.needed_on).append(" date,");
+		sql.append(Request.note).append(" text,");
+		sql.append(Request.status).append(" character varying(20) not null,");
+		sql.append(Request.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table request add primary key (id);");
+		sql.append("comment on table request is '申請';");
+		sql.append("comment on column request.id is '申請ID';");
+		sql.append("comment on column request.kind is '種別（travel / supply / book）';");
+		sql.append("comment on column request.amount is '金額（円）';");
+		sql.append("comment on column request.needed_on is '希望日';");
+		sql.append("comment on column request.note is '備考';");
+		sql.append("comment on column request.status is '状態（draft / pending）';");
+		sql.append("comment on column request.created_at is '作成日時';");
+
+	}
+
+	/* request_item（申請の明細） */
+	private static void schemaSql_request_item (StringBuilder sql) {
+
+		sql.append("create table ").append(request_item).append(" ( ");
+		sql.append(RequestItem.id).append(" bigserial not null,");
+		sql.append(RequestItem.request_id).append(" bigint not null,");
+		sql.append(RequestItem.name).append(" character varying(100) not null,");
+		sql.append(RequestItem.amount).append(" bigint not null,");
+		sql.append(RequestItem.sort_no).append(" integer not null");
+		sql.append("); ");
+		sql.append("alter table request_item add primary key (id);");
+		sql.append("create index request_item_request on request_item (request_id, sort_no);");
+		sql.append("comment on table request_item is '申請の明細';");
+		sql.append("comment on column request_item.id is '明細ID';");
+		sql.append("comment on column request_item.request_id is '申請ID';");
+		sql.append("comment on column request_item.name is '品目';");
+		sql.append("comment on column request_item.amount is '金額（円）';");
+		sql.append("comment on column request_item.sort_no is '並び順';");
+
+	}
 }
