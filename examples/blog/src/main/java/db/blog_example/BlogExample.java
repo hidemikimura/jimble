@@ -54,8 +54,8 @@ public class BlogExample extends BlogExampleSchema {
 	private static void schemaSql_comment (StringBuilder sql) {
 
 		sql.append("create table ").append(comment).append(" ( ");
-		sql.append(Comment.id).append(" bigint unsigned auto_increment not null comment 'コメントID',");
-		sql.append(Comment.post_id).append(" bigint unsigned not null comment '記事ID',");
+		sql.append(Comment.id).append(" bigint(20) unsigned auto_increment not null comment 'コメントID',");
+		sql.append(Comment.post_id).append(" bigint(20) unsigned not null comment '記事ID',");
 		sql.append(Comment.name).append(" varchar(100) not null comment '名前',");
 		sql.append(Comment.body).append(" text not null comment '本文',");
 		sql.append(Comment.created_at).append(" datetime not null comment '作成日時'");
@@ -69,7 +69,7 @@ public class BlogExample extends BlogExampleSchema {
 	private static void schemaSql_post (StringBuilder sql) {
 
 		sql.append("create table ").append(post).append(" ( ");
-		sql.append(Post.id).append(" bigint unsigned auto_increment not null comment '記事ID',");
+		sql.append(Post.id).append(" bigint(20) unsigned auto_increment not null comment '記事ID',");
 		sql.append(Post.title).append(" varchar(250) not null comment 'タイトル',");
 		sql.append(Post.body).append(" text comment '本文',");
 		sql.append(Post.image_name).append(" varchar(250) comment '画像ファイル名',");
