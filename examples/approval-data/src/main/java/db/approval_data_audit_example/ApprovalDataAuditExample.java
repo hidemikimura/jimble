@@ -32,23 +32,37 @@ public class ApprovalDataAuditExample extends ApprovalDataAuditExampleSchema {
 	/**
 	 * schema SQL
 	 */
-	public static final String SchemaSQL = 
+	public static final String SchemaSQL = schemaSql();
 
-		/* audit_log（監査ログ） */
-		"create table " + audit_log + " ( " + 
-			AuditLog.id + " bigserial not null," + 
-			AuditLog.staff_id + " bigint not null," + 
-			AuditLog.action + " character varying(50) not null," + 
-			AuditLog.target + " character varying(100) not null," + 
-			AuditLog.created_at + " timestamp without time zone not null" + 
-		"); " + 
-		"alter table audit_log add primary key (id);" +
-		"create index audit_log__created_at on audit_log (created_at);" +
-		"comment on table audit_log is '監査ログ';" +
-		"comment on column audit_log.id is 'id';" +
-		"comment on column audit_log.staff_id is 'staff_id';" +
-		"comment on column audit_log.action is 'action';" +
-		"comment on column audit_log.target is 'target';" +
-		"comment on column audit_log.created_at is 'created_at';" +
-	"";
+	/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */
+	private static String schemaSql () {
+
+		StringBuilder sql = new StringBuilder();
+
+		schemaSql_audit_log(sql);
+
+		return sql.toString();
+
+	}
+
+	/* audit_log（監査ログ） */
+	private static void schemaSql_audit_log (StringBuilder sql) {
+
+		sql.append("create table ").append(audit_log).append(" ( ");
+		sql.append(AuditLog.id).append(" bigserial not null,");
+		sql.append(AuditLog.staff_id).append(" bigint not null,");
+		sql.append(AuditLog.action).append(" character varying(50) not null,");
+		sql.append(AuditLog.target).append(" character varying(100) not null,");
+		sql.append(AuditLog.created_at).append(" timestamp without time zone not null");
+		sql.append("); ");
+		sql.append("alter table audit_log add primary key (id);");
+		sql.append("create index audit_log__created_at on audit_log (created_at);");
+		sql.append("comment on table audit_log is '監査ログ';");
+		sql.append("comment on column audit_log.id is 'id';");
+		sql.append("comment on column audit_log.staff_id is 'staff_id';");
+		sql.append("comment on column audit_log.action is 'action';");
+		sql.append("comment on column audit_log.target is 'target';");
+		sql.append("comment on column audit_log.created_at is 'created_at';");
+
+	}
 }

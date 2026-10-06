@@ -36,29 +36,48 @@ public class BlogExample extends BlogExampleSchema {
 	/**
 	 * schema SQL
 	 */
-	public static final String SchemaSQL = 
+	public static final String SchemaSQL = schemaSql();
 
-		/* comment（コメント） */
-		"create table " + comment + " ( " + 
-			Comment.id + " bigint(20) unsigned auto_increment not null comment 'コメントID'," + 
-			Comment.post_id + " bigint(20) unsigned not null comment '記事ID'," + 
-			Comment.name + " varchar(100) not null comment '名前'," + 
-			Comment.body + " text not null comment '本文'," + 
-			Comment.created_at + " datetime not null comment '作成日時'" + 
-		") comment 'コメント'; " + 
-		"alter table comment add primary key (id);" +
-		"alter table comment add index comment_post (post_id, created_at);" +
+	/* schema SQL を組み立てる（テーブルごとに分ける。1つの式にすると javac が深く再帰する） */
+	private static String schemaSql () {
 
-		/* post（記事） */
-		"create table " + post + " ( " + 
-			Post.id + " bigint(20) unsigned auto_increment not null comment '記事ID'," + 
-			Post.title + " varchar(250) not null comment 'タイトル'," + 
-			Post.body + " text comment '本文'," + 
-			Post.image_name + " varchar(250) comment '画像ファイル名'," + 
-			Post.published + " tinyint(1) default '0' not null comment '公開'," + 
-			Post.created_at + " datetime not null comment '作成日時'" + 
-		") comment '記事'; " + 
-		"alter table post add primary key (id);" +
-		"alter table post add index post_published (published, created_at);" +
-	"";
+		StringBuilder sql = new StringBuilder();
+
+		schemaSql_comment(sql);
+		schemaSql_post(sql);
+
+		return sql.toString();
+
+	}
+
+	/* comment（コメント） */
+	private static void schemaSql_comment (StringBuilder sql) {
+
+		sql.append("create table ").append(comment).append(" ( ");
+		sql.append(Comment.id).append(" bigint(20) unsigned auto_increment not null comment 'コメントID',");
+		sql.append(Comment.post_id).append(" bigint(20) unsigned not null comment '記事ID',");
+		sql.append(Comment.name).append(" varchar(100) not null comment '名前',");
+		sql.append(Comment.body).append(" text not null comment '本文',");
+		sql.append(Comment.created_at).append(" datetime not null comment '作成日時'");
+		sql.append(") comment 'コメント'; ");
+		sql.append("alter table comment add primary key (id);");
+		sql.append("alter table comment add index comment_post (post_id, created_at);");
+
+	}
+
+	/* post（記事） */
+	private static void schemaSql_post (StringBuilder sql) {
+
+		sql.append("create table ").append(post).append(" ( ");
+		sql.append(Post.id).append(" bigint(20) unsigned auto_increment not null comment '記事ID',");
+		sql.append(Post.title).append(" varchar(250) not null comment 'タイトル',");
+		sql.append(Post.body).append(" text comment '本文',");
+		sql.append(Post.image_name).append(" varchar(250) comment '画像ファイル名',");
+		sql.append(Post.published).append(" tinyint(1) default '0' not null comment '公開',");
+		sql.append(Post.created_at).append(" datetime not null comment '作成日時'");
+		sql.append(") comment '記事'; ");
+		sql.append("alter table post add primary key (id);");
+		sql.append("alter table post add index post_published (published, created_at);");
+
+	}
 }
