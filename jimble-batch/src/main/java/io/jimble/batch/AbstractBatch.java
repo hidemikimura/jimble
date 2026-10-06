@@ -618,7 +618,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 					batchEnded = true;
 
-					Log.info("バッチが終わりました: %s (%s)".formatted(batchName(), className()));
+					Log.info("バッチが終わりました(%s ms): %s (%s)".formatted((System.currentTimeMillis() - startTime), batchName(), className()));
 
 					/*
 					 * ここは {@code isCancelOrder()} ではなくフィールドを見る。
@@ -641,7 +641,7 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 					span.error(ex);
 
-					Log.error(ex, "バッチが失敗しました: %s (%s)".formatted(batchName(), className()));
+					Log.error(ex, "バッチが失敗しました(%s ms): %s (%s)".formatted((System.currentTimeMillis() - startTime), batchName(), className()));
 
 					putException(ex);
 					finishHistory(db, BatchHistoryStatus.error, startTime);
