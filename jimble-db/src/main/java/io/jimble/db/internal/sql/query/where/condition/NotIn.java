@@ -79,8 +79,13 @@ public class NotIn implements ICondition {
 	@Override
 	public boolean hasParameter() {
 
-		if (value instanceof SelectBuilder selectBuilder) {
-			return !selectBuilder.params().isEmpty();
+		if (value instanceof SelectBuilder) {
+			/*
+			 * <b>ここでサブクエリのパラメータを組み立てない</b>（D-296）。呼ぶ側は true なら getParameter() を足すだけで、
+			 * 空のリストは平らにするときに消える。組み立てて空か確かめていたので、サブクエリのパラメータを2回作り、
+			 * 入れ子になるたびに倍になっていた
+			 */
+			return true;
 		} else if (value instanceof IDsl dsl) {
 			return dsl.hasParameter();
 		} else if (value instanceof ISelect select) {

@@ -61,10 +61,13 @@ public final class SqlCache {
 	 *
 	 * maxarray は BLOB の列（byte[]）も通すために大きい。そのぶん、読むときに
 	 * 「本文より長い配列」を別に断る（{@link #deserialize(String)}。D-251）。
+	 *
+	 * <b>JsonArrayList は JSON の列が配列のときの型</b>（ResultSetConverter が作る）。2.5.4 までは入れていなかったので、
+	 * JSON の配列の列を含む結果は<b>読み戻すたびに断られ</b>、ヒットするたびにエラーのログを出して引き直していた（D-297）。
 	 */
 	private static final ObjectInputFilter FILTER = ObjectInputFilter.Config.createFilter(
 		"maxdepth=64;maxarray=10000000;"
-			+ "io.jimble.util.data.Data;"
+			+ "io.jimble.util.data.Data;io.jimble.util.internal.JsonArrayList;"
 			+ "java.util.*;java.lang.*;java.math.*;java.sql.*;java.time.*;"
 			+ "[B;[Ljava.lang.Object;;"
 			+ "!*");
@@ -274,9 +277,7 @@ public final class SqlCache {
 
 		try {
 
-			String value = store().get(key);
-
-			return value == null ? null : deserialize(value);
+			return store().getRows(key);
 
 		} catch (Exception ex) {
 
@@ -307,7 +308,7 @@ public final class SqlCache {
 
 		try {
 
-			store().put(key, tags, serialize(rows), SqlCacheConf.ttl());
+			store().putRows(key, tags, rows, SqlCacheConf.ttl());
 
 		} catch (Exception ex) {
 

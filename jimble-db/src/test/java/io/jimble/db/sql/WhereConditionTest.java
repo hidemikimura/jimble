@@ -364,6 +364,30 @@ class WhereConditionTest {
 
 	}
 
+	@Test
+	@DisplayName("D-296 入れ子の IN・NOT IN の副問い合わせでも、パラメータは1回ずつ書いた順に出る（無い副問い合わせは何も足さない）")
+	void nestedSubqueryParams () {
+
+		SelectBuilder inner = SQL.select(TestSchema.Feed.site_id)
+			.from(TestSchema.Feed.instance())
+			.where(TestSchema.Feed.title.like("%い%"));
+
+		SelectBuilder middle = SQL.select(TestSchema.Site.id)
+			.from(TestSchema.Site.instance())
+			.where(TestSchema.Site.id.in(inner).and(TestSchema.Site.feed_count.gt(5L)));
+
+		SelectBuilder noParams = SQL.select(TestSchema.Feed.site_id).from(TestSchema.Feed.instance());
+
+		SelectBuilder builder = select(
+			ID.eq(1L)
+				.and(ID.in(middle))
+				.and(ID.not_in(noParams))
+				.and(NAME.like("%あ%")));
+
+		assertEquals(List.of(1L, "%い%", 5L, "%あ%"), builder.params(), builder.sql());
+
+	}
+
 	// endregion
 
 	// region ここで固定していないこと

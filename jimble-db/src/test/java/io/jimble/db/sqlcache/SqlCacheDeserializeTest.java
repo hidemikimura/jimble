@@ -59,4 +59,18 @@ class SqlCacheDeserializeTest {
 
 	}
 
+	@Test
+	@DisplayName("D-297 JSON の配列の列（JsonArrayList）も読み戻せる")
+	void jsonArrayColumn () throws Exception {
+
+		io.jimble.util.data.Data row = new io.jimble.util.data.Data();
+		row.put("tags", new io.jimble.util.internal.JsonArrayList(java.util.List.of("a", "b")));
+
+		java.util.List<io.jimble.util.data.Data> rows = SqlCache.deserialize(SqlCache.serialize(java.util.List.of(row)));
+
+		assertEquals(java.util.List.of("a", "b"), rows.getFirst().get("tags"));
+		assertEquals(io.jimble.util.internal.JsonArrayList.class, rows.getFirst().get("tags").getClass());
+
+	}
+
 }

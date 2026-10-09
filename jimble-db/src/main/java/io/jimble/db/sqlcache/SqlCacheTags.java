@@ -77,6 +77,9 @@ public final class SqlCacheTags {
 	/* タグの区切り */
 	private static final String SEPARATOR = "#";
 
+	/* 数字だけの文字列（行ごと・値ごとに見るので、毎回正規表現を作らない。D-296） */
+	private static final java.util.regex.Pattern INTEGER = java.util.regex.Pattern.compile("-?\\d{1,18}");
+
 	/* 値の区切り（複合キー） */
 	private static final String VALUE_SEPARATOR = "|";
 
@@ -221,7 +224,7 @@ public final class SqlCacheTags {
 		 * 数字だけの文字列は数値と同じにそろえる。
 		 * DB が bigint を返し、更新側が "1" を書いた、という食い違いを吸収する。
 		 */
-		if (text.matches("-?\\d{1,18}")) {
+		if (INTEGER.matcher(text).matches()) {
 			return String.valueOf(Long.parseLong(text));
 		}
 

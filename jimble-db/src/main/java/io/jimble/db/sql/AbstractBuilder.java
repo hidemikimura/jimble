@@ -21,6 +21,12 @@ import java.util.regex.Pattern;
  */
 public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBuilder {
 
+	/*
+	 * 文字列で渡された in / between の値の区切り（改行か「|」）。
+	 * 呼ぶたびに replaceAll と split(Pattern.quote(...)) で正規表現を2つ作っていた（D-296）
+	 */
+	private static final Pattern ARRAY_SEPARATOR = Pattern.compile("\\R|\\|");
+
 	/**
 	 * Dataからクエリに適用する
 	 *
@@ -53,7 +59,7 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 
 				Object value = tableData.getObject(columnQuery);
 
-				String[] querys = columnQuery.split(Pattern.quote("|"));
+				String[] querys = columnQuery.split("\\|");
 
 				/*
 				 * 空の値は例外（要件 D-194）。1.x は {@code = NULL} になって黙って0件だった——
@@ -322,7 +328,7 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 				return null;
 			}
 		} else if (value instanceof String str) {
-			String[] values = str.replaceAll("\\R", "|").split(Pattern.quote("|"));
+			String[] values = ARRAY_SEPARATOR.split(str);
 			Collections.addAll(res, values);
 		}
 

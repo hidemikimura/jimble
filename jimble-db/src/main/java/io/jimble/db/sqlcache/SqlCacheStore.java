@@ -1,6 +1,9 @@
 package io.jimble.db.sqlcache;
 
+import io.jimble.util.data.Data;
+
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -34,6 +37,46 @@ public interface SqlCacheStore {
 	 * @throws Exception	入れられなかった場合
 	 */
 	void put (String key, Set<String> tags, String value, Duration ttl) throws Exception;
+
+	/**
+	 * 結果を取り出す
+	 *
+	 * <p>
+	 * 既定は {@link #get(String)} の文字列を読み戻す。<b>返すのは呼んだ側だけのもの</b>で、
+	 * 書き換えても置き場の中身は変わらない。
+	 * </p>
+	 *
+	 * @param key	キー
+	 * @return	結果。無ければ null
+	 * @throws Exception	取り出せなかった場合
+	 */
+	default List<Data> getRows (String key) throws Exception {
+
+		String value = get(key);
+
+		return value == null ? null : SqlCache.deserialize(value);
+
+	}
+
+	/**
+	 * 結果を入れる
+	 *
+	 * <p>
+	 * 既定は書き出した文字列を {@link #put(String, Set, String, Duration)} に渡す。
+	 * <b>入れたあとで呼んだ側が {@code rows} を書き換えても、置き場の中身は変わらない</b>こと。
+	 * </p>
+	 *
+	 * @param key	キー
+	 * @param tags	依存するタグ
+	 * @param rows	結果
+	 * @param ttl	期限。0 なら無期限
+	 * @throws Exception	入れられなかった場合
+	 */
+	default void putRows (String key, Set<String> tags, List<Data> rows, Duration ttl) throws Exception {
+
+		put(key, tags, SqlCache.serialize(rows), ttl);
+
+	}
 
 	/**
 	 * タグのついたものを消す
