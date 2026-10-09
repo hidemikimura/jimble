@@ -3,6 +3,7 @@ package io.jimble.mq;
 import io.jimble.core.context.MqContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
+import io.jimble.db.DBSource;
 import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
 import io.jimble.mq.status.MqExecuteType;
@@ -18,6 +19,8 @@ import io.jimble.util.thread.VirtualThreadManager;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,9 +50,16 @@ import java.util.concurrent.TimeUnit;
  * <h2>拾い方</h2>
  * <p>
  * 実行種別（{@link MqExecuteType}）ごとにワーカーを立てる。
- * <b>DB から取るのはキューごとに1本の取り出し役</b>で、{@code SELECT ... FOR UPDATE SKIP LOCKED} で1件ずつ取り、
- * <b>手の空いたワーカーにその場で渡す</b>（ワーカーは待っている間 DB を触らない）。
+ * <b>DB から取るのはキューごとに1本の取り出し役</b>で、{@code SELECT ... FOR UPDATE SKIP LOCKED} で
+ * <b>手の空いているワーカーの数だけまとめて取り</b>、その場で渡す（ワーカーは待っている間 DB を触らない）。
  * <b>複数のプロセスが同時に回してもよい。</b>
+ * </p>
+ *
+ * <p>
+ * かつては<b>1回の取り出しで1件</b>だった（D-295）。1件ごとにトランザクションを張って DB と5回やり取りするので、
+ * 取り出し役1本が上限になり、<b>ワーカーを何本に増やしても秒あたりの件数が増えなかった</b>
+ * （手元の Mac で MySQL は約 550 件/秒、PostgreSQL は約 1,200〜1,400 件/秒で頭打ち）。
+ * まとめて取るようにして、32 本で MySQL 約 5,000 件/秒・PostgreSQL 約 8,800 件/秒になった（{@code jimble-load/mq-load.sh}）。
  * </p>
  *
  * <p>
@@ -58,7 +68,7 @@ import java.util.concurrent.TimeUnit;
  * </p>
  *
  * <p>
- * <b>先読みはしない</b>（D-35）。取り出し役が取るのは、<b>待っているワーカーがいるときだけ</b>で、
+ * <b>先読みはしない</b>（D-35）。取り出し役が取るのは、<b>待っているワーカーがいるときに、その人数ぶんだけ</b>で、
  * 取った行はすぐに渡す。止めるときに手元に溜まった行が残ることはない。
  * </p>
  *
@@ -85,6 +95,9 @@ import java.util.concurrent.TimeUnit;
  * </ol>
  */
 public final class MqQueue {
+
+	/** 1回の取り出しで取る件数の上限（スレッド数を大きくしても、IN 句をむやみに長くしない） */
+	static final int MAX_CLAIM = 100;
 
 	/* テーブル名 */
 	private final String queueName;
@@ -158,6 +171,9 @@ public final class MqQueue {
 
 		Map<MqExecuteType, Handoff> handoffs = new LinkedHashMap<>();
 
+		// ワーカーの手が空いたら取り出し役を起こす（実行種別をまたいで1つ）
+		Semaphore wake = new Semaphore(0);
+
 		for (MqExecuteType type : types) {
 
 			int threadCount = MqConf.threadCount(type);
@@ -165,7 +181,7 @@ public final class MqQueue {
 			Log.info("MQ ワーカーを起動します: %s / %s / %d スレッド"
 				.formatted(queueName, type.name(), threadCount));
 
-			Handoff handoff = new Handoff();
+			Handoff handoff = new Handoff(wake);
 			handoffs.put(type, handoff);
 
 			for (int i = 0; i < threadCount; i++) {
@@ -180,7 +196,7 @@ public final class MqQueue {
 
 		manager.execute(() -> {
 			Thread.currentThread().setName(pollerName(queueName));
-			poller(handoffs, cancelOrderNotify);
+			poller(handoffs, wake, cancelOrderNotify);
 		});
 
 		return manager;
@@ -374,9 +390,9 @@ public final class MqQueue {
 	 * 取り出し役から、手の空いたワーカーへ渡す口（実行種別ごとに1つ）
 	 *
 	 * <p>
-	 * <b>{@code idle} の許可 = 待っているワーカーの数。</b>ワーカーは待つ前に1つ足し、取り出し役は取る前に1つ引く。
-	 * 引けたときだけ DB から取るので、<b>待っている人がいないのに取ることはない</b>（先読みしない）。
-	 * 取れなかったら許可を戻す。
+	 * <b>{@code idle} の許可 = 待っているワーカーの数。</b>ワーカーは待つ前に1つ足し、取り出し役は取る前にあるだけ引く。
+	 * 引けた数までしか DB から取らないので、<b>待っている人がいないのに取ることはない</b>（先読みしない）。
+	 * 取れなかった分は許可を戻す。
 	 * </p>
 	 */
 	private static final class Handoff {
@@ -386,6 +402,31 @@ public final class MqQueue {
 
 		/* 渡すところ（溜めない） */
 		final SynchronousQueue<Claimed> queue = new SynchronousQueue<>();
+
+		/* 取り出し役を起こす（全種別で共有） */
+		final Semaphore wake;
+
+		Handoff (Semaphore wake) {
+			this.wake = wake;
+		}
+
+		/**
+		 * 待っているワーカーの数だけ許可を引く（上限 {@link MqQueue#MAX_CLAIM}）
+		 *
+		 * @return	引いた数
+		 */
+		int acquireIdle () {
+
+			int count = idle.drainPermits();
+
+			if (count > MAX_CLAIM) {
+				idle.release(count - MAX_CLAIM);
+				return MAX_CLAIM;
+			}
+
+			return count;
+
+		}
 
 	}
 
@@ -401,13 +442,17 @@ public final class MqQueue {
 	 * 取り出し役のループ（キューごとに1本）
 	 *
 	 * @param handoffs			実行種別ごとの渡す口
+	 * @param wake				ワーカーの手が空いたら許可が増えるもの
 	 * @param cancelOrderNotify	中断通知
 	 */
-	private void poller (Map<MqExecuteType, Handoff> handoffs, CancelOrderNotify cancelOrderNotify) {
+	private void poller (Map<MqExecuteType, Handoff> handoffs, Semaphore wake, CancelOrderNotify cancelOrderNotify) {
 
 		SleepManager sleepManager = new SleepManager(MqConf.pollMin().toMillis(), MqConf.pollMax().toMillis());
 
 		while (!cancelOrderNotify.isCancelOrder()) {
+
+			// ここから先で手が空いた分だけ、次の起こしになる
+			wake.drainPermits();
 
 			boolean found = false;
 			boolean anyIdle = false;
@@ -416,29 +461,39 @@ public final class MqQueue {
 
 				Handoff handoff = entry.getValue();
 
-				for (DB db : DBUtil.getDBList()) {
+				for (DBSource source : DBUtil.getDataSourceList()) {
 
 					// 待っているワーカーがいなければ、DB を見にいかない
-					if (!handoff.idle.tryAcquire()) {
+					int want = handoff.acquireIdle();
+
+					if (want == 0) {
 						break;
 					}
 
 					anyIdle = true;
 
-					Data row = claim(db, entry.getKey());
+					List<Data> rows = claim(DBUtil.getDB(source), entry.getKey(), want);
 
-					if (row == null) {
-						handoff.idle.release();
+					if (rows.size() < want) {
+						handoff.idle.release(want - rows.size());
+					}
+
+					if (rows.isEmpty()) {
 						continue;
 					}
 
 					found = true;
 
 					/*
-					 * <b>必ず渡し切る。</b>許可を引いた以上、待っているワーカーが1人いる。
+					 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
 					 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
+					 *
+					 * <b>{@link DB} は1件ごとに作り直す。</b>DB は握っている接続をフィールドに持つので、
+					 * 1つを何本ものワーカーで使うと接続を取り合い、プールへ戻らなくなる（D-295）
 					 */
-					putUninterruptibly(handoff.queue, new Claimed(db, row));
+					for (Data row : rows) {
+						putUninterruptibly(handoff.queue, new Claimed(DBUtil.getDB(source), row));
+					}
 
 				}
 
@@ -448,11 +503,19 @@ public final class MqQueue {
 				// 取れた。続けて見る（取れる限り、待たずに回す）
 				sleepManager.reset();
 			} else if (!anyIdle) {
-				// 全員が処理中。DB は見ずに、誰かの手が空くのを少し待つ
-				sleepManager.sleepMin();
+				/*
+				 * 全員が処理中。DB は見ずに、<b>誰かの手が空くまで待つ</b>（D-295）。
+				 * かつては poll_min（10ms）だけ眠っていたので、眠り始めた直後に手が空いたワーカーは
+				 * 最大 10ms 何もせずに待たされた。数 ms で終わる処理を少ないスレッドで回すと、
+				 * 処理しているより待っている時間のほうが長かった（2本・5ms の処理で約 130 件/秒。起こすようにして約 240 件/秒）
+				 */
+				sleepManager.sleepMax(wake);
 			} else {
-				// 手は空いているが、キューが空。だんだん間隔を伸ばす
-				sleepManager.sleep();
+				/*
+				 * 手は空いているが、キューが空。だんだん間隔を伸ばす。
+				 * <b>ほかの種別のワーカーの手が空いたら、そこで起きる</b>（その種別にはまだ溜まっているかもしれない）
+				 */
+				sleepManager.sleep(wake);
 			}
 
 		}
@@ -467,9 +530,14 @@ public final class MqQueue {
 	 */
 	private void worker (Handoff handoff, CancelOrderNotify cancelOrderNotify) {
 
+		// 1件処理し終えたら、次に待つときに取り出し役を起こす
+		boolean worked = false;
+
 		while (true) {
 
-			Claimed claimed = await(handoff);
+			Claimed claimed = await(handoff, worked);
+
+			worked = false;
 
 			if (claimed == null) {
 
@@ -492,6 +560,8 @@ public final class MqQueue {
 				fail(claimed.db(), claimed.row(), ex);
 			}
 
+			worked = true;
+
 		}
 
 	}
@@ -505,12 +575,23 @@ public final class MqQueue {
 	 * ここで諦めて抜けると、取り出し役が渡そうとした行を誰も受け取らない。
 	 * </p>
 	 *
-	 * @param handoff	渡す口
+	 * <p>
+	 * <b>処理し終えて戻ってきたときだけ、取り出し役を起こす</b>（D-295）。許可を足したあとで起こすので、
+	 * 起きた取り出し役からは、この1人が必ず見える。
+	 * 何も来ずに待ち直すときは起こさない（キューが空のときに、取り出し役の間隔を縮めてしまう）。
+	 * </p>
+	 *
+	 * @param handoff		渡す口
+	 * @param wakePoller	取り出し役を起こす場合 = true
 	 * @return	渡された1件（しばらく来なければ null）
 	 */
-	private static Claimed await (Handoff handoff) {
+	private static Claimed await (Handoff handoff, boolean wakePoller) {
 
 		handoff.idle.release();
+
+		if (wakePoller) {
+			handoff.wake.release();
+		}
 
 		while (true) {
 
@@ -560,18 +641,19 @@ public final class MqQueue {
 	}
 
 	/**
-	 * 1件取る
+	 * まとめて取る
 	 *
 	 * @param db	DB
 	 * @param type	実行種別
-	 * @return	行（無ければ null）
+	 * @param limit	取る件数の上限（待っているワーカーの数）
+	 * @return	行（無ければ空）
 	 */
-	private Data claim (DB db, MqExecuteType type) {
+	private List<Data> claim (DB db, MqExecuteType type, int limit) {
 
 		try (Tx tx = db.begin()) {
 
 			/*
-			 * <b>「予定なし」と「予定が来たもの」を別々に引いて、id の小さいほうを取る</b>（D-280）。
+			 * <b>「予定なし」と「予定が来たもの」を別々に引いて、id の小さいほうから取る</b>（D-280）。
 			 *
 			 * 2.5.1 までは scheduled_at IS NULL OR scheduled_at &lt;= NOW() を1本で引いて id で並べていた。
 			 * OR があると索引の順に読めないので、溜まった分を並べ替えるか、主キーを頭から読み飛ばすかになり、
@@ -584,52 +666,59 @@ public final class MqQueue {
 			boolean postgres = db.dialect() instanceof io.jimble.db.dialect.PostgreSqlDialect;
 			String table = db.dialect().identifier(queueName);
 
-			Data immediate = db.select("""
+			List<Data> immediate = db.selectList("""
 					SELECT * FROM %s
 					WHERE execute_type = ? AND status = ? AND scheduled_at IS NULL
 					ORDER BY %s
-					LIMIT 1 FOR UPDATE SKIP LOCKED
-				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "id")
+					LIMIT %d FOR UPDATE SKIP LOCKED
+				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "id", limit)
 				, type.name()
-				, MqStatus.waiting.name()).orElse(null);
+				, MqStatus.waiting.name());
 
 			/*
 			 * <b>いまの時刻は DB の NOW() ではなく、この JVM の時刻を渡す</b>（D-281）。
 			 * scheduled_at は put が JVM の時刻で書くので、DB の NOW() と比べると、
 			 * JVM と DB の時間帯が違うとき（JST の JVM と UTC の DB など）<b>時差のぶん遅れて拾っていた</b>
 			 */
-			Data due = db.select("""
+			List<Data> due = db.selectList("""
 					SELECT * FROM %s
 					WHERE execute_type = ? AND status = ? AND scheduled_at <= ?
 					ORDER BY %s
-					LIMIT 1 FOR UPDATE SKIP LOCKED
-				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "scheduled_at, id")
+					LIMIT %d FOR UPDATE SKIP LOCKED
+				""".formatted(table, postgres ? "execute_type, status, scheduled_at, id" : "scheduled_at, id", limit)
 				, type.name()
 				, MqStatus.waiting.name()
-				, new java.util.Date()).orElse(null);
+				, new java.util.Date());
 
-			// 両方取れたら、先に積まれたほう（取らなかったほうの行ロックは、すぐ下のコミットで外れる）
-			Data row = immediate == null ? due
-				: due == null ? immediate
-				: immediate.getLong("id") <= due.getLong("id") ? immediate : due;
+			// 両方から、先に積まれたほうを limit 件（取らなかった行のロックは、すぐ下のコミットで外れる）
+			List<Data> rows = new ArrayList<>(immediate.size() + due.size());
+			rows.addAll(immediate);
+			rows.addAll(due);
+			rows.sort(Comparator.comparingLong(row -> row.getLong("id")));
 
-			if (row == null) {
+			if (rows.isEmpty()) {
 				// 何も取らずに抜ける（close で巻き戻る）
-				return null;
+				return List.of();
 			}
 
-			db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
-				, MqStatus.running.name()
-				, row.getLong("id"));
+			List<Data> claimed = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
+
+			List<Object> params = new ArrayList<>(claimed.size() + 1);
+			params.add(MqStatus.running.name());
+			claimed.forEach(row -> params.add(row.getLong("id")));
+
+			db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id IN (%s)"
+					.formatted(table, String.join(", ", java.util.Collections.nCopies(claimed.size(), "?")))
+				, params.toArray());
 
 			tx.commit();
 
-			return row;
+			return claimed;
 
 		} catch (Exception ex) {
 
 			Log.error(ex, "MQ の取り出しに失敗しました: %s".formatted(queueName));
-			return null;
+			return List.of();
 
 		}
 

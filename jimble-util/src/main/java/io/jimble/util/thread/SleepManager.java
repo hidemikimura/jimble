@@ -2,6 +2,8 @@ package io.jimble.util.thread;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * sleep
@@ -80,6 +82,51 @@ public class SleepManager {
 		index++;
 		if (index >= sleepList.size()) {
 			index = sleepList.size() - 1;
+		}
+
+	}
+
+	/**
+	 * スリープ（{@code wake} に許可が来たら、そこで起きる）
+	 *
+	 * <p>間隔の伸ばし方は {@link #sleep()} と同じ。起こされても間隔は伸びる（戻すのは {@link #reset()}）。</p>
+	 *
+	 * @param wake	起こすもの（許可を1つ引いて起きる）
+	 */
+	public void sleep (Semaphore wake) {
+
+		await(wake, sleepList.get(index));
+
+		index++;
+		if (index >= sleepList.size()) {
+			index = sleepList.size() - 1;
+		}
+
+	}
+
+	/**
+	 * 最大スリープ（{@code wake} に許可が来たら、そこで起きる）
+	 *
+	 * @param wake	起こすもの（許可を1つ引いて起きる）
+	 */
+	public void sleepMax (Semaphore wake) {
+
+		await(wake, maxSleep);
+
+	}
+
+	/**
+	 * 許可が来るか、時間が来るまで待つ
+	 *
+	 * @param wake		起こすもの
+	 * @param millis	待つ上限（ms）
+	 */
+	private static void await (Semaphore wake, long millis) {
+
+		try {
+			wake.tryAcquire(millis, TimeUnit.MILLISECONDS);
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
 		}
 
 	}
