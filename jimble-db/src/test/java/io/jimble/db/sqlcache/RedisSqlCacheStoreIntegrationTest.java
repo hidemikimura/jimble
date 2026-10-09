@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -97,6 +98,103 @@ class RedisSqlCacheStoreIntegrationTest {
 		long ttl = RedisClient.client().getSet(RedisSqlCacheStore.TAG_PREFIX + tag).remainTimeToLive();
 
 		assertTrue(ttl > Duration.ofMinutes(5).toMillis() && ttl <= Duration.ofMinutes(6).toMillis(), "タグの集合の期限: " + ttl);
+
+	}
+
+	@Test
+	@DisplayName("D-296 全部消すときは、入れたキーとタグの集合だけを消す（Redis のほかのキーは見ない・消さない）")
+	void clearDeletesOnlyWhatWasPut () throws Exception {
+
+		RedisSqlCacheStore store = new RedisSqlCacheStore();
+		String run = UUID.randomUUID().toString();
+
+		// 取り出しの上限（500）を超える数を、期限なしで入れる
+		for (int i = 0; i < 1200; i++) {
+			store.put(run + ":v" + i, Set.of(run + "/customer#id#" + (i % 50)), "v" + i, Duration.ZERO);
+		}
+
+		// SQL 結果キャッシュとは関係ないキー（セッションなど）
+		String unrelated = "test:" + run;
+		RedisClient.client().getBucket(unrelated, org.redisson.client.codec.StringCodec.INSTANCE).set("keep", Duration.ofMinutes(1));
+
+		store.clear();
+
+		for (int i = 0; i < 1200; i++) {
+			assertNull(store.get(run + ":v" + i), "残っている: " + i);
+		}
+		for (int i = 0; i < 50; i++) {
+			assertFalse(RedisClient.client().getSet(RedisSqlCacheStore.TAG_PREFIX + run + "/customer#id#" + i).isExists()
+				, "タグの集合が残っている: " + i);
+		}
+
+		assertEquals("keep", RedisClient.client().getBucket(unrelated, org.redisson.client.codec.StringCodec.INSTANCE).get()
+			, "関係ないキーまで消えた");
+
+		RedisClient.client().getBucket(unrelated).delete();
+
+	}
+
+	@Test
+	@DisplayName("D-296 タグで消したキーは、全部消す用の集合からも外れる（無期限でも育ち続けない）")
+	void invalidateForgetsKeys () throws Exception {
+
+		RedisSqlCacheStore store = new RedisSqlCacheStore();
+		String run = UUID.randomUUID().toString();
+		String tag = run + "/customer#id#1";
+
+		store.put(run + ":a", Set.of(tag), "a", Duration.ZERO);
+
+		assertTrue(RedisClient.client().getScoredSortedSet(RedisSqlCacheStore.ALL_KEYS, org.redisson.client.codec.StringCodec.INSTANCE).contains(run + ":a"));
+
+		store.invalidate(Set.of(tag));
+
+		assertFalse(RedisClient.client().getScoredSortedSet(RedisSqlCacheStore.ALL_KEYS, org.redisson.client.codec.StringCodec.INSTANCE).contains(run + ":a")
+			, "消したキーが全部消す用の集合に残っている");
+
+	}
+
+	@Test
+	@DisplayName("D-296 期限つきで入れたものは、期限が過ぎると全部消す用の集合からも外れる（期限で消えた値の名前が溜まらない）")
+	void expiredKeysAreTrimmed () throws Exception {
+
+		RedisSqlCacheStore store = new RedisSqlCacheStore();
+		String run = UUID.randomUUID().toString();
+
+		store.put(run + ":short", Set.of(run + "/customer#id#1"), "short", Duration.ofMillis(200));
+
+		var all = RedisClient.client().<String>getScoredSortedSet(RedisSqlCacheStore.ALL_KEYS, org.redisson.client.codec.StringCodec.INSTANCE);
+
+		Double score = all.getScore(run + ":short");
+		assertTrue(score != null && score <= System.currentTimeMillis() + 200, "期限の時刻で覚えていない: " + score);
+
+		Thread.sleep(400);
+
+		// 次に入れたときに、期限の過ぎたものが外れる
+		store.put(run + ":next", Set.of(run + "/customer#id#2"), "next", Duration.ofMinutes(5));
+
+		assertFalse(all.contains(run + ":short"), "期限の過ぎた名前が残っている");
+		assertTrue(all.contains(run + ":next"));
+
+		store.invalidate(Set.of(run + "/customer#id#2"));
+
+	}
+
+	@Test
+	@DisplayName("D-296 前の版が入れたもの（覚えておく集合に入っていない）も、最初に全部消すときに消える")
+	void clearSweepsLegacyKeysOnce () throws Exception {
+
+		String run = UUID.randomUUID().toString();
+
+		// 2.5.4 までの形：値とタグの集合だけ
+		RedisClient.client().getBucket(RedisSqlCacheStore.PREFIX + run + ":old", org.redisson.client.codec.StringCodec.INSTANCE).set("old");
+		RedisClient.client().getSet(RedisSqlCacheStore.TAG_PREFIX + run + "/customer#id#1", org.redisson.client.codec.StringCodec.INSTANCE).add(run + ":old");
+
+		new RedisSqlCacheStore().clear();
+
+		assertNull(RedisClient.client().getBucket(RedisSqlCacheStore.PREFIX + run + ":old", org.redisson.client.codec.StringCodec.INSTANCE).get()
+			, "前の版の値が残っている");
+		assertFalse(RedisClient.client().getSet(RedisSqlCacheStore.TAG_PREFIX + run + "/customer#id#1").isExists()
+			, "前の版のタグの集合が残っている");
 
 	}
 

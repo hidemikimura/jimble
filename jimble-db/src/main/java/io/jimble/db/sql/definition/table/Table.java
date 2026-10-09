@@ -261,8 +261,12 @@ public class Table implements ITable, IFrom {
 
 	// region 列一覧
 
-	/* 列一覧取得済み判定 */
-	private boolean isGetColumnList = false;
+	/*
+	 * 列一覧取得済み判定。
+	 * <b>volatile にする</b>（D-296）。鍵の外で読むので、そうしないと別のスレッドから
+	 * 「取得済み」だけが先に見えて、詰め終わる前の columnList を返しうる
+	 */
+	private volatile boolean isGetColumnList = false;
 
 	/* 列一覧 */
 	private final List<Column> columnList = new ArrayList<>();

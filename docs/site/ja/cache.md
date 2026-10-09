@@ -151,7 +151,7 @@ db.selectListCached(SQL.select().from(Customer.instance()).where(Customer.shop_i
 
 | | どうなるか |
 | --- | --- |
-| 生 SQL の更新（`db.execute("UPDATE ...")`） | どこに当たるか読めないので**全部消します**。jimble 自身の表（セッション・MQ・レート制限など）だけを更新する文は消しません（2.5.2 から） |
+| 生 SQL の更新（`db.execute("UPDATE ...")`） | どこに当たるか読めないので**全部消します**。jimble 自身の表（セッション・MQ・レート制限など）だけを更新する文は消しません（2.5.2 から）。置き場が Redis でも、消すのはキャッシュに入れたものだけで、Redis のほかのキーは見ません（2.5.5 から） |
 | `ON DUPLICATE KEY UPDATE` / `INSERT ... SELECT` | 既存の行が変わりうるので、そのテーブルに触るものを全部消します |
 | 別のプロセスから DB を直接書き換えた | 追えません。`sql_cache.ttl`（既定 5 分）が保険です |
 | `sql_cache.store = "memory"` | **その台の中だけ**です。複数台なら `redis` か `db` にしてください |

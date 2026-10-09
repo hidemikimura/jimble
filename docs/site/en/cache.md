@@ -165,7 +165,7 @@ evicted.
 
 | | What happens |
 | --- | --- |
-| Raw SQL updates (`db.execute("UPDATE ...")`) | Where they land cannot be read, so **everything is evicted**. Statements that only update jimble's own tables (sessions, MQ, rate limits and so on) evict nothing (since 2.5.2) |
+| Raw SQL updates (`db.execute("UPDATE ...")`) | Where they land cannot be read, so **everything is evicted**. Statements that only update jimble's own tables (sessions, MQ, rate limits and so on) evict nothing (since 2.5.2). With the Redis store, eviction removes only what the cache put there and never scans Redis's other keys (since 2.5.5) |
 | `ON DUPLICATE KEY UPDATE` / `INSERT ... SELECT` | Existing rows may change, so everything touching that table is evicted |
 | The DB written directly by another process | Cannot be followed. `sql_cache.ttl` (5 minutes by default) is your safety net |
 | `sql_cache.store = "memory"` | **That machine only.** With more than one machine, use `redis` or `db` |
