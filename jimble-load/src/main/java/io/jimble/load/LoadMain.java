@@ -41,6 +41,7 @@ public final class LoadMain {
 		使い方:
 		  server <helidon|jimble|jimble-nolog> <ポート>
 		  client <URL> [接続数] [温める秒数] [測る秒数]
+		  mq <mysql|postgresql> <JDBC の URL> <スレッド数> <件数> <1件の処理ミリ秒>
 		""";
 
 	private LoadMain () {
@@ -64,6 +65,7 @@ public final class LoadMain {
 
 			case "server" -> server(args[1], Integer.parseInt(args[2]));
 			case "client" -> client(args);
+			case "mq" -> System.exit(MqLoad.run(args) ? 0 : 1);
 
 			default -> {
 				System.err.print(USAGE);

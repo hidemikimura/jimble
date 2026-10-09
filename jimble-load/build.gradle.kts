@@ -21,6 +21,11 @@ dependencies {
 	 */
 	implementation(libs.helidon.webserver)
 	implementation(libs.helidon.logging.jul)
+
+	// MQ の処理件数を測る（mq-load.sh）
+	implementation(project(":jimble-mq"))
+	runtimeOnly(libs.mariadb.client)
+	runtimeOnly(libs.postgresql.client)
 }
 
 application {

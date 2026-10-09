@@ -18,6 +18,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,6 +103,43 @@ class MqPollerIntegrationTest {
 
 	}
 
+	/* いま処理に渡されている DB（同じものが同時に2つの処理へ渡っていないかを見る） */
+	static final Set<DB> IN_USE = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+
+	/* 同じ DB が同時に2つの処理へ渡っていた回数 */
+	static final AtomicInteger SHARED = new AtomicInteger();
+
+	/**
+	 * すぐ終わる処理（取り出し役がまとめて取る形になる）
+	 */
+	public static class FastExecutor extends MqExecutor {
+
+		@Override public String queueName () { return QUEUE; }
+		@Override public String key () { return "fast"; }
+		@Override public MqExecuteType executeType () { return MqExecuteType.short_time; }
+
+		@Override
+		public MqStatus execute (DB db, Data row) {
+
+			if (!IN_USE.add(db)) {
+				SHARED.incrementAndGet();
+			}
+
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			} finally {
+				IN_USE.remove(db);
+			}
+
+			DONE.incrementAndGet();
+			return MqStatus.completed;
+
+		}
+
+	}
+
 	/**
 	 * 止められる通知
 	 */
@@ -157,10 +196,13 @@ class MqPollerIntegrationTest {
 		MqRegistry.clear();
 		MqRegistry.add(SlowExecutor::new);
 		MqRegistry.add(OtherTypeExecutor::new);
+		MqRegistry.add(FastExecutor::new);
 
 		DONE.set(0);
 		RUNNING.set(0);
 		PEAK.set(0);
+		SHARED.set(0);
+		IN_USE.clear();
 
 	}
 
@@ -257,6 +299,89 @@ class MqPollerIntegrationTest {
 			.map(row -> row.getLong("n")).orElse(-1L);
 
 		assertEquals(0, running, "止めたあとに running の行が残っています（取ったのに誰も処理しなかった）");
+
+	}
+
+	@Test
+	@DisplayName("D-295 まとめて取っても、running にするのは手の空いたワーカーの数まで（先読みしない）")
+	void batchClaimNeverExceedsIdleWorkers () throws Exception {
+
+		DB db = DBUtil.getMainDB();
+
+		for (int i = 0; i < 30; i++) {
+			new SlowExecutor().put(db, new Data().putData("n", i));
+		}
+
+		Cancel cancel = new Cancel();
+		VirtualThreadManager manager = queue.startNoWait(cancel);
+
+		long maxRunning = 0;
+
+		try {
+
+			long deadline = System.currentTimeMillis() + 15_000;
+
+			while (DONE.get() < 30 && System.currentTimeMillis() < deadline) {
+
+				long running = db.select("SELECT count(*) AS n FROM %s WHERE status = ?"
+						.formatted(db.dialect().identifier(QUEUE)), MqStatus.running.name())
+					.map(row -> row.getLong("n")).orElse(0L);
+
+				maxRunning = Math.max(maxRunning, running);
+
+				Thread.sleep(20);
+
+			}
+
+		} finally {
+			cancel.doCancel();
+			assertTrue(manager.awaitTermination(10, TimeUnit.SECONDS), "止まりません");
+		}
+
+		assertEquals(30, DONE.get(), "全部は処理されませんでした");
+		assertTrue(maxRunning <= 5, "スレッド数（5）より多く running にしています: " + maxRunning);
+
+	}
+
+	@Test
+	@DisplayName("D-295 まとめて取った行は、1件ずつ別の DB で処理する（接続を取り合わない）")
+	void batchClaimGivesEachRowItsOwnDb () throws Exception {
+
+		/*
+		 * DB は握っている接続をフィールドに持つ。まとめて取った行に<b>同じ DB を付けて渡すと</b>、
+		 * ワーカーどうしで接続を取り合い、プールへ戻らなくなって止まる。
+		 * 取り合いが起きるかは運しだいなので、<b>同じ DB が同時に2つの処理へ渡っていないか</b>を直に見る
+		 */
+		DB db = DBUtil.getMainDB();
+		int count = 200;
+
+		for (int i = 0; i < count; i++) {
+			new FastExecutor().put(db, new Data().putData("n", i));
+		}
+
+		Cancel cancel = new Cancel();
+		VirtualThreadManager manager = queue.startNoWait(cancel);
+
+		try {
+
+			long deadline = System.currentTimeMillis() + 30_000;
+
+			while (DONE.get() < count && System.currentTimeMillis() < deadline) {
+				Thread.sleep(50);
+			}
+
+		} finally {
+			cancel.doCancel();
+			assertTrue(manager.awaitTermination(10, TimeUnit.SECONDS), "止まりません");
+		}
+
+		assertEquals(0, SHARED.get(), "同じ DB を同時に何本ものワーカーへ渡しています: %d 回".formatted(SHARED.get()));
+		assertEquals(count, DONE.get(), "全部は処理されませんでした（接続がプールへ戻っていない）");
+
+		long left = db.select("SELECT count(*) AS n FROM %s".formatted(db.dialect().identifier(QUEUE)))
+			.map(row -> row.getLong("n")).orElse(-1L);
+
+		assertEquals(0, left, "処理し終えた行が消えていません");
 
 	}
 

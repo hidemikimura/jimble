@@ -13,8 +13,8 @@ import io.jimble.util.conf.Conf;
  *     short_time  = 2      # 種別ごとのスレッド数（要件 F-M-08）
  *     long_time   = 8
  *   }
- *   poll_min           = 10ms   # キューが空でないときの待ち
- *   poll_max           = 1s     # キューが空のときの待ち（だんだん伸びる）
+ *   poll_min           = 10ms   # キューが空のときの待ちの最初（ワーカーの手が空いたら待たずに取りにいく）
+ *   poll_max           = 1s     # キューが空のときの待ちの上限（だんだん伸びる）
  *   retry_backoff      = 10s    # リトライの間隔（回を追うごとに倍）
  *   retry_backoff_max  = 10m
  *   stale              = 10m    # これだけ running のままなら落ちたとみなす
@@ -26,10 +26,10 @@ public final class MqConf {
 	/** 設定キーの前置き：種別ごとのスレッド数 */
 	public static final String KEY_THREAD_COUNT = "mq.thread_count.";
 
-	/** 設定キー：キューが空でないときの待ち */
+	/** 設定キー：キューが空のときの待ちの最初 */
 	public static final String KEY_POLL_MIN = "mq.poll_min";
 
-	/** 設定キー：キューが空のときの待ち */
+	/** 設定キー：キューが空のときの待ちの上限 */
 	public static final String KEY_POLL_MAX = "mq.poll_max";
 
 	/** 設定キー：リトライの間隔 */
@@ -58,7 +58,7 @@ public final class MqConf {
 	}
 
 	/**
-	 * キューが空でないときの待ち
+	 * キューが空のときの待ちの最初
 	 *
 	 * @return	待ち
 	 */
@@ -69,7 +69,7 @@ public final class MqConf {
 	}
 
 	/**
-	 * キューが空のときの待ち
+	 * キューが空のときの待ちの上限
 	 *
 	 * @return	待ち
 	 */
