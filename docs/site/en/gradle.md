@@ -18,9 +18,9 @@ There are three. **Add only the ones you need.**
 ```kotlin
 plugins {
 	application
-	id("io.jimble.jte") version "2.5.4"
-	id("io.jimble.run") version "2.5.4"
-	id("io.jimble.db")  version "2.5.4"
+	id("io.jimble.jte") version "2.5.5"
+	id("io.jimble.run") version "2.5.5"
+	id("io.jimble.db")  version "2.5.5"
 }
 ```
 
@@ -63,9 +63,9 @@ rootProject.name = "memo"
 // build.gradle.kts
 plugins {
 	application
-	id("io.jimble.jte") version "2.5.4"   // if you use src/main/jte
-	id("io.jimble.run") version "2.5.4"   // if you want hot reload
-	id("io.jimble.db")  version "2.5.4"   // if you use a database
+	id("io.jimble.jte") version "2.5.5"   // if you use src/main/jte
+	id("io.jimble.run") version "2.5.5"   // if you want hot reload
+	id("io.jimble.db")  version "2.5.5"   // if you use a database
 }
 
 repositories {
@@ -80,7 +80,7 @@ java {
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:2.5.4")
+	implementation("io.jimble:jimble-web:2.5.5")
 
 	testImplementation(platform("org.junit:junit-bom:5.11.4"))
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -114,7 +114,7 @@ jimbleRun {
 >
 > ```
 > Dependency resolution is looking for a library compatible with JVM runtime version 21,
-> but 'io.jimble:jimble-web:2.5.4' is only compatible with JVM runtime version 25 or newer
+> but 'io.jimble:jimble-web:2.5.5' is only compatible with JVM runtime version 25 or newer
 > ```
 
 ## Which artifact to depend on
