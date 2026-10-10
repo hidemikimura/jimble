@@ -138,21 +138,26 @@ public class NumberStreamParser implements IStreamParser {
 			return s;
 		}
 
-		if (isDecimal) {
+		/*
+		 * <b>上限と下限の両方を見る</b>（D-298）。2.5.5 までは上限しか見ていなかった。
+		 *
+		 * <b>小数は Double で返す</b>（2.5.5 までは Float。D-298）。Float では 1234567.89 が 1234567.9 になり、
+		 * 0.1 を getDouble で読むと 0.10000000149011612 になっていた。
+		 * Double に収まらない値は BigDecimal で返す（かつては -Infinity などになっていた）
+		 */
+		// 「.」が無くても指数で小数になる（1e-3）。かつては整数として切り捨てられ、0 になっていた
+		if (isDecimal || bd.scale() > 0 && bd.stripTrailingZeros().scale() > 0) {
 			// 小数
-			if (bd.compareTo(FLOAT_MAX_VALUE) < 1) {
-				return Float.parseFloat(s);
-			}
-			if (bd.compareTo(DOUBLE_MAX_VALUE) < 1) {
+			if (bd.abs().compareTo(DOUBLE_MAX_VALUE) <= 0) {
 				return Double.parseDouble(s);
 			}
 		} else {
 			// 整数
-			if (bd.compareTo(INT_MAX_VALUE) < 1) {
-				return bd.intValue();
+			if (bd.compareTo(INT_MIN_VALUE) >= 0 && bd.compareTo(INT_MAX_VALUE) <= 0) {
+				return bd.intValueExact();
 			}
-			if (bd.compareTo(LONG_MAX_VALUE) < 1) {
-				return bd.longValue();
+			if (bd.compareTo(LONG_MIN_VALUE) >= 0 && bd.compareTo(LONG_MAX_VALUE) <= 0) {
+				return bd.longValueExact();
 			}
 		}
 
@@ -163,11 +168,15 @@ public class NumberStreamParser implements IStreamParser {
 	/* int最大値. */
 	private static final BigDecimal INT_MAX_VALUE = new BigDecimal(Integer.MAX_VALUE);
 
+	/* int最小値. */
+	private static final BigDecimal INT_MIN_VALUE = new BigDecimal(Integer.MIN_VALUE);
+
 	/* long最大値. */
 	private static final BigDecimal LONG_MAX_VALUE = new BigDecimal(Long.MAX_VALUE);
 
-	/* float最大値. */
-	private static final BigDecimal FLOAT_MAX_VALUE = new BigDecimal(Float.MAX_VALUE);
+	/* long最小値. */
+	private static final BigDecimal LONG_MIN_VALUE = new BigDecimal(Long.MIN_VALUE);
+
 
 	/* double最大値. */
 	private static final BigDecimal DOUBLE_MAX_VALUE = new BigDecimal(Double.MAX_VALUE);

@@ -238,4 +238,53 @@ class DsonTest {
 
 	// endregion
 
+	// region 数値の型（D-298）
+
+	/**
+	 * JSON の数値を1つ読む
+	 *
+	 * @param number	数値の書き方
+	 * @return	読んだ値
+	 */
+	private static Object number (String number) {
+
+		return Data.fromJsonString("{\"v\":" + number + "}").get("v");
+
+	}
+
+	@Test
+	@DisplayName("D-298 整数は int・long の上限と下限の両方を見て、収まる型で返す。収まらなければ BigDecimal")
+	void integerRange () {
+
+		assertEquals(Integer.MIN_VALUE, number("-2147483648"));
+		assertEquals(Integer.MAX_VALUE, number("2147483647"));
+		assertEquals(-2147483649L, number("-2147483649"));
+		assertEquals(2147483648L, number("2147483648"));
+		assertEquals(-10000000000L, number("-10000000000"));
+		assertEquals(Long.MIN_VALUE, number("-9223372036854775808"));
+		assertEquals(new java.math.BigDecimal("-9223372036854775809"), number("-9223372036854775809"));
+		assertEquals(new java.math.BigDecimal("12345678901234567890"), number("12345678901234567890"));
+		assertEquals(1000, number("1e3"));
+
+	}
+
+	@Test
+	@DisplayName("D-298 小数は Double で返す（Float では桁が落ちる）。Double に収まらなければ BigDecimal")
+	void decimalPrecision () {
+
+		assertEquals(1234567.89d, number("1234567.89"));
+		assertEquals(0.30000000000000004d, number("0.30000000000000004"));
+		assertEquals(0.1d, Data.fromJsonString("{\"v\":0.1}").getDouble("v"));
+		assertEquals(new java.math.BigDecimal("0.1"), Data.fromJsonString("{\"v\":0.1}").getBigDecimal("v"));
+		assertEquals(-1.5d, number("-1.5"));
+
+		// 「.」の無い指数の小数（かつては整数として切り捨てて 0 になっていた）
+		assertEquals(0.001d, number("1e-3"));
+
+		assertEquals(new java.math.BigDecimal("-1.0e309"), number("-1.0e309"));
+
+	}
+
+	// endregion
+
 }
