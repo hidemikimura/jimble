@@ -350,6 +350,13 @@ public final class ApiToken {
 			context.session().put(KEY_TOKEN_ID, row.getString("id"));
 			context.session().put(KEY_TOKEN_SCOPES, String.join(" ", scopes));
 
+			/*
+			 * <b>保存したことにする</b>（D-299）。保存先は「なし」なので何も書かず、Cookie も出さない。
+			 * 2.5.6 までは呼んでいなかったので、トークンのリクエストのたびに終わりに
+			 * 「セッションを変更しましたが save() が呼ばれていません」と警告が出ていた（MCP のワーカーなど、呼ぶたびに積み上がる）
+			 */
+			context.session().save();
+
 			touch(row.getString("id"), row.getLong("last_used_at"));
 
 		};

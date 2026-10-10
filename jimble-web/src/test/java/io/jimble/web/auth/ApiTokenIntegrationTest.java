@@ -64,6 +64,12 @@ class ApiTokenIntegrationTest {
 
 				get("/page", context -> context.response().send("page"));
 
+				// わざと保存しない（警告がログに届くのを待つための目印）
+				get("/test/unsaved", context -> {
+					context.session().put("unsaved", "1");
+					context.response().send("unsaved");
+				}).attribute(Auth.PUBLIC, true);
+
 				path("/api", () -> {
 					attribute(ApiToken.ACCEPT, true);
 
@@ -132,6 +138,53 @@ class ApiTokenIntegrationTest {
 		// 書けるトークンなら、CSRF トークンが無くても通る（ブラウザは Authorization を勝手に付けない）
 		ApiToken.Issued write = ApiToken.issue(MEMBER, "書く", Set.of("requests:read", "requests:write"), Duration.ofDays(30));
 		assertEquals(200, post("/api/requests", write.token(), new ArrayList<>(), null).statusCode());
+
+	}
+
+	@Test
+	@DisplayName("D-299 トークンのリクエストでは、終わりに「save() が呼ばれていません」と警告しない（セッションを使うルートでも、使わないルートでも）")
+	void tokenRequestDoesNotWarnUnsavedSession () throws Exception {
+
+		List<String> warns = java.util.Collections.synchronizedList(new ArrayList<>());
+
+		io.jimble.util.log.Log.sink((logger, level, message, data, throwable) -> {
+			if (level.toInt() >= org.slf4j.event.Level.WARN.toInt()) {
+				warns.add(message);
+			}
+		});
+
+		try {
+
+			ApiToken.Issued issued = ApiToken.issue(MEMBER, "MCP", Set.of(), Duration.ofDays(30));
+
+			for (String path : List.of("/api/any", "/stateless/any")) {
+				HttpResponse<String> response = get(path, issued.token(), new ArrayList<>());
+				assertEquals(200, response.statusCode(), path + ": " + response.body());
+				assertEquals(String.valueOf(MEMBER), response.body(), path);
+				assertTrue(response.headers().allValues("set-cookie").isEmpty(), path + " に Cookie を出した");
+			}
+
+			/*
+			 * 警告は応答を返したあとの片付けで出る。わざと保存しないリクエストの警告が届くまで待ってから見る
+			 * （届けば、その前のリクエストの片付けも済んでいる）
+			 */
+			assertEquals(200, get("/test/unsaved", null, new ArrayList<>()).statusCode());
+
+			long deadline = System.currentTimeMillis() + 5_000;
+			while (warns.stream().noneMatch(w -> w.contains("/test/unsaved")) && System.currentTimeMillis() < deadline) {
+				Thread.sleep(20);
+			}
+			Thread.sleep(200);
+
+			assertTrue(warns.stream().anyMatch(w -> w.contains("save() が呼ばれていません") && w.contains("/test/unsaved"))
+				, "目印の警告が届いていません（ログを受け取れていない）: " + warns);
+
+		} finally {
+			io.jimble.util.log.Log.resetSink();
+		}
+
+		assertTrue(warns.stream().noneMatch(w -> w.contains("save() が呼ばれていません") && (w.contains("/api/any") || w.contains("/stateless/any")))
+			, "トークンのリクエストで警告が出ています: " + warns);
 
 	}
 
