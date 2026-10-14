@@ -31,7 +31,7 @@ logback = "1.6.5"
 jte = "3.2.4"
 cron-utils = "9.2.1"
 directory-watcher = "0.19.1"
-commonmark = "0.30.0"
+commonmark = "0.30.1"
 
 [libraries]
 # OpenTelemetry（要件 NF-O-05）。jimble-otel だけが使う
