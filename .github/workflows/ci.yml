@@ -87,7 +87,7 @@ jobs:
       # 人が前後を見比べるためのもの。<b>中身を見て落とすことはしない</b>
       - name: ベンチマークの結果を残す
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench
           path: '**/build/bench/bench.txt'
@@ -96,7 +96,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-test-results
           path: '**/build/reports/tests/**'
@@ -134,7 +134,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: plugin-test-results
           path: 'gradle-plugin/build/reports/**'
@@ -215,7 +215,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: db-test-results
           path: '**/build/reports/tests/**'
@@ -280,7 +280,7 @@ jobs:
 
       - name: テスト結果を残す
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pg-test-results
           path: '**/build/reports/tests/**'
