@@ -1192,6 +1192,7 @@ public final class Remember {
 			 * 種別を渡さないアプリはこれまでどおり思い出せる。
 			 */
 			dbVersion.add(2)
+				.addsColumn("realm")
 				.mysql("alter table `%s` add column realm varchar(64) not null default '' after selector".formatted(name))
 				.postgresql("alter table \"%s\" add column realm varchar(64) not null default ''".formatted(name));
 

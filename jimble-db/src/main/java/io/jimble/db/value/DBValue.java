@@ -535,17 +535,22 @@ public class DBValue {
 					value     varchar(250) not null
 				)
 			""");
+		// 列を足す版は1列ずつ（列があるかで当てる。D-302）
 		dbVersion.add(2)
+			.addsColumn("cache_second")
 			.mysql("""
 				alter table db_value add cache_second bigint default -1 not null comment 'キャッシュ秒（0=無制限）'
-			"""
-			, """
-				alter table db_value add description text null comment '説明'
 			""")
 			.postgresql("""
 				alter table db_value add column cache_second bigint default -1 not null
-			"""
-			, """
+			""");
+
+		dbVersion.add(2)
+			.addsColumn("description")
+			.mysql("""
+				alter table db_value add description text null comment '説明'
+			""")
+			.postgresql("""
 				alter table db_value add column description text null
 			""");
 		dbVersion.apply(db);

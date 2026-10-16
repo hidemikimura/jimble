@@ -561,9 +561,21 @@ public final class DbScheduler implements CancelOrderNotify {
 			long fireAt = next.toEpochSecond();
 
 			executeThreads().execute(() -> {
+
+				/*
+				 * <b>この台に登録されていなければ、回を取りにいかない</b>（D-302）。
+				 * 先に取ると、台ごとに登録しているバッチが違うときに、登録していない台がその回を取ってしまい、
+				 * どの台でも走らなくなる
+				 */
+				if (BatchRegistry.create(batch.className()) == null) {
+					Log.error("バッチが登録されていません: %s".formatted(batch.className()));
+					return;
+				}
+
 				if (claimFire(batch.className(), fireAt)) {
 					execute(batch.className(), batch.cron().expression(), false, null);
 				}
+
 			});
 
 		}
@@ -596,7 +608,7 @@ public final class DbScheduler implements CancelOrderNotify {
 	 * @param fireAt	この回の時刻（エポック秒）
 	 * @return	走らせてよい場合 = true
 	 */
-	private boolean claimFire (String className, long fireAt) {
+	boolean claimFire (String className, long fireAt) {
 
 		try {
 

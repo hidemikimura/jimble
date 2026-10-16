@@ -741,6 +741,14 @@ public final class PostgreSqlDialect implements Dialect {
 	}
 
 	@Override
+	public String columnExistsSql () {
+
+		return "SELECT COUNT(1) AS cnt FROM information_schema.columns"
+			+ " WHERE table_schema = current_schema() AND LOWER(table_name) = LOWER(?) AND LOWER(column_name) = LOWER(?)";
+
+	}
+
+	@Override
 	public String setTableCommentSql (String table, String comment) {
 
 		StringBuilder sb = new StringBuilder("COMMENT ON TABLE ");

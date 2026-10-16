@@ -104,6 +104,7 @@ public final class MqTables {
 		 * 版が上がると伸びうるので少し余裕を持たせてある。
 		 */
 		dbVersion.add(2)
+			.addsColumn("traceparent")
 			.mysql("alter table `%s` add column traceparent varchar(64) null comment 'トレース'"
 				.formatted(queueName))
 			.postgresql("alter table \"%s\" add column traceparent varchar(64)"

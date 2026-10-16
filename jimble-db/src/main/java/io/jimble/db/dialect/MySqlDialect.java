@@ -525,6 +525,14 @@ public final class MySqlDialect implements Dialect {
 	}
 
 	@Override
+	public String columnExistsSql () {
+
+		return "SELECT COUNT(1) AS cnt FROM information_schema.COLUMNS"
+			+ " WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = LOWER(?) AND LOWER(COLUMN_NAME) = LOWER(?)";
+
+	}
+
+	@Override
 	public String setTableCommentSql (String table, String comment) {
 
 		StringBuilder sb = new StringBuilder("ALTER TABLE ");

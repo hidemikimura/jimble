@@ -59,6 +59,20 @@ public class DBVersion {
 
 	}
 
+	/**
+	 * DBテーブル情報を読み直す（テストで、表を外から書き換えたあと）
+	 *
+	 * <p>{@link #load} は DB ごとに1回しか読まないので、表のコメントを書き換えたあとはこれで読み直す。</p>
+	 *
+	 * @param db	DB
+	 */
+	public static void reload (DB db) {
+
+		dbTableInfoMap.remove(db.getDBName());
+		load(db);
+
+	}
+
 	/* コメントプレースホルダー */
 	private static final String PLACEHOLDER = "{COMMENT}";
 
@@ -167,20 +181,37 @@ public class DBVersion {
 
 		String product = db.dialect().name();
 
-		long applyVersion = nowVersion;
+		// 表のコメントに書いてある版。下げない
+		long recordedVersion = nowVersion;
+
 		for (Version version : versionList) {
-			if (version.version <= nowVersion) {
+
+			/*
+			 * <b>列を足す版は、コメントの版にかかわらず、列があるかで決める</b>（D-302）。
+			 * jooby_base から移した表はコメントが「:6」などで jimble の版より大きく、
+			 * 版だけで見ると<b>列が足されないまま起動が通っていた</b>（2.5.8 の batch_master で cron が止まった）。
+			 * 途中で止まって列だけ残った表でも、同じ ALTER をもう一度流さない（Duplicate column で起動しなくなっていた）
+			 */
+			if (version.column != null) {
+
+				if (columnExists(db, version.column)) {
+					recordedVersion = record(db, version.version, recordedVersion);
+					continue;
+				}
+
+			} else if (version.version <= nowVersion) {
 				continue;
 			}
+
 			String comment = tableComment + ":" + version.version;
 			for (String sql : version.sqlList(product, tableName)) {
 				// 失敗は例外（起動が止まる。2.0。要件 D-193）
 				db.execute(sql.replace(PLACEHOLDER, comment));
 			}
-			applyVersion = version.version;
-		}
 
-		db.execute(db.dialect().setTableCommentSql(tableName, tableComment + ":" + applyVersion));
+			recordedVersion = record(db, version.version, recordedVersion);
+
+		}
 
 		// 適用結果をキャッシュに書き戻す
 		//
@@ -194,10 +225,51 @@ public class DBVersion {
 			applied.name = tableName;
 			tableInfoMap.put(tableName.toLowerCase(), applied);
 		}
-		applied.comment = tableComment + ":" + applyVersion;
-		applied.version = applyVersion;
+		applied.comment = tableComment + ":" + recordedVersion;
+		applied.version = recordedVersion;
 
 		return true;
+
+	}
+
+	/**
+	 * 版を1つ当てたら、すぐ表のコメントに書く（D-302）
+	 *
+	 * <p>
+	 * <b>2.5.8 までは、全部の版を当てたあとで1回だけ書いていた。</b>途中で止まると（接続が切れる・プロセスが止められる）、
+	 * 当てた版がコメントに残らず、次の起動で同じ DDL を流し直して失敗していた（MySQL の DDL は1本ずつ確定する）。
+	 * <b>コメントの版は下げない</b>（jooby_base から移した「:6」の表に版 2 の列を足しても「:6」のまま）。
+	 * </p>
+	 *
+	 * @param db				DB
+	 * @param version			当てた版
+	 * @param recordedVersion	コメントに書いてある版
+	 * @return	コメントに書いてある版（書き換えたなら新しい版）
+	 */
+	private long record (DB db, long version, long recordedVersion) {
+
+		if (version <= recordedVersion) {
+			return recordedVersion;
+		}
+
+		db.execute(db.dialect().setTableCommentSql(tableName, tableComment + ":" + version));
+
+		return version;
+
+	}
+
+	/**
+	 * 列があるか
+	 *
+	 * @param db		DB
+	 * @param column	列名
+	 * @return	ある場合 = true
+	 */
+	private boolean columnExists (DB db, String column) {
+
+		return db.select(db.dialect().columnExistsSql(), tableName, column)
+			.map(row -> row.getLong("cnt") > 0)
+			.orElse(false);
 
 	}
 
@@ -214,6 +286,28 @@ public class DBVersion {
 
 		/* 製品を問わない SQL */
 		private List<String> anySql = null;
+
+		/* この版が足す列（あれば、コメントの版ではなく列があるかで当てるかを決める） */
+		private String column = null;
+
+		/**
+		 * この版は列を1つ足すだけ（D-302）
+		 *
+		 * <p>
+		 * <b>列を足す版には必ず付ける。</b>付けると、表のコメントの版にかかわらず、起動のたびに列があるかを見て、
+		 * 無いときだけ DDL を流す。移植元から引き継いだ表（コメントの版が jimble の版より大きい）や、
+		 * 途中で止まって列だけ残った表でも正しく当たる。2列足すなら、同じ版番号で2つに分ける。
+		 * </p>
+		 *
+		 * @param name	列名
+		 * @return	自分
+		 */
+		public Version addsColumn (String name) {
+
+			this.column = name;
+			return this;
+
+		}
 
 		/**
 		 * MySQL / MariaDB 用
