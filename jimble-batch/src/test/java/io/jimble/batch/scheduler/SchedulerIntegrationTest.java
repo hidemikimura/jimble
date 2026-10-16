@@ -185,6 +185,73 @@ class SchedulerIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("D-300 複数台で動かしても、cron の1回はどれか1台だけが走らせる（すぐ終わるバッチでも、時刻が遅れて来た台では走らせない）")
+	void oneRunPerFireAcrossSchedulers () throws Exception {
+
+		DbScheduler serverA = new DbScheduler("server-a");
+		DbScheduler serverB = new DbScheduler("server-b");
+
+		try {
+
+			serverA.reload();
+			serverB.reload();
+
+			ZonedDateTime now = ZonedDateTime.of(2026, 9, 6, 12, 0, 0, 0, ZoneId.of("Asia/Tokyo"));
+
+			// 次回時刻を控える
+			serverA.tick(now);
+			serverB.tick(now);
+
+			// 12:01 の回。A が走らせて、終わる
+			serverA.tick(now.plusMinutes(1));
+			awaitRuns(1);
+
+			// B には少し遅れて同じ回の時刻が来る（確かめる間隔や時計のずれ）。A のバッチはもう終わっている
+			serverB.tick(now.plusMinutes(1).plusSeconds(1));
+			Thread.sleep(500);
+
+			assertEquals(1, RUN_COUNT.get(), "同じ回を2台で走らせました");
+
+			// 次の回（12:02）は、また1台だけが走らせる
+			serverB.tick(now.plusMinutes(2));
+			awaitRuns(2);
+			serverA.tick(now.plusMinutes(2).plusSeconds(1));
+			Thread.sleep(500);
+
+			assertEquals(2, RUN_COUNT.get(), "次の回を2台で走らせました");
+
+		} finally {
+			serverA.stop();
+			serverB.stop();
+		}
+
+	}
+
+	/**
+	 * 走った回数がそろうまで待つ
+	 *
+	 * @param expected	回数
+	 * @throws InterruptedException	割り込まれた場合
+	 */
+	private static void awaitRuns (int expected) throws InterruptedException {
+
+		long deadline = System.currentTimeMillis() + 10_000;
+
+		while (RUN_COUNT.get() < expected && System.currentTimeMillis() < deadline) {
+			Thread.sleep(20);
+		}
+
+		assertEquals(expected, RUN_COUNT.get(), "時刻が来たのに走りません");
+
+		// 走り終えて、実行中の印が消えるまで待つ
+		while (DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM batch_execute_info").map(row -> row.getLong("cnt")).orElse(0L) > 0
+			&& System.currentTimeMillis() < deadline) {
+			Thread.sleep(20);
+		}
+
+	}
+
+	@Test
 	@DisplayName("起動と同時には走らせない")
 	void doesNotFireOnStartup () {
 

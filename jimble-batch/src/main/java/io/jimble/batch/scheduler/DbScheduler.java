@@ -440,7 +440,14 @@ public final class DbScheduler implements CancelOrderNotify {
 			return;
 		}
 
-		SchedulerControl.heartbeat(schedulerId);
+		/*
+		 * <b>start() で動いているときだけハートビートを打つ</b>（D-300）。
+		 * 動かしていないスケジューラで reload() だけ呼ぶと（テストなど）、ハートビートが消されないまま残り、
+		 * しばらくのあいだ「スケジューラが動いている」と見えていた（管理画面の「いま動かす」が通ってしまう）
+		 */
+		if (CURRENT.get() == this) {
+			SchedulerControl.heartbeat(schedulerId);
+		}
 
 		DB db = DBUtil.getMainDB();
 
@@ -551,7 +558,13 @@ public final class DbScheduler implements CancelOrderNotify {
 
 			fired++;
 
-			executeThreads().execute(() -> execute(batch.className(), batch.cron().expression(), false, null));
+			long fireAt = next.toEpochSecond();
+
+			executeThreads().execute(() -> {
+				if (claimFire(batch.className(), fireAt)) {
+					execute(batch.className(), batch.cron().expression(), false, null);
+				}
+			});
 
 		}
 
@@ -562,6 +575,51 @@ public final class DbScheduler implements CancelOrderNotify {
 	// endregion
 
 	// region 走らせる
+
+	/**
+	 * cron のこの回を、この台が走らせてよいか（D-300）
+	 *
+	 * <p>
+	 * <b>複数台で動かすと、どの台にも同じ回の時刻が来る。</b>2.5.7 までは「いま走っている数」（同時実行数）だけで止めていたので、
+	 * <b>ほかの台より先に終わったバッチは、時刻が少し遅れて来た台（確かめる間隔や時計のずれ）でもう一度走っていた</b>。
+	 * {@code batch_master.last_fired_at} をこの回の時刻へ進められた1台だけが走らせる。
+	 * 時計が遅れている台は、もう進んだ値より小さい回を書こうとするので取れない。
+	 * </p>
+	 *
+	 * @param className	クラス名
+	 * @param fireAt	この回の時刻（エポック秒）
+	 * @return	走らせてよい場合 = true
+	 */
+	private boolean claimFire (String className, long fireAt) {
+
+		try {
+
+			int updated = DBUtil.getMainDB().update("""
+					UPDATE batch_master SET
+						last_fired_at = ?
+					WHERE
+						class_name = ?
+						AND (last_fired_at IS NULL OR last_fired_at < ?)
+				"""
+				, fireAt
+				, className
+				, fireAt);
+
+			if (updated == 0) {
+				Log.info("スケジューラ: ほかの台がこの回を走らせました: %s / %d".formatted(className, fireAt));
+			}
+
+			return updated == 1;
+
+		} catch (Exception ex) {
+
+			// 取れたか分からないときは走らせない（走らせて二重になるより、1回抜けるほうが気づける）
+			Log.error(ex, "スケジューラ: この回を走らせてよいか確かめられませんでした: %s".formatted(className));
+			return false;
+
+		}
+
+	}
 
 	/**
 	 * バッチを走らせる（管理画面などから）

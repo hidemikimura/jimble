@@ -84,8 +84,9 @@ MqRegistry.add(NoticeExecutor::new);
 Pulling messages off and running them is a batch's job. Write one batch — something like
 `MqWorkerBatch` — register it the same way as any other [batch](./batch), and run it on cron.
 
-**Only one poller per queue reads the DB.** It takes a message with `SELECT ... FOR UPDATE SKIP LOCKED`
-only when a worker is free, and hands it straight to that worker (nothing is read ahead).
+**Only one poller per queue reads the DB.** When workers are free, it takes **as many messages as there are free workers** with `SELECT ... FOR UPDATE SKIP LOCKED`
+and hands them straight to those workers (nothing is read ahead; up to 2.5.4 it took one message at a time).
+However many servers run the queue, each message is taken by exactly one worker (it can still be processed twice in the cases described above).
 `mq.thread_count.<type>` is **how many messages are processed in parallel**; raising it does not add connections
 borrowed while the queue is idle (up to 2.1.2 every worker polled the DB itself, so a slow DB filled one
 connection per worker at once).
