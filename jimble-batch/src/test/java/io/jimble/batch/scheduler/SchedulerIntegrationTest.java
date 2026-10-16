@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -223,6 +224,76 @@ class SchedulerIntegrationTest {
 		} finally {
 			serverA.stop();
 			serverB.stop();
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-301 cron の1回で走るのは同時実行数まで（3台で、すぐ終わるバッチでも）。0 なら台数分。次の回は数え直す")
+	void runsPerFireUpToConcurrency () throws Exception {
+
+		// 同時実行数 → 3台で1回に走る数
+		int[][] cases = { { 2, 2 }, { 0, 3 } };
+
+		for (int[] c : cases) {
+
+			int allow = c[0];
+			int expected = c[1];
+
+			RUN_COUNT.set(0);
+			DBUtil.getMainDB().execute("TRUNCATE TABLE batch_execute_info");
+			DBUtil.getMainDB().update("UPDATE batch_master SET allow_concurrent_execution = ?, last_fired_at = NULL, fire_count = 0 WHERE class_name = ?"
+				, allow, EveryMinuteBatch.class.getName());
+
+			List<DbScheduler> servers = List.of(new DbScheduler("server-a"), new DbScheduler("server-b"), new DbScheduler("server-c"));
+
+			try {
+
+				ZonedDateTime now = ZonedDateTime.of(2026, 9, 6, 12, 0, 0, 0, ZoneId.of("Asia/Tokyo"));
+
+				for (DbScheduler server : servers) {
+					server.reload();
+					server.tick(now);
+				}
+
+				// 12:01 の回。1台ずつ、前の台のバッチが終わってから時刻が来る
+				for (int i = 0; i < servers.size(); i++) {
+					servers.get(i).tick(now.plusMinutes(1).plusSeconds(i));
+					awaitSettled();
+				}
+
+				assertEquals(expected, RUN_COUNT.get(), "同時実行数 %d の1回で走った数".formatted(allow));
+
+				// 12:02 の回は数え直す
+				for (int i = 0; i < servers.size(); i++) {
+					servers.get(i).tick(now.plusMinutes(2).plusSeconds(i));
+					awaitSettled();
+				}
+
+				assertEquals(expected * 2, RUN_COUNT.get(), "同時実行数 %d の次の回で走った数".formatted(allow));
+
+			} finally {
+				servers.forEach(DbScheduler::stop);
+			}
+
+		}
+
+	}
+
+	/**
+	 * 走らせたかもしれないものが終わるまで待つ（走らないこともあるので、回数は見ない）
+	 *
+	 * @throws InterruptedException	割り込まれた場合
+	 */
+	private static void awaitSettled () throws InterruptedException {
+
+		Thread.sleep(500);
+
+		long deadline = System.currentTimeMillis() + 10_000;
+
+		while (DBUtil.getMainDB().select("SELECT COUNT(1) AS cnt FROM batch_execute_info").map(row -> row.getLong("cnt")).orElse(0L) > 0
+			&& System.currentTimeMillis() < deadline) {
+			Thread.sleep(20);
 		}
 
 	}

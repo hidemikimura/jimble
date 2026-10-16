@@ -577,13 +577,19 @@ public final class DbScheduler implements CancelOrderNotify {
 	// region 走らせる
 
 	/**
-	 * cron のこの回を、この台が走らせてよいか（D-300）
+	 * cron のこの回を、この台が走らせてよいか（D-300 / D-301）
 	 *
 	 * <p>
 	 * <b>複数台で動かすと、どの台にも同じ回の時刻が来る。</b>2.5.7 までは「いま走っている数」（同時実行数）だけで止めていたので、
 	 * <b>ほかの台より先に終わったバッチは、時刻が少し遅れて来た台（確かめる間隔や時計のずれ）でもう一度走っていた</b>。
-	 * {@code batch_master.last_fired_at} をこの回の時刻へ進められた1台だけが走らせる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>1回で走らせる数を、同時実行数（{@code allow_concurrent_execution}）までにする。</b>
+	 * {@code batch_master} の {@code last_fired_at}（最後の回）と {@code fire_count}（その回で走らせた数）を
+	 * 1本の UPDATE で進め、進められた台だけが走らせる。新しい回なら数え直し、同じ回なら同時実行数に達するまで足す。
 	 * 時計が遅れている台は、もう進んだ値より小さい回を書こうとするので取れない。
+	 * 同時実行数が 0（上限なし）なら数えない（どの台でも走らせる）。
 	 * </p>
 	 *
 	 * @param className	クラス名
@@ -594,26 +600,49 @@ public final class DbScheduler implements CancelOrderNotify {
 
 		try {
 
-			int updated = DBUtil.getMainDB().update("""
+			DB db = DBUtil.getMainDB();
+
+			int allowCount = db.select(
+					"SELECT allow_concurrent_execution FROM batch_master WHERE class_name = ?", className)
+				.map(row -> row.getInt("allow_concurrent_execution"))
+				.orElse(1);
+
+			if (allowCount <= 0) {
+				return true;
+			}
+
+			/*
+			 * fire_count を先に書く。MySQL は SET を左から順に評価し、右の式で左の新しい値を見るので、
+			 * last_fired_at を先に書くと「新しい回か」の判定が変わる（PostgreSQL はどの式も古い値を見る）
+			 */
+			int updated = db.update("""
 					UPDATE batch_master SET
-						last_fired_at = ?
+						fire_count = CASE WHEN last_fired_at IS NULL OR last_fired_at < ? THEN 1 ELSE fire_count + 1 END
+						, last_fired_at = ?
 					WHERE
 						class_name = ?
-						AND (last_fired_at IS NULL OR last_fired_at < ?)
+						AND (
+							last_fired_at IS NULL
+							OR last_fired_at < ?
+							OR (last_fired_at = ? AND fire_count < ?)
+						)
 				"""
 				, fireAt
+				, fireAt
 				, className
-				, fireAt);
+				, fireAt
+				, fireAt
+				, allowCount);
 
 			if (updated == 0) {
-				Log.info("スケジューラ: ほかの台がこの回を走らせました: %s / %d".formatted(className, fireAt));
+				Log.info("スケジューラ: この回はほかの台で同時実行数（%d）まで走らせました: %s / %d".formatted(allowCount, className, fireAt));
 			}
 
 			return updated == 1;
 
 		} catch (Exception ex) {
 
-			// 取れたか分からないときは走らせない（走らせて二重になるより、1回抜けるほうが気づける）
+			// 取れたか分からないときは走らせない（走らせて多くなるより、1回抜けるほうが気づける）
 			Log.error(ex, "スケジューラ: この回を走らせてよいか確かめられませんでした: %s".formatted(className));
 			return false;
 

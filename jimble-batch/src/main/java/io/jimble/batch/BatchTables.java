@@ -102,6 +102,14 @@ public final class BatchTables {
 			.mysql("alter table `batch_master` add column last_fired_at bigint null comment 'cron の最後に走らせた回（エポック秒）'")
 			.postgresql("alter table batch_master add column last_fired_at bigint null");
 
+		/*
+		 * cron の最後の回で走らせた数（D-301）。
+		 * 同時実行数が2以上のバッチは、1回につきこの数が同時実行数に達するまで、どの台でも走らせる
+		 */
+		dbVersion.add(3)
+			.mysql("alter table `batch_master` add column fire_count int default 0 not null comment 'cron の最後の回で走らせた数'")
+			.postgresql("alter table batch_master add column fire_count int default 0 not null");
+
 		dbVersion.apply(db);
 
 	}
