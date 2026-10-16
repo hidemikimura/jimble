@@ -440,7 +440,14 @@ public final class DbScheduler implements CancelOrderNotify {
 			return;
 		}
 
-		SchedulerControl.heartbeat(schedulerId);
+		/*
+		 * <b>start() で動いているときだけハートビートを打つ</b>（D-300）。
+		 * 動かしていないスケジューラで reload() だけ呼ぶと（テストなど）、ハートビートが消されないまま残り、
+		 * しばらくのあいだ「スケジューラが動いている」と見えていた（管理画面の「いま動かす」が通ってしまう）
+		 */
+		if (CURRENT.get() == this) {
+			SchedulerControl.heartbeat(schedulerId);
+		}
 
 		DB db = DBUtil.getMainDB();
 
