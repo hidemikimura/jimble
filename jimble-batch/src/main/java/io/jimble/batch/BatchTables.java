@@ -93,6 +93,15 @@ public final class BatchTables {
 			, "create index batch_master__index_1 on batch_master (created_at)"
 			, "create index batch_master__index_2 on batch_master (status)");
 
+		/*
+		 * cron の最後に走らせた回（エポック秒。D-300）。
+		 * 複数台のスケジューラのうち、この列を先に書き換えた1台だけがその回を走らせる。
+		 * 時刻を datetime にしないのは、台と DB の時間帯が違っても同じ回を同じ値で比べるため（D-281）
+		 */
+		dbVersion.add(2)
+			.mysql("alter table `batch_master` add column last_fired_at bigint null comment 'cron の最後に走らせた回（エポック秒）'")
+			.postgresql("alter table batch_master add column last_fired_at bigint null");
+
 		dbVersion.apply(db);
 
 	}
