@@ -173,11 +173,16 @@ better that than spinning forever in silence.
 How many copies of the same batch may run at once is set by `allowConcurrentExecutionCount()`.
 The default is one. If the previous execution has not finished, the next one is skipped.
 
-Even across several servers, **each cron firing runs on exactly one of them**.
-Every server sees the same firing time, but only the one that manages to record it as the "last fired" time in `batch_master` runs it (since 2.5.8).
-Up to 2.5.7 only the number of running copies was checked, so **a batch that finished quickly could run again on a server whose clock reached the same firing a little later** (the check runs every second, plus any clock drift between servers).
+Even across several servers, **one cron firing runs at most as many times as the concurrency limit** (since 2.5.8).
 
-Raising the concurrency limit does not make one firing run more than once. More than one copy runs only when the next firing arrives before the previous one has finished, or when someone asks for a run from the admin screen.
+| Concurrency limit | Runs per cron firing (three servers) |
+|---|---|
+| 1 (default) | 1 (on one of the servers) |
+| 2 | 2 |
+| 0 (no limit) | 3 (one per server) |
+
+Every server sees the same firing time, but only the servers that manage to advance the "last fired" time and the "runs in that firing" count in `batch_master` run it.
+Up to 2.5.7 only the number of running copies was checked, so **a batch that finished quickly could run again on a server whose clock reached the same firing a little later** (the check runs every second, plus any clock drift between servers).
 
 ## Running one on its own
 
