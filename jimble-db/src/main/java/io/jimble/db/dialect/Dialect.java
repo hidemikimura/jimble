@@ -530,6 +530,15 @@ public sealed interface Dialect permits MySqlDialect, PostgreSqlDialect {
 	String setTableCommentSql (String table, String comment);
 
 	/**
+	 * テーブルに列があるかを数える SQL（D-302）
+	 *
+	 * <p>パラメータはテーブル名と列名の順。返す列は {@code cnt}（あれば 1）。大文字と小文字は区別しない。</p>
+	 *
+	 * @return	SQL
+	 */
+	String columnExistsSql ();
+
+	/**
 	 * ロック待ちの上限をこのセッションにだけ設定する SQL（要件 F-G-19）
 	 *
 	 * <p>

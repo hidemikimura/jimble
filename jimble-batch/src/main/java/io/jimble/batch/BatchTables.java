@@ -99,6 +99,7 @@ public final class BatchTables {
 		 * 時刻を datetime にしないのは、台と DB の時間帯が違っても同じ回を同じ値で比べるため（D-281）
 		 */
 		dbVersion.add(2)
+			.addsColumn("last_fired_at")
 			.mysql("alter table `batch_master` add column last_fired_at bigint null comment 'cron の最後に走らせた回（エポック秒）'")
 			.postgresql("alter table batch_master add column last_fired_at bigint null");
 
@@ -107,6 +108,7 @@ public final class BatchTables {
 		 * 同時実行数が2以上のバッチは、1回につきこの数が同時実行数に達するまで、どの台でも走らせる
 		 */
 		dbVersion.add(3)
+			.addsColumn("fire_count")
 			.mysql("alter table `batch_master` add column fire_count int default 0 not null comment 'cron の最後の回で走らせた数'")
 			.postgresql("alter table batch_master add column fire_count int default 0 not null");
 
