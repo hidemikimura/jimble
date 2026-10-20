@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -272,8 +273,34 @@ public final class ApiToken {
 	 *
 	 * @param lookup	利用者 ID から、いまの利用者を引く（止めた・消した人なら null）
 	 * @return	before に置くもの
+	 * @see #authenticate(BiFunction)
 	 */
 	public static Handler authenticate (Function<Long, Principal> lookup) {
+
+		return authenticate((realm, userId) -> lookup.apply(userId));
+
+	}
+
+	/**
+	 * {@code Authorization: Bearer} を確かめる before（ログインの種別ごとに利用者を引く。D-303）
+	 *
+	 * <pre>
+	 * before(ApiToken.authenticate((realm, id) -&gt; realm.equals("operator") ? App.findStaff(id) : App.findMember(id)));
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>管理画面と顧客で利用者の表が別なら、こちらを使う。</b>トークンは種別（ルートの {@link Auth#REALM}）ごとに持つが、
+	 * ID だけを受け取る {@link #authenticate(Function)} では、ID 1 のトークンが来たときに
+	 * <b>管理者と顧客のどちらの ID 1 かを引き分けられなかった</b>。ここには、トークンを受けたルートの種別が渡る
+	 * （種別を付けていないルートでは空文字）。
+	 * </p>
+	 *
+	 * <p>確かめる中身は {@link #authenticate(Function)} と同じ。</p>
+	 *
+	 * @param lookup	種別と利用者 ID から、いまの利用者を引く（止めた・消した人なら null）
+	 * @return	before に置くもの
+	 */
+	public static Handler authenticate (BiFunction<String, Long, Principal> lookup) {
 
 		return context -> {
 
@@ -316,7 +343,7 @@ public final class ApiToken {
 				throw unauthorized(context, "API のトークンは止められています");
 			}
 
-			Principal principal = lookup.apply(userId);
+			Principal principal = lookup.apply(realm, userId);
 
 			if (principal == null || !principal.isAuthenticated()) {
 				throw unauthorized(context, "API のトークンの利用者がいません");
