@@ -729,6 +729,31 @@ ApiToken.revoke("", me.id(), id);                   // すぐ使えなくなる�
 | スコープ | `ApiToken.scopes(context)` で読めます。**セッションで入った人には、スコープは関係ありません** |
 | CSRF | `Csrf.verify` は見ません（ブラウザは Authorization を勝手に付けないので、別のサイトからは送れません） |
 
+### 管理画面と顧客で分ける
+
+トークンは**ログインの種別（`Auth.REALM`）ごと**に持ちます。管理画面のトークンで顧客の API には入れず、逆もできません。
+**管理者と顧客で利用者の表が別なら、種別も受け取る `lookup` を渡します**（2.5.10 から）。
+ID だけを受け取る形では、ID 1 のトークンが来たときに、管理者と顧客のどちらの ID 1 かを引き分けられません。
+
+```java
+before(ApiToken.authenticate((realm, id) -> realm.equals("operator") ? App.findStaff(id) : App.findMember(id)));
+
+path("/admin", () -> {
+	attribute(Auth.REALM, "operator");
+	attribute(ApiToken.ACCEPT, true);
+	...
+});
+
+path("/shop", () -> {
+	attribute(Auth.REALM, "member");
+	attribute(ApiToken.ACCEPT, true);
+	...
+});
+```
+
+発行・一覧・削除にも種別を渡します（`ApiToken.issue("operator", staff.id(), ...)`・`ApiToken.list("member", customer.id())`）。
+パスキーも同じく種別ごとに持ちます（下の「パスキー」）。
+
 ### 断るとき
 
 | | 状態コード |

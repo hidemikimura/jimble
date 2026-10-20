@@ -732,6 +732,31 @@ ApiToken.revoke("", me.id(), id);                   // unusable at once; never r
 | Scopes | Read them with `ApiToken.scopes(context)`. **Scopes do not apply to users who came in with a session** |
 | CSRF | `Csrf.verify` skips it (browsers never add Authorization on their own, so another site cannot send it) |
 
+### Separate admin and customer tokens
+
+Tokens are kept **per login realm (`Auth.REALM`)**. An admin token does not open the customer API, and the other way round.
+**If admins and customers live in different user tables, pass a `lookup` that also takes the realm** (since 2.5.10).
+With the ID-only form there is no way to tell whether a token for ID 1 belongs to admin 1 or customer 1.
+
+```java
+before(ApiToken.authenticate((realm, id) -> realm.equals("operator") ? App.findStaff(id) : App.findMember(id)));
+
+path("/admin", () -> {
+	attribute(Auth.REALM, "operator");
+	attribute(ApiToken.ACCEPT, true);
+	...
+});
+
+path("/shop", () -> {
+	attribute(Auth.REALM, "member");
+	attribute(ApiToken.ACCEPT, true);
+	...
+});
+```
+
+Pass the realm when issuing, listing and revoking too (`ApiToken.issue("operator", staff.id(), ...)`, `ApiToken.list("member", customer.id())`).
+Passkeys are kept per realm in the same way (see "Passkeys" below).
+
 ### When it refuses
 
 | | Status |
