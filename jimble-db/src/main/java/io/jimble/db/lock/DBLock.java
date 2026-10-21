@@ -6,9 +6,13 @@ import io.jimble.db.DB;
 import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.internal.version.DBVersion;
+import io.jimble.util.data.Data;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * lock
@@ -22,6 +26,22 @@ public class DBLock {
 	 * <b>失敗は例外</b>（2.0。要件 D-193）。1.x は {@code boolean} を返していた。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>あるキーは、ロックを取らない読みだけで済ませる。</b>
+	 * MySQL（InnoDB）の {@code INSERT IGNORE} は、すでにある行に当たると重複を確かめるために
+	 * <b>その行に共有ロックを取る</b>。そのため毎回入れようとすると、
+	 * </p>
+	 * <ul>
+	 *   <li>ほかのトランザクションが {@link #lock} で持っている間、その commit まで待つ
+	 *       （待ち終わっても、すぐあとの {@link #lock} でまた並び直す）</li>
+	 *   <li>トランザクションの中で呼ぶと共有ロックが commit まで残り、続く {@link #lock} の排他ロックと
+	 *       ほかのトランザクションの共有ロックが互いを待って<b>デッドロックになる</b></li>
+	 * </ul>
+	 * <p>
+	 * 無かったキーだけを入れる。読んでから入れるまでにほかの人が入れることがあるので、
+	 * 入れるのは {@code INSERT IGNORE}（PostgreSQL は {@code ON CONFLICT DO NOTHING}）のまま。
+	 * </p>
+	 *
 	 * @param db        DB
 	 * @param lockKey   ロックキー
 	 * @throws io.jimble.db.SqlExecuteException	作れなかったとき
@@ -32,13 +52,13 @@ public class DBLock {
 			return;
 		}
 
-		List<Long> lockKeyHashes = createLockKeys(lockKey);
-		if (lockKeyHashes.isEmpty()) {
+		List<Long> missing = missingLockKeys(db, createLockKeys(lockKey));
+		if (missing.isEmpty()) {
 			return;
 		}
 
 		List<List<Object>> paramsList = new ArrayList<>();
-		for (long key : lockKeyHashes) {
+		for (long key : missing) {
 			paramsList.add(new SQLParameterList(key));
 		}
 		// 失敗は executeBatch が投げる
@@ -48,6 +68,37 @@ public class DBLock {
 				+ Sqls.insertIgnoreTail(db.dialect())
 			, paramsList
 		);
+
+	}
+
+	/**
+	 * まだ無いロックキーを返す
+	 *
+	 * <p>
+	 * <b>{@code FOR UPDATE} / {@code FOR SHARE} を付けない</b>（ロックを取らない読みにする。付けると待つ理由が戻る）。
+	 * </p>
+	 *
+	 * @param db				DB
+	 * @param lockKeyHashes		ロックキー（ハッシュ）
+	 * @return	無いもの（重なりは除く。渡した順）
+	 */
+	private static List<Long> missingLockKeys (DB db, List<Long> lockKeyHashes) {
+
+		Set<Long> missing = new LinkedHashSet<>(lockKeyHashes);
+		if (missing.isEmpty()) {
+			return List.of();
+		}
+
+		String placeholders = String.join(", ", Collections.nCopies(missing.size(), "?"));
+		List<Data> rows = db.selectList(
+			"SELECT lock_key FROM db_lock WHERE lock_key IN (" + placeholders + ")"
+			, missing.toArray()
+		);
+		for (Data row : rows) {
+			missing.remove(row.getLong("lock_key"));
+		}
+
+		return List.copyOf(missing);
 
 	}
 
