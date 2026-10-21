@@ -263,8 +263,12 @@ public final class Dispatcher {
 		 * <b>綴りを寄せるのは、当たったルートがあるときだけ。</b>
 		 * 当たっていなければ寄せ先が分からないので、スラッシュだけ直す。
 		 */
+		/*
+		 * <b>絶対パスのパターンで寄せる</b>（D-304）。2.5.10 までは path() の中の相対のパターン（{@code /users}）で寄せていたので、
+		 * {@code path("/admin", ...)} の中のルートに {@code /ADMIN/USERS} が当たると、{@code /users/USERS} に寄せていた
+		 */
 		String pattern = RouterConf.ignoreCase() && match.matched() && match.route() != null
-			? match.route().pattern()
+			? match.route().fullPattern()
 			: null;
 
 		String canonical = PathSegments.canonicalRawPath(rawPath, pattern);

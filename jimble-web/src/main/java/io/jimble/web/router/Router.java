@@ -621,6 +621,15 @@ public final class Router {
 		scope.root().seal();
 		rootTree.forEachRoute(Route::seal);
 
+		/*
+		 * 各ルートに絶対パスのパターンを覚えさせる（D-304）。
+		 * path() の中のルートや merge で取り込んだルートは、登録したときには自分の絶対パスを知らない。
+		 * 木を根からたどる routes() と同じ組み立て方で入れる
+		 */
+		for (RouteInfo info : routes()) {
+			info.route().fullPattern(info.path());
+		}
+
 		checkDuplicateAttributeNames();
 
 		checkWebSocketBefore();
