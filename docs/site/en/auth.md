@@ -757,6 +757,35 @@ path("/shop", () -> {
 Pass the realm when issuing, listing and revoking too (`ApiToken.issue("operator", staff.id(), ...)`, `ApiToken.list("member", customer.id())`).
 Passkeys are kept per realm in the same way (see "Passkeys" below).
 
+### Separate tenants (SaaS)
+
+In a SaaS where each client has its own domain, **check the token's user against the request's tenant (Host) inside `lookup`** (since 2.5.11).
+Pass a `lookup` that takes the request, the realm and the ID, and return `null` when the tenants differ.
+
+```java
+before(ApiToken.authenticate((c, realm, id) -> {
+	// Look the client up in your table (as in "When each client has its own domain (SaaS)" below)
+	Tenant tenant = Tenants.byHost(c.request().host()).orElse(null);
+	Principal member = App.findMember(id);
+	// A user of another tenant gets null (the same 401 as a disabled user; the response does not reveal the tenant mismatch)
+	return tenant != null && member != null && App.tenantOf(id) == tenant.id() ? member : null;
+}));
+```
+
+Without this check, a token for a user of tenant A sent to tenant B's host **gets through**, because `lookup` returns tenant A's user.
+
+| Inside `lookup` | |
+| --- | --- |
+| You may use | `c.request()` (`host()`, headers, path), `c.route()` (route attributes) |
+| You may not use | `c.session()` (throws, so 500; keeps the session cookie off token requests), `c.response()` (return `null` to refuse), `Auth.principal(c)` (nobody is logged in yet) |
+
+If `lookup` throws, the response is 500 (no details). Return `null` to refuse instead of throwing.
+
+> [!NOTE]
+> **Users who sign in with a session need a separate check.** A session cookie can be sent to another tenant's host too.
+> Put a before after `Auth::guard` that compares the logged-in user's tenant with the Host's tenant.
+> Passkeys call `Passkey.login(c, rp(c), credential, id -> ...)` inside the login handler, so that `lookup` can use `c` for the check.
+
 ### When it refuses
 
 | | Status |

@@ -8,6 +8,7 @@ import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
+import io.jimble.web.internal.SessionGuard;
 import io.jimble.web.router.AttributeKey;
 import io.jimble.web.router.Handler;
 import io.jimble.web.session.SessionStores;
@@ -25,6 +26,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -277,7 +279,9 @@ public final class ApiToken {
 	 */
 	public static Handler authenticate (Function<Long, Principal> lookup) {
 
-		return authenticate((realm, userId) -> lookup.apply(userId));
+		Objects.requireNonNull(lookup, "lookup");
+
+		return authenticate((PrincipalLookup) (context, realm, userId) -> lookup.apply(userId));
 
 	}
 
@@ -299,8 +303,42 @@ public final class ApiToken {
 	 *
 	 * @param lookup	種別と利用者 ID から、いまの利用者を引く（止めた・消した人なら null）
 	 * @return	before に置くもの
+	 * @see #authenticate(PrincipalLookup)
 	 */
 	public static Handler authenticate (BiFunction<String, Long, Principal> lookup) {
+
+		Objects.requireNonNull(lookup, "lookup");
+
+		return authenticate((PrincipalLookup) (context, realm, userId) -> lookup.apply(realm, userId));
+
+	}
+
+	/**
+	 * {@code Authorization: Bearer} を確かめる before（リクエストも見て利用者を引く。D-305）
+	 *
+	 * <pre>
+	 * before(ApiToken.authenticate((context, realm, id) -&gt; App.findMemberInTenant(context.request().host(), id)));
+	 * </pre>
+	 *
+	 * <p>
+	 * <b>マルチテナントの SaaS で、トークンの利用者とリクエストのテナント（Host）を照合するときに使う。</b>
+	 * ほかのテナントの利用者なら null を返せば、止めた・消した人と同じ 401（「利用者がいません」）になり、
+	 * テナントが違うことは応答で分からない。
+	 * </p>
+	 *
+	 * <p>
+	 * {@code lookup} が呼ばれるのは、このリクエストのログインとセッションを用意する前である。
+	 * {@code context.session()} を呼ぶと {@link IllegalStateException}（500）になる。使ってよいものは {@link PrincipalLookup} を参照。
+	 * </p>
+	 *
+	 * <p>確かめる中身は {@link #authenticate(Function)} と同じ。</p>
+	 *
+	 * @param lookup	リクエスト・種別・利用者 ID から、いまの利用者を引く（止めた・消した・ほかのテナントの人なら null）
+	 * @return	before に置くもの
+	 */
+	public static Handler authenticate (PrincipalLookup lookup) {
+
+		Objects.requireNonNull(lookup, "lookup");
 
 		return context -> {
 
@@ -343,7 +381,14 @@ public final class ApiToken {
 				throw unauthorized(context, "API のトークンは止められています");
 			}
 
-			Principal principal = lookup.apply(realm, userId);
+			/*
+			 * <b>lookup の中ではセッションを使わせない</b>（D-305）。ここはまだセッションの保存先を「なし」にする前なので、
+			 * session() を呼ばれると既定の保存先のセッションができ、トークンのリクエストにセッションの Cookie が出る
+			 */
+			Principal principal = SessionGuard.forbid(
+				"ApiToken.authenticate の lookup の中では session() を使えません（トークンのリクエストはセッションを使いません。"
+					+ "テナントの照合などは request().host() やヘッダー・ルートの属性で行ってください）"
+				, () -> lookup.find(context, realm, userId));
 
 			if (principal == null || !principal.isAuthenticated()) {
 				throw unauthorized(context, "API のトークンの利用者がいません");
