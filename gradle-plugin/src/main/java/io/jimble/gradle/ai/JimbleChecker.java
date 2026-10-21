@@ -82,7 +82,7 @@ public final class JimbleChecker {
 
 	}
 
-	/* J101: Request は Data を継いでいるが中身は空。get〜 はコンパイルが通って null / 空を返す */
+	/* J101: request().get〜。2.0 の Request は Data を継がないのでコンパイルが通らない（1.x は通って null / 空を返していた） */
 	private static final Pattern REQUEST_GET = Pattern.compile("(?<!request\\(\\))\\.request\\(\\)\\s*\\.\\s*get[A-Z]\\w*\\s*\\(");
 
 	/* J201: 環境変数らしい名前を ? なしで参照している */

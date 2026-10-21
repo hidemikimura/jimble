@@ -76,9 +76,6 @@ final class DocsOnly {
 			public String batchName () { return "記事の掃除"; }
 
 			@Override
-			public boolean isScheduler () { return true; }
-
-			@Override
 			public String cron () {
 
 				// 毎日 3:15

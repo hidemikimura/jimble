@@ -13,8 +13,8 @@ order: 1
 ```
 
 - `batchName()` is the name that shows up on the admin screen
-- Only the ones whose `isScheduler()` returns `true` are picked up by the scheduler
-- `cron()` is a five-field cron expression
+- `cron()` is a five-field cron expression. Write one and the scheduler picks the batch up (`isEnableScheduler()` is `true` by default)
+- **Do not make `isScheduler()` return `true`.** It asks whether the batch *is the scheduler itself*; return `true` and the batch never gets a master row, so cron never runs it
 - `settings()` is the configuration held in the DB (`defaultBatchSettings()` supplies the initial values)
 
 ## Registering it
@@ -82,7 +82,6 @@ It repeats **read → process → write in bulk**, committing every `chunkSize()
 public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 
 	@Override public String batchName ()   { return "Archive old requests"; }
-	@Override public boolean isScheduler () { return true; }
 	@Override public String cron ()        { return "0 4 * * *"; }
 	@Override public int chunkSize ()      { return 500; }
 
@@ -202,7 +201,7 @@ public class BlogBatch {
 		BatchResult result = BatchExecutor.start(args);       // 4. run
 
 		DBUtil.stop();
-		System.exit(result.isExecuted() ? 0 : 1);
+		System.exit(result == BatchResult.completed ? 0 : 1);
 
 	}
 
@@ -210,10 +209,12 @@ public class BlogBatch {
 ```
 
 ```bash
-java -cp app.jar blog.BlogBatch env=local class=blog.batch.PostCleanupBatch days=30
+java -Djimble.env=prod -cp app.jar blog.BlogBatch class=blog.batch.PostCleanupBatch days=30
 ```
 
 Anything you pass as `key=value` lands in `args.cliArgs`.
+The environment comes from `-Djimble.env` (passing `env=` does not change it, and a value that differs from the running environment stops the batch).
+Exit with 0 only on `completed`. `isExecuted()` means "it ran", and is `true` for `error` and `canceled` too.
 
 To run on cron, stand up a separate resident process with `DbScheduler` as its entry point.
 
@@ -229,5 +230,14 @@ implementation("io.jimble:jimble-batch-manager:<version>")
 install(BatchManagerController::new);
 ```
 
-**You have to add authentication yourself.** Put it in a `before`; that is all it takes.
-With nothing there, anyone can start your batches.
+Basic authentication is built in. Turn the screen on in the config and give it a user name and password.
+
+```hocon
+batch_manager {
+  enabled  = true                                   # false by default
+  username = "admin"
+  password = ${?JIMBLE_BATCH_MANAGER_PASSWORD}
+}
+```
+
+**If the user name or password is empty, the screen is not mounted at all** (only an error is logged). It is never published without authentication.

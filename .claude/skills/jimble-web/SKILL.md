@@ -1,6 +1,6 @@
 ---
 name: jimble-web
-description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲、入力の読み方と返し方、セッション・CSRF・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証・パスキー・API のトークン）、実際に踏んだ落とし穴を含む。
+description: jimble の Web 層を書くときに使う。ルーティングとフィルタの効く範囲（大文字小文字・正規の URL への寄せ）、入力の読み方と返し方、アップロード、セッション・CSRF・Cookie・Flash、エラー処理、認証（ロックアウト・remember-me・OIDC・二要素認証・パスキー・API のトークン、マルチテナントの Host の照合）、プロキシの後ろ・静的ファイル・MCP、実際に踏んだ落とし穴を含む。
 ---
 
 # jimble の Web 層
@@ -105,6 +105,18 @@ if (context.route().route().attribute(NO_AUTH)) { return; }
 
 **未マッチ（404）で呼ばれるのは、いちばん外側の `error` だけ。**
 
+ルートの絶対パスのパターンは `context.route().route().fullPattern()`（`path("/admin", ...)` の中の `/users/{id}` なら `/admin/users/{id}`。2.5.11）。
+`pattern()` は `path()` の中の相対のまま。
+
+### 大文字小文字と正規の URL（`router.ignore_case` / `router.redirect_to_canonical`）
+
+末尾と連続のスラッシュは前から無視する（`/a/b` `/a/b/` `/a//b` は同じルート）。どちらの設定も既定 `false`。
+
+- **`router.ignore_case = true` にすると `/ADMIN` が `/admin` のルートに当たる。**`request().path()` は打たれたとおりの綴りを返すので、
+  **パスの文字列で判定する before や前段の ACL はすり抜ける**。判定はルートの属性か `fullPattern()` で書く
+- **`router.redirect_to_canonical = true` を一緒に入れる**と、登録した綴りへ 301 で寄せる（アプリには1つの綴りしか来ない）
+- **`path()` の中のルートの寄せ先は 2.5.10 まで壊れていた**（`/ADMIN/USERS/1` → `/users/USERS/1`。D-304）。両方使うなら 2.5.11 以上
+
 ## 入力を読む
 
 | | 中身 |
@@ -128,6 +140,10 @@ String title = input.getString("title");
 入れ子は `user.name=taro` でも `user[name]=taro` でも同じ。
 `items[0].price` は添字、`items[].price` は末尾に追加。
 **添字は 10,000 まで**（1回のリクエストで伸ばせる配列は合わせて 100,000 要素まで）。超えると 400（2.2.2）。
+**キーの入れ子（`a.b.c` / `a[b][c]`）は 32 段まで**。超えると 400（2.5.2）。
+
+**JSON の小数は `Double` で返る**（2.5.6。それまでは `Float`。`Double` に収まらなければ `BigDecimal`）。
+`(Float) input.get("price")` は落ちる。`getDouble` / `getBigDecimal` で読む。
 
 無いキー（キーが無い・空欄）は `getString` なら `null`、`getInt` なら `0`、`getBoolean` なら `false`。
 「無い」と「0」を分けたいなら `getIntObject` か `isNull(key)`、既定値は `getInt("page", 1)`。
@@ -136,6 +152,16 @@ String title = input.getString("title");
 `paging()` は枠組みが寛容に読む（`?page=abc` は1ページ目）。
 
 属性を決めた `Cookie` は `cookies().putSigned(cookie)` / `putUnsigned(cookie)` で書く（`put(Cookie)` は無い）。
+
+### アップロード
+
+ファイルは `bodyFile()`（項目名ごとに `UploadFile` のリスト。`bodyAll()` には載らない）。`UploadFile` は `io.jimble.util.convertor`。
+
+- 日本語・`+`・`%`・`;` を含むファイル名も、送られたとおりに受け取る（2.5.1。それまでは日本語の名前が 400）
+- **ファイルを選ばずに送った入力（`filename=""`）は捨てる**（`bodyFile()` に載らない。2.5.1）
+- `fileName()` は最後の名前だけ、フォルダごとのアップロード（`webkitdirectory`）は `relativePath()`（`写真/2026/a.png`。2.5.1）
+- `.` / `..` の段・空の段・制御文字・ドライブ指定（`C:evil.jsp`）・文字の向きを変える文字を含む名前は 400（2.5.2）。
+  **それでも `fileName()` をそのまま保存先のパスにしない**（長すぎる名前や OS で使えない文字は入りうる）
 
 ## 検査（バリデーション）
 
@@ -156,15 +182,15 @@ long categoryId = input.getLong(Post.category_id);   // 検査を通したあと
   **空の配列（`{"name": []}`）も「値が無い」として見る**（2.2.3。それまでは1度も検証されず、必須も素通りした）
   「登録のときだけ必須、更新は送られた項目だけ見る」は `insertRequired()` と `insertRequestChecker(...)`
 - `ValidationExecutor`（ルートに積む検査）も同じ 422 の形。こちらは `addError(...)` で積み、`error` は通らず `onCancel` で返す
-- **422 に載せる入力値から、名前に `password` / `secret` / `token` などを含む項目を落とす**（2.2.4）。
+- **422 に載せる入力値から、名前に `password` / `secret` / `token` などを含む項目を落とす**（2.2.4。リストの中の `users[0][password]` も落とすのは 2.5.2 から。64 段より深いところは写さない）。
   入力し直してもらう画面で、パスワードの欄を 422 の本文から埋め戻すことはできない
 - **`url()` は 1,024 文字、`email()` は 254 文字まで**（2.2.4。超えたら検証の誤り）
 
 ## 返す
 
 ```java
-context.response().send("text");                   // text/plain
-context.response().json("posts", list);            // 組み立てる。送信は実行の終わり
+context.response().text("text");                   // 組み立てる。送信は実行の終わり
+context.response().json("posts", list);            // 同じ
 context.response().view("blog/posts.jte");
 context.response().redirect("/");                  // 302
 context.response().code(201).send();
@@ -180,6 +206,7 @@ JSON も返す口にしたいなら `json(...)` で別に返す（元に戻す�
 ディスパッチャが実行の終わりに送る（`error` ハンドラの中でも同じ）。
 サンプルはどれも `json()` で終わっている。
 明示するのは**本文なしで終わらせたいとき**だけ（`code(204).send()`）。
+**`send("...")` のように引数を渡すと、その場で送る**（組み立てない）。文字列を返すなら `text("...")`。
 
 大きいものは `context.response().outputStream()` に直接書く。
 **呼んだ時点でステータス・Cookie・Cache-Control が決まる**ので、`code(...)` やヘッダはその前に（送ったあとのヘッダ・Cookie は例外）。
@@ -206,12 +233,14 @@ context.session().save();                  // ← 呼ばないと書かれない
 `Auth.login` を使えば振り直しと保存までやる。
 
 CSRF は `before` に `Csrf::verify`。`GET` `HEAD` `OPTIONS` `TRACE` は素通し。
-トークンは `Csrf.token(context)` を hidden（`csrf_token`）に入れる（`context.request().csrfToken()` は送られてきたヘッダを読むだけで、発行しない）。読むのはヘッダ（`X-CSRF-Token`）→ フォーム → JSON の本文。**クエリ文字列では受けない**。
+トークンは `Csrf.token(context)` を hidden（`csrf_token`）に入れる（`context.request().csrfToken()` は使わない。読むのは `csrf-token` ヘッダで、`Csrf::verify` が見る `X-CSRF-Token` とは別物。発行もしない）。読むのはヘッダ（`X-CSRF-Token`）→ フォーム → JSON の本文。**クエリ文字列では受けない**。
 `csrf.bind_session = true` でトークンをセッションに置き、ログインで作り直す。新しいトークンは応答の `X-CSRF-Token` ヘッダで返るので、**SPA はそれで差し替える**（しないとログイン後の POST が 403）。`session.store = "none"` では使えない（例外）。
 
 Flash は**次の1回のリクエストだけ**残る。読んだ時点で消える。
 
-**署名つき Cookie の署名は Cookie の名前に結びついている**（2.2.3）。自分で署名するなら `Cookies.sign(名前, 値)`（`Cookies.sign(値)` は非推奨）。
+**署名つき Cookie の署名は Cookie の名前に結びついている**（2.2.3）。自分で署名するなら `Cookies.sign(名前, 値)`。
+**`Cookies.sign(値)`（非推奨）の署名と 2.2.2 以前の署名は、2.5.2 から既定で読まれない**（`cookie.accept_legacy_signature = false`。D-291）。
+2.2.2 以前から上げるときは、移す間だけ `true` にする（`sid` と `csrf_token` は読んだときに書き直される）。
 署名は有効期限を含まない。**利用者を表す値を署名つき Cookie だけで信じない**（セッションに入れる）。
 WebSocket の `WsSession.cookie(名前)` も署名を確かめた値を返す（2.2.4。合わなければ空文字）。自分で確かめるなら `Cookies.verify(名前, 値)`。
 
@@ -246,8 +275,9 @@ throw new HttpException(401, "ログインしてください");
 ## ログインと認可
 
 ```java
-before(Remember.restore(App::findPrincipal));   // remember-me を使うなら先に
-before(Auth::guard);                            // これを「いちばん最初に近く」
+// 順番は ApiToken.authenticate → Remember.restore → Auth::guard → session() に触るフィルタ
+before(Remember.restore(App::findPrincipal));   // remember-me を使うなら guard より先に
+before(Auth::guard);                            // session() に触るフィルタより先に
 
 // ログインの種別が複数ある（別の表から ID を引く）なら、remember-me も種別を渡す（D-183）
 // before(Remember.restore("operator", Ops::findStaff));
@@ -282,6 +312,9 @@ get("/auth/google", Oidc.start("google")).attribute(Auth.PUBLIC, true);
 get("/auth/google/callback", Oidc.callback("google", App::findOrCreate, "/login/code"))
 	.attribute(Auth.PUBLIC, true);   // 第3引数はコードを入れる画面
 ```
+
+**2引数・3引数の `Oidc.callback` は 2.5.2 以上が要る**（2.2.3〜2.5.1 はルートを登録したところで必ず例外。D-269）。
+それより前の版なら4引数（`Oidc.callback("google", 関数, "/login/code", "")`）で種別を渡す。
 
 `findOrCreate` は `OidcUser` を受け取って `Principal` を返す（入れないなら `null`）。
 **引くのは `user.key()`（`provider:sub`）だけ**——メールが同じでも自動では結び付けない。
@@ -338,7 +371,7 @@ if (!Mfa.complete(context, context.request().bodyAll().getString("code"))) {   /
 - **ログインを自分で書くなら、`Lockout.waitSeconds` → 確かめる → `Lockout.fail` の順にしない**（同時に送られると素通りする）。
   **`Lockout.attempt(key)` で、試す前に数える**（0 なら試してよい。成功したら `Lockout.clear(key)`）。`Auth.attemptLogin` はこれを使っている
 
-### API のトークン（Authorization: Bearer。2.4.0）
+### API のトークン（Authorization: Bearer。2.4.0、種別は 2.5.10、テナントの照合は 2.5.11）
 
 ```java
 before(ApiToken.authenticate(App::findPrincipal));   // いちばん先（Remember.restore・Csrf::verify・Auth::guard より前）
@@ -353,6 +386,34 @@ ApiToken.Issued issued = ApiToken.issue(me.id(), "連携", Set.of("requests:read
 - `io.jimble.web.auth.ApiToken`。DB に持つ不透明なトークン（JWT は出さない）。DB にはハッシュだけ
 - トークンの人はそのリクエストだけログイン（Cookie なし）。**FULL_AUTH には入れない**。CSRF は見ない。スコープはトークンの人にだけ効く
 - **`Auth.revoke` / `revokeOthers` でそれより前のトークンも止まる**。個別に止めるなら `ApiToken.revoke(realm, id, トークンの id)`
+- 一覧は `ApiToken.list(realm, id)`（トークンそのものは無い）、全部止めるなら `ApiToken.revokeAll(realm, id)`、
+  いまのトークンのスコープは `ApiToken.scopes(context)`（種別なしは `realm` に `""`）
+- **トークンはルートの `Auth.REALM` の種別で引く。**種別を付けたブロックで受けるなら、発行も
+  `ApiToken.issue("operator", id, ...)`。種別なしの `issue(id, ...)` で出したトークンは、種別つきのルートでは 401
+
+**`lookup` は3つの形がある**（どれも止めた・消した人なら `null` → 401）。
+
+| 形 | 使うとき |
+| --- | --- |
+| `id -> ...` | 利用者の表が1つ |
+| `(realm, id) -> ...`（2.5.10） | **管理者と顧客で表が別。**ID だけでは、ID 1 がどちらの ID 1 か引き分けられない。種別なしのルートでは `realm` は `""` |
+| `(context, realm, id) -> ...`（`PrincipalLookup`。2.5.11） | **マルチテナントの SaaS。**`context.request().host()` のテナントと利用者のテナントを照合する |
+
+```java
+before(ApiToken.authenticate((c, realm, id) -> {
+	Tenant tenant = Tenants.byHost(c.request().host()).orElse(null);   // アプリ側のクラス
+	Principal member = App.findMember(id);
+	return tenant != null && member != null && App.tenantOf(id) == tenant.id() ? member : null;   // 違えば null
+}));
+```
+
+- **照合しないと、テナント A の利用者のトークンがテナント B のホストで通る。**違えば `null` を返す（止めた人と同じ 401。テナントが違うことは応答で分からない）
+- `lookup` の中で使ってよいのは `c.request()`（`host()`・ヘッダー・パス）と `c.route()`（属性）だけ。
+  **`c.session()` は例外（500）**、`c.response()` は書かない、`Auth.principal(c)` はまだ ANONYMOUS
+- **断るときは例外ではなく `null`**（例外を投げると 500）
+- **セッションで入る人の照合は別に要る**（Cookie もほかのテナントのホストへ送れる）。`Auth::guard` のあとに、ログイン中の人のテナントと Host を比べる before を置く
+- `ApiToken` を使わずに自分で Bearer を確かめる before では、`context.sessionStarted()`（2.4.1）でセッションを始めずに確かめる
+  （`session()` を呼ぶと始まり、あとの `Auth::guard` が `NO_SESSION` のルートで保存先を変えられず 500）
 
 ### パスキー（パスワードなしのログイン。2.4.0）
 
@@ -387,8 +448,9 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   「登録のときだけ必須」は `insertRequired()`（登録かどうかは `insertRequestChecker(...)` で決める）
 - **`error(...)` が `ValidationException` にも本文を組むと、422 の `{"validation": ...}` が消える**（上の「エラー」）
 - **`session().data().put(...)` は例外。**`session().put(...)`（そして `save()`）
-- **`Auth::guard` はいちばん最初に登録する。**セッションを使うかどうかをここで決めるので、
-  先に誰かが `session()` を触ると間に合わない
+- **`Auth::guard` は `session()` に触るフィルタより先に登録する。**セッションを使うかどうかをここで決めるので、
+  先に誰かが `session()` を触ると間に合わない。前に置いてよいのは `ApiToken.authenticate` と `Remember.restore` だけ
+  （この順。`ApiToken.authenticate` より先にセッションを読まれていると、トークンのリクエストが例外になる）
 - **`PUBLIC` と `NO_SESSION` は別の判断。**ログインの入口は
   「ログインは要らないが**セッションは要る**」。一緒にすると**誰もログインできなくなる**
   （302 は返るのに次のリクエストで 401 になる）
@@ -403,10 +465,16 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   ルート定義は初期化ブロックの中で完結させる
 - **`env=local` で `cookie.secure = true` のままだと**、ブラウザが Cookie を返さず
   セッションも CSRF もエラーなしで効かなくなる（起動時に WARN が出る）。
-  `cookie { secure = false }` は **`application.local.conf` にだけ**書く（`application.conf` に書くと本番も引き継ぐ）
+  `cookie { secure = false }` は **`application.local.conf`（1行目に `include "application.conf"`）にだけ**書く
+  （`application.conf` に書くと本番も引き継ぐ。ローカルでない環境で false なら起動時に WARN）
+- **`error(...)` で 500 番台の `cause.getMessage()` を返さない。**DB の誤り（重複したキーの値）や内部のパスが相手に届く（上の例のとおり固定の文言にする）
 - **ロードバランサの後ろで `trust_proxy = true` にするなら、`X-Forwarded-For` は右から読む**（2.2.3）。
   中継が2段以上なら `server.trusted_proxies`（IP / CIDR）を書く。`CF-Connecting-IP` / `X-Real-IP` は
   `server.client_ip_header` に書いたときだけ信じる。`RateLimit.perIp` はここで決めた IP で数える
+- **`trust_proxy = true` なら、`request().scheme()` と `isSecure()` は `X-Forwarded-Proto` を見る**（2.5.3。`trusted_proxies` を書けばそこからの接続だけ、値が複数なら右端）。
+  TLS をロードバランサで終端していても **`security_headers.hsts` が出るようになる**（2.5.2 までは一度も出ていなかった）
+- **流量制限は宣言ごとに数える**（2.5.2。それまではログインの `perIp(5, 1m)` と `/api` の `perIp(60, 1m)` が同じ枠を分け合い、ログインの制限が効いていなかった）
+- **`IPUtil.inRange(対象, 範囲)` の対象は IP の字面だけ**（2.2.4。名前は DNS で引かず、範囲外）。送り元の IP は `context.request().address()` を渡す
 - **`new Cors().addAllowOrigin("*")` と `allowCredentials(true)` は一緒に使えない**（例外。2.2.3）。資格情報つきなら、オリジンを並べる
 - **SPA の書き換え（`SpaRewriter`）で差し込む値は `SpaRewriter.escapeHtml(...)` を通す。**パスの値はデコード済みで、そのまま HTML になる
 - **`ReverseProxy` は `.` / `..` を含むパスを 400 で断る**（2.2.2）。転送先の `Host` やヘッダを決めるなら `preserveHost()` /
@@ -415,8 +483,8 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   ヘッダを返すまで長くかかる転送先なら上げる。本文の全体の上限は `proxy.body_timeout` / `ReverseProxy#bodyTimeout`（既定 0 ＝ 上限なし。
   ダウンロードや SSE を通すルートでは 0 のまま）
 - **`BasicAuth` は、成功したらセッション ID を作り直し、失敗を `Lockout` で数える**（2.2.3）
-- **`/mcp` には認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く。
-  **別のブロックの `path("/mcp", () -> before(...))` は効かない**（フィルタは書いたブロックのルートにしか付かない）
+- **`/mcp` には認証が無い。**`McpController` を継承したクラスの初期化ブロックに `before(...)` を書く
+  （`Origin` の検査はブラウザしか止めない）。**別のブロックの `path("/mcp", () -> before(...))` は効かない**（フィルタは書いたブロックのルートにしか付かない）
 - **パスワードを変えたら `Auth.revokeOthers(context)`。`Remember.forgetAll` だけではほかの端末のセッションが残る**
   （消えるのは remember-me の記憶だけ）。管理画面から止めるなら `Auth.revoke(id)`。**これからのログインは止めない**ので、
   盗まれたアカウントは先にパスワードを変えるか止めてから。**役割を剥奪したときも `revoke`**（役割はログイン時にセッションへ写すので残る）。
@@ -429,6 +497,8 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   ファイル名にハッシュを入れる（`app.9f3a1c.js`）か、`<script src="/assets/app.js?v=2">` のように参照を変える。
   開発中は `application.local.conf` などで `assets.immutable_max_age = 0s`（**単位を書く。素の `0` は起動時に落ちる**）。
   そのほかの拡張子は `assets.max_age`（既定 `0s`）＋ `must-revalidate` で、毎回確かめに来る
+- **静的ファイルの置き場に空（`""` / `"/"`）を渡すと起動時に落ちる**（2.5.2。それまではクラスパスの根から返し、`application.conf` や `.class` が取れた）。
+  `AssetHandler.mount("/static", "assets")` のように専用のディレクトリを渡す
 
 ## 詳しいことは引く
 
@@ -449,6 +519,7 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
 | MCP サーバー | <https://jimble.io/ja/mcp.md> |
 | ファイルアップロード | <https://jimble.io/ja/upload.md> |
 | SSE / WebSocket | <https://jimble.io/ja/sse.md> / <https://jimble.io/ja/websocket.md> |
+| メール（SMTP。送るのは MQ から。jimble-batch の skill） | <https://jimble.io/ja/mail.md> |
 | よくある落とし穴 | <https://jimble.io/ja/pitfalls.md> |
 
 ## 設定の値には単位を書く（要件 D-159）

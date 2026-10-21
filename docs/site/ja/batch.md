@@ -13,8 +13,8 @@ order: 1
 ```
 
 - `batchName()` は管理画面に出る名前です
-- `isScheduler()` が `true` のものだけ、スケジューラが拾います
-- `cron()` は5フィールドの cron 式です
+- `cron()` は5フィールドの cron 式です。書けばスケジューラが拾います（`isEnableScheduler()` が既定で `true`）
+- **`isScheduler()` は `true` にしません。**「スケジューラそのものか」を聞くメソッドで、`true` にするとマスタに載らず、cron で回りません
 - `settings()` は DB に入れた設定（`defaultBatchSettings()` が初期値）です
 
 ## 登録する
@@ -80,7 +80,6 @@ for (Data row : rows) {
 public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 
 	@Override public String batchName ()   { return "古い申請の書庫入れ"; }
-	@Override public boolean isScheduler () { return true; }
 	@Override public String cron ()        { return "0 4 * * *"; }
 	@Override public int chunkSize ()      { return 500; }
 
@@ -197,7 +196,7 @@ public class BlogBatch {
 		BatchResult result = BatchExecutor.start(args);       // 4. 実行
 
 		DBUtil.stop();
-		System.exit(result.isExecuted() ? 0 : 1);
+		System.exit(result == BatchResult.completed ? 0 : 1);
 
 	}
 
@@ -205,10 +204,12 @@ public class BlogBatch {
 ```
 
 ```bash
-java -cp app.jar blog.BlogBatch env=local class=blog.batch.PostCleanupBatch days=30
+java -Djimble.env=prod -cp app.jar blog.BlogBatch class=blog.batch.PostCleanupBatch days=30
 ```
 
 `key=value` の形で渡したものが `args.cliArgs` に入ります。
+環境は `-Djimble.env` で決めます（`env=` を渡しても環境は変わらず、いまの環境と違えば止まります）。
+終了コードは `completed` のときだけ 0 にします。`isExecuted()` は「走ったか」で、失敗（`error`）や中断（`canceled`）でも `true` です。
 
 cron で回すなら `DbScheduler` を入口にした常駐プロセスを別に立てます。
 
@@ -224,5 +225,14 @@ implementation("io.jimble:jimble-batch-manager:<版>")
 install(BatchManagerController::new);
 ```
 
-**認証は自分で付けてください。** `before` に置くだけです。
-何も付けないと誰でもバッチを起動できます。
+Basic 認証が組み込みで付きます。設定で有効にし、ユーザー名とパスワードを渡します。
+
+```hocon
+batch_manager {
+  enabled  = true                                   # 既定は false
+  username = "admin"
+  password = ${?JIMBLE_BATCH_MANAGER_PASSWORD}
+}
+```
+
+**ユーザー名かパスワードが空だと、画面は組み込まれません**（エラーのログが出るだけです）。認証の無いまま公開されることはありません。

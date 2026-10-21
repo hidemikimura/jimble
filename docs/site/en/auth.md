@@ -678,7 +678,7 @@ Mfa.remainingRecoveryCodes("operator", staff.id());
 | Storage | `auth_mfa` and `auth_mfa_recovery`. **A DB is required** (without one, `enroll` throws) |
 | QR images | Not drawn. You get `enrollment.uri()` and render it yourself (no new dependency) |
 | SMS / email | No. SIM swaps take SMS codes |
-| WebAuthn / passkeys | Not yet |
+| WebAuthn / passkeys | Not as a second factor. **A passkey can be the whole login instead** (since 2.4.0; see "Passkeys" below), and no code is asked of someone who signs in with one |
 | "Trusted devices" | No. remember-me is the nearby thing, and **it is a different thing** — that one replaces the password |
 
 

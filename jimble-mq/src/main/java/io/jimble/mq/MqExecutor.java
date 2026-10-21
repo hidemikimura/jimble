@@ -51,7 +51,7 @@ import java.util.Date;
  * <p>
  * <b>{@link #execute(DB, Data)} は同じメッセージに対して2回以上呼ばれうる。</b>
  * 処理の途中でプロセスが落ちれば、その行は
- * {@code mq.stale_seconds} のあとに {@code waiting} へ戻されて拾い直される。
+ * {@code mq.stale} のあとに {@code waiting} へ戻されて拾い直される。
  * リトライ（要件 F-M-04）でも同じことが起きる。
  * </p>
  * <p>
