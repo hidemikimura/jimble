@@ -15,7 +15,7 @@ import io.jimble.util.log.Log;
  * <p>
  * <b>MQ は「1回だけ実行する」ことを約束しない。</b>
  * ワーカーが行を掴んだあとにプロセスごと落ちれば、その行は
- * {@code stale_seconds} を過ぎて {@code waiting} に戻り、<b>もう一度実行される。</b>
+ * {@code mq.stale} を過ぎて {@code waiting} に戻り、<b>もう一度実行される。</b>
  * 「たぶん落ちない」で書くと、落ちた日に通知が二重に飛ぶ。
  * </p>
  *

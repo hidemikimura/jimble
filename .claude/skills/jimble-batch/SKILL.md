@@ -1,6 +1,6 @@
 ---
 name: jimble-batch
-description: jimble でバッチと MQ を書くときに使う。バッチの定義と登録の順序、中断、チャンク処理、二重起動、入口の main、DB のテーブルをキューにする MQ の書き方と積み方を含む。
+description: jimble でバッチと MQ を書くときに使う。バッチの定義と登録の順序、中断、チャンク処理、二重起動、入口の main、cron の常駐スケジューラ（DbScheduler・複数台）、バッチ管理画面、DB のテーブルをキューにする MQ の書き方と積み方、MQ からのメール送信を含む。
 ---
 
 # jimble のバッチと MQ
@@ -16,12 +16,20 @@ import io.jimble.batch.BatchExecutor;
 import io.jimble.batch.BatchRegistry;
 import io.jimble.batch.BatchResult;
 import io.jimble.batch.BatchTables;
+import io.jimble.batch.KeyPagingReader;
 import io.jimble.batch.scheduler.DbScheduler;
+import io.jimble.db.DB;
 import io.jimble.mq.MqExecutor;
 import io.jimble.mq.MqQueue;
 import io.jimble.mq.MqRegistry;
-import io.jimble.mq.MqStatus;
+import io.jimble.mq.status.MqExecuteType;   // status パッケージ（io.jimble.mq ではない）
+import io.jimble.mq.status.MqStatus;
 import io.jimble.util.data.Data;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Iterator;
+import java.util.List;
 ```
 
 ## バッチを書く
@@ -73,6 +81,15 @@ BatchRegistry.sync(DBUtil.getMainDB());        // ← 登録が全部済んで�
 > 「1つも登録されていない」を「全部消えた」として扱うので、
 > **スケジューラが何も回さなくなる。**例外も警告も出ない。
 > **バッチを持たないアプリは `sync()` を呼ばない。**
+>
+> **一度 `nothing` になった行は、登録を直して `sync()` し直しても `enable` に戻らない。**
+> `sync()` が既にある行で書き換えるのは `name` と `default_*` などだけで、`status` は触らない。
+> 管理画面の有効・無効も `nothing` の行は変えられない。**SQL で `status = 'enable'` に戻す。**
+
+> **コードの `cron()` / `allowConcurrentExecutionCount()` / `defaultBatchSettings()` が効くのは、最初に行を作ったときだけ。**
+> あとで書き換えても変わるのは `default_cron` などの `default_*` 列で、動くときに見る
+> `cron` / `allow_concurrent_execution` / `settings` は変わらない。
+> `cron` と `settings` は管理画面で、同時実行数は SQL で変える。
 
 > **`batch_master` を別のアプリと共有しない。**
 > 消えた判定はクラス名でやるので、同じテーブルを見るアプリが2つあると
@@ -98,16 +115,25 @@ public class BlogBatch {
 		BatchResult result = BatchExecutor.start(args);   // 4. 実行
 
 		DBUtil.stop();
-		System.exit(result.isExecuted() ? 0 : 1);
+		System.exit(result == BatchResult.completed ? 0 : 1);   // isExecuted() ではない
 
 	}
 
 }
 ```
 
+> **終了コードを `result.isExecuted()` で決めない。**`isExecuted()` は「本体が走ったか」で、
+> 例外で終わった `error` も中断された `canceled` も `true` になる。これで決めると**失敗しても 0 で終わり**、
+> cron や監視が失敗に気づかない。成功を表すのは `BatchResult.completed` だけ。
+
 ```bash
-java -cp app.jar blog.BlogBatch env=local class=blog.batch.PostCleanupBatch days=30
+java -Djimble.env=prod -cp app.jar blog.BlogBatch class=blog.batch.PostCleanupBatch days=30
 ```
+
+- **環境は `-Djimble.env` で決める。引数の `env=` では変わらない**（設定はその前に読み終わっている）。
+  `env=` を渡して、いま動いている環境と違えば `IllegalArgumentException` で止まる
+- 環境は変えずに、読む設定ファイルだけ替えるなら `-Djimble.conf=application.batch`
+  （クラスパスの `application.batch.conf` だけを読む。見つからなければ起動時に落ちる。2.5.3）
 
 cron で回すなら、`DbScheduler` を入口にした**常駐プロセスを別に立てる**。
 
@@ -200,7 +226,9 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 ```java
 public class NoticeExecutor extends MqExecutor {
 
-	@Override public String queueName ()          { return "mq_blog"; }      // テーブル名
+	public static final String QUEUE_NAME = "mq_blog";
+
+	@Override public String queueName ()          { return QUEUE_NAME; }     // テーブル名
 	@Override public String key ()                { return "notice"; }       // 種別
 	@Override public MqExecuteType executeType () { return MqExecuteType.short_time; }
 
@@ -218,7 +246,11 @@ public class NoticeExecutor extends MqExecutor {
 }
 ```
 
-`completed` 以外を返すと `maxRetry()` まで再実行される。
+| 返し方 | どうなるか |
+| --- | --- |
+| `completed` | 行を**消す** |
+| `error`・例外で抜ける（`null` / `running` を返したときも `error` 扱い） | `maxRetry()`（既定 3）まで間をあけてやり直し、使い切ったら `dead` |
+| `dead` | **やり直さずに**その場であきらめる |
 
 ### 積むのはトランザクションの中
 
@@ -241,7 +273,9 @@ DB に積むのは中、外へ出すのは外——**コミットの逆側**で�
 いちばん確実なのは、**中で `put()` だけして、送信は `execute()` の中でやる**こと。
 そうすれば「どちら側か」を考えなくてよくなる（上のコード例がその形）。
 
-時間を指定するなら `put(db, data, scheduledAt)`。
+時間を指定するなら `put(db, data, Instant.now().plus(Duration.ofMinutes(10)))`（`Instant` 版を使う。`Date` 版は残してあるだけ）。
+積む時刻も拾う時刻も**この JVM の時刻**で比べる（2.5.2。それまでは拾うときに DB の `NOW()` と比べていて、
+JVM と DB の時間帯が違うと時差のぶん遅れて拾われていた）。`scheduled_at` を SQL で直接書くなら JVM の時刻で入れる。
 
 ### メールは MQ の execute() から送る（2.4.0）
 
@@ -283,15 +317,53 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 取り出して回すのは**バッチ**。`MqWorkerBatch` のようなバッチを1つ作って cron で叩くか、
 `DbScheduler` に渡す（`new DbScheduler().start(queue)`）。
 
+```java
+public class MqWorkerBatch extends AbstractBatch {
+
+	@Override public String batchName () { return "MQ ワーカー"; }
+
+	@Override
+	public void execute (BatchArgs args) {
+
+		long deadline = System.currentTimeMillis() + args.cliArgs().getLong("run_seconds", 50) * 1000;
+
+		// 「時間が来た」か「バッチが中断された」で止まる。doCancel() は呼ばない（下の落とし穴）
+		CancelOrderNotify stopper = new CancelOrderNotify() {
+			@Override public boolean isCancelOrder () {
+				return System.currentTimeMillis() >= deadline || MqWorkerBatch.this.isCancelOrder();
+			}
+			@Override public void doCancel () { MqWorkerBatch.this.doCancel(); }
+		};
+
+		new MqQueue(NoticeExecutor.QUEUE_NAME).start(stopper);   // 止まるまで戻らない
+
+	}
+
+}
+```
+
+`CancelOrderNotify` は `io.jimble.core.lifecycle`。
+
 **ワーカーのバッチに cron を入れるかは構成しだい。**
 スケジューラを常駐させているならスケジューラが直接回すので、
 ワーカーのバッチは「スケジューラを置かない構成のときに cron から叩くもの」になる。
+
+**DB から取るのはキューごとに1本の取り出し役で、手の空いたワーカーの数だけまとめて取る**（2.5.5。それまでは1回に1件で、
+ワーカーを増やしても件数が伸びなかった）。先読みはしない。
+
+- 並んで処理する数は `mq.thread_count.<種別>`（種別は `MqExecuteType` の名前）。増やすと件数が伸びる
+- `mq.poll_min` / `mq.poll_max` は**キューが空のときの待ち**（最初と上限）だけ。全員が処理中のときは、手が空くまで待つ（2.5.5）
+- `mq.stale` だけ `running` のままの行は、落ちたものとみなして戻す（上の「同じメッセージは2回来る」）
 
 ## 落とし穴（実際に踏んだもの）
 
 - **1.x のコードを直すなら** <https://jimble.io/ja/migrate-2.md> を読み、`./gradlew jimbleCheck` を流す
   （`isError()` や `DBTransaction`、`if (!DBUtil.load(...))` はコンパイルエラーになる）
-- **`BatchRegistry.sync()` は登録が全部済んでから。**先に呼ぶと全部 `nothing` になる
+- **`BatchRegistry.sync()` は登録が全部済んでから。**先に呼ぶと全部 `nothing` になり、
+  **直して `sync()` し直しても戻らない**（SQL で `status = 'enable'` に戻す。管理画面からも戻せない）
+- **登録したあとで `cron()` などを書き換えてもスケジュールは変わらない。**変わるのは `default_*` 列だけ。管理画面か SQL で変える
+- **終了コードを `isExecuted()` で決めない。**失敗（`error`）でも `true`。`result == BatchResult.completed ? 0 : 1`
+- **`env=` を引数で渡しても環境は変わらない。**`-Djimble.env=...` で渡す（違えば `IllegalArgumentException`）
 - **`BatchTables.install(db)` を呼ばないとバッチのテーブルが無い**（マイグレーションでは作らない）。
   呼び忘れると `sync()` が例外を投げて起動が止まる
 - **`mq_scheduler` などの MQ の表は codegen が外さない。**`codegen.exclude_tables` に1つずつ書く（ワイルドカード不可）
@@ -301,15 +373,22 @@ MqRegistry.add(NoticeExecutor::new);                // 走査はしない
 - **`settings()` / `args.cliArgs()` は人が入れた値。**`getLong("days")` は読めない値（`"abc"`）で `DataConversionException`、
   バッチが失敗になる（黙って 0 にはならない）。キーが無い・空なら 0 のままなので、0 を「未設定」として扱うなら自分で分ける
 - **`isScheduler()` を `true` にしない。**cron で回すのは `cron()` を書くだけ。`true` にするとマスタに行ができず、スケジューラから見えない
-- **`DBLock.lock` はトランザクションの中で呼ぶ**（外は `IllegalStateException`）。`db.transaction(tx -> { DBLock.lock(db, "key"); ... })`
+- 自前の排他（`DBLock`）は `jimble-db` の skill を見る（トランザクションの中で呼ぶ決まりがある）
 - **`isCancelOrder()` を見ていないバッチは止められない**（チャンクは自動）
 - `AbstractBatch` の外（Domain 層など）からは
   `Context.current(BatchContext.class).isCancelOrdered()` で同じ指示が見られる
 - **`reader()` と `write()` の `DB` を混ぜない**
 - **時間で終わるワーカーで `doCancel()` を呼ばない。**呼ぶと履歴が `canceled` になり、
   時間どおりに終わっただけなのに**異常終了に見える**
-- **二重起動は `allowConcurrentExecutionCount()`（既定1本）。**
-  サーバーが複数台でも DB のテーブルで排他するので1本しか走らない
+- **二重起動は `allowConcurrentExecutionCount()`（既定1本。0 以下は上限なし）。**
+  サーバーが複数台でも DB のテーブルで排他するので、**cron の1回で走るのは同時実行数まで**
+  （2.5.8。既定の 1 なら1台だけ、0 なら台数分）。2.5.7 までは、すぐ終わるバッチが同じ回に台数分走ることがあった。
+  `batch_master` に足す列（`last_fired_at` / `fire_count`）は `BatchTables.install` が起動時に足す
+- **jooby_base から移した `batch_master` や MQ の表を使うなら 2.5.9 以上にする。**2.5.8 では列が足されず、
+  起動は通るのに **cron のバッチがどれも走らない**（cron の回ごとに「この回を走らせてよいか確かめられませんでした」とエラーログ）。
+  MQ の表に `traceparent` が無いと**積むときに失敗する**。2.5.9 は起動時に足りない列を足す
+- **バッチ管理画面**は `jimble-batch-manager` を入れて `install(BatchManagerController::new)`、`batch_manager.enabled = true` と `batch_manager.username` / `password` を書く
+  （既定は無効。ユーザー名かパスワードが空だと組み込まず、エラーログだけ出る。Basic 認証は組み込み）
 - **バッチ管理画面の書き換える API は `Content-Type: application/json` でしか受けない**（2.2.3。CSRF 対策。フォームは 415）。
   スクリプトから叩くなら JSON で送る。Basic 認証の失敗は `Lockout` で数え、超えると 429
 

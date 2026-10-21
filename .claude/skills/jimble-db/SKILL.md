@@ -1,6 +1,6 @@
 ---
 name: jimble-db
-description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること（文字列の SQL は平ら）、select が Optional を返し失敗は例外になること、トランザクション（Tx）、マイグレーションとコード生成の決まりを含む。
+description: jimble で DB を扱うときに使う。SQL ビルダー、結果の Data がテーブル名でネストすること（文字列の SQL は平ら）、select が Optional を返し失敗は例外になること、トランザクション（Tx）、マイグレーションとコード生成の決まり、ロック（DBLock・RedisLock）、SQL 結果キャッシュと Redis、db.<名前> の設定（プール・Agroal）、MySQL と PostgreSQL の差を含む。
 ---
 
 # jimble の DB
@@ -15,6 +15,8 @@ import io.jimble.db.DBUtil;
 import io.jimble.db.SqlExecuteException;      // SQL の失敗（非検査）
 import io.jimble.db.DuplicateKeyException;    // 一意制約（SqlExecuteException の子）
 import io.jimble.db.TransactionException;     // 確定できなかった（DB_004 / DB_005 / DB_006）
+import io.jimble.db.sql.SqlBuildException;    // 組み立ての誤り（DB に投げる前に落ちる）
+import io.jimble.db.dialect.DialectException; // その製品に無いもの（PostgreSQL でインデックスのヒントなど）
 import io.jimble.db.sql.SQL;
 import io.jimble.db.sql.query.dsl.Dsl;
 import io.jimble.util.data.Data;
@@ -75,6 +77,8 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 **PostgreSQL では組み立てたところで `DialectException`**（黙って外さない）。最後の手段にし、`EXPLAIN` で効いていることを確かめる。
 結合の無いところの `on()` は落ちる。2度呼ぶと AND。
 
+**ページングのページ番号は、開始位置があふれない数までに抑える**（2.2.4。`?page=9223372036854775807` でも `start()` は負にならない）。
+
 ## 結果は Data。テーブル名でネストしている
 
 ```java
@@ -99,8 +103,13 @@ row.getData("comment");                       // 結合した側
 
 **取り出しは「あるのに読めない値」で `DataConversionException`**（`"abc"` を `getInt`、int に `"1.5"`、桁あふれ、
 真偽に `"yes"`、`getEnum` で一致しない）。**無いキー（キーが無い・null・空文字）は 0 / false / null のまま。**
-DB から読んだ値ならまず起きないが、**利用者の入力を同じ getter で読むと 500 になる**——先に検査する（`jimble-web` の skill）。
+DB から読んだ値ならまず起きないが、**利用者の入力を同じ getter で読むと 500 になる**——
+先に `rules.validate(db, input);` を通せば 422 で返る（`jimble-web` の skill）。
 無くてよい enum は `getEnumOptional(key, 型)`。
+
+**`Data.put` は `Data` を返さない。**`Map.put` なので戻り値は**前の値**（`Object`）。
+`new Data().put("a", 1).put("b", 2)` はコンパイルが通らず、`return data.put("x", v);` は前の値（初めてなら `null`）を返す。
+続けて書くなら **`putData("a", 1).putData("b", 2)`**（自身を返す）。
 
 ### 文字列の SQL の結果はネストしない
 
@@ -134,10 +143,12 @@ Data row = db.select("SELECT * FROM setting WHERE id = ?", id).orElseThrow(() ->
 // tags 列の中身が ["a","b"] のとき
 
 row.getString("tags");                     // "a"  ← 配列の先頭の要素だけ。JSON の文字ではない
-row.getStringList("tags");                 // ["a", "b"]  ← 配列はこちらで取る
+row.getStringList("tags");                 // ["a", "b"]  ← 配列はこちらで取る（中がオブジェクトなら getDataList）
 row.getData("options");                    // オブジェクトの列は Data で取る
 ```
 
+- **中の小数は `Double`**（2.5.6。それまでは `Float` で、`1234567.89` が `1234567.9` になっていた）。
+  `get(...)` を `Float` にキャストしない。`getDouble` / `getBigDecimal` で取る
 - 配列の列を `getString` すると、**1度だけ WARN**（「JSON の配列の列 〜 を getString しています」）が出る。見たらここを直す
 - **`getString` で JSON の文字を取ろうとしない。**オブジェクトの列は JSON の文字になるが
   （キーの間の空白などは元のとおりではない）、**配列の列は先頭の要素しか返らない**。
@@ -167,6 +178,8 @@ try {
 
 **書かなければ上まで飛んで 500、トランザクションの中なら巻き戻る。**
 `catch (Exception e)` で握りつぶさない。組み立ての誤り（`eq(null)` など）は `SqlBuildException` で、DB に投げる前に落ちる。
+
+**`DuplicateKeyException` の import を間違えない。**`org.springframework.dao` ではなく `io.jimble.db`。
 
 ### catch するところ（非検査なので、コンパイラは教えない。ここで決める）
 
@@ -345,13 +358,15 @@ Optional<RedisLockResult> got = RedisLock.tryLock("report", 1000, 60000);   // �
   `value()` を積む順がループの中で変わると SQL も変わる。揃っていなければ `DB_998` の例外
   （直すまでは**値が横にずれて入っていた**）。空の入力は空のリスト
 - **戻り値が違う。**`executeBatch` は件数（`List<Integer>`）、`insertBatch` は採番値（`List<Long>`）
-- **`selectListWithFetcher`（カーソル）は `DB` も畳む。**
+- **`selectListWithFetcher`（カーソル）は、読み終わったら `db.close()` も呼ぶ。**
   ふつうの SQL は1文ごとにコネクションを返すので閉じ忘れても漏れないが、
   カーソルとトランザクション中は**握ったまま**
 - **`tinyint` は桁数に関係なく `boolean`。**`decimal` は `double` なので金額計算に向かない
 - **`db/<データソース>/` は毎回まるごと作り直される。**手で書いたファイルを置くと次の `codegen` で消える
 - **DB のコメントに `*/` や `\` があると、codegen はそれを `*&#47;` / `&#92;` にして書く**（2.2.4。生成するソースのコメントが閉じないように）。
   上げたあと `codegenCheck` がそのテーブルだけ差分を出したら、`codegen` で作り直してコミットする
+- **2.5.4 で、スキーマのクラスの `SchemaSQL` の組み立て方が変わった**（テーブルごとのメソッドで足す。中身の SQL は同じ）。
+  上げたあと `codegenCheck` が差分を出したら、`codegen` で作り直してコミットする
 
 ## マイグレーションとコード生成
 
@@ -370,16 +385,18 @@ Migration.install();                                  // 登録するだけ。�
 DBUtil.load(Conf.conf().config(), App.class);         // 流れるのはこの中。繋がらなければ例外で止まる
 ```
 
-- **`install()` の戻り値は「登録したか」。流れたかではない。**`false` は `migration.on_startup = false` で
-  **わざと切ってある**ときだけ。`if (!Migration.install()) throw ...` と書くと、切ってある環境で起動しなくなる。
+- **`install()` の戻り値は「登録したか」。流れたかではない。**`false` になるのは
+  `migration.on_startup = false` のときと、**既定の `auto` でローカル（`isLocal()`）のとき**（手元は `./gradlew migrate` で当てる）。
+  `if (!Migration.install()) throw ...` と書くと、**手元でも**起動しなくなる。
   **`true` でもまだ1行も流れていない**
-- **`DBUtil.load(...)` のあとに呼ぶと何も起きない。**登録した処理はもう走り終わっているので、黙って流れない
+- **`DBUtil.load(...)` のあとに呼ぶと流れない。**登録した処理はもう走り終わっている。WARN が1度出るだけで例外にはならない
 - **`DBUtil.load(...)` は `void`。**繋がらなければ `SqlExecuteException`（`DB_007`）、流すのに失敗しても例外で落ちる。
   `if` で囲まず、捕まえずに起動を止める
 
 **jimble が自分で作るテーブル**（`migration` / `session` / `db_cache` / `batch_*` / `auth_*` など）は
 codegen が自動で外す。**MQ のキュー表は外れない**——名前をアプリが決めるので、jimble の管理テーブルに入っていない。
-`DbScheduler` が使う **`mq_scheduler`**（`scheduler.queue_name` の既定）も同じ。外すなら並べる。
+`DbScheduler` が使う **`mq_scheduler`**（`scheduler.queue_name` の既定）も同じ。
+**`session.table` で名前を変えたセッションの表も外れない**（外れるのは既定名の `session` だけ）。外すなら並べる。
 
 ```conf
 codegen {
@@ -394,7 +411,7 @@ codegen {
 `audit_log` → `AuditLog`。<b>単数形にはしない。</b>
 列は静的フィールドで、名前は DB のまま（`Orders.staff_id`）。
 
-パッケージは `db.<データソース名>` の下に来る。
+パッケージは `db.<データソース名>` の下に来る（`db` は `codegen.package` の既定）。
 
 ```java
 import db.shop_example.ShopExample;              // スキーマクラス（db() の入口）
@@ -436,8 +453,6 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 
 時間は**単位を値に書く**（`idle_timeout = 5m`）。素の数値は落ちる。
 
-**ページングのページ番号は、開始位置があふれない数までに抑える**（2.2.4。`?page=9223372036854775807` でも `start()` は負にならない）。
-
 **プールの大きさは、書かなければ上限 10・最小 1**（2.2.1。それまでは書かないと HikariCP は最小も 10、Agroal は起動時に落ちた）。
 `maximum_pool_size` が 1 未満、`minimum_idle` が負なら起動時に落ちる。
 
@@ -450,3 +465,8 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 - Redis には**文字列として**読み書きする（2.2.3。それまでの Kryo は、読むときに何のクラスでも作った）。アプリは何もしなくてよい
 - **SQL 結果のキャッシュはデータソースごとに分かれる**（2.2.3）。1つの Redis を複数のアプリや環境で分け合うなら、
   それぞれ `sql_cache.namespace` を別の値にする
+- **`sql_cache.ttl` は単位を書く**（`5m` / `300s`。無期限は `0s`）。**`ttl = 300` は起動時に落ちる**（2.5.2。
+  それまでは入れるたびに失敗してキャッシュが効いていなかった）。`sql_cache.enabled = false` でも見る
+- **`selectCached` を使うなら、アプリの表の更新はビルダーで書く。**文字列の SQL の更新（`db.execute("UPDATE ...")` /
+  `update(String, ...)` など）はどの行に当たるか読めないので、**SQL 結果キャッシュを丸ごと消す**
+  （jimble 自身の表だけに当たる文は消さない。2.5.2）

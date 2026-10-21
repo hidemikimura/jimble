@@ -67,7 +67,7 @@ public class JobsBatch {
 
 		DBUtil.stop();
 
-		System.exit(result.isExecuted() ? 0 : 1);
+		System.exit(result == BatchResult.completed ? 0 : 1);
 
 	}
 
