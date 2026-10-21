@@ -45,6 +45,12 @@ class CanonicalRedirectTest {
 			get("/hello", context -> context.response().send("hello"));
 
 			post("/hello", context -> context.response().send("posted"));
+
+			// path() の中のルート（D-304）
+			path("/Admin", () -> {
+				get("/Users/{id}", context -> context.response().send("admin " + context.request().path()));
+				path("/Shops", () -> get("/{shopId}/Items", context -> context.response().send("items")));
+			});
 		}
 
 	}
@@ -212,6 +218,39 @@ class CanonicalRedirectTest {
 			 * 値まで小文字にすると、大文字を含む ID が壊れる。
 			 */
 			assertEquals("/Users/AbC", response.headers().firstValue("Location").orElse(""));
+
+		} finally {
+			server.stop();
+		}
+
+	}
+
+	@Test
+	@DisplayName("D-304 path() の中のルートも、絶対パスの綴りに寄せる（/ADMIN/USERS/AbC → /Admin/Users/AbC。入れ子も）")
+	void nestedRoutesAreCanonicalisedWithFullPath () throws Exception {
+
+		conf("router { ignore_case = true, redirect_to_canonical = true }");
+
+		JimbleServer server = JimbleServer.start(new App(), 0);
+
+		try {
+
+			/*
+			 * 2.5.10 までは、path() の中の相対のパターン（/Users/{id}）を先頭から当てはめていたので、
+			 * /ADMIN/USERS/AbC が /Users/{id} の形に寄せられて /Users/USERS/AbC になっていた
+			 */
+			HttpResponse<String> admin = call(server.port(), "GET", "/ADMIN/USERS/AbC");
+			assertEquals(301, admin.statusCode());
+			assertEquals("/Admin/Users/AbC", admin.headers().firstValue("Location").orElse(""));
+
+			HttpResponse<String> nested = call(server.port(), "GET", "/admin/shops/S1//items/");
+			assertEquals(301, nested.statusCode());
+			assertEquals("/Admin/Shops/S1/Items", nested.headers().firstValue("Location").orElse(""));
+
+			// 寄せ先は、そのまま 200
+			HttpResponse<String> canonical = call(server.port(), "GET", "/Admin/Users/AbC");
+			assertEquals(200, canonical.statusCode());
+			assertEquals("admin /Admin/Users/AbC", canonical.body());
 
 		} finally {
 			server.stop();

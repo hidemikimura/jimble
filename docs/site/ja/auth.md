@@ -754,6 +754,35 @@ path("/shop", () -> {
 発行・一覧・削除にも種別を渡します（`ApiToken.issue("operator", staff.id(), ...)`・`ApiToken.list("member", customer.id())`）。
 パスキーも同じく種別ごとに持ちます（下の「パスキー」）。
 
+### テナントで分ける（SaaS）
+
+クライアントごとにドメインが違う SaaS では、**トークンの利用者のテナントと、リクエストのテナント（Host）を `lookup` の中で照合します**（2.5.11 から）。
+リクエスト・種別・ID を受け取る `lookup` を渡し、テナントが違えば `null` を返します。
+
+```java
+before(ApiToken.authenticate((c, realm, id) -> {
+	// クライアントの表から引く（下の「クライアントごとにドメインが違うとき（SaaS）」と同じ）
+	Tenant tenant = Tenants.byHost(c.request().host()).orElse(null);
+	Principal member = App.findMember(id);
+	// ほかのテナントの利用者なら null（止めた人と同じ 401。テナントが違うことは応答で分からない）
+	return tenant != null && member != null && App.tenantOf(id) == tenant.id() ? member : null;
+}));
+```
+
+照合しないと、テナント A の利用者のトークンをテナント B のホストに送ったときに、`lookup` がテナント A の利用者を返して**通ってしまいます**。
+
+| `lookup` の中で | |
+| --- | --- |
+| 使ってよい | `c.request()`（`host()`・ヘッダー・パス）、`c.route()`（ルートの属性） |
+| 使えない | `c.session()`（例外になり 500。トークンのリクエストにセッションの Cookie を出さないため）、`c.response()`（断るときは `null` を返す）、`Auth.principal(c)`（まだログインしていない） |
+
+`lookup` が例外を投げると 500 です（中身は返しません）。断るときは例外ではなく `null` を返します。
+
+> [!NOTE]
+> **セッションで入る人の照合は、これとは別に要ります。**セッションの Cookie も、ほかのテナントのホストへ送れるからです。
+> `Auth::guard` のあとに、ログイン中の利用者のテナントと Host のテナントを比べる before を置いてください。
+> パスキーは、ログインのハンドラの中で `Passkey.login(c, rp(c), credential, id -> ...)` を呼ぶので、その `lookup` で `c` を使って照合できます。
+
 ### 断るとき
 
 | | 状態コード |

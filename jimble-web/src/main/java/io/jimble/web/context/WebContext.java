@@ -347,6 +347,9 @@ public final class WebContext extends Context<WebContext> {
 	 */
 	public Session session () {
 
+		// ApiToken の lookup の中など、セッションを使ってはいけない区間（D-305）
+		io.jimble.web.internal.SessionGuard.check();
+
 		/*
 		 * 内部呼び出しは外側と同じものを使う（要件 F-W-27）。
 		 *

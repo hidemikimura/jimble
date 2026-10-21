@@ -135,13 +135,46 @@ public final class Route {
 	/**
 	 * 登録パターン
 	 *
-	 * <p>絶対パスではない。絶対パスは {@link Router#routes()} が返す。</p>
+	 * <p>絶対パスではない。絶対パスは {@link #fullPattern()}（{@link Router#routes()} も同じ値）。</p>
 	 *
 	 * @return	登録パターン
 	 */
 	public String pattern () {
 
 		return pattern;
+
+	}
+
+	/* 絶対パスのパターン（ルーターを確定したときに入る） */
+	private volatile String fullPattern;
+
+	/**
+	 * 絶対パスのパターン（D-304）
+	 *
+	 * <p>
+	 * {@code path("/admin", ...)} の中の {@code get("/users", ...)} なら {@code /admin/users}。
+	 * パス変数は {@code {名前}}、ワイルドカードは {@code *} で書く。
+	 * ルーターを確定する前（起動の途中）は {@link #pattern()} を返す。
+	 * </p>
+	 *
+	 * @return	絶対パスのパターン
+	 */
+	public String fullPattern () {
+
+		String value = fullPattern;
+
+		return value != null ? value : pattern;
+
+	}
+
+	/**
+	 * 絶対パスのパターンを入れる（ルーターを確定するときに呼ぶ）
+	 *
+	 * @param value	絶対パスのパターン
+	 */
+	void fullPattern (String value) {
+
+		this.fullPattern = value;
 
 	}
 
