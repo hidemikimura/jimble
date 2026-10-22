@@ -158,6 +158,7 @@ server {
 	trust_proxy          = false    # false until it sits behind a load balancer (see below)
 	access_log           = true     # turning it off is faster, and leaves no trace
 	bot_access_log       = true     # keep bot access logs separate
+	access_log_mask      = []       # extra query names whose values the access log hides (token etc. are hidden anyway)
 	strict_routes        = false    # make unreachable routes an error (true in CI)
 	shutdown_grace       = 0s       # from "start stopping" to refusing new requests
 	shutdown_timeout     = 15s      # how long in-flight requests are waited for

@@ -18,6 +18,7 @@ server {
 	compression          = true       # 文字の応答（1KB 以上）を gzip で返すか
 	access_log           = true       # アクセスログを出すか（[ログ](./log)）
 	bot_access_log       = true       # ボットのアクセスログを分けるか
+	access_log_mask      = []         # アクセスログのクエリで値を伏せる名前（[ログ](./log)）
 	strict_routes        = false      # 一生呼ばれないルートを例外にするか（CI では true に）
 
 	shutdown_grace   = 0s      # 止め始めてから新規を断つまで（秒）

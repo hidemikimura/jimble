@@ -497,6 +497,8 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   ファイル名にハッシュを入れる（`app.9f3a1c.js`）か、`<script src="/assets/app.js?v=2">` のように参照を変える。
   開発中は `application.local.conf` などで `assets.immutable_max_age = 0s`（**単位を書く。素の `0` は起動時に落ちる**）。
   そのほかの拡張子は `assets.max_age`（既定 `0s`）＋ `must-revalidate` で、毎回確かめに来る
+- **トークンなどの秘密はパスに入れない**（`/reset/{token}` ではなく `/reset?token=...`）。アクセスログはクエリの `token` / `password` / `api_key` などの値を `***` にする（2.5.12）が、
+  パスは伏せられない。アプリ固有の名前は `server.access_log_mask = ["invite"]` で足す
 - **静的ファイルの置き場に空（`""` / `"/"`）を渡すと起動時に落ちる**（2.5.2。それまではクラスパスの根から返し、`application.conf` や `.class` が取れた）。
   `AssetHandler.mount("/static", "assets")` のように専用のディレクトリを渡す
 

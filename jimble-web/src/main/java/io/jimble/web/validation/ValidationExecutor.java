@@ -250,15 +250,8 @@ public abstract class ValidationExecutor extends AbstractExecutor<WebContext> {
 	 */
 	static boolean isSecret (String name) {
 
-		if (name == null) {
-			return false;
-		}
-
-		String lower = name.toLowerCase(java.util.Locale.ROOT);
-
-		return lower.contains("password") || lower.contains("passwd") || lower.contains("secret")
-			|| lower.contains("token") || lower.contains("card_number") || lower.contains("cardnumber")
-			|| lower.equals("cvc") || lower.equals("cvv") || lower.equals("pin") || lower.equals("otp") || lower.equals("code_verifier");
+		// 一覧は jimble-util の1か所（D-306。HTTP クライアントのログ・アクセスログと揃える）
+		return io.jimble.util.internal.SecretNames.isSecret(name);
 
 	}
 
