@@ -57,12 +57,8 @@ class DbSessionIntegrationTest {
 	@BeforeEach
 	void clean () {
 
-		SessionStores.reset();
-		try {
-			DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
-		} catch (io.jimble.db.SqlExecuteException notYet) {
-			// 表はストアが最初に使うときに作る。まだ無ければ消すものも無い
-		}
+		resetStores();
+		DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
 
 	}
 
@@ -550,14 +546,33 @@ class DbSessionIntegrationTest {
 		com.typesafe.config.Config original = Conf.conf().config();
 
 		Conf.replace(com.typesafe.config.ConfigFactory.parseString("session.absolute_timeout = " + value).withFallback(original));
-		SessionStores.reset();
+		resetStores();
 
 		try {
 			body.run();
 		} finally {
 			Conf.replace(original);
-			SessionStores.reset();
+			resetStores();
 		}
+
+	}
+
+	/**
+	 * ストアを作り直し、その場で1回掃除しておく
+	 *
+	 * <p>
+	 * <b>裏の掃除を走らせないため</b>。作り直したストアは最後の掃除が大昔なので、
+	 * Cookie のある最初のリクエストで別のスレッドの掃除（D-284）を始める。
+	 * それが次のテストまで残って、期限切れにした行を先に消すと、
+	 * {@code cleanupExpired()} の件数を確かめるテストが 0 件で落ちる。
+	 * ここで掃除しておけば、間隔（10分）が来ないので裏の掃除は始まらない。
+	 * 表もここで作られる。
+	 * </p>
+	 */
+	private static void resetStores () {
+
+		SessionStores.reset();
+		SessionStores.defaultStore().cleanupExpired();
 
 	}
 
