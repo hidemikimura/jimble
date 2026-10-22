@@ -4,6 +4,7 @@ import io.jimble.core.context.Context;
 import io.jimble.db.DBSticky;
 import io.jimble.db.DBUtil;
 import io.jimble.util.data.Data;
+import io.jimble.util.internal.SecretNames;
 import io.jimble.util.log.Log;
 import io.jimble.core.trace.Span;
 import io.jimble.core.trace.SpanKind;
@@ -698,7 +699,7 @@ public final class WebContext extends Context<WebContext> {
 		Log.access(request.method() + " " + escapeControl(request.path()) + " " + response.code(), isBot, fields -> {
 			fields.put("method", request.method());
 			fields.put("path", request.path());
-			fields.put("query", request.query());
+			fields.put("query", SecretNames.maskQuery(request.query(), ServerConf.accessLogMask()));   // token などは値を伏せる（D-306）
 			fields.put("status", response.code());
 			fields.put("elapsed", elapsed().toNanos() / 1000000d);
 			fields.put("matched", route != null && route.matched());

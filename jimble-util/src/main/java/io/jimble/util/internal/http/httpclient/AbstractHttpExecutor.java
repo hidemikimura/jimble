@@ -1,5 +1,6 @@
 package io.jimble.util.internal.http.httpclient;
 
+import io.jimble.util.internal.SecretNames;
 import io.jimble.util.internal.http.util.HttpProxy;
 import io.jimble.util.io.FileCharDetecter;
 import io.jimble.util.json.Dson;
@@ -121,7 +122,7 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 	}
 
 	/** 伏せた値 */
-	static final String MASKED = "***";
+	static final String MASKED = SecretNames.MASKED;
 
 	/**
 	 * 秘密を表す名前か（ヘッダ名・クエリの名前。D-240）
@@ -131,17 +132,8 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 	 */
 	static boolean isSecretName (String name) {
 
-		if (name == null) {
-			return false;
-		}
-
-		String lower = name.toLowerCase(java.util.Locale.ROOT);
-
-		return lower.equals("authorization") || lower.equals("proxy-authorization")
-			|| lower.equals("cookie") || lower.equals("set-cookie")
-			|| lower.contains("token") || lower.contains("secret") || lower.contains("password")
-			|| lower.contains("api-key") || lower.contains("api_key") || lower.contains("apikey")
-			|| lower.equals("key") || lower.equals("sig") || lower.equals("signature");
+		// 一覧は1か所（D-306。422 の入力値・アクセスログと揃える）
+		return SecretNames.isSecret(name);
 
 	}
 
@@ -170,25 +162,8 @@ public abstract class AbstractHttpExecutor<E extends AbstractHttpExecutor<E>> {
 		}
 
 		int question = url.indexOf('?');
-		StringBuilder sb = new StringBuilder(url.substring(0, question + 1));
-		String[] pairs = url.substring(question + 1).split("&", -1);
 
-		for (int i = 0; i < pairs.length; i++) {
-			if (i > 0) {
-				sb.append('&');
-			}
-			int equals = pairs[i].indexOf('=');
-			String name = equals < 0 ? pairs[i] : pairs[i].substring(0, equals);
-			String decodedName;
-			try {
-				decodedName = java.net.URLDecoder.decode(name, java.nio.charset.StandardCharsets.UTF_8);
-			} catch (IllegalArgumentException ex) {
-				decodedName = name;
-			}
-			sb.append(equals >= 0 && isSecretName(decodedName) ? name + "=" + MASKED : pairs[i]);
-		}
-
-		return sb.toString();
+		return url.substring(0, question + 1) + SecretNames.maskQuery(url.substring(question + 1), java.util.Set.of());
 
 	}
 

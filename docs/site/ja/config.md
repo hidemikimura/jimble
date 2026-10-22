@@ -151,6 +151,7 @@ server {
 	trust_proxy          = false    # ロードバランサの後ろに置くまで false（下を参照）
 	access_log           = true     # 切ると速くなるが、何が起きたか残らない
 	bot_access_log       = true     # ボットのアクセスログを分けるか
+	access_log_mask      = []       # アクセスログのクエリで値を伏せる名前（token などは書かなくても伏せる）
 	strict_routes        = false    # 一生呼ばれないルートを例外にする（CI では true に）
 	shutdown_grace       = 0s       # 止め始めてから新規を断つまで
 	shutdown_timeout     = 15s      # 処理中を待つ上限

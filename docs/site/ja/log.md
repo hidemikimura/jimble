@@ -77,6 +77,32 @@ N+1 は「ログを見れば分かる」ようにしてあります（要件 NF-
 > **クライアントの IP と User-Agent は入っていません。**`local_info` はサーバー自身のものです。
 > 要るなら `Log.addFieldProvider(...)` で足してください。
 
+### クエリの秘密は伏せる
+
+**`query` の `token` などは、キーを残して値だけ `***` にして出します**（2.5.12 から）。
+`/reset?token=abc&page=2` なら `token=***&page=2` です。ログは集約基盤や外部のサービスへ流れ、見られる人もアプリの DB より多いためです。
+
+伏せるのは次の名前です（大文字小文字は区別しません。名前は `%74oken` のようなエンコードを戻してから比べます）。
+
+| 見方 | 名前 |
+| --- | --- |
+| 含まれていれば | `password` `passwd` `secret` `token` `api_key` `api-key` `apikey` `card_number` `cardnumber` |
+| 一致すれば（`a[key]` のような入れ子は段ごと） | `key` `sig` `signature` `authorization` `cookie` `cvc` `cvv` `pin` `otp` `code_verifier` |
+
+同じ一覧で、HTTP クライアントのログのヘッダとクエリ、検査に落ちたとき（422）に返す入力値も伏せています。
+
+アプリ固有の名前は `server.access_log_mask` に足します（名前が一致したときだけ伏せます）。
+
+```conf
+server {
+	access_log_mask = ["invite", "magic"]
+}
+```
+
+> [!TRAP]
+> **パスに入れたトークン（`/reset/{token}`）は伏せられません。**`path` とメッセージにそのまま出ます。
+> どこが秘密かはルートしか知らないためです。秘密はパスに入れず、クエリか本文で受けてください。
+
 ### ボットを分ける
 
 `server.bot_access_log`（既定 `true`）が有効なら、ボットの行は **`access.bot`** に出ます。
@@ -459,6 +485,7 @@ assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
 | --- | --- | --- |
 | `server.access_log` | `true` | アクセスログを出す。`false` で1行も出さない |
 | `server.bot_access_log` | `true` | ボットのアクセスログを `access.bot` に分ける |
+| `server.access_log_mask` | `[]` | アクセスログのクエリで値を伏せる名前を足す（`token` などは書かなくても伏せる） |
 | `log.db` | `false` | `DBLog.save(...)` を有効にする |
 | `metrics.enabled` | `true` | メトリクスを数える。`false` で `snapshot()` が空になる |
 

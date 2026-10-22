@@ -312,4 +312,55 @@ class AccessLogTest {
 
 	// endregion
 
+
+	/**
+	 * クエリつきで1回流して、アクセスログの項目を返す
+	 */
+	private Data accessLogWithQuery (String rawQuery) {
+
+		try (WebContext context = new WebContext(
+			new Fakes.FakeRequestSource("GET", "/reset").rawQuery(rawQuery)
+			, new Fakes.FakeResponseSink())) {
+
+			context.response().send("ok");
+
+		}
+
+		return accessLog().data();
+
+	}
+
+	@Test
+	@DisplayName("D-306 クエリの token などは、キーを残して値だけ伏せて出す")
+	void secretQueryValuesAreMasked () {
+
+		Data data = accessLogWithQuery("token=abc123&page=2&api_key=k");
+
+		assertEquals("token=***&page=2&api_key=***", data.getString("query"));
+		assertFalse(String.valueOf(logs).contains("abc123"), "伏せた値がどこかに出ています: " + logs);
+
+	}
+
+	@Test
+	@DisplayName("D-306 server.access_log_mask で、伏せる名前を足せる")
+	void extraMaskNamesFromConf () {
+
+		Conf.replace(ConfigFactory.parseString("server { access_log_mask = [\"invite\"] }"));
+
+		Data data = accessLogWithQuery("invite=abc&page=2");
+
+		assertEquals("invite=***&page=2", data.getString("query"));
+
+	}
+
+	@Test
+	@DisplayName("D-306 秘密が無ければクエリはそのまま出る")
+	void plainQueryIsUnchanged () {
+
+		Data data = accessLogWithQuery("page=2&q=%E3%81%82");
+
+		assertEquals("page=2&q=%E3%81%82", data.getString("query"));
+
+	}
+
 }

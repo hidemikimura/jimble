@@ -104,7 +104,14 @@ public final class Fakes {
 			this.remoteAddress = address;
 			return this;
 		}
-		@Override public String query () { return ""; }
+		private String rawQuery = "";
+
+		/** 生のクエリ文字列（? のあと。エンコードされたまま）を決める */
+		public FakeRequestSource rawQuery (String query) {
+			this.rawQuery = query;
+			return this;
+		}
+		@Override public String query () { return rawQuery; }
 		@Override public Map<String, String> headers () { return headers; }
 		@Override public Map<String, String> cookies () { return cookies; }
 

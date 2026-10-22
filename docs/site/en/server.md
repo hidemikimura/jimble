@@ -18,6 +18,7 @@ server {
 	compression          = true       # Whether to gzip text responses (1KB and up)
 	access_log           = true       # Whether to write the access log ([Logging](./log))
 	bot_access_log       = true       # Whether to split out the bot access log
+	access_log_mask      = []         # Extra query names whose values the access log hides ([Logging](./log))
 	strict_routes        = false      # Throw on routes nothing can reach (turn this on in CI)
 
 	shutdown_grace   = 0s      # From "start stopping" to refusing new requests (seconds)

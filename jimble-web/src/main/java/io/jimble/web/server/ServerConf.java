@@ -1,6 +1,9 @@
 package io.jimble.web.server;
 
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import io.jimble.util.conf.Conf;
 import io.jimble.util.conf.ConfFlag;
 
@@ -17,6 +20,7 @@ import io.jimble.util.conf.ConfFlag;
  *   trust_proxy          = false      # X-Forwarded-* を信じるか
  *   compression          = true       # 応答を gzip で返すか
  *   bot_access_log       = true       # ボットのアクセスログを分けるか
+ *   access_log_mask      = []         # アクセスログのクエリで値を伏せる名前（token などは書かなくても伏せる）
  *   backlog              = 1024       # OS が持ってくれる接続待ちの数
  *   write_queue_length   = 0          # 応答を書き出す列の長さ。0/1 は「列を作らない」
  *   smart_async_writes   = false      # 列があるとき、混み具合で書き方を切り替えるか
@@ -62,6 +66,9 @@ public final class ServerConf {
 
 	/** 設定の鍵：アクセスログを出すか */
 	public static final String KEY_ACCESS_LOG = "server.access_log";
+
+	/** 設定キー：アクセスログのクエリで、値を伏せる名前（既定の一覧に足す。D-306） */
+	public static final String KEY_ACCESS_LOG_MASK = "server.access_log_mask";
 
 	/** 設定の鍵：到達不能ルートを例外にするか */
 	public static final String KEY_STRICT_ROUTES = "server.strict_routes";
@@ -389,6 +396,45 @@ public final class ServerConf {
 	public static boolean accessLog () {
 
 		return ACCESS_LOG.get();
+
+	}
+
+	/* アクセスログで伏せる名前（足した分）。リクエストごとに読むので覚えておく（D-167） */
+	private static volatile MaskNames maskNames;
+
+	private record MaskNames (Conf from, Set<String> names) {}
+
+	/**
+	 * アクセスログのクエリで、値を伏せる名前（アプリが足した分。D-306）
+	 *
+	 * <p>
+	 * {@code token} / {@code password} / {@code api_key} などは<b>書かなくても伏せる</b>（一覧は jimble が持つ）。
+	 * ここに書くのは、アプリ固有の名前（招待の {@code invite} など）だけ。
+	 * 名前そのもの（入れ子なら段のどれか）が一致したときに伏せる。大文字小文字は区別しない。
+	 * </p>
+	 *
+	 * @return	名前（小文字）
+	 */
+	public static Set<String> accessLogMask () {
+
+		Conf current = Conf.conf();
+		MaskNames snapshot = maskNames;
+
+		if (snapshot != null && snapshot.from() == current) {
+			return snapshot.names();
+		}
+
+		Set<String> names = new HashSet<>();
+		for (String name : current.getStringListOptional(KEY_ACCESS_LOG_MASK)) {
+			if (name != null && !name.isBlank()) {
+				names.add(name.trim().toLowerCase(Locale.ROOT));
+			}
+		}
+
+		Set<String> result = Set.copyOf(names);
+		maskNames = new MaskNames(current, result);
+
+		return result;
 
 	}
 

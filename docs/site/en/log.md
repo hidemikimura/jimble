@@ -78,6 +78,32 @@ N+1 is built to be something "you can see in the log" (requirement NF-O-02).
 > **The client's IP and User-Agent are not in there.** `local_info` is the server's own.
 > If you need them, add them with `Log.addFieldProvider(...)`.
 
+### Secrets in the query are hidden
+
+**For `token` and the like in `query`, the key stays and the value becomes `***`** (since 2.5.12).
+`/reset?token=abc&page=2` is written as `token=***&page=2`. Logs travel to aggregators and outside services, and more people can read them than can read your database.
+
+These names are hidden (case does not matter, and the name is decoded first, so `%74oken` does not slip through):
+
+| Match | Names |
+| --- | --- |
+| Contains | `password` `passwd` `secret` `token` `api_key` `api-key` `apikey` `card_number` `cardnumber` |
+| Equals (each level of a nested name like `a[key]`) | `key` `sig` `signature` `authorization` `cookie` `cvc` `cvv` `pin` `otp` `code_verifier` |
+
+The same list hides headers and query values in the HTTP client's log, and the input values sent back when validation fails (422).
+
+Add names of your own with `server.access_log_mask` (hidden only when the name matches):
+
+```conf
+server {
+	access_log_mask = ["invite", "magic"]
+}
+```
+
+> [!TRAP]
+> **A token in the path (`/reset/{token}`) cannot be hidden.** It appears as-is in `path` and in the message,
+> because only the route knows which part is secret. Keep secrets out of the path; take them in the query or the body.
+
 ### Splitting out the bots
 
 With `server.bot_access_log` (default `true`) on, bot lines go to **`access.bot`**.
@@ -462,6 +488,7 @@ assertEquals("GET /posts/{id}", tracer.spans().get(0).name());
 | --- | --- | --- |
 | `server.access_log` | `true` | Writes the access log. `false` writes nothing at all |
 | `server.bot_access_log` | `true` | Splits the bot access log out into `access.bot` |
+| `server.access_log_mask` | `[]` | Adds query names whose values the access log hides (`token` and the like are hidden anyway) |
 | `log.db` | `false` | Enables `DBLog.save(...)` |
 | `metrics.enabled` | `true` | Record metrics. `false` leaves `snapshot()` empty |
 
