@@ -12,7 +12,7 @@ package io.jimble.cli.internal;
 final class Version {
 
 	/** マニフェストが無いとき（IDE から直接動かしたときなど） */
-	private static final String UNKNOWN = "2.5.12-SNAPSHOT";
+	private static final String UNKNOWN = "2.5.13-SNAPSHOT";
 
 	private Version () {}
 
