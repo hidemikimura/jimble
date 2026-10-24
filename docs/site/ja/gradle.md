@@ -122,12 +122,13 @@ jimbleRun {
 
 | 足すもの | 何が入るか | いっしょに付いてくるもの |
 | --- | --- | --- |
-| `io.jimble:jimble-web` | Web（Router / Context / Session / テンプレート） | `jimble-db` → `jimble-util` → `jimble-core` |
-| `io.jimble:jimble-db` | DB だけ（バッチや CLI から使うとき） | `jimble-util` → `jimble-core` |
+| `io.jimble:jimble-web` | Web（Router / Context / Session / テンプレート） | `jimble-db` → `jimble-util` → `jimble-json` / `jimble-core` |
+| `io.jimble:jimble-db` | DB だけ（バッチや CLI から使うとき） | `jimble-util` → `jimble-json` / `jimble-core` |
 | `io.jimble:jimble-mq` | MQ | `jimble-db` |
 | `io.jimble:jimble-batch` | バッチ・DB スケジューラ | `jimble-db` / `jimble-mq` |
 | `io.jimble:jimble-batch-manager` | バッチ管理画面 | `jimble-web` / `jimble-batch` |
 | `io.jimble:jimble-mcp` | MCP サーバー | `jimble-web` |
+| `io.jimble:jimble-json` | JSON の読み手だけ（jimble のほかを使わないとき） | なし |
 | `io.jimble:jimble-otel` | OpenTelemetry へトレースを出す（**足したときだけ 0.9MB 増えます**） | `jimble-core` |
 
 **DB のドライバは要りません**（MySQL / MariaDB と PostgreSQL は `jimble-db` が持っています）。

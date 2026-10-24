@@ -19,6 +19,9 @@ description = "jimble の共通ユーティリティ。Data / 型変換 / JSON /
 dependencies {
 	api(project(":jimble-core"))
 
+	// JSON の読み書き（D-307）。Dson はこれを呼ぶ窓口
+	api(project(":jimble-json"))
+
 	// Data を API に露出する型
 	api(libs.jspecify)
 

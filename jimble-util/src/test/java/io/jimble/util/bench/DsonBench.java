@@ -108,13 +108,13 @@ class DsonBench {
 
 		Budget budget = new Budget();
 
-		budget.measure("Dson 読む 小（10キー）→ Data", Runs.SMALL, 5_120
+		budget.measure("Dson 読む 小（10キー）→ Data", Runs.SMALL, 2_560
 			, () -> Dson.decodes(SMALL, Data.class));
-		budget.measure("Dson 読む 中（100件）→ List", Runs.MEDIUM, 640_000
+		budget.measure("Dson 読む 中（100件）→ List", Runs.MEDIUM, 190_000
 			, () -> Dson.decodes(MEDIUM, List.class));
-		budget.measure("Dson 読む 数値（1,000件）→ List", Runs.LARGE, 7_680_000
+		budget.measure("Dson 読む 数値（1,000件）→ List", Runs.LARGE, 1_350_000
 			, () -> Dson.decodes(NUMBERS, List.class));
-		budget.measure("Dson 読む 日本語とエスケープ（100件）→ List", Runs.MEDIUM, 1_100_000
+		budget.measure("Dson 読む 日本語とエスケープ（100件）→ List", Runs.MEDIUM, 530_000
 			, () -> Dson.decodes(STRINGS, List.class));
 
 		budget.assertWithin();
@@ -154,18 +154,18 @@ class DsonBench {
 
 		Budget budget = new Budget();
 
-		budget.measure("Dson 読む 小 → Bean", Runs.SMALL, 6_400
+		budget.measure("Dson 読む 小 → Bean", Runs.SMALL, 4_000
 			, () -> Dson.decodes(SMALL, SampleBean.class));
-		budget.measure("Dson 読む 小 → record", Runs.SMALL, 8_192
+		budget.measure("Dson 読む 小 → record", Runs.SMALL, 6_000
 			, () -> Dson.decodes(SMALL, SampleRecord.class));
 
 		/*
-		 * <b>List で読むと、今は木を2回作っている</b>（Data の木を作ってから、それを Bean に移す）。
-		 * 作り直しでいちばん減るはずの項目
+		 * <b>Bean / record へは、今は木を作ってから移している</b>（Data の木を作ってから、それを Bean に移す）。
+		 * 手順 3 でいちばん減るはずの項目（読む側は D-307 で替えた。上限は 2.6.0 の実測 + 約2割）
 		 */
-		budget.measure("Dson 読む 中（100件）→ List<Bean>", Runs.MEDIUM, 600_000
+		budget.measure("Dson 読む 中（100件）→ List<Bean>", Runs.MEDIUM, 300_000
 			, () -> Dson.decodes(MEDIUM, List.class, SampleBean.class));
-		budget.measure("Dson 読む 中（100件）→ List<record>", Runs.MEDIUM, 800_000
+		budget.measure("Dson 読む 中（100件）→ List<record>", Runs.MEDIUM, 500_000
 			, () -> Dson.decodes(MEDIUM, List.class, SampleRecord.class));
 
 		budget.measure("Dson 書く 小 Bean → 文字列", Runs.SMALL, 4_096

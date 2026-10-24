@@ -2551,11 +2551,6 @@ public class Data extends LinkedHashMap<String, Object> {
 			return null;
 		}
 
-		if (!io.jimble.util.internal.JsonShape.isComplete(jsonString)) {
-			throw new io.jimble.util.json.JsonParseException(
-				"JSON を読めませんでした（括弧が閉じていないか、後ろに余分なものがあります）: " + abbreviate(jsonString.strip()), null);
-		}
-
 		Data data = Dson.decodes(jsonString, Data.class);
 
 		/*
@@ -2564,12 +2559,26 @@ public class Data extends LinkedHashMap<String, Object> {
 		 */
 		String text = jsonString.strip();
 		if (!text.isEmpty() && !"null".equals(text)
-			&& (data == null || (data.isEmpty() && !text.matches("\\{\\s*\\}")))) {
+			&& (data == null || (data.isEmpty() && !isEmptyObject(text)))) {
 			throw new io.jimble.util.json.JsonParseException(
 				"JSON を読めませんでした（オブジェクトとして読めた中身がありません）: " + abbreviate(text), null);
 		}
 
 		return data;
+
+	}
+
+	/**
+	 * 空のオブジェクト（{@code {}}。中に空白やコメントがあってもよい）か
+	 */
+	private static boolean isEmptyObject (String text) {
+
+		if (text.isEmpty() || text.charAt(0) != '{') {
+			return false;
+		}
+
+		Object value = io.jimble.json.Json.read(text);
+		return value instanceof java.util.Map<?, ?> map && map.isEmpty();
 
 	}
 

@@ -124,12 +124,13 @@ jimbleRun {
 
 | Add this | What it is | What comes with it |
 | --- | --- | --- |
-| `io.jimble:jimble-web` | Web (Router / Context / Session / templates) | `jimble-db` → `jimble-util` → `jimble-core` |
-| `io.jimble:jimble-db` | The database layer alone (for a batch or a CLI) | `jimble-util` → `jimble-core` |
+| `io.jimble:jimble-web` | Web (Router / Context / Session / templates) | `jimble-db` → `jimble-util` → `jimble-json` / `jimble-core` |
+| `io.jimble:jimble-db` | The database layer alone (for a batch or a CLI) | `jimble-util` → `jimble-json` / `jimble-core` |
 | `io.jimble:jimble-mq` | MQ | `jimble-db` |
 | `io.jimble:jimble-batch` | Batches and the DB scheduler | `jimble-db` / `jimble-mq` |
 | `io.jimble:jimble-batch-manager` | The batch admin screen | `jimble-web` / `jimble-batch` |
 | `io.jimble:jimble-mcp` | The MCP server | `jimble-web` |
+| `io.jimble:jimble-json` | The JSON reader alone (when you use nothing else from jimble) | nothing |
 | `io.jimble:jimble-otel` | Sends traces to OpenTelemetry (**adds 0.9MB, but only if you add it**) | `jimble-core` |
 
 **You do not need a JDBC driver** — `jimble-db` carries MySQL / MariaDB and PostgreSQL.

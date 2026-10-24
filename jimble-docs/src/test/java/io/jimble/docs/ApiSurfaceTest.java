@@ -62,6 +62,7 @@ class ApiSurfaceTest {
 	/** 見に行くモジュール（公開しているものだけ。ツールと examples は見ない） */
 	private static final List<String> MODULES = List.of(
 		"jimble-core"
+		, "jimble-json"
 		, "jimble-util"
 		, "jimble-db"
 		, "jimble-web"

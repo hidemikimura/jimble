@@ -34,6 +34,12 @@ dependencyResolutionManagement {
 
 // M1
 include("jimble-core")
+
+/*
+ * JSON（D-307。Dson の作り直し）。<b>jimble のほかのモジュールに依存しない。</b>
+ * jimble-util が依存して、Dson の窓口から使う。
+ */
+include("jimble-json")
 include("jimble-util")
 include("jimble-db")
 include("jimble-web")
