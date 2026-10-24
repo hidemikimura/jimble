@@ -137,6 +137,8 @@ db.transaction(tx -> { ... });                // 例外で抜ければ巻き戻�
 - **利用者の入力を `getInt` / `getLong` で読む前に検査する。**`"abc"` は `DataConversionException` で **500**（黙って 0 にはならない）。
   先に `rules.validate(db, input);` を通せば 422 で返る
 - **JSON の小数は `Double` で返る**（2.5.6 まで `Float`）。`(Float)` でキャストせず `getDouble` / `getBigDecimal` で読む
+- **壊れた JSON は `JsonParseException`**（2.6.0〜。区切りの抜け `{"a":1 "b":2}`・値の無いキー・壊れたエスケープも。例外に行と文字の位置が載る）。
+  クォートの無いキー・シングルクォート・末尾のカンマ・コメントは読める。数値は 1000 文字・入れ子は 512 段まで
 - **`Data.put` は `Data` を返さない**（`Map.put` なので前の値）。続けて書くなら `putData("a", 1).putData("b", 2)`
 - **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さない。**隠れた列や `role` を当てられる。
   許す列を渡す形にする：`apply(data, User.name, User.created_at)`（`jimble-db`）

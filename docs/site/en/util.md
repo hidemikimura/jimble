@@ -76,13 +76,33 @@ It is our own implementation (neither Jackson nor Gson).
 | Straight to a stream | `data.outputJsonString(outputStream)` |
 | Write it out piece by piece, without building it | `JsonHashWriter` / `JsonArrayWriter` |
 
-**Broken JSON throws `JsonParseException` (unchecked).** `Data.fromJsonString` and `Dson.decodes` behave the same.
-Unclosed brackets, something extra at the end, or something that is not JSON at all — each of these throws.
-An empty string and `"null"` return `null` (no exception).
+**Broken JSON throws `JsonParseException` (unchecked).** `Data.fromJsonString` and `Dson.decodes` behave the same, and so does reading from a Reader or an InputStream.
+The exception says where the problem is (`line 3, column 15` — written as `3 行 15 文字目`). An empty string and `"null"` return `null` (no exception).
+
+**Leniency with a clear meaning is accepted; anything that would silently damage the data is refused** (since 2.6.0; the reader is `jimble-json`).
+
+| | Examples |
+| --- | --- |
+| Accepted | Unquoted keys and values (`{name: jimble}`), single quotes, trailing commas, comments (`//` and `/* */`), `NaN` / `Infinity`, `+1` / `01` / `.5`, raw newlines inside strings |
+| Refused | A missing separator (`{"a":1 "b":2}` / `[1,,2]`), a key with no value (`{"a":}`), broken escapes (`\q` / `\u12`), unclosed brackets, something extra at the end, a top level that is neither an object nor an array |
+
+> [!TRAP]
+> **Up to 2.5, missing separators and broken escapes went through silently.**
+> `{"a":1 "b":2}` read both values, and `"\q..."` swallowed the next four characters and moved the end of the string.
+> Since 2.6.0 they throw.
+
+**There are limits.** The JSON comes from outside, so going over one throws.
+
+| | Limit |
+| --- | --- |
+| Nesting depth | 512 |
+| Length of one number | 1,000 characters |
+| Length of one string | 20 million characters |
 
 > [!NOTE]
-> **Only the shape is checked.** The reader is lenient, so as long as the brackets close, a grammar mistake such as
-> `"a":` with no value gets through.
+> The strings `"true"` / `"false"` become Boolean when read without a target type (`Data` / `Map` / `List`), as in 2.5,
+> because some APIs return booleans as strings. `getString` on the `Data` gives back `"true"`.
+>
 > The instance method `new Dson().decode(...)` does not throw; check `isError()` / `getErrorException()` as before.
 
 ## Type conversion

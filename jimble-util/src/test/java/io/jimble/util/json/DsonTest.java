@@ -147,11 +147,8 @@ class DsonTest {
 		assertNull(Dson.decodes("", Data.class));
 		assertNull(Dson.decodes("null", Data.class));
 
-		/*
-		 * <b>ここは残る落とし穴</b>：読み手は寛容なので、括弧が閉じていれば
-		 * 値の無い "a": のような文法の誤りは通る。形（括弧・余分なもの）だけを見ている。
-		 */
-		assertNotNull(Dson.decodes("{\"a\":}", Data.class));
+		// 値の無い "a": も断る（2.6.0 まで、括弧が閉じていれば通っていた。D-307）
+		assertThrows(JsonParseException.class, () -> Dson.decodes("{\"a\":}", Data.class));
 
 	}
 

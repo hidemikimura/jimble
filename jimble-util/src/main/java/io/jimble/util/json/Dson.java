@@ -5,6 +5,10 @@ import io.jimble.util.annotation.CheckReturnValue;
 import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
+import io.jimble.json.Json;
+import io.jimble.json.JsonException;
+import io.jimble.json.JsonReadOptions;
+import io.jimble.util.internal.json.decoder.DecodeConfigKeys;
 import io.jimble.util.internal.json.decoder.IDecoder;
 import io.jimble.util.internal.json.decoder.StreamDecoder;
 import io.jimble.util.internal.json.encoder.DefaultEncoder;
@@ -15,6 +19,10 @@ import io.jimble.util.log.Log;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.time.LocalDateTime;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,8 +42,9 @@ public final class Dson {
 	public Dson () {
 		// JSONエンコーダーを保持する
 		this.encoder = new DefaultEncoder();
-		// JSONデコーダーを保持する
-		this.decoder = new StreamDecoder();
+		// 読むのは jimble-json（D-307）。古い読み手は、古い設定（DECODE_STRING_UNESCAPE）のときだけ作る
+		this.decoder = null;
+		this.legacyDecoder = false;
 	}
 
 	/**
@@ -47,8 +56,9 @@ public final class Dson {
 	public Dson (IEncoder encoder, IDecoder decoder) {
 		// JSONエンコーダーを保持する
 		this.encoder = encoder == null ? new DefaultEncoder() : encoder;
-		// JSONデコーダーを保持する
+		// JSONデコーダーを保持する（渡されたら、それで読む）
 		this.decoder = decoder == null ? new StreamDecoder() : decoder;
+		this.legacyDecoder = decoder != null;
 	}
 
 	/* ***************************** エラー. ******************************/
@@ -70,7 +80,7 @@ public final class Dson {
 	 */
 	public boolean isError () {
 
-		return error || this.encoder.isError() || this.decoder.isError();
+		return error || this.encoder.isError() || (this.decoder != null && this.decoder.isError());
 	}
 
 	/**
@@ -80,7 +90,7 @@ public final class Dson {
 	 */
 	public Exception getErrorException () {
 
-		return error ? exception : this.encoder.isError() ? this.encoder.getErrorException() : this.decoder.isError() ? this.decoder.getErrorException() : null;
+		return error ? exception : this.encoder.isError() ? this.encoder.getErrorException() : this.decoder != null && this.decoder.isError() ? this.decoder.getErrorException() : null;
 	}
 
 	/**
@@ -102,7 +112,9 @@ public final class Dson {
 		this.error = false;
 		this.exception = null;
 		this.encoder.clearError();
-		this.decoder.clearError();
+		if (this.decoder != null) {
+			this.decoder.clearError();
+		}
 	}
 
 	/**
@@ -182,11 +194,6 @@ public final class Dson {
 	 */
 	private static <T> T decodeTextOrThrow (String text, java.util.function.Function<Dson, T> body) {
 
-		if (text != null && !io.jimble.util.internal.JsonShape.isComplete(text)) {
-			String shown = text.strip();
-			throw new JsonParseException("JSON を読めませんでした（括弧が閉じていないか、後ろに余分なものがあります）: "
-				+ (shown.length() > 80 ? shown.substring(0, 80) + "…" : shown), null);
-		}
 		T result = decodeOrThrow(body);
 		// JSON ですらないもの（読み手は null を返すだけでエラーにしない）
 		if (result == null && text != null && !text.isBlank() && !"null".equals(text.strip())) {
@@ -203,6 +210,11 @@ public final class Dson {
 	 * JSONデコーダ.
 	 */
 	private IDecoder decoder;
+
+	/**
+	 * 渡された読み手で読むか（渡されなければ jimble-json で読む。D-307）
+	 */
+	private boolean legacyDecoder;
 
 	/**
 	 * JSONファイルをオブジェクトにデコードする.
@@ -390,37 +402,16 @@ public final class Dson {
 	 */
 	public <T> T decode (Configration conf, File file, String charset, Class<?>... destClasses) {
 
-		clearError();
-		try {
-
-			if (conf == null) {
-				// 設定情報が指定されていない場合、デフォルト状態の設定情報を作成する
-				conf = new Configration();
-			} else {
-				conf.clearHashSet();
-			}
-
-			conf.isClearHashSet(false);
-
-			if (destClasses.length == 0) {
-				// デコード指定がない場合、デコード指定を「Map」にする
-				destClasses = new Class<?>[]{Data.class};
-			}
-
-			Object dest = this.decoder.decode(conf, file, Charset.forName(charset));
-			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				T res = asData(dest);
-				if (res != null) {
-					return res;
+		return decodeWith(conf, new TreeSource() {
+			@Override public Object read (JsonReadOptions options) throws IOException {
+				try (Reader reader = new InputStreamReader(new FileInputStream(file), Charset.forName(charset))) {
+					return Json.read(reader, options);
 				}
 			}
-
-			return Convertor.convert(conf, dest, destClasses);
-
-		} catch (Exception e) {
-			setError(e);
-			return null;
-		}
+			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
+				return decoder.decode(c, file, Charset.forName(charset));
+			}
+		}, destClasses);
 	}
 
 	/**
@@ -447,35 +438,17 @@ public final class Dson {
 	 */
 	public <T> T decode (Configration conf, Reader reader, Class<?>... destClasses) {
 
-		clearError();
-		try {
-
-			if (conf == null) {
-				conf = new Configration();
-			} else {
-				conf.clearHashSet();
-			}
-
-			conf.isClearHashSet(false);
-
-			if (destClasses.length == 0) {
-				destClasses = new Class<?>[]{Data.class};
-			}
-
-			Object dest = this.decoder.decode(conf, reader);
-			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				T res = asData(dest);
-				if (res != null) {
-					return res;
+		return decodeWith(conf, new TreeSource() {
+			@Override public Object read (JsonReadOptions options) throws IOException {
+				// 読み終わったら閉じる（作り直す前と同じ）
+				try (Reader closing = reader) {
+					return Json.read(closing, options);
 				}
 			}
-
-			return Convertor.convert(conf, dest, destClasses);
-
-		} catch (Exception e) {
-			setError(e);
-			return null;
-		}
+			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
+				return decoder.decode(c, reader);
+			}
+		}, destClasses);
 	}
 
 	/**
@@ -504,35 +477,17 @@ public final class Dson {
 	 */
 	public <T> T decode (Configration conf, InputStream stream, String charset, Class<?>... destClasses) {
 
-		clearError();
-		try {
-
-			if (conf == null) {
-				conf = new Configration();
-			} else {
-				conf.clearHashSet();
-			}
-
-			conf.isClearHashSet(false);
-
-			if (destClasses.length == 0) {
-				destClasses = new Class<?>[]{Data.class};
-			}
-
-			Object dest = this.decoder.decode(conf, stream, Charset.forName(charset));
-			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
-				T res = asData(dest);
-				if (res != null) {
-					return res;
+		return decodeWith(conf, new TreeSource() {
+			@Override public Object read (JsonReadOptions options) throws IOException {
+				// 読み終わったら閉じる（作り直す前と同じ）
+				try (InputStream closing = stream) {
+					return Json.read(closing, Charset.forName(charset), options);
 				}
 			}
-
-			return Convertor.convert(conf, dest, destClasses);
-
-		} catch (Exception e) {
-			setError(e);
-			return null;
-		}
+			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
+				return decoder.decode(c, stream, Charset.forName(charset));
+			}
+		}, destClasses);
 	}
 
 	/**
@@ -557,6 +512,58 @@ public final class Dson {
 	 */
 	public <T> T decode (Configration conf, String json, Class<?>... destClasses) {
 
+		return decodeWith(conf, new TreeSource() {
+			@Override public Object read (JsonReadOptions options) {
+				return Json.read(json, options);
+			}
+			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
+				return decoder.decode(c, json);
+			}
+		}, destClasses);
+	}
+
+	/**
+	 * JSON の読み元（D-307）
+	 */
+	private interface TreeSource {
+
+		/**
+		 * jimble-json で読む
+		 *
+		 * @param options	読み方
+		 * @return	木（Data / List / スカラー / null）
+		 * @throws Exception	読めなかったとき
+		 */
+		Object read (JsonReadOptions options) throws Exception;
+
+		/**
+		 * 古い読み手で読む（渡された IDecoder か、古い設定のとき）
+		 *
+		 * @param decoder	読み手
+		 * @param conf		設定
+		 * @return	木
+		 * @throws Exception	読めなかったとき
+		 */
+		Object readLegacy (IDecoder decoder, Configration conf) throws Exception;
+
+	}
+
+	/** 既定の読み方：オブジェクトは Data、配列は ArrayList（D-307） */
+	private static final JsonReadOptions READ_OPTIONS = JsonReadOptions.builder()
+		.mapFactory(Data::new)
+		.build();
+
+	/**
+	 * 読んで、指定の型にする（decode の4つの入口の中身）
+	 *
+	 * @param conf			設定
+	 * @param source		読み元
+	 * @param destClasses	変換希望クラス
+	 * @return	読めたもの（読めなければ null で、{@link #isError()} が true）
+	 */
+	@SuppressWarnings("unchecked")
+	private <T> T decodeWith (Configration conf, TreeSource source, Class<?>... destClasses) {
+
 		clearError();
 		try {
 
@@ -572,12 +579,31 @@ public final class Dson {
 				destClasses = new Class<?>[]{Data.class};
 			}
 
-			Object dest = this.decoder.decode(conf, json);
+			Object dest = legacyDecoder || conf.get(DecodeConfigKeys.DECODE_STRING_UNESCAPE) != null
+				? source.readLegacy(legacyDecoder(), conf)
+				: source.read(readOptions(conf));
+
+			/*
+			 * 一番外はオブジェクトか配列だけを受ける。
+			 * 作り直す前は、文字から読むと例外、Reader から読むと黙って null で、入口で食い違っていた
+			 */
+			if (dest != null && !(dest instanceof Map) && !(dest instanceof List)) {
+				throw new JsonParseException("JSON を読めませんでした（一番外がオブジェクトでも配列でもありません）: " + dest, null);
+			}
+
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
 				T res = asData(dest);
 				if (res != null) {
 					return res;
 				}
+			}
+
+			/*
+			 * <b>読んだ木がそのまま指定の型なら、写さずに返す。</b>
+			 * 作り直す前は List や Object を指定しても変換を通し、木をもう一度まるごと作っていた
+			 */
+			if (isAlreadyShaped(dest, destClasses)) {
+				return (T) dest;
 			}
 
 			return Convertor.convert(conf, dest, destClasses);
@@ -586,6 +612,99 @@ public final class Dson {
 			setError(e);
 			return null;
 		}
+
+	}
+
+	/**
+	 * 読んだ木が、そのまま指定の型になっているか
+	 *
+	 * <p>木のオブジェクトは Data、配列は ArrayList。要素の型の指定があれば、要素も見る。</p>
+	 */
+	private static boolean isAlreadyShaped (Object dest, Class<?>[] destClasses) {
+
+		if (dest == null || !destClasses[0].isInstance(dest)) {
+			return false;
+		}
+
+		if (destClasses.length == 1) {
+			return dest instanceof Data || dest instanceof java.util.ArrayList;
+		}
+
+		if (destClasses.length == 2 && dest instanceof java.util.ArrayList<?> list) {
+			Class<?> element = destClasses[1];
+			for (Object item : list) {
+				if (item != null && !element.isInstance(item)) {
+					return false;
+				}
+			}
+			return element == Data.class || element == Object.class;
+		}
+
+		return false;
+
+	}
+
+	/**
+	 * 古い読み手（必要になってから作る）
+	 */
+	private IDecoder legacyDecoder () {
+
+		if (decoder == null) {
+			decoder = new StreamDecoder();
+		}
+		return decoder;
+
+	}
+
+	/**
+	 * 設定から、読み方を決める
+	 */
+	private static JsonReadOptions readOptions (Configration conf) {
+
+		if (!conf.isOutputDateType()) {
+			return READ_OPTIONS;
+		}
+
+		return READ_OPTIONS.toBuilder()
+			.stringValueHook(s -> dateTypeValue(conf, s))
+			.build();
+
+	}
+
+	/**
+	 * 型つきの日付（{@code "date::..."}）を Date に戻す（{@link Configration#isOutputDateType()} のとき）
+	 */
+	private static Object dateTypeValue (Configration conf, String s) {
+
+		if (!s.startsWith("date::")) {
+			return s;
+		}
+
+		String text = s.substring(6);
+
+		if (conf.outputDateTypeFormat() != null) {
+			try {
+				LocalDateTime d = LocalDateTime.parse(text, conf.outputDateTypeFormat());
+				Calendar calendar = Calendar.getInstance();
+				calendar.set(Calendar.YEAR, d.getYear());
+				calendar.set(Calendar.MONTH, d.getMonth().ordinal());
+				calendar.set(Calendar.DAY_OF_MONTH, d.getDayOfMonth());
+				calendar.set(Calendar.HOUR_OF_DAY, d.getHour());
+				calendar.set(Calendar.MINUTE, d.getMinute());
+				calendar.set(Calendar.SECOND, d.getSecond());
+				calendar.set(Calendar.MILLISECOND, 0);
+				return calendar.getTime();
+			} catch (Exception ignore) {
+				// 書式が合わなければ、下の変換に任せる
+			}
+		}
+
+		try {
+			return Convertor.convert(null, text, Date.class);
+		} catch (Exception ex) {
+			return text;
+		}
+
 	}
 
 	/* ***************************** エンコード. ******************************/
