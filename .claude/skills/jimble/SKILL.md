@@ -141,6 +141,8 @@ db.transaction(tx -> { ... });                // 例外で抜ければ巻き戻�
   クォートの無いキー・シングルクォート・末尾のカンマ・コメントは読める。数値は 1000 文字・入れ子は 512 段まで
 - **JSON に書くと、`LocalDate` は `yyyy/MM/dd`、`Instant` などはサーバーの時間帯で `yyyy/MM/dd HH:mm:ss`、Bean は宣言した順**（2.7.0〜）。
   時差を残すなら `Json.write(value, JsonWriteOptions.builder().keepOffset(true).build())`（`jimble-json`）
+- **JSON を Bean / record に読むと、読めない値は `JsonParseException`**（2.7.0〜。`"abc"` → int・`1.5` → int・桁あふれ。場所 `$.items[1].qty` が載る）。
+  setter があれば setter に入る。知らないキーは飛ばす。`List<Item>` は `Dson.decodes(json, List.class, Item.class)` か `Json.read(json, new TypeRef<List<Item>>() {})`
 - **`Data.put` は `Data` を返さない**（`Map.put` なので前の値）。続けて書くなら `putData("a", 1).putData("b", 2)`
 - **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さない。**隠れた列や `role` を当てられる。
   許す列を渡す形にする：`apply(data, User.name, User.created_at)`（`jimble-db`）

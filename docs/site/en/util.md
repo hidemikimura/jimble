@@ -105,6 +105,39 @@ The exception says where the problem is (`line 3, column 15` — written as `3 �
 >
 > The instance method `new Dson().decode(...)` does not throw; check `isError()` / `getErrorException()` as before.
 
+### Reading into a type
+
+Beans, records, and Lists of them are **filled while reading, without building a tree (Data)** (since 2.7.0).
+
+```java
+Order order = Dson.decodes(json, Order.class);                     // as before
+List<Item> items = Dson.decodes(json, List.class, Item.class);
+
+Order order = Json.read(json, Order.class);                        // jimble-json
+List<Item> items = Json.read(json, new TypeRef<List<Item>>() {});  // a type with type arguments
+```
+
+- A record is built with its canonical constructor. Components missing from the JSON are `null` (`0` / `false` for primitives)
+- A Bean is built with its no-argument constructor, and **each value goes through the setter if there is one, otherwise into the field** (private fields of superclasses included)
+- **Unknown keys are skipped** (no exception)
+- Nested objects, `List<Item>`, `Map<String, Item>`, `Optional`, arrays, and type variables (`TypeRef<Box<Item>>`) are read as their types
+
+Values are converted to the property's type. **Anything that would change the value is refused.**
+
+| | Examples |
+| --- | --- |
+| Accepted | `"12"` → int, full-width `"１２"`, `"1,234"`, `1.0` → int, `"yes"` / `"on"` / `1` → true, enum names (any case), `"2026/10/24 10:00:00"` · ISO 8601 (with offsets) · epoch millis → date-times, empty string → `null` (`0` for primitives) |
+| Refused | `1.5` → int, overflow, `"abc"` → int, `"maybe"` → boolean, an enum name that does not exist, `2024-02-30` (an impossible date), a date with something extra at the end |
+
+A refusal throws `JsonParseException` (`JsonException` from `Json.read`) carrying **which property (`$.items[1].qty`) and the line and column**.
+
+> [!TRAP]
+> **Up to 2.6, values that could not be read silently became `0` or `null`** (`"abc"` → int gave `0`, `1.5` → int gave `1`).
+> Properties with only a setter got no value, and private fields of superclasses were not filled.
+
+To put `user_name` into a `userName` property, pass `JsonReadOptions.builder().snakeCaseKeys(true)`
+(`Configration#setDefaultFieldDelimiterChar()` for `Dson`).
+
 ### Writing
 
 Date-time and other types are written like this (since 2.7.0; before that, anything other than `Date` and `LocalDateTime` turned the JSON into `{}` or cut it off midway).

@@ -101,6 +101,39 @@ DB の値は**列（`Column`）で読み書き**します。列版は**テーブ
 >
 > インスタンスの `new Dson().decode(...)` は例外を投げず、これまでどおり `isError()` / `getErrorException()` で見ます。
 
+### 型に読む
+
+Bean・record・それらの List は、**木（Data）を作らずに読みながら入れます**（2.7.0 から）。
+
+```java
+Order order = Dson.decodes(json, Order.class);                     // これまでどおり
+List<Item> items = Dson.decodes(json, List.class, Item.class);
+
+Order order = Json.read(json, Order.class);                        // jimble-json
+List<Item> items = Json.read(json, new TypeRef<List<Item>>() {});  // 型の引数を持つ型
+```
+
+- record は正準のコンストラクタで作ります。JSON に無いコンポーネントは `null`（プリミティブは `0` / `false`）です
+- Bean は引数の無いコンストラクタで作り、**setter があれば setter で、無ければフィールドに入れます**（親クラスの private フィールドにも入れます）
+- **知らないキーは読み飛ばします**（例外にしません）
+- 入れ子・`List<Item>`・`Map<String, Item>`・`Optional`・配列・型変数（`TypeRef<Box<Item>>`）も、型どおりに読みます
+
+値は項目の型にします。**値が変わってしまうものは断ります**。
+
+| | 例 |
+| --- | --- |
+| 受け付ける | `"12"` → int、全角の `"１２"`、`"1,234"`、`1.0` → int、`"yes"` / `"on"` / `1` → true、enum の名前（大文字小文字は問わない）、`"2026/10/24 10:00:00"`・ISO 8601（時差つきも）・epoch ミリ秒 → 日時、空文字 → `null`（プリミティブは `0`） |
+| 断る | `1.5` → int、桁あふれ、`"abc"` → int、`"maybe"` → boolean、無い enum の名前、`2024-02-30`（ありえない日付）、後ろに余分のある日付 |
+
+断るときは `JsonParseException`（`Json.read` は `JsonException`）で、**どの項目か（`$.items[1].qty`）と行・文字の位置**が載ります。
+
+> [!TRAP]
+> **2.6 までは、読めない値を黙って `0` や `null` にしていました**（`"abc"` → int が `0`、`1.5` → int が `1`）。
+> setter しかない項目には値が入らず、親クラスの private フィールドにも入りませんでした。
+
+`user_name` を `userName` の項目に入れたいときは、`JsonReadOptions.builder().snakeCaseKeys(true)` を渡します
+（`Dson` では `Configration#setDefaultFieldDelimiterChar()`）。
+
 ### 書き出し
 
 日時などの型は、次の形で書きます（2.7.0 から。それまでは `Date` と `LocalDateTime` 以外を書くと、JSON が `{}` になったり途中で切れたりしていました）。

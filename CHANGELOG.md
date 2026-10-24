@@ -13,6 +13,8 @@
 | **Bean を JSON にしたときのキーの順番が、フィールドを宣言した順になります**（D-307） | 親クラスのフィールドから順に、宣言した順に並びます。これまでは `Class.getMethods()` の順に頼っていて、JVM を起動するたびに変わることがありました。キーの順番に頼った比べ方（文字列のまま比べるテストなど）をしているなら、確かめてください |
 | **50 段より深い入れ子も書きます。512 段を超えると書きません**（D-307） | これまでは 50 段を超えたところを、黙って `{}` / `[]` にしていました（値が消えていました）。512 段を超えると、`Dson.encodes` は空文字を返してエラーをログに出します（読むときの上限と同じです） |
 | **enum は名前で書きます**（D-307） | これまでは `toString()` で書いていました。`toString()` を上書きした enum だけ、書かれる文字が変わります |
+| **JSON を Bean / record に読むとき、読めない値は例外になります**（D-307） | `Dson.decodes(json, Bean.class)` などで、`"abc"` → int、`1.5` → int、桁あふれ、無い enum の名前、ありえない日付は `JsonParseException` になります（どの項目か `$.items[1].qty` が載ります）。これまでは黙って `0` や `null` にしていました。`"12"` → int、全角の数字、`"1,234"`、`"yes"` → true などは読めます。知らないキーは、これまでどおり飛ばします |
+| **Bean の setter が呼ばれるようになります**（D-307） | これまでは setter が一度も呼ばれず（フィールドがあればフィールドに直接、無ければ値が入らない）、親クラスの private フィールドにも入りませんでした。setter で値を確かめたり整えたりしているなら、それが効くようになります |
 
 ### 直したこと
 
@@ -25,12 +27,14 @@
 
 | | |
 |---|---|
+| **`jimble-json` で JSON を型に読めるようにしました**（D-307） | `Json.read(json, Order.class)` / `Json.read(json, new TypeRef<List<Item>>() {})` で、Bean・record・List・Map・配列・Optional に読みます。木を作らずに読みながら入れます。`JsonReadOptions.snakeCaseKeys(true)` で `user_name` を `userName` に入れます |
 | **`jimble-json` で JSON を書けるようにしました**（D-307） | `Json.write(value)` / `Json.write(value, options)` で書きます。`JsonWriteOptions` で、時差を残す（`keepOffset`。`2026-10-24T19:00:00+09:00` の形）、循環参照のとき例外にする・空にする・`null` にする（`JsonCycle`。`Json.write` の既定は例外）、型ごとの書き方を足す（`typeWriter`）などを決められます。`Dson` / `Data` の書き出しも、これで書きます（形はこれまでと同じです） |
 
 ### 速くしたこと
 
 | | |
 |---|---|
+| **JSON を Bean / record に読むのが 3〜9 倍速くなりました**（D-307） | `Data` の木を作ってから型変換で写していたのを、読みながら入れるようにしました（record は 9 倍ほど、Bean は 3 倍ほど） |
 | **JSON を書くのが 1〜2 割速くなりました**（D-307） | `OutputStream` に UTF-8 で書くときは、JDK の Writer を通さずにバイトにします。割り当ても、`OutputStream` へは半分ほどになりました |
 
 ---

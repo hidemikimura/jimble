@@ -79,6 +79,9 @@ public final class JsonReadOptions {
 	/* 文字列の値を読んだあとに通す（無ければ null） */
 	private final Function<String, Object> stringValueHook;
 
+	/* Bean / record に読むとき、user_name を userName にしても探すか */
+	private final boolean snakeCaseKeys;
+
 	private JsonReadOptions (Builder builder) {
 
 		this.strict = builder.strict;
@@ -89,6 +92,7 @@ public final class JsonReadOptions {
 		this.mapFactory = builder.mapFactory;
 		this.listFactory = builder.listFactory;
 		this.stringValueHook = builder.stringValueHook;
+		this.snakeCaseKeys = builder.snakeCaseKeys;
 
 	}
 
@@ -119,6 +123,7 @@ public final class JsonReadOptions {
 		builder.mapFactory = mapFactory;
 		builder.listFactory = listFactory;
 		builder.stringValueHook = stringValueHook;
+		builder.snakeCaseKeys = snakeCaseKeys;
 		return builder;
 
 	}
@@ -212,6 +217,17 @@ public final class JsonReadOptions {
 	}
 
 	/**
+	 * Bean / record に読むとき、キーの区切りを camelCase にしても探すか
+	 *
+	 * @return	探す場合 = true
+	 */
+	public boolean snakeCaseKeys () {
+
+		return snakeCaseKeys;
+
+	}
+
+	/**
 	 * 読み方の組み立て役
 	 */
 	public static final class Builder {
@@ -224,6 +240,7 @@ public final class JsonReadOptions {
 		private Supplier<? extends Map<String, Object>> mapFactory = LinkedHashMap::new;
 		private Supplier<? extends List<Object>> listFactory = ArrayList::new;
 		private Function<String, Object> stringValueHook = null;
+		private boolean snakeCaseKeys = false;
 
 		private Builder () {
 		}
@@ -347,6 +364,21 @@ public final class JsonReadOptions {
 		public Builder stringValueHook (Function<String, Object> stringValueHook) {
 
 			this.stringValueHook = stringValueHook;
+			return this;
+
+		}
+
+		/**
+		 * Bean / record に読むとき、キーの区切り（{@code _} / {@code -} / 空白）を camelCase にしても探すか（既定 false）
+		 *
+		 * <p>true にすると、{@code user_name} の値を {@code userName} の項目に入れる（名前そのものの項目が無いとき）。</p>
+		 *
+		 * @param snakeCaseKeys	探す場合 = true
+		 * @return	自身
+		 */
+		public Builder snakeCaseKeys (boolean snakeCaseKeys) {
+
+			this.snakeCaseKeys = snakeCaseKeys;
 			return this;
 
 		}

@@ -154,18 +154,18 @@ class DsonBench {
 
 		Budget budget = new Budget();
 
-		budget.measure("Dson 読む 小 → Bean", Runs.SMALL, 4_000
+		budget.measure("Dson 読む 小 → Bean", Runs.SMALL, 2_800
 			, () -> Dson.decodes(SMALL, SampleBean.class));
-		budget.measure("Dson 読む 小 → record", Runs.SMALL, 6_000
+		budget.measure("Dson 読む 小 → record", Runs.SMALL, 2_800
 			, () -> Dson.decodes(SMALL, SampleRecord.class));
 
 		/*
-		 * <b>Bean / record へは、今は木を作ってから移している</b>（Data の木を作ってから、それを Bean に移す）。
-		 * 手順 3 でいちばん減るはずの項目（読む側は D-307 で替えた。上限は 2.6.0 の実測 + 約2割）
+		 * Bean / record へは、木を作らずに読みながら入れる（D-307 の手順 3b。それまでは Data の木を作ってから移していた）。
+		 * 上限は 3b の実測 + 約2割
 		 */
-		budget.measure("Dson 読む 中（100件）→ List<Bean>", Runs.MEDIUM, 300_000
+		budget.measure("Dson 読む 中（100件）→ List<Bean>", Runs.MEDIUM, 160_000
 			, () -> Dson.decodes(MEDIUM, List.class, SampleBean.class));
-		budget.measure("Dson 読む 中（100件）→ List<record>", Runs.MEDIUM, 500_000
+		budget.measure("Dson 読む 中（100件）→ List<record>", Runs.MEDIUM, 170_000
 			, () -> Dson.decodes(MEDIUM, List.class, SampleRecord.class));
 
 		budget.measure("Dson 書く 小 Bean → 文字列", Runs.SMALL, 4_096

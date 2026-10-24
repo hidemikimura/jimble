@@ -414,9 +414,9 @@ public final class Dson {
 	public <T> T decode (Configration conf, File file, String charset, Class<?>... destClasses) {
 
 		return decodeWith(conf, new TreeSource() {
-			@Override public Object read (JsonReadOptions options) throws IOException {
+			@Override public Object read (JsonReadOptions options, java.lang.reflect.Type type) throws IOException {
 				try (Reader reader = new InputStreamReader(new FileInputStream(file), Charset.forName(charset))) {
-					return Json.read(reader, options);
+					return type == null ? Json.read(reader, options) : Json.read(reader, type, options);
 				}
 			}
 			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
@@ -450,10 +450,10 @@ public final class Dson {
 	public <T> T decode (Configration conf, Reader reader, Class<?>... destClasses) {
 
 		return decodeWith(conf, new TreeSource() {
-			@Override public Object read (JsonReadOptions options) throws IOException {
+			@Override public Object read (JsonReadOptions options, java.lang.reflect.Type type) throws IOException {
 				// 読み終わったら閉じる（作り直す前と同じ）
 				try (Reader closing = reader) {
-					return Json.read(closing, options);
+					return type == null ? Json.read(closing, options) : Json.read(closing, type, options);
 				}
 			}
 			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
@@ -489,10 +489,12 @@ public final class Dson {
 	public <T> T decode (Configration conf, InputStream stream, String charset, Class<?>... destClasses) {
 
 		return decodeWith(conf, new TreeSource() {
-			@Override public Object read (JsonReadOptions options) throws IOException {
+			@Override public Object read (JsonReadOptions options, java.lang.reflect.Type type) throws IOException {
 				// 読み終わったら閉じる（作り直す前と同じ）
 				try (InputStream closing = stream) {
-					return Json.read(closing, Charset.forName(charset), options);
+					return type == null
+						? Json.read(closing, Charset.forName(charset), options)
+						: Json.read(new InputStreamReader(closing, Charset.forName(charset)), type, options);
 				}
 			}
 			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
@@ -524,8 +526,8 @@ public final class Dson {
 	public <T> T decode (Configration conf, String json, Class<?>... destClasses) {
 
 		return decodeWith(conf, new TreeSource() {
-			@Override public Object read (JsonReadOptions options) {
-				return Json.read(json, options);
+			@Override public Object read (JsonReadOptions options, java.lang.reflect.Type type) {
+				return type == null ? Json.read(json, options) : Json.read(json, type, options);
 			}
 			@Override public Object readLegacy (IDecoder decoder, Configration c) throws Exception {
 				return decoder.decode(c, json);
@@ -542,10 +544,11 @@ public final class Dson {
 		 * jimble-json で読む
 		 *
 		 * @param options	読み方
-		 * @return	木（Data / List / スカラー / null）
+		 * @param type		型（null なら木で読む）
+		 * @return	木（Data / List / スカラー / null）か、型にしたもの
 		 * @throws Exception	読めなかったとき
 		 */
-		Object read (JsonReadOptions options) throws Exception;
+		Object read (JsonReadOptions options, java.lang.reflect.Type type) throws Exception;
 
 		/**
 		 * 古い読み手で読む（渡された IDecoder か、古い設定のとき）
@@ -590,9 +593,20 @@ public final class Dson {
 				destClasses = new Class<?>[]{Data.class};
 			}
 
-			Object dest = legacyDecoder || conf.get(DecodeConfigKeys.DECODE_STRING_UNESCAPE) != null
+			boolean legacy = legacyDecoder || conf.get(DecodeConfigKeys.DECODE_STRING_UNESCAPE) != null;
+
+			/*
+			 * <b>Bean・record・型つきの List / 配列は、木を作らずに読みながら入れる</b>（D-307）。
+			 * 作り直す前は、Data の木を作ってから型変換（Convertor）でもう一度まるごと写していた
+			 */
+			java.lang.reflect.Type bindType = legacy ? null : bindType(destClasses);
+			if (bindType != null) {
+				return (T) source.read(readOptions(conf), bindType);
+			}
+
+			Object dest = legacy
 				? source.readLegacy(legacyDecoder(), conf)
-				: source.read(readOptions(conf));
+				: source.read(readOptions(conf), null);
 
 			/*
 			 * 一番外はオブジェクトか配列だけを受ける。
@@ -668,17 +682,87 @@ public final class Dson {
 	}
 
 	/**
+	 * 木を作らずに読みながら入れる型（そうしないなら null）
+	 *
+	 * <p>
+	 * Bean・record と、要素がそれらの List / 配列。Data・型の無い Map / List・Object・スカラーは、これまでどおり木で読む
+	 * （木の形・型変換の決まりに頼っているコードがあるため）。
+	 * </p>
+	 */
+	private static java.lang.reflect.Type bindType (Class<?>[] destClasses) {
+
+		Class<?> raw = destClasses[0];
+
+		if (raw.isArray()) {
+			return isBean(raw.getComponentType()) && destClasses.length == 1 ? raw : null;
+		}
+
+		if (java.util.Collection.class.isAssignableFrom(raw)) {
+			if (destClasses.length == 2 && isBean(destClasses[1])) {
+				return new BindingType(raw, destClasses[1]);
+			}
+			return null;
+		}
+
+		return destClasses.length == 1 && isBean(raw) ? raw : null;
+
+	}
+
+	/**
+	 * Bean・record か（Data・Map・コレクション・JDK のクラス・スカラーではない）
+	 */
+	private static boolean isBean (Class<?> type) {
+
+		if (type.isPrimitive() || type.isArray() || type.isEnum() || type.isInterface()
+			|| java.lang.reflect.Modifier.isAbstract(type.getModifiers())) {
+			return false;
+		}
+		if (Map.class.isAssignableFrom(type) || java.util.Collection.class.isAssignableFrom(type)) {
+			return false;
+		}
+		String name = type.getName();
+		return !(name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("jdk.") || name.startsWith("sun."));
+
+	}
+
+	/**
+	 * {@code List<Bean>} の型
+	 */
+	private record BindingType (Class<?> rawType, Class<?> element) implements java.lang.reflect.ParameterizedType {
+
+		@Override
+		public java.lang.reflect.Type[] getActualTypeArguments () {
+			return new java.lang.reflect.Type[] {element};
+		}
+
+		@Override
+		public java.lang.reflect.Type getRawType () {
+			return rawType;
+		}
+
+		@Override
+		public java.lang.reflect.Type getOwnerType () {
+			return null;
+		}
+
+	}
+
+	/**
 	 * 設定から、読み方を決める
 	 */
 	private static JsonReadOptions readOptions (Configration conf) {
 
-		if (!conf.isOutputDateType()) {
+		boolean snakeCase = conf.get(io.jimble.util.convertor.ConvertorConfigKeys.CONVERT_FIELDNAME_DELIMITER) instanceof char[];
+
+		if (!conf.isOutputDateType() && !snakeCase) {
 			return READ_OPTIONS;
 		}
 
-		return READ_OPTIONS.toBuilder()
-			.stringValueHook(s -> dateTypeValue(conf, s))
-			.build();
+		JsonReadOptions.Builder builder = READ_OPTIONS.toBuilder().snakeCaseKeys(snakeCase);
+		if (conf.isOutputDateType()) {
+			builder.stringValueHook(s -> dateTypeValue(conf, s));
+		}
+		return builder.build();
 
 	}
 
