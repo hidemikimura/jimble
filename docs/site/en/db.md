@@ -40,6 +40,45 @@ line above stays.
 `jimble-db` ships drivers for both MySQL / MariaDB and PostgreSQL, so you
 normally do not have to add one.
 
+## Encrypting the connection (TLS)
+
+**Since 2.6.0, the MySQL / MariaDB driver (MariaDB Connector/J 4.0) uses TLS by default and verifies the server's certificate** (`sslMode=verify-full`).
+The driver in 2.5 (3.5) connected **without encryption** when nothing was set.
+
+If the certificate cannot be verified, **the connection fails at startup.** With a self-signed MySQL such as Docker's `mysql:8.4`, you get:
+
+```
+Cannot use authentication plugin caching_sha2_password with a Self signed certificates.
+Either set sslMode=trust, use password with a MitM-Proof authentication plugin or provide server certificate to client
+```
+
+MariaDB 11.4 and later servers can be verified even with a self-signed certificate, with nothing added (a local `mariadb:11.4` connected without any setting).
+
+Choose with `sslMode` in the `url`:
+
+| Setting | Where |
+| --- | --- |
+| Nothing (`verify-full`) | The certificate is signed by a CA the JDK trusts, or the server is MariaDB 11.4+ |
+| `sslMode=verify-full&serverSslCert=/path/to/ca.pem` | **Production.** Hand over the server's CA certificate (for Amazon RDS / Aurora, the CA certificate AWS publishes) |
+| `sslMode=trust` | Encrypts, but does not verify the certificate. Stops eavesdropping, not impersonation |
+| `sslMode=disable` | No encryption. **Local databases only** |
+
+To skip encryption only on your machine, put it in the local configuration:
+
+```conf
+# application.local.conf
+include "application.conf"
+
+db {
+	blog_example {
+		url = "jdbc:mariadb://127.0.0.1:3306/blog_example?sslMode=disable"
+	}
+}
+```
+
+> [!NOTE]
+> The old form `useSSL=false` is treated the same as `sslMode=disable` (jimble's own test configuration uses it).
+
 ## Choose a DB product
 
 Set `product` and **the SQL builder emits SQL for that product.**

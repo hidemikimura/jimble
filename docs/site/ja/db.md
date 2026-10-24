@@ -39,6 +39,45 @@ codegen {
 ドライバは `jimble-db` が MySQL / MariaDB と PostgreSQL の両方を持っているので、
 ふつうは足す必要はありません。
 
+## 接続の暗号化（TLS）
+
+**2.6.0 から、MySQL / MariaDB のドライバ（MariaDB Connector/J 4.0）は既定で TLS を使い、サーバーの証明書を確かめます**（`sslMode=verify-full`）。
+2.5 までのドライバ（3.5）は、何も書かなければ**暗号化せずに**繋いでいました。
+
+証明書を確かめられないと、**起動時に繋がらずに落ちます。**Docker の `mysql:8.4` のような自己署名の証明書の MySQL では、こう出ます。
+
+```
+Cannot use authentication plugin caching_sha2_password with a Self signed certificates.
+Either set sslMode=trust, use password with a MitM-Proof authentication plugin or provide server certificate to client
+```
+
+MariaDB 11.4 以降のサーバーは、自己署名の証明書でも書き足さずに確かめられます（手元の `mariadb:11.4` は何も書かずに繋がりました）。
+
+`url` に `sslMode` を書いて決めます。
+
+| 書き方 | 使うところ |
+| --- | --- |
+| 書かない（`verify-full`） | 証明書が JDK の信頼する CA で署名されているとき。MariaDB 11.4 以降のサーバー |
+| `sslMode=verify-full&serverSslCert=/path/to/ca.pem` | **本番。**サーバーの CA 証明書を渡す（Amazon RDS / Aurora なら AWS が配っている CA 証明書） |
+| `sslMode=trust` | 暗号化はするが、証明書を確かめない。盗み見は防ぐが、なりすましは防がない |
+| `sslMode=disable` | 暗号化しない。**手元の DB だけ** |
+
+手元だけ暗号化しないなら、ローカル用の設定に書きます。
+
+```conf
+# application.local.conf
+include "application.conf"
+
+db {
+	blog_example {
+		url = "jdbc:mariadb://127.0.0.1:3306/blog_example?sslMode=disable"
+	}
+}
+```
+
+> [!NOTE]
+> 古い書き方の `useSSL=false` も `sslMode=disable` と同じに扱われます（jimble のテストの設定はこちらです）。
+
 ## DB 製品を選ぶ
 
 `product` に製品を書くと、**SQL ビルダーがその製品用の SQL を出します。**

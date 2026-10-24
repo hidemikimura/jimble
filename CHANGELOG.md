@@ -4,6 +4,23 @@
 
 ---
 
+## 未リリース
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **MySQL / MariaDB への接続が、既定で TLS を使い、サーバーの証明書を確かめるようになります** | `jimble-db` が持つドライバ（MariaDB Connector/J）を 4.0 にしたためです（`sslMode` の既定が `verify-full` になりました）。これまでは、何も書かなければ暗号化せずに繋いでいました。**証明書を確かめられないと、起動時に繋がらずに落ちます**（自己署名の証明書の MySQL では `Cannot use authentication plugin caching_sha2_password with a Self signed certificates`）。本番は `sslMode=verify-full&serverSslCert=...` でサーバーの CA 証明書を渡し、手元の DB は `sslMode=disable` を書いてください。書き方は [DB](https://jimble.io/ja/db) の「接続の暗号化（TLS）」にあります。MariaDB 11.4 以降のサーバーは、何も書かずに繋がります |
+| **`select` に結果の無い文（`UPDATE` など）を渡すと、例外になります** | ドライバ 4.0 の `executeQuery()` が、JDBC の決まりどおり結果を返さない文を断るようになったためです。これまでは空の結果が返っていました。更新は `update` / `execute` で書いてください |
+
+### 依存
+
+| | |
+|---|---|
+| **MariaDB Connector/J 3.5.10 → 4.0.0** | jimble-db が実行時に使います。3.5.11 の直し（`DatabaseMetaData#getURL()` にパスワードが出ていた、サーバーが送る長さを確かめずに読んでいた、など）も入っています。仮想スレッドでドライバのロックがキャリアを押さえなくなりました。Java 17 以上が要ります（jimble は 25） |
+
+---
+
 ## 2.5.12（2026-10-22）
 
 **アクセスログにクエリの秘密が出ていた人向けの版です。**`?token=...` などの値を `***` にして出します。
