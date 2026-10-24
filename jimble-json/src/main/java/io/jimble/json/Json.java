@@ -1,5 +1,6 @@
 package io.jimble.json;
 
+import io.jimble.json.internal.JsonBinder;
 import io.jimble.json.internal.JsonGenerator;
 import io.jimble.json.internal.JsonParser;
 
@@ -9,6 +10,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.lang.reflect.Type;
 import java.io.Reader;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -115,6 +117,23 @@ public final class Json {
 		Objects.requireNonNull(reader, "reader");
 		Objects.requireNonNull(options, "options");
 
+		char[][] holder = new char[1][];
+		int length = readAll(reader, holder);
+		return new JsonParser(holder[0], 0, length, options).parseDocument();
+
+	}
+
+	/**
+	 * Reader から全部読む
+	 *
+	 * @param reader	読み元
+	 * @param holder	読んだ文字を入れる（[0] に入れる）
+	 * @return	読んだ文字数
+	 */
+	private static int readAll (Reader reader, char[][] holder) {
+
+		Objects.requireNonNull(reader, "reader");
+
 		char[] buf = new char[READ_CHUNK];
 		int length = 0;
 
@@ -130,9 +149,11 @@ public final class Json {
 			throw new JsonException("JSON を読み元から読めませんでした: " + ex.getMessage(), ex);
 		}
 
-		return new JsonParser(buf, 0, length, options).parseDocument();
+		holder[0] = buf;
+		return length;
 
 	}
+
 
 	/**
 	 * InputStream から JSON を読む
@@ -151,6 +172,126 @@ public final class Json {
 		Objects.requireNonNull(charset, "charset");
 
 		return read(new InputStreamReader(stream, charset), options);
+
+	}
+
+	/**
+	 * 文字の JSON を、型に読む（既定の読み方）
+	 *
+	 * <pre>{@code
+	 * Order order = Json.read(json, Order.class);
+	 * }</pre>
+	 *
+	 * <ul>
+	 *   <li>Bean は引数の無いコンストラクタで作り、setter（無ければフィールド）に入れる。record は正準のコンストラクタで作る</li>
+	 *   <li>知らないキーは読み飛ばす。JSON に無い項目は、作ったときの値のまま（record なら null / 0 / false）</li>
+	 *   <li>値は項目の型にする（{@code "12"} → int、{@code "yes"} → boolean、{@code "2026/10/24"} → LocalDate など）。
+	 *       値が変わってしまうもの（{@code 1.5} → int、桁あふれ、ありえない日付）は、場所を付けて {@link JsonException}</li>
+	 * </ul>
+	 *
+	 * @param json	JSON（null や空なら null を返す）
+	 * @param type	型
+	 * @param <T>	型
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	public static <T> T read (String json, Class<T> type) {
+
+		return read(json, type, JsonReadOptions.DEFAULT);
+
+	}
+
+	/**
+	 * 文字の JSON を、型に読む
+	 *
+	 * @param json		JSON（null や空なら null を返す）
+	 * @param type		型
+	 * @param options	読み方
+	 * @param <T>		型
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> T read (String json, Class<T> type, JsonReadOptions options) {
+
+		Object value = read(json, (Type) type, options);
+		return type.isPrimitive() ? (T) value : type.cast(value);
+
+	}
+
+	/**
+	 * 文字の JSON を、型の引数を持つ型に読む（{@code new TypeRef<List<Item>>() {}}）
+	 *
+	 * @param json	JSON
+	 * @param type	型
+	 * @param <T>	型
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	public static <T> T read (String json, TypeRef<T> type) {
+
+		return read(json, type, JsonReadOptions.DEFAULT);
+
+	}
+
+	/**
+	 * 文字の JSON を、型の引数を持つ型に読む
+	 *
+	 * @param json		JSON
+	 * @param type		型
+	 * @param options	読み方
+	 * @param <T>		型
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> T read (String json, TypeRef<T> type, JsonReadOptions options) {
+
+		return (T) read(json, type.type(), options);
+
+	}
+
+	/**
+	 * 文字の JSON を、型（{@link Type}）に読む
+	 *
+	 * @param json		JSON（null や空なら null を返す）
+	 * @param type		型
+	 * @param options	読み方
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	public static Object read (String json, Type type, JsonReadOptions options) {
+
+		Objects.requireNonNull(type, "type");
+		Objects.requireNonNull(options, "options");
+
+		if (json == null) {
+			return null;
+		}
+
+		char[] chars = json.toCharArray();
+		return new JsonBinder(chars, 0, chars.length, options).readDocument(type);
+
+	}
+
+	/**
+	 * Reader から JSON を、型（{@link Type}）に読む
+	 *
+	 * <p><b>Reader は閉じない</b>（開いた人が閉じる）。</p>
+	 *
+	 * @param reader	読み元
+	 * @param type		型
+	 * @param options	読み方
+	 * @return	読んだ値
+	 * @throws JsonException	読めなかったとき・型にできなかったとき
+	 */
+	public static Object read (Reader reader, Type type, JsonReadOptions options) {
+
+		Objects.requireNonNull(type, "type");
+
+		char[][] holder = new char[1][];
+		int length = readAll(reader, holder);
+		return new JsonBinder(holder[0], 0, length, options).readDocument(type);
 
 	}
 

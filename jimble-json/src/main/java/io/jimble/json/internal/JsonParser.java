@@ -150,6 +150,207 @@ public final class JsonParser {
 
 	}
 
+	// region 型に合わせて読むための入口（JsonBinder が使う）
+
+	/**
+	 * 読み始める（先頭の BOM と空白を読み飛ばす）
+	 *
+	 * @return	中身がある場合 = true（空白とコメントだけなら false）
+	 */
+	boolean begin () {
+
+		if (pos < end && buf[pos] == '\uFEFF') {
+			pos++;
+		}
+
+		skipWhitespace();
+		return pos < end;
+
+	}
+
+	/**
+	 * 読み終える（値のあとに余分なものがあれば例外）
+	 */
+	void finish () {
+
+		skipWhitespace();
+
+		if (pos < end) {
+			throw error("値のあとに余分なものがあります: " + describe(pos));
+		}
+
+	}
+
+	/**
+	 * 次の文字（空白を読み飛ばしてから。終わりなら 0）
+	 */
+	char peek () {
+
+		skipWhitespace();
+		return pos < end ? buf[pos] : 0;
+
+	}
+
+	/**
+	 * いまの位置
+	 */
+	int position () {
+
+		return pos;
+
+	}
+
+	/**
+	 * 値を1つ、木（Map / List / スカラー）で読む
+	 */
+	Object readValue () {
+
+		if (peek() == 0) {
+			throw error("値がありません");
+		}
+		return parseValue();
+
+	}
+
+	/**
+	 * 値を1つ読む。クォートで囲んだ文字列は、読み方の決まり（真偽・日付の変換）を通さずに文字列で返す
+	 */
+	Object readValueKeepingStrings () {
+
+		char c = peek();
+		if (c == '"') {
+			return parseString('"');
+		}
+		if (c == '\'' && !strict) {
+			return parseString('\'');
+		}
+		return readValue();
+
+	}
+
+	/**
+	 * 値を1つ読む。数は、書かれた字面の文字列で返す（BigDecimal に桁をそのまま渡すため。{@code 1.50} の 0 を落とさない）
+	 */
+	Object readValueKeepingNumberText () {
+
+		char c = peek();
+		if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.') {
+			int start = pos;
+			int length = scanBareToken();
+			if (length > options.maxNumberLength()) {
+				throw error("数値が長すぎます（上限 " + options.maxNumberLength() + " 文字）", start);
+			}
+			return new String(buf, start, length);
+		}
+		return readValue();
+
+	}
+
+	/**
+	 * 次が null なら読み進めて true
+	 */
+	boolean readNull () {
+
+		if (peek() == 'n' && pos + 4 <= end && matches(pos, "null") && (pos + 4 == end || isTokenEnd(pos + 4))) {
+			pos += 4;
+			return true;
+		}
+		return false;
+
+	}
+
+	/**
+	 * 入れ物を開く（{@code open} を読み、入れ子に入る）
+	 *
+	 * @return	中身がある場合 = true（すぐ閉じたら、入れ子から出て false）
+	 */
+	boolean open (char open, char close, String what) {
+
+		if (peek() != open) {
+			throw error(what + "が要りますが「" + (pos < end ? String.valueOf(buf[pos]) : "（終わり）") + "」です");
+		}
+
+		enter();
+		pos++;
+
+		if (peek() == close) {
+			pos++;
+			depth--;
+			return false;
+		}
+
+		return true;
+
+	}
+
+	/**
+	 * 入れ物の中の、次の要素へ進む（「,」を読む。閉じたら入れ子から出る）
+	 *
+	 * @return	次の要素がある場合 = true
+	 */
+	boolean next (char close) {
+
+		char c = peek();
+
+		if (c == close) {
+			pos++;
+			depth--;
+			return false;
+		}
+
+		if (c != ',') {
+			throw error("「,」か「" + close + "」がありません: " + describe(pos));
+		}
+		pos++;
+
+		if (peek() == close) {
+			if (strict) {
+				throw error("末尾のカンマは使えません（厳密な読み）");
+			}
+			pos++;
+			depth--;
+			return false;
+		}
+
+		return true;
+
+	}
+
+	/**
+	 * オブジェクトのキーと「:」を読む
+	 */
+	String readKey () {
+
+		if (peek() == 0) {
+			throw error("オブジェクトが閉じていません（「}」がありません）");
+		}
+
+		String key = parseKey();
+
+		if (peek() != ':') {
+			throw error("キー「" + abbreviate(key) + "」のあとに「:」がありません: " + describe(pos));
+		}
+		pos++;
+
+		if (peek() == 0) {
+			throw error("キー「" + abbreviate(key) + "」の値がありません");
+		}
+
+		return key;
+
+	}
+
+	/**
+	 * 位置を付けた例外を作る
+	 */
+	JsonException errorAt (String message, int at) {
+
+		return error(message, at);
+
+	}
+
+	// endregion
+
 	// region 値
 
 	/**
