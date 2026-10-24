@@ -40,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * </p>
  */
 @Tag("bench")
+// deprecated にした Convertor の速さと割り当てを測る
+@SuppressWarnings("deprecation")
 class ConvertorBench {
 
 	/** 数値の文字列（整数） */

@@ -4,7 +4,9 @@ package io.jimble.util.convertor;
  * 設定情報名称クラス.
  * 
  * @author DN
+ * @deprecated 変換のしかたは {@link io.jimble.converter.ConverterOptions} で決める（2.7.0。D-307）
  */
+@Deprecated(since = "2.7.0")
 public final class ConvertorConfigKeys {
 
 	/** Date > String 変換ルール. */

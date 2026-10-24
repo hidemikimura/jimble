@@ -1,7 +1,7 @@
 package io.jimble.util.internal.json.formatter.lang;
 
 import io.jimble.util.convertor.Configration;
-import io.jimble.util.convertor.PropertyUtil;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.internal.json.formatter.FormatterConfigKeys;
 import io.jimble.util.internal.json.formatter.IFormatter;
 import io.jimble.util.internal.json.formatter.stream.OutputStreamWriterWrapper;
@@ -34,7 +34,7 @@ public class StringFormatter implements IFormatter {
 			isEscape = true;
 		}
 
-		String s = PropertyUtil.toString(obj);
+		String s = Conversions.toText(obj);
 		if (conf != null && conf.isRemove4ByteCharacter()) {
 			s = s.replaceAll("[^\\u0000-\\uFFFF]", "");
 		}

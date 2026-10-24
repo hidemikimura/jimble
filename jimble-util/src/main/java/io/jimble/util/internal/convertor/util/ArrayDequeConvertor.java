@@ -10,6 +10,7 @@ import java.util.ArrayDeque;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ArrayDequeConvertor implements IConvertor<ArrayDeque<Object>> {
 
 	/** インスタンス. */

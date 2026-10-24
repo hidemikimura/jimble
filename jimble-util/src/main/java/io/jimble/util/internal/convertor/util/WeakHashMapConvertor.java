@@ -10,6 +10,7 @@ import java.util.WeakHashMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class WeakHashMapConvertor implements IConvertor<WeakHashMap<Object, Object>> {
 
 	/** インスタンス. */

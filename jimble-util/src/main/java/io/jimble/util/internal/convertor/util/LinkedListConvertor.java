@@ -10,6 +10,7 @@ import java.util.LinkedList;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class LinkedListConvertor implements IConvertor<LinkedList<Object>> {
 
 	/** インスタンス. */

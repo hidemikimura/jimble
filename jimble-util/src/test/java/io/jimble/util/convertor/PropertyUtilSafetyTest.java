@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 知らないキーは、かつては上限なしに覚え続けた（キーを変えて送るたびにメモリが増えた）。
  * </p>
  */
+// deprecated にした PropertyUtil の安全さを確かめる
+@SuppressWarnings("deprecation")
 class PropertyUtilSafetyTest {
 
 	/** 移す先 */

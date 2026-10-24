@@ -10,6 +10,7 @@ import java.util.PriorityQueue;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class PriorityQueueConvertor implements IConvertor<PriorityQueue<Object>> {
 
 	/** インスタンス. */

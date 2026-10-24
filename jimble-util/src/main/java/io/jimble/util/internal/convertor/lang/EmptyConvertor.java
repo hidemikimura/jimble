@@ -6,6 +6,7 @@ import io.jimble.util.convertor.IConvertor;
 /**
  * 空
  */
+@Deprecated(since = "2.7.0")
 public class EmptyConvertor implements IConvertor<String> {
 
 	/* インスタンス */

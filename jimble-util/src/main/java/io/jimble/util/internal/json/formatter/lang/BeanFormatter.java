@@ -29,6 +29,8 @@ public class BeanFormatter implements IFormatter {
 	 * {@inheritDoc}
 	 */
 	@Override
+	// 古い書き手（Configration の古い設定キーを渡したときだけ使う）なので、古い型変換の部品（PropertyUtil）で項目を読む
+	@SuppressWarnings("deprecation")
 	public void format(OutputStreamWriterWrapper writer, Configration conf, Object obj) throws Exception {
 
 		if (obj instanceof List< ? >) {

@@ -3,10 +3,10 @@ package io.jimble.db.value;
 import io.jimble.db.FrameworkTables;
 import java.util.List;
 import io.jimble.db.dialect.Sqls;
-import io.jimble.util.convertor.PropertyUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.db.internal.version.DBVersion;
+import io.jimble.util.internal.convertor.Conversions;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -61,14 +61,14 @@ public class DBValue {
 				)
 			""" + Sqls.upsert(db.dialect(), List.of("value_key"), "value", "cache_second", "description")
 			, key
-			, PropertyUtil.toString(value)
+			, Conversions.toText(value)
 			, cacheSecond
 			, description
 		);
 
 		Data row = new Data()
 			.putData("value_key", key)
-			.putData("value", PropertyUtil.toString(value))
+			.putData("value", Conversions.toText(value))
 			.putData("cache_second", cacheSecond)
 			.putData("description", description)
 			.putData("get_at", new Date()

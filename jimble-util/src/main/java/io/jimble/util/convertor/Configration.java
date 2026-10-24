@@ -505,10 +505,25 @@ public class Configration {
 	 *
 	 * @return 設定情報オブジェクト
 	 */
+	// 設定キーの ConvertorConfigKeys は 2.7.0 で deprecated にしたが、Dson と古い変換器は今もこのキーを読む
+	@SuppressWarnings("deprecation")
 	public Configration setDefaultFieldDelimiterChar () {
 
 		put(ConvertorConfigKeys.CONVERT_FIELDNAME_DELIMITER, new char[]{'_', '-', ' '});
 		return this;
+	}
+
+	/**
+	 * キーの区切り（{@code user_name} → {@code userName}）を、項目の名前に当てるか
+	 *
+	 * @return	{@link #setDefaultFieldDelimiterChar()} などで区切りを設定していれば true
+	 */
+	// 設定キーの ConvertorConfigKeys は 2.7.0 で deprecated にしたが、Dson と古い変換器は今もこのキーを読む
+	@SuppressWarnings("deprecation")
+	public boolean usesFieldDelimiter () {
+
+		return get(ConvertorConfigKeys.CONVERT_FIELDNAME_DELIMITER) instanceof char[];
+
 	}
 
 }

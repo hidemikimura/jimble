@@ -54,6 +54,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * （その記録は {@link ConvertorCurrentQuirksTest} / {@link DataConversionCurrentQuirksTest} にあったもの）。
  * </p>
  */
+// deprecated にした Convertor / PropertyUtil の約束を確かめる
+@SuppressWarnings("deprecation")
 class ConvertorRebuiltContractTest {
 
 	@Nested

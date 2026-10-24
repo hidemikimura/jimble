@@ -9,6 +9,7 @@ import io.jimble.util.convertor.PropertyUtil;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ExceptionConvertor implements IConvertor<Exception> {
 
 	/** インスタンス. */

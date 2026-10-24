@@ -3,8 +3,8 @@ package io.jimble.util.data;
 import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.util.convertor.Configration;
-import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.json.Dson;
 import io.jimble.util.data.async.Async;
 import io.jimble.util.data.definition.IColumn;
@@ -309,7 +309,7 @@ public class Data extends LinkedHashMap<String, Object> {
 		}
 
 		try {
-			Data res = Convertor.convert(null, object, Data.class);
+			Data res = Conversions.convert(object, Data.class);
 			if (res == null) {
 				throw new DataConversionException(key, object, Data.class);
 			}
@@ -555,7 +555,7 @@ public class Data extends LinkedHashMap<String, Object> {
 		try {
 			List<Data> res = object instanceof CharSequence text
 				? Dson.decodes(text.toString(), ArrayList.class, Data.class)
-				: Convertor.convert(null, object, ArrayList.class, Data.class);
+				: Conversions.convert(object, ArrayList.class, Data.class);
 			if (res == null) {
 				throw new DataConversionException(key, object, List.class);
 			}
@@ -695,7 +695,7 @@ public class Data extends LinkedHashMap<String, Object> {
 		}
 
 		try {
-			return Convertor.convert(null, res, byte[].class);
+			return Conversions.convert(res, byte[].class);
 		} catch (RuntimeException ex) {
 			throw conversionFailed(key, res, byte[].class, ex);
 		}
@@ -1453,7 +1453,7 @@ public class Data extends LinkedHashMap<String, Object> {
 		Class<?> type = types.getClass().getComponentType();
 		T res;
 		try {
-			res = Convertor.convert(null, value, type);
+			res = Conversions.convert(value, type);
 		} catch (Exception ex) {
 			// 読めない値を null にしない（2.0。要件 D-195）
 			throw conversionFailed(key, value, type, ex);
@@ -1510,7 +1510,7 @@ public class Data extends LinkedHashMap<String, Object> {
 
 		Object object = get(key);
 		try {
-			List<E> res = Convertor.convert(null, object, List.class, element);
+			List<E> res = Conversions.convert(object, List.class, element);
 			if (res == null) {
 				throw new DataConversionException(key, object, List.class);
 			}
@@ -1628,7 +1628,7 @@ public class Data extends LinkedHashMap<String, Object> {
 			classList.addAll(Arrays.asList(types));
 		}
 		try {
-			List<T> res = Convertor.convert(null, object, classList.toArray(new Class<?>[]{}));
+			List<T> res = Conversions.convert(object, classList.toArray(new Class<?>[]{}));
 			if (res == null) {
 				throw new DataConversionException(key, object, List.class);
 			}
@@ -2060,7 +2060,7 @@ public class Data extends LinkedHashMap<String, Object> {
 				warnJsonArray(key);
 			}
 
-			return Convertor.convert(null, object, String.class);
+			return Conversions.convert(object, String.class);
 
 		} catch (Exception ex) {
 
@@ -2244,7 +2244,7 @@ public class Data extends LinkedHashMap<String, Object> {
 
 		Date res;
 		try {
-			res = Convertor.convert(null, object, Date.class);
+			res = Conversions.convert(object, Date.class);
 		} catch (Exception ex) {
 			throw conversionFailed(key, object, Date.class, ex);
 		}
@@ -2351,7 +2351,7 @@ public class Data extends LinkedHashMap<String, Object> {
 
 		try {
 
-			return Convertor.convert(null, this, types.getClass().getComponentType());
+			return Conversions.convert(this, types.getClass().getComponentType());
 
 		} catch (Exception ex) {
 
@@ -2371,7 +2371,7 @@ public class Data extends LinkedHashMap<String, Object> {
 
 		try {
 
-			return Convertor.convert(null, this, to);
+			return Conversions.convert(this, to);
 
 		} catch (Exception ex) {
 

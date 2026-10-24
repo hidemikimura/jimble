@@ -17,6 +17,7 @@ import java.util.Map;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class DocumentConvertor implements IConvertor<Document> {
 
 	/** インスタンス. */

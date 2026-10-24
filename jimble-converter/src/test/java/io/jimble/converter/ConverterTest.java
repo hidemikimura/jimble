@@ -233,6 +233,61 @@ class ConverterTest {
 
 	}
 
+	/** 足した変換のしかたで作る型 */
+	record Money (long yen) {
+	}
+
+	/** Money を持つ record */
+	record Price (String name, Money money) {
+	}
+
+	@Nested
+	@DisplayName("型ごとの変換のしかた（typeConverter）")
+	class TypeConverters {
+
+		private final ConverterOptions options = ConverterOptions.builder()
+			.typeConverter(Money.class, value -> new Money(Long.parseLong(value.toString().replace("円", ""))))
+			.build();
+
+		@Test
+		@DisplayName("足した変換のしかたで作る（入れ子の項目でも）。値がもうその型なら呼ばない")
+		void converts () {
+
+			assertEquals(new Money(500), Converter.convert("500円", Money.class, options));
+			assertEquals(new Price("a", new Money(300)), Converter.convert(map("name", "a", "money", "300円"), Price.class, options));
+
+			Money money = new Money(1);
+			assertSame(money, Converter.convert(money, Money.class, options));
+
+		}
+
+		@Test
+		@DisplayName("IllegalArgumentException は場所つきの ConversionException（ゆるい変換なら null）")
+		void failure () {
+
+			ConversionException e = assertThrows(ConversionException.class,
+				() -> Converter.convert(map("money", "abc"), Price.class, options));
+			assertEquals("$.money", e.path());
+
+			ConverterOptions lenient = options.toBuilder().lenient(true).build();
+			assertNull(Converter.convert(map("money", "abc"), Price.class, lenient).money());
+
+		}
+
+		@Test
+		@DisplayName("危ない型にも、足せば作れる（allowUnsafeTypes は要らない）")
+		void unsafeType () {
+
+			ConverterOptions pattern = ConverterOptions.builder()
+				.typeConverter(Pattern.class, value -> Pattern.compile(Pattern.quote(value.toString())))
+				.build();
+
+			assertEquals("\\Qa+\\E", Converter.convert("a+", Pattern.class, pattern).pattern());
+
+		}
+
+	}
+
 	@Nested
 	@DisplayName("オブジェクト")
 	class Objects {
@@ -348,12 +403,18 @@ class ConverterTest {
 		@DisplayName("循環参照は例外。cycleToNull なら null にする（落ちない）")
 		void cycles () {
 
-			Map<String, Object> self = map("name", "a");
-			self.put("self", self);
+			record Node (String name, Node next) {
+			}
 
-			assertThrows(ConversionException.class, () -> Converter.convert(self, new TypeRef<Map<String, Map<String, Object>>>() {}));
+			Map<String, Object> self = map("name", "a");
+			self.put("next", self);
+
+			ConversionException e = assertThrows(ConversionException.class, () -> Converter.convert(self, Node.class));
+			assertEquals("$.next", e.path());
 
 			ConverterOptions toNull = ConverterOptions.builder().cycleToNull(true).build();
+			assertEquals(new Node("a", null), Converter.convert(self, Node.class, toNull));
+
 			Map<String, Object> converted = Converter.convert(self, new TypeRef<Map<String, Object>>() {}, toNull);
 			assertSame(self, converted, "型の決まっていない Map はそのまま");
 

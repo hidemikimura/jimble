@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class LinkedHashMapConvertor implements IConvertor<LinkedHashMap<Object, Object>> {
 
 	/** インスタンス. */

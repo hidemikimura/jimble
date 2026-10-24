@@ -11,6 +11,7 @@ import java.io.File;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class FileConvertor implements IConvertor<File> {
 
 	/** インスタンス. */

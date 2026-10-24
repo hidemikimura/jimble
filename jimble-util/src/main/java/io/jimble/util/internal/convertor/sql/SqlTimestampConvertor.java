@@ -11,6 +11,7 @@ import java.sql.Timestamp;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class SqlTimestampConvertor implements IConvertor<Timestamp> {
 
 	/** インスタンス. */

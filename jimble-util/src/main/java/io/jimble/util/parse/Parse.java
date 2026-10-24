@@ -1,7 +1,7 @@
 package io.jimble.util.parse;
 
-import io.jimble.util.convertor.Convertor;
 
+import io.jimble.util.internal.convertor.Conversions;
 import java.util.Date;
 
 /**
@@ -109,7 +109,7 @@ public class Parse {
 
 		try {
 
-			return Convertor.convert(null, value, Date.class);
+			return Conversions.convert(value, Date.class);
 
 		} catch (Exception ex) {
 

@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ConcurrentLinkedQueueConvertor implements IConvertor<ConcurrentLinkedQueue<Object>> {
 
 	/** インスタンス. */

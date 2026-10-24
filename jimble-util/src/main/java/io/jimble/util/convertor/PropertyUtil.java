@@ -13,7 +13,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * プロパティユーティリティクラス.
  *
  * @author DN
+ * @deprecated 古い型変換の部品（2.7.0。D-307）。型変換は {@link io.jimble.converter.Converter}、
+ *             Bean の項目は {@code java.beans.Introspector} かリフレクションで直に扱う
  */
+@Deprecated(since = "2.7.0")
 public final class PropertyUtil {
 
 	// region destがsrcに変換可能か判定する

@@ -13,6 +13,7 @@ import java.util.Map;
 /**
  * Record変換クラス
  */
+@Deprecated(since = "2.7.0")
 public class RecordConvertor<E> implements IConvertor<E> {
 
 	/* インスタンス */

@@ -12,6 +12,7 @@ import java.util.*;
  *
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ObjectConvertor implements IConvertor<Object> {
 
 	/** インスタンス. */

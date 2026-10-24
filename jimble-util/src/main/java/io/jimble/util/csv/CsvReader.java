@@ -1,7 +1,7 @@
 package io.jimble.util.csv;
 
 import de.siegmar.fastcsv.reader.CsvRecord;
-import io.jimble.util.convertor.Convertor;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.io.FileCharDetecter;
 
 import java.io.*;
@@ -260,7 +260,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public byte getByte (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), byte.class);
+			return Conversions.convert(getString(index), byte.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -292,7 +292,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public short getShort (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), short.class);
+			return Conversions.convert(getString(index), short.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -324,7 +324,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public int getInt (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), int.class);
+			return Conversions.convert(getString(index), int.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -356,7 +356,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public long getLong (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), long.class);
+			return Conversions.convert(getString(index), long.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -388,7 +388,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public float getFloat (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), float.class);
+			return Conversions.convert(getString(index), float.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -420,7 +420,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public double getDouble (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), double.class);
+			return Conversions.convert(getString(index), double.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -452,7 +452,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public boolean getBoolean (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), boolean.class);
+			return Conversions.convert(getString(index), boolean.class);
 		} catch (Exception ex) {
 			return false;
 		}
@@ -484,7 +484,7 @@ public class CsvReader implements Closeable, AutoCloseable {
 	public Date getDate (int index) {
 
 		try {
-			return Convertor.convert(null, getString(index), Date.class);
+			return Conversions.convert(getString(index), Date.class);
 		} catch (Exception ex) {
 			return null;
 		}

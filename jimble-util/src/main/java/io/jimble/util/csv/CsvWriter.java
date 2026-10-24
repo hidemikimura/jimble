@@ -1,9 +1,9 @@
 package io.jimble.util.csv;
 
 import io.jimble.util.internal.array.ArrayUtil;
+import io.jimble.util.internal.convertor.Conversions;
 import de.siegmar.fastcsv.writer.LineDelimiter;
 import de.siegmar.fastcsv.writer.QuoteStrategies;
-import io.jimble.util.convertor.Convertor;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -351,7 +351,7 @@ public class CsvWriter implements Closeable, AutoCloseable {
 			} else {
 				String text;
 				try {
-					text = Convertor.convert(null, o, String.class);
+					text = Conversions.convert(o, String.class);
 				} catch (Exception ex) {
 					text = o.toString();
 				}

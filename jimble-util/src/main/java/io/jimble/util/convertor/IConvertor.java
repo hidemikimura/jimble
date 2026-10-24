@@ -5,7 +5,10 @@ package io.jimble.util.convertor;
  * 
  * @author DN
  * @param <T>
+ * @deprecated 型ごとの変換は {@link io.jimble.converter.TypeConverter} で書き、
+ *             {@link io.jimble.converter.ConverterOptions.Builder#typeConverter(Class, io.jimble.converter.TypeConverter)} で足す（2.7.0。D-307）
  */
+@Deprecated(since = "2.7.0")
 public interface IConvertor<T> {
 
 	/**

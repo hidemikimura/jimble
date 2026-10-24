@@ -52,6 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 今の挙動のうち、作り直しで変える予定のものは {@link ConvertorCurrentQuirksTest} に分けてある。
  * </p>
  */
+// deprecated にした Convertor が守る約束を確かめる
+@SuppressWarnings("deprecation")
 class ConvertorContractTest {
 
 	@Nested

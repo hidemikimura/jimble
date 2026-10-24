@@ -10,6 +10,7 @@ import java.util.HashMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class HashMapConvertor implements IConvertor<HashMap<Object, Object>> {
 
 	/** インスタンス. */

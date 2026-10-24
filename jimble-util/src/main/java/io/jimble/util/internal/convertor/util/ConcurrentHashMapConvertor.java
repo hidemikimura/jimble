@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ConcurrentHashMapConvertor implements IConvertor<ConcurrentHashMap<Object, Object>> {
 
 	/** インスタンス. */

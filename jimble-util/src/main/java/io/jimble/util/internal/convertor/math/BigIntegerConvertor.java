@@ -11,6 +11,7 @@ import java.math.BigInteger;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class BigIntegerConvertor implements IConvertor<BigInteger> {
 
 	/** インスタンス. */

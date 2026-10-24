@@ -1,7 +1,7 @@
 package io.jimble.db.sql;
 
 import io.jimble.util.internal.array.ArrayUtil;
-import io.jimble.util.convertor.Convertor;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.parse.Parse;
 import io.jimble.util.data.Data;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
@@ -323,7 +323,7 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 			res.add(data);
 		} else if (value instanceof Map<?,?> map) {
 			try {
-				res.add(Convertor.convert(null, value, Data.class));
+				res.add(Conversions.convert(value, Data.class));
 			} catch (Exception ex) {
 				return null;
 			}
@@ -364,7 +364,7 @@ public abstract class AbstractBuilder<E extends AbstractBuilder> implements IBui
 			return value;
 		} else if (value instanceof Map<?,?> map) {
 			try {
-				return Convertor.convert(null, value, Data.class);
+				return Conversions.convert(value, Data.class);
 			} catch (Exception ex) {
 				return null;
 			}

@@ -1,7 +1,7 @@
 package io.jimble.util.internal.json.decoder.stream;
 
 import io.jimble.util.convertor.Configration;
-import io.jimble.util.convertor.Convertor;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.internal.json.decoder.DecodeConfigKeys;
 import io.jimble.util.internal.json.decoder.stream.util.IInputStream;
 
@@ -125,7 +125,7 @@ public class StringStreamParser implements IStreamParser {
 				}
 			}
 			try {
-				return Convertor.convert(null, s, Date.class);
+				return Conversions.convert(s, Date.class);
 			} catch (Exception ex) {
 				return s;
 			}

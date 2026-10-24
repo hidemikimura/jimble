@@ -2,6 +2,7 @@ package io.jimble.converter.internal;
 
 import io.jimble.converter.ConversionException;
 import io.jimble.converter.ConverterOptions;
+import io.jimble.converter.TypeConverter;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -104,6 +105,11 @@ public final class ConversionEngine {
 			return plan.kind == ReadPlan.Kind.OPTIONAL ? Optional.empty() : Coercion.defaultValue(plan.raw);
 		}
 
+		TypeConverter<?> custom = options.typeConverter(plan.raw);
+		if (custom != null && !plan.raw.isInstance(value)) {
+			return custom(custom, value, plan.raw);
+		}
+
 		return switch (plan.kind) {
 			case ANY -> value;
 			case SCALAR -> scalar(value, plan.raw);
@@ -113,6 +119,22 @@ public final class ConversionEngine {
 			case MAP -> map(value, plan);
 			case OBJECT -> object(value, plan);
 		};
+
+	}
+
+	private Object custom (TypeConverter<?> converter, Object value, Class<?> raw) {
+
+		Object result;
+		try {
+			result = converter.convert(value);
+		} catch (IllegalArgumentException | ArithmeticException ex) {
+			if (options.lenient()) {
+				return Coercion.defaultValue(raw);
+			}
+			throw error(raw.getSimpleName() + " にできません: " + ex.getMessage(), ex);
+		}
+
+		return result == null ? Coercion.defaultValue(raw) : result;
 
 	}
 
