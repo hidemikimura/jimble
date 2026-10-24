@@ -51,7 +51,7 @@ dependencies {
 	// implementation("io.jimble:jimble-batch-manager:__JIMBLE_VERSION__")
 
 	// DB を使うようになったら、使うドライバを入れる
-	// runtimeOnly("org.mariadb.jdbc:mariadb-java-client:3.5.10")
+	// runtimeOnly("org.mariadb.jdbc:mariadb-java-client:4.0.0")
 }
 
 application {

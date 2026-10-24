@@ -19,6 +19,10 @@ server {
 
 # DB を使うようになったら外す
 #
+# MySQL / MariaDB のドライバは既定で TLS を使い、証明書を確かめる。
+# 手元の MySQL（自己署名の証明書）に繋ぐなら、application.local.conf の url に
+# sslMode=disable を足す（https://jimble.io/ja/db.md の「接続の暗号化（TLS）」）
+#
 # db {
 #   __DB__ {
 #     main     = true
