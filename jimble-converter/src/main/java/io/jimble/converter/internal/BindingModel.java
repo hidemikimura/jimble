@@ -194,7 +194,8 @@ final class BindingModel {
 		for (Class<?> c : chain) {
 			for (Field field : c.getDeclaredFields()) {
 				int modifiers = field.getModifiers();
-				if (Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers) || field.isSynthetic()) {
+				// transient は入れない（名前は外から来るので、残しておきたい作業用の値を書き換えさせない。D-226）
+				if (Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers) || Modifier.isTransient(modifiers) || field.isSynthetic()) {
 					continue;
 				}
 				try {

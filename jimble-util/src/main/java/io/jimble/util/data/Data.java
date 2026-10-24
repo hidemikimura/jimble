@@ -679,10 +679,11 @@ public class Data extends LinkedHashMap<String, Object> {
 	// region byte配列型で値を取得する
 
 	/**
-	 * byte型で値を取得する
+	 * byte配列で値を取得する（文字は UTF-8 の byte 列）
 	 *
 	 * @param key キー
 	 * @return 値
+	 * @throws DataConversionException	あるのに byte 配列として読めない（2.7.0。それまでは null。300 などの桁あふれも黙って通していた）
 	 */
 	public byte[] getByteArray (String key) {
 
@@ -694,13 +695,9 @@ public class Data extends LinkedHashMap<String, Object> {
 		}
 
 		try {
-
 			return Convertor.convert(null, res, byte[].class);
-
-		} catch (Exception ex) {
-
-			return null;
-
+		} catch (RuntimeException ex) {
+			throw conversionFailed(key, res, byte[].class, ex);
 		}
 
 	}

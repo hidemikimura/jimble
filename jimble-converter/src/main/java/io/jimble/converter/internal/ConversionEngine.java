@@ -60,7 +60,7 @@ public final class ConversionEngine {
 	/* 変換のしかた */
 	private final ConverterOptions options;
 
-	/* 時差の無い日時を補う時間帯 */
+	/* 時差の無い日時を補う時間帯（null ならサーバーの時間帯。ZoneId.systemDefault() は呼ぶたびに TimeZone を写すので、日時を扱うときだけ引く） */
 	private final ZoneId zone;
 
 	/* 変換している途中の元の値（循環参照を見つけるため。入れ物に入るときに作る） */
@@ -80,7 +80,7 @@ public final class ConversionEngine {
 	public ConversionEngine (ConverterOptions options) {
 
 		this.options = options;
-		this.zone = options.zone() != null ? options.zone() : ZoneId.systemDefault();
+		this.zone = options.zone();
 
 	}
 

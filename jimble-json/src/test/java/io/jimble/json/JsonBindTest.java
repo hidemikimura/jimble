@@ -78,6 +78,14 @@ class JsonBindTest {
 
 	}
 
+	/** transient の項目を持つ Bean */
+	public static class Holder {
+
+		private String name;
+		private transient String cache = "kept";
+
+	}
+
 	/** 型変数を持つ Bean */
 	public static class Box<T> {
 
@@ -149,6 +157,17 @@ class JsonBindTest {
 
 			assertEquals("b", derived.baseValue());
 			assertEquals(3, derived.own);
+
+		}
+
+		@Test
+		@DisplayName("transient の項目には入れない（キーは外から来る。D-226）")
+		void skipsTransient () {
+
+			Holder holder = Json.read("{\"cache\":\"pwned\",\"name\":\"a\"}", Holder.class);
+
+			assertEquals("kept", holder.cache);
+			assertEquals("a", holder.name);
 
 		}
 

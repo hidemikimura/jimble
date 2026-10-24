@@ -15,6 +15,12 @@
 | **enum は名前で書きます**（D-307） | これまでは `toString()` で書いていました。`toString()` を上書きした enum だけ、書かれる文字が変わります |
 | **JSON を Bean / record に読むとき、読めない値は例外になります**（D-307） | `Dson.decodes(json, Bean.class)` などで、`"abc"` → int、`1.5` → int、桁あふれ、無い enum の名前、ありえない日付は `JsonParseException` になります（どの項目か `$.items[1].qty` が載ります）。これまでは黙って `0` や `null` にしていました。`"12"` → int、全角の数字、`"1,234"`、`"yes"` → true などは読めます。知らないキーは、これまでどおり飛ばします |
 | **Bean の setter が呼ばれるようになります**（D-307） | これまでは setter が一度も呼ばれず（フィールドがあればフィールドに直接、無ければ値が入らない）、親クラスの private フィールドにも入りませんでした。setter で値を確かめたり整えたりしているなら、それが効くようになります |
+| **`Convertor` / `Data` の型変換で、値が変わってしまうものは例外になります**（D-307） | 型変換を `jimble-converter` に替えました。`Convertor.convert`、`Data` の `getIntList` などの一覧の getter・`getByteArray`・`getDate` で、`"abc"` → int、`1.5` → int、桁あふれ（`3000000000` → Integer・`300` → byte）、無い enum の名前、ありえない日付（`2024-02-30`）、後ろに余分のある日付（`2024-01-15abc`）は例外になります（`Convertor` は `ConversionException`、`Data` の getter は `DataConversionException`）。これまでは黙って `null` / `0` にしたり、桁あふれ・切り捨て・日付の繰り上げをしたりしていました。`" 12 "`・全角の数字・`"1,234"`・`1.0` → int・`true` → 1・`"2024年01月15日"` は、これまでどおり読めます |
+| **真偽の `"no"` / `"off"` は false になります**（D-307） | これまでは `""`・`"0"`・`"false"` 以外の文字はすべて true でした（`"no"` も true）。`2` などの 1 / 0 でない数は例外になります |
+| **`"2024-01-15T10:00:00Z"` の時差を読みます**（D-307） | `Convertor` / `Data#getDate` で、`Z` や `+09:00` の時差を無視して、サーバーの時間帯の時刻にしていました（UTC の 10 時が、JST の 10 時になっていました）。時差どおりの時刻になります。時差の書いていない日時は、これまでどおりサーバーの時間帯で読みます |
+| **文字から `Class` / `InetAddress` / `Pattern` / `File` / `Path` を作りません**（D-307） | 外から来た文字で、クラスの読み込み・DNS の問い合わせ・正規表現の組み立て（ReDoS）・ファイルへの到達を起こせたためです。要るなら `Convertor.addConvertor` で変換器を足してください |
+| **record に無い `String` の部品は `null` になります**（D-307） | これまでは空文字で、record のコンストラクタの検査（null を断るなど）をすり抜けていました |
+| **配列の JSON を、型を指定せずに読むと `List` になります。`Data` / `Map` を指定して読むと例外になります**（D-307） | `Dson.decodes(json)` のように型を指定しないと、これまでは添字がキーの `Data`（`{"0":..,"1":..}`）でした。`List`（中のオブジェクトは `Data`）を返します。`Data` に代入していると `ClassCastException` になるので、`List<Data>` で受けてください。`Dson.decodes(json, Data.class)` / `Data.fromJsonString` に配列を渡すと例外です。空の配列 `[]` だけは、これまでどおり空の `Data` にします（オブジェクトが空のときに `[]` を返す API があるため） |
 
 ### 直したこと
 
@@ -22,12 +28,14 @@
 |---|---|
 | **`LocalDate` や `UUID` を JSON にすると、JSON が壊れていました**（D-307） | `LocalDate` / `LocalTime` / `Instant` / `OffsetDateTime` / `ZonedDateTime` / `Duration` / `java.sql.Date` / `java.sql.Time` / `Calendar` / `UUID` / `Optional` などを書くと、`Dson.encodes` は空文字、`getJsonString` は `{}`（同じ Data のほかの値も消える）、`outputJsonString` は途中で切れた JSON になっていました。それぞれ決まった形で書きます（日時は `Date` と同じくサーバーの時間帯にそろえます）。形は [ユーティリティ](https://jimble.io/ja/util) の「書き出し」にあります |
 | **JDK のクラスを、中のフィールドを読みに行って壊していました**（D-307） | 書き方の決まっていない JDK のクラス（`Locale` / `Currency` / `InetAddress` など）は、`toString()` の文字列で書きます |
+| **`Convertor` の型変換の取りこぼしを直しました**（D-307） | 自分を含む Map を `Data` にすると `StackOverflowError` になっていたのを、そこを `null` にして止めます。record の `List<LineItem>` の要素が Map のままだったのを `LineItem` にします（要素が `Map.of` だと `NullPointerException` でした）。`LocalDate` / `LocalDateTime` / `UUID` にも変換できます。文字 → `byte[]` は UTF-8 の byte 列にします（これまでは `[0]`）。`byte[]` の JSON → `Data` に、各 byte が `"0"`..`"n"` のキーで混ざっていたのを直しました |
+| **知らないキーの名前を、上限なしに覚えていました**（D-307・D-226 の残り） | リクエストのキーを Bean に写すたびに、知らないキーの名前を覚えていて、キーを変えて送り続けるとメモリが増えました。覚えません。`transient` の項目にも書きません |
 
 ### 足したこと
 
 | | |
 |---|---|
-| **型変換のモジュール `jimble-converter`**（D-307） | jimble のほかのモジュールにも外のライブラリにも依存しない型変換です。`Converter.convert(map, Order.class)` / `Converter.convert(rows, new TypeRef<List<Item>>() {})` で、Map・Bean・record・コレクション・配列・日時のあいだを変換します。意味がはっきりしているゆるさ（全角の数字・`"1,234"`・`yes` → true など）は受け付け、値が変わってしまうもの（`1.5` → int・桁あふれ・ありえない日付）は、場所（`$.items[1].qty`）を付けた `ConversionException` にします。`ConverterOptions.LENIENT` で、読めない値を null / 0 にもできます。危ない型（`Class`・`InetAddress`・`Pattern`・`File`）は、許さなければ作りません。まだ `Convertor` / `Data` からは使っていません（次の版で切り替えます） |
+| **型変換のモジュール `jimble-converter`**（D-307） | jimble のほかのモジュールにも外のライブラリにも依存しない型変換です。`Converter.convert(map, Order.class)` / `Converter.convert(rows, new TypeRef<List<Item>>() {})` で、Map・Bean・record・コレクション・配列・日時のあいだを変換します。意味がはっきりしているゆるさ（全角の数字・`"1,234"`・`yes` → true など）は受け付け、値が変わってしまうもの（`1.5` → int・桁あふれ・ありえない日付）は、場所（`$.items[1].qty`）を付けた `ConversionException` にします。`ConverterOptions.LENIENT` で、読めない値を null / 0 にもできます。危ない型（`Class`・`InetAddress`・`Pattern`・`File`）は、許さなければ作りません。`Convertor` / `Data` の型変換も、これで変換します（古い設定キー・`addConvertor` で足した変換器・XML の `Document` のときだけ、これまでの変換器を使います） |
 | **`jimble-json` で JSON を型に読めるようにしました**（D-307） | `Json.read(json, Order.class)` / `Json.read(json, new TypeRef<List<Item>>() {})` で、Bean・record・List・Map・配列・Optional に読みます。木を作らずに読みながら入れます。`JsonReadOptions.snakeCaseKeys(true)` で `user_name` を `userName` に入れます |
 | **`jimble-json` で JSON を書けるようにしました**（D-307） | `Json.write(value)` / `Json.write(value, options)` で書きます。`JsonWriteOptions` で、時差を残す（`keepOffset`。`2026-10-24T19:00:00+09:00` の形）、循環参照のとき例外にする・空にする・`null` にする（`JsonCycle`。`Json.write` の既定は例外）、型ごとの書き方を足す（`typeWriter`）などを決められます。`Dson` / `Data` の書き出しも、これで書きます（形はこれまでと同じです） |
 
@@ -36,6 +44,7 @@
 | | |
 |---|---|
 | **JSON を Bean / record に読むのが 3〜9 倍速くなりました**（D-307） | `Data` の木を作ってから型変換で写していたのを、読みながら入れるようにしました（record は 9 倍ほど、Bean は 3 倍ほど） |
+| **`Convertor` / `Data` の型変換が速くなりました**（D-307） | `Data` → record は 18 倍ほど、`Data` → Bean と `List<Data>` → `List<Bean>` は 3〜4 倍、日時の文字 → `Date` は 30 倍ほど速くなりました。日時の形を 31 通り順に試していたのをやめ、型ごとの写し方を1回だけ調べて覚えます。割り当ても 2〜15 分の 1 です |
 | **JSON を書くのが 1〜2 割速くなりました**（D-307） | `OutputStream` に UTF-8 で書くときは、JDK の Writer を通さずにバイトにします。割り当ても、`OutputStream` へは半分ほどになりました |
 
 ---

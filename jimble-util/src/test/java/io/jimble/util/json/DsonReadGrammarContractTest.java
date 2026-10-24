@@ -206,6 +206,42 @@ class DsonReadGrammarContractTest {
 	}
 
 	@Nested
+	@DisplayName("読み先の型との食い違い（jimble-converter に替えてから）")
+	class TargetMismatch {
+
+		@Test
+		@DisplayName("配列の JSON を Data / Map で読むと断る（作り直す前は添字がキーの {\"0\":..} になっていた）")
+		void arrayAsMap () {
+
+			assertThrows(JsonParseException.class, () -> Dson.decodes("[1,2]", Data.class));
+			assertThrows(JsonParseException.class, () -> Dson.decodes("[1,2]", Map.class));
+			assertThrows(JsonParseException.class, () -> Data.fromJsonString("[{\"a\":1}]"));
+
+		}
+
+		@Test
+		@DisplayName("型を指定せずに配列の JSON を読むと List（中のオブジェクトは Data。作り直す前は添字がキーの Data）")
+		void untypedArray () {
+
+			Object read = Dson.decodes("[{\"a\":1},{\"a\":2}]");
+
+			assertEquals(List.of(Map.of("a", 1), Map.of("a", 2)), read);
+			assertTrue(((List<?>) read).getFirst() instanceof Data);
+			assertTrue(Dson.decodes("{\"a\":1}") instanceof Data);
+
+		}
+
+		@Test
+		@DisplayName("空の配列 [] を Dson.decodes(Data) で読むと空の Data（オブジェクトが空のときに [] を返す API がある）")
+		void emptyArrayAsData () {
+
+			assertEquals(new Data(), Dson.decodes("[]", Data.class));
+
+		}
+
+	}
+
+	@Nested
 	@DisplayName("上限")
 	class Limits {
 
