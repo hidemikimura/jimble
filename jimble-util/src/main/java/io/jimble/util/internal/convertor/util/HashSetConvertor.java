@@ -10,6 +10,7 @@ import java.util.HashSet;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class HashSetConvertor implements IConvertor<HashSet<Object>> {
 
 	/** インスタンス. */

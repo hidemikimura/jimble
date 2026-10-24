@@ -1,8 +1,8 @@
 package io.jimble.util.map;
 
 import io.jimble.util.internal.array.ArrayUtil;
-import io.jimble.util.convertor.Convertor;
 import io.jimble.util.data.Data;
+import io.jimble.util.internal.convertor.Conversions;
 
 import java.util.*;
 
@@ -55,7 +55,7 @@ public class MapUtil {
 
 		Map<?, ?> merge = merge(src, add);
 		try {
-			return Convertor.convert(null, merge, Data.class);
+			return Conversions.convert(merge, Data.class);
 		} catch (Exception ex) {
 			return null;
 		}

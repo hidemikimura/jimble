@@ -10,6 +10,7 @@ import java.util.ArrayList;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ArrayListConvertor implements IConvertor<ArrayList<Object>> {
 
 	/** インスタンス. */

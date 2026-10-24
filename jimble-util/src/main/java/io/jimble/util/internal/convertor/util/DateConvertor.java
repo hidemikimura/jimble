@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
  *
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class DateConvertor implements IConvertor<Date> {
 
 	/**

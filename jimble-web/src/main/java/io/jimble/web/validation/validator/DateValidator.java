@@ -1,9 +1,9 @@
 package io.jimble.web.validation.validator;
 
-import io.jimble.util.convertor.Convertor;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
 import io.jimble.util.exception.CodeException;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.web.validation.error.ValidationErrorType;
 
 import java.text.SimpleDateFormat;
@@ -56,7 +56,7 @@ public class DateValidator implements IValidator {
 		}
 
 		try {
-			Date date = Convertor.convert(null, value, Date.class);
+			Date date = Conversions.convert(value, Date.class);
 			return date != null;
 		} catch (Exception ex) {
 			return false;

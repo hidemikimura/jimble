@@ -1,7 +1,7 @@
 package io.jimble.util.date;
 
-import io.jimble.util.convertor.Convertor;
 
+import io.jimble.util.internal.convertor.Conversions;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.LocalTime;
@@ -250,7 +250,7 @@ public class DateUtil {
 
 		try {
 
-			return Convertor.convert(null, dateString, Date.class);
+			return Conversions.convert(dateString, Date.class);
 
 		} catch (Exception ex) {
 

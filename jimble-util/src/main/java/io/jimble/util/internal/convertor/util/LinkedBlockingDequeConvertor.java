@@ -10,6 +10,7 @@ import java.util.concurrent.LinkedBlockingDeque;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class LinkedBlockingDequeConvertor implements IConvertor<LinkedBlockingDeque<Object>> {
 
 	/** インスタンス. */

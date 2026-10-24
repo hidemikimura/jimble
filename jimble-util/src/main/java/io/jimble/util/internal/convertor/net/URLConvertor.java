@@ -12,6 +12,7 @@ import java.net.URL;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class URLConvertor implements IConvertor<URL> {
 
 	/** インスタンス. */

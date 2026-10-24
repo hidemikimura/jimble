@@ -15,6 +15,7 @@ import java.util.Date;
 /**
  * instant
  */
+@Deprecated(since = "2.7.0")
 public class InstantConvertor implements IConvertor<Instant> {
 
 	public static final InstantConvertor INSTANCE = new InstantConvertor();

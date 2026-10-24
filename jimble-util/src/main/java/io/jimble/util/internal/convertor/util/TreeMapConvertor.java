@@ -10,6 +10,7 @@ import java.util.TreeMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class TreeMapConvertor implements IConvertor<TreeMap<Object, Object>> {
 
 	/** インスタンス. */

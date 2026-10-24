@@ -169,22 +169,10 @@ String json = Json.write(value, options);
 
 ## 型変換
 
-`Convertor.convert(conf, src, 変換先.class)` が入口です。
-Bean ↔ `Data` ↔ Map ↔ List ↔ record ↔ プリミティブ・日時が同じ1本を通ります。
-`data.convertClass(MyBean.class)` や `Data` の `getIntList` なども中身は同じものです。
+`jimble-converter` の `Converter.convert(値, 変換先.class)` が入口です（2.7.0 から。jimble のほかのモジュールに依存しません）。
+Bean ↔ Map ↔ List ↔ record ↔ プリミティブ・日時のあいだを変換します。
+`Data` からは `data.convertClass(MyBean.class)` や `getIntList` などの getter で、中身は同じものです。
 変換できなければ**非検査例外**です（`throws` も `catch` も要りません）。
-
-中では `jimble-converter` の `Converter` で変換します（2.7.0 から）。決まりは [JSON を型に読む](#型に読む) ときと同じです。
-
-- **値が変わってしまうものは例外**です（`ConversionException`。どの項目か `$.items[1].qty` が載ります）。`1.5` → int、桁あふれ、`"abc"` → int、無い enum の名前、ありえない日付、後ろに余分のある日付
-- 意味がはっきりしているゆるさは受け付けます。前後の空白、全角の数字、`"1,234"`、`1.0` → int、`true` → 1、`"yes"` / `"on"` → true（`"no"` / `"off"` は false）、`"2024年01月15日"` → 日付
-- Bean には **setter があれば setter で**入れます（親クラスの private フィールドにも入れます。`static` / `transient` には入れません）。record は正準のコンストラクタで作ります
-- **知らないキーは飛ばします**
-- 日時は `Date`・`LocalDate`・`LocalDateTime`・`Instant`・`OffsetDateTime` などのあいだで変換します。`Z` や `+09:00` の時差は読みます（時差の無いものはサーバーの時間帯）
-- 自分を含む Map などの循環参照は、そこを `null` にします
-- 文字から `Class` / `InetAddress` / `Pattern` / `File` / `Path` は作りません（外から来た文字で、クラスの読み込み・DNS・ReDoS・ファイルへの到達を起こせるため）
-
-`Convertor` を通さずに、`jimble-converter` を直に使うこともできます（jimble のほかのモジュールに依存しません）。
 
 ```java
 Order order = Converter.convert(map, Order.class);
@@ -193,17 +181,48 @@ List<Item> items = Converter.convert(rows, new TypeRef<List<Item>>() {});
 ConverterOptions options = ConverterOptions.builder()
 	.rejectUnknownKeys(true)          // 知らないキーで断る
 	.zone(ZoneId.of("Asia/Tokyo"))    // 時差の無い日時を補う時間帯
+	.typeConverter(Money.class, value -> Money.parse(value.toString()))  // 型ごとの変換を足す
 	.build();
 Order strict = Converter.convert(map, Order.class, options);
 
 int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // 読めない値を 0 / null に（CSV など）
 ```
 
+決まりは [JSON を型に読む](#型に読む) ときと同じです。
+
+- **値が変わってしまうものは例外**です（`ConversionException`。どの項目か `$.items[1].qty` が載ります）。`1.5` → int、桁あふれ、`"abc"` → int、無い enum の名前、ありえない日付、後ろに余分のある日付
+- 意味がはっきりしているゆるさは受け付けます。前後の空白、全角の数字、`"1,234"`、`1.0` → int、`true` → 1、`"yes"` / `"on"` → true（`"no"` / `"off"` は false）、`"2024年01月15日"` → 日付
+- Bean には **setter があれば setter で**入れます（親クラスの private フィールドにも入れます。`static` / `transient` には入れません）。record は正準のコンストラクタで作ります
+- **知らないキーは飛ばします**
+- 日時は `Date`・`LocalDate`・`LocalDateTime`・`Instant`・`OffsetDateTime` などのあいだで変換します。`Z` や `+09:00` の時差は読みます（時差の無いものはサーバーの時間帯）
+- 型が合っている値は、写さずにそのまま返します
+- 循環参照は例外です（`cycleToNull(true)` で、そこを `null` に）
+- 文字から `Class` / `InetAddress` / `Pattern` / `File` / `Path` は作りません（外から来た文字で、クラスの読み込み・DNS・ReDoS・ファイルへの到達を起こせるため）。要るなら `typeConverter` で足します
+
 > [!TRAP]
 > **2.6 までは、読めない値を黙って `null` / `0` にしていました**（`"abc"` → Integer が `null`、`1.9` → Integer が `1`、`3000000000` → Integer が桁あふれ、`"no"` → Boolean が true、`"...Z"` の時差を無視）。
 > setter しかない項目には値が入りませんでした。
 
-`Convertor.addConvertor(型, 変換器)` で足した変換器・`Configration` に渡した日付の書式（`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`）・XML の `Document` は、これまでの変換器で変換します。
+### `Convertor` から移る
+
+`io.jimble.util.convertor` の `Convertor` / `IConvertor` / `ConvertorConfigKeys` / `PropertyUtil` は **2.7.0 で deprecated** です（動きは変わりません。中身は `Converter` です）。
+
+| これまで | これから |
+| --- | --- |
+| `Convertor.convert(null, map, Order.class)` | `Converter.convert(map, Order.class)` |
+| `Convertor.convert(null, rows, List.class, Item.class)` | `Converter.convert(rows, new TypeRef<List<Item>>() {})` |
+| `Convertor.convert(null, data, Order.class)` | `Converter.convert(data, Order.class)`（`Data` は Map なのでそのまま渡せる。`data.convertClass` は失敗を `null` にするので、例外が要るならこちら） |
+| `Convertor.addConvertor(Money.class, 変換器)` | `ConverterOptions.builder().typeConverter(Money.class, 変換のしかた)` |
+| `Configration#setDefaultFieldDelimiterChar()`（`user_name` → `userName`） | `ConverterOptions.builder().snakeCaseKeys(true)` |
+
+`Convertor` には、`Converter` に無い、これまでのままのゆるさが残っています。`Converter` に移すときは、次を確かめてください。
+
+- **型が合っている List / Map も写しを返す**（`Converter` はそのまま返す）
+- **JSON の文字を読む**（`"[1,2]"` → `List<Integer>`、`"{...}"` → `Data`。`Converter` は JSON を読まないので、`Dson.decodes` で読んでから渡す）
+- **Map → 一覧は値の一覧、一覧・Map → 文字は先頭の値**（`Converter` は例外）
+- **循環参照はそこを `null` にする**（`Converter` の既定は例外）
+
+`Convertor.addConvertor` で足した変換器・`Configration` に渡した日付の書式（`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`）・XML の `Document` は、`Convertor` / `Data` からは、これまでの変換器で変換します。
 
 > [!TRAP]
 > **`Configration` は使い回さないでください。**これまでの変換器を通るとき、変換の途中で階層カウンタと

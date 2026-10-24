@@ -173,22 +173,10 @@ String json = Json.write(value, options);
 
 ## Type conversion
 
-`Convertor.convert(conf, src, Target.class)` is the way in.
-Bean ↔ `Data` ↔ Map ↔ List ↔ record ↔ primitives and date-times all go down the same single path.
-`data.convertClass(MyBean.class)` and `Data` getters such as `getIntList` are the same machinery underneath.
+`Converter.convert(value, Target.class)` from `jimble-converter` is the way in (since 2.7.0; it depends on no other jimble module).
+It converts between Beans, Maps, Lists, records, primitives, and date-times.
+From a `Data`, use `data.convertClass(MyBean.class)` or getters such as `getIntList`; they are the same machinery underneath.
 When it cannot convert, it throws an **unchecked exception** (no `throws` or `catch` needed).
-
-Underneath, conversion is done by `Converter` from `jimble-converter` (since 2.7.0). The rules are the same as for [reading JSON into a type](#reading-into-a-type).
-
-- **Anything that would change the value throws** (`ConversionException`, carrying which property: `$.items[1].qty`): `1.5` → int, overflow, `"abc"` → int, an enum name that does not exist, an impossible date, a date with something extra at the end
-- Leniency with a clear meaning is accepted: surrounding blanks, full-width digits, `"1,234"`, `1.0` → int, `true` → 1, `"yes"` / `"on"` → true (`"no"` / `"off"` → false), `"2024年01月15日"` → a date
-- A Bean is filled **through its setter when there is one** (private fields of superclasses included; never `static` / `transient` fields). A record is built with its canonical constructor
-- **Unknown keys are skipped**
-- Date-times convert between `Date`, `LocalDate`, `LocalDateTime`, `Instant`, `OffsetDateTime`, and so on. Offsets such as `Z` and `+09:00` are honoured (values without one use the server's time zone)
-- A circular reference, such as a Map that contains itself, becomes `null` at that point
-- `Class` / `InetAddress` / `Pattern` / `File` / `Path` are never built from a string (outside text could trigger class loading, DNS lookups, ReDoS, or file access)
-
-You can also use `jimble-converter` directly, without `Convertor` (it depends on no other jimble module).
 
 ```java
 Order order = Converter.convert(map, Order.class);
@@ -197,17 +185,48 @@ List<Item> items = Converter.convert(rows, new TypeRef<List<Item>>() {});
 ConverterOptions options = ConverterOptions.builder()
 	.rejectUnknownKeys(true)          // refuse unknown keys
 	.zone(ZoneId.of("Asia/Tokyo"))    // time zone for date-times without an offset
+	.typeConverter(Money.class, value -> Money.parse(value.toString()))  // add a conversion for a type
 	.build();
 Order strict = Converter.convert(map, Order.class, options);
 
 int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // unreadable values become 0 / null (for CSV and the like)
 ```
 
+The rules are the same as for [reading JSON into a type](#reading-into-a-type).
+
+- **Anything that would change the value throws** (`ConversionException`, carrying which property: `$.items[1].qty`): `1.5` → int, overflow, `"abc"` → int, an enum name that does not exist, an impossible date, a date with something extra at the end
+- Leniency with a clear meaning is accepted: surrounding blanks, full-width digits, `"1,234"`, `1.0` → int, `true` → 1, `"yes"` / `"on"` → true (`"no"` / `"off"` → false), `"2024年01月15日"` → a date
+- A Bean is filled **through its setter when there is one** (private fields of superclasses included; never `static` / `transient` fields). A record is built with its canonical constructor
+- **Unknown keys are skipped**
+- Date-times convert between `Date`, `LocalDate`, `LocalDateTime`, `Instant`, `OffsetDateTime`, and so on. Offsets such as `Z` and `+09:00` are honoured (values without one use the server's time zone)
+- A value that already has the target type is returned as is, without copying
+- A circular reference throws (`cycleToNull(true)` turns it into `null` at that point)
+- `Class` / `InetAddress` / `Pattern` / `File` / `Path` are never built from a string (outside text could trigger class loading, DNS lookups, ReDoS, or file access). Add a `typeConverter` if you need one
+
 > [!TRAP]
 > **Up to 2.6, values that could not be read silently became `null` / `0`** (`"abc"` → Integer gave `null`, `1.9` → Integer gave `1`, `3000000000` → Integer overflowed, `"no"` → Boolean gave true, and the offset in `"...Z"` was ignored).
 > Properties with only a setter received no value.
 
-Converters added with `Convertor.addConvertor(type, converter)`, date formats passed in a `Configration` (`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`), and XML `Document`s still go through the previous converters.
+### Moving off `Convertor`
+
+`Convertor` / `IConvertor` / `ConvertorConfigKeys` / `PropertyUtil` in `io.jimble.util.convertor` are **deprecated in 2.7.0** (their behaviour is unchanged; underneath they use `Converter`).
+
+| Before | After |
+| --- | --- |
+| `Convertor.convert(null, map, Order.class)` | `Converter.convert(map, Order.class)` |
+| `Convertor.convert(null, rows, List.class, Item.class)` | `Converter.convert(rows, new TypeRef<List<Item>>() {})` |
+| `Convertor.convert(null, data, Order.class)` | `Converter.convert(data, Order.class)` (a `Data` is a Map, so pass it as is; `data.convertClass` turns failures into `null`, so use this when you want the exception) |
+| `Convertor.addConvertor(Money.class, converter)` | `ConverterOptions.builder().typeConverter(Money.class, conversion)` |
+| `Configration#setDefaultFieldDelimiterChar()` (`user_name` → `userName`) | `ConverterOptions.builder().snakeCaseKeys(true)` |
+
+`Convertor` keeps some of the old leniency that `Converter` does not have. Check these when you move to `Converter`:
+
+- **A List / Map that already has the target type is still copied** (`Converter` returns it as is)
+- **JSON text is parsed** (`"[1,2]"` → `List<Integer>`, `"{...}"` → `Data`; `Converter` does not parse JSON, so read it with `Dson.decodes` first)
+- **A Map becomes the list of its values, and a list or Map becomes its first value as a string** (`Converter` throws)
+- **A circular reference becomes `null` at that point** (`Converter` throws by default)
+
+Converters added with `Convertor.addConvertor`, date formats passed in a `Configration` (`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`), and XML `Document`s still go through the previous converters when called from `Convertor` / `Data`.
 
 > [!TRAP]
 > **Do not reuse a `Configration`.** When the previous converters run, its depth counter and its record of

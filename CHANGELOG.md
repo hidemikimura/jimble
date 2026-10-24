@@ -20,6 +20,7 @@
 | **`"2024-01-15T10:00:00Z"` の時差を読みます**（D-307） | `Convertor` / `Data#getDate` で、`Z` や `+09:00` の時差を無視して、サーバーの時間帯の時刻にしていました（UTC の 10 時が、JST の 10 時になっていました）。時差どおりの時刻になります。時差の書いていない日時は、これまでどおりサーバーの時間帯で読みます |
 | **文字から `Class` / `InetAddress` / `Pattern` / `File` / `Path` を作りません**（D-307） | 外から来た文字で、クラスの読み込み・DNS の問い合わせ・正規表現の組み立て（ReDoS）・ファイルへの到達を起こせたためです。要るなら `Convertor.addConvertor` で変換器を足してください |
 | **record に無い `String` の部品は `null` になります**（D-307） | これまでは空文字で、record のコンストラクタの検査（null を断るなど）をすり抜けていました |
+| **`Convertor` / `IConvertor` / `ConvertorConfigKeys` / `PropertyUtil` を非推奨にしました**（D-307） | 動きは変わりません。`-Werror` と `-Xlint:deprecation`（または `-Xlint:all`）でビルドしているなら、警告で落ちます。`Converter.convert(map, Order.class)`（`jimble-converter`）に書き換えてください。`Convertor.addConvertor` の代わりは `ConverterOptions.builder().typeConverter(...)` です。`Convertor` にあって `Converter` に無いゆるさ（JSON の文字を読む・Map → 値の一覧など）と、書き換えの表は [ユーティリティ](https://jimble.io/ja/util) の「`Convertor` から移る」にあります。すぐに直せないなら、そのメソッドに `@SuppressWarnings("deprecation")` |
 | **配列の JSON を、型を指定せずに読むと `List` になります。`Data` / `Map` を指定して読むと例外になります**（D-307） | `Dson.decodes(json)` のように型を指定しないと、これまでは添字がキーの `Data`（`{"0":..,"1":..}`）でした。`List`（中のオブジェクトは `Data`）を返します。`Data` に代入していると `ClassCastException` になるので、`List<Data>` で受けてください。`Dson.decodes(json, Data.class)` / `Data.fromJsonString` に配列を渡すと例外です。空の配列 `[]` だけは、これまでどおり空の `Data` にします（オブジェクトが空のときに `[]` を返す API があるため） |
 
 ### 直したこと
@@ -36,6 +37,7 @@
 | | |
 |---|---|
 | **型変換のモジュール `jimble-converter`**（D-307） | jimble のほかのモジュールにも外のライブラリにも依存しない型変換です。`Converter.convert(map, Order.class)` / `Converter.convert(rows, new TypeRef<List<Item>>() {})` で、Map・Bean・record・コレクション・配列・日時のあいだを変換します。意味がはっきりしているゆるさ（全角の数字・`"1,234"`・`yes` → true など）は受け付け、値が変わってしまうもの（`1.5` → int・桁あふれ・ありえない日付）は、場所（`$.items[1].qty`）を付けた `ConversionException` にします。`ConverterOptions.LENIENT` で、読めない値を null / 0 にもできます。危ない型（`Class`・`InetAddress`・`Pattern`・`File`）は、許さなければ作りません。`Convertor` / `Data` の型変換も、これで変換します（古い設定キー・`addConvertor` で足した変換器・XML の `Document` のときだけ、これまでの変換器を使います） |
+| **`jimble-converter` に、型ごとの変換のしかたを足せるようにしました**（D-307） | `ConverterOptions.builder().typeConverter(Money.class, value -> Money.parse(value.toString()))` で足します。決まった変換より先に使い、入れ子の項目にも効きます。危ない型（`Pattern` など）も、足せば作れます |
 | **`jimble-json` で JSON を型に読めるようにしました**（D-307） | `Json.read(json, Order.class)` / `Json.read(json, new TypeRef<List<Item>>() {})` で、Bean・record・List・Map・配列・Optional に読みます。木を作らずに読みながら入れます。`JsonReadOptions.snakeCaseKeys(true)` で `user_name` を `userName` に入れます |
 | **`jimble-json` で JSON を書けるようにしました**（D-307） | `Json.write(value)` / `Json.write(value, options)` で書きます。`JsonWriteOptions` で、時差を残す（`keepOffset`。`2026-10-24T19:00:00+09:00` の形）、循環参照のとき例外にする・空にする・`null` にする（`JsonCycle`。`Json.write` の既定は例外）、型ごとの書き方を足す（`typeWriter`）などを決められます。`Dson` / `Data` の書き出しも、これで書きます（形はこれまでと同じです） |
 

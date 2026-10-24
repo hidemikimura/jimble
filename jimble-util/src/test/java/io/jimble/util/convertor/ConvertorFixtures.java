@@ -16,6 +16,8 @@ import java.util.TimeZone;
  * 日付を読むテストは、時間帯を {@link #ZONE} に固定してから動かす（{@link #fixZone()} / {@link #restoreZone()}）。
  * </p>
  */
+// deprecated にした Convertor を呼ぶテストの部品
+@SuppressWarnings("deprecation")
 final class ConvertorFixtures {
 
 	/** 日付のテストで固定する時間帯 */

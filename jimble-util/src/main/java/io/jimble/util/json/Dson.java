@@ -3,7 +3,6 @@ package io.jimble.util.json;
 import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.util.convertor.Configration;
-import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
 import io.jimble.json.Json;
 import io.jimble.json.JsonCycle;
@@ -12,6 +11,7 @@ import io.jimble.json.JsonWriteOptions;
 import io.jimble.util.data.TableNest;
 import io.jimble.util.data.async.AsyncData;
 import io.jimble.util.data.async.AsyncList;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.internal.json.formatter.FormatterConfigKeys;
 import io.jimble.json.JsonException;
 import io.jimble.json.JsonReadOptions;
@@ -138,31 +138,18 @@ public final class Dson {
 	 * </p>
 	 * <p>
 	 * {@code T} が {@code Data} を受け取れることは、呼ぶ前に
-	 * {@code PropertyUtil.isAssignableFrom(Data.class, destClasses[0])} で確かめている。
+	 * {@code Data.class.isAssignableFrom(destClasses[0])} で確かめている。
 	 * </p>
 	 *
 	 * @param dest	デコード結果
 	 * @param <T>	返す型
-	 * @return	{@code Data} にできなければ null（呼び出し側が {@code Convertor} に回す）
+	 * @return	{@code Data} でなければ null（呼び出し側が型変換に回す）
 	 */
 	@SuppressWarnings("unchecked")
 	private static <T> T asData (Object dest) {
 
-		if (dest instanceof Data) {
-			return (T) dest;
-		}
-
-		if (dest instanceof Map<?, ?> map) {
-
-			try {
-				Data res = (Data) PropertyUtil.newInstance(dest.getClass());
-				res.putAll((Map<String, ?>) map);
-				return (T) res;
-			} catch (Exception ignore) {}
-
-		}
-
-		return null;
+		// 読んだ木のオブジェクトは Data で作る（READ_OPTIONS の mapFactory）。古い読み手も Data を返す
+		return dest instanceof Data ? (T) dest : null;
 
 	}
 
@@ -626,7 +613,7 @@ public final class Dson {
 				return (T) dest;
 			}
 
-			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
+			if (Data.class.isAssignableFrom(destClasses[0])) {
 				T res = asData(dest);
 				if (res != null) {
 					return res;
@@ -641,7 +628,7 @@ public final class Dson {
 				return (T) dest;
 			}
 
-			return Convertor.convert(conf, dest, destClasses);
+			return Conversions.convert(conf, dest, destClasses);
 
 		} catch (Exception e) {
 			setError(e);
@@ -762,7 +749,7 @@ public final class Dson {
 	 */
 	private static JsonReadOptions readOptions (Configration conf) {
 
-		boolean snakeCase = conf.get(io.jimble.util.convertor.ConvertorConfigKeys.CONVERT_FIELDNAME_DELIMITER) instanceof char[];
+		boolean snakeCase = conf.usesFieldDelimiter();
 
 		if (!conf.isOutputDateType() && !snakeCase) {
 			return READ_OPTIONS;
@@ -805,7 +792,7 @@ public final class Dson {
 		}
 
 		try {
-			return Convertor.convert(null, text, Date.class);
+			return Conversions.convert(text, Date.class);
 		} catch (Exception ex) {
 			return text;
 		}

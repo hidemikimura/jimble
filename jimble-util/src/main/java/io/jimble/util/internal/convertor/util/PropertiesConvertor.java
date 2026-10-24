@@ -10,6 +10,7 @@ import java.util.Properties;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class PropertiesConvertor implements IConvertor<Properties> {
 
 	/** インスタンス. */

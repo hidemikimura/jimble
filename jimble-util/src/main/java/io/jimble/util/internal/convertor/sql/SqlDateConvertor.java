@@ -11,6 +11,7 @@ import java.sql.Date;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class SqlDateConvertor implements IConvertor<Date> {
 
 	/** インスタンス. */

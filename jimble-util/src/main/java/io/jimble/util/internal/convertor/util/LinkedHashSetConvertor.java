@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class LinkedHashSetConvertor implements IConvertor<LinkedHashSet<Object>> {
 
 	/** インスタンス. */

@@ -15,6 +15,7 @@ import java.util.Map;
  *
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public final class ListUtil {
 
 	/**

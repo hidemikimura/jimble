@@ -10,6 +10,7 @@ import java.util.concurrent.PriorityBlockingQueue;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class PriorityBlockingQueueConvertor implements IConvertor<PriorityBlockingQueue<Object>> {
 
 	/** インスタンス. */

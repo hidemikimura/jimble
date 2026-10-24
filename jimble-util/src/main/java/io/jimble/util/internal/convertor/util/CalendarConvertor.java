@@ -11,6 +11,7 @@ import java.util.Date;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class CalendarConvertor implements IConvertor<Calendar> {
 
 	/** インスタンス. */

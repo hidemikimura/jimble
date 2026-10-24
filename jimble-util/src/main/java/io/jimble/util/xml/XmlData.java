@@ -1,6 +1,6 @@
 package io.jimble.util.xml;
 
-import io.jimble.util.convertor.Convertor;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.internal.xml.converter.IXmlDataTextConverter;
 
 import java.util.*;
@@ -325,7 +325,7 @@ public class XmlData {
 	public byte getByte() {
 
 		try {
-			return Convertor.convert(null, this.textContent, byte.class);
+			return Conversions.convert(this.textContent, byte.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -340,7 +340,7 @@ public class XmlData {
 	public short getShort() {
 
 		try {
-			return Convertor.convert(null, this.textContent, short.class);
+			return Conversions.convert(this.textContent, short.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -355,7 +355,7 @@ public class XmlData {
 	public int getInt() {
 
 		try {
-			return Convertor.convert(null, this.textContent, int.class);
+			return Conversions.convert(this.textContent, int.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -370,7 +370,7 @@ public class XmlData {
 	public long getLong() {
 
 		try {
-			return Convertor.convert(null, this.textContent, long.class);
+			return Conversions.convert(this.textContent, long.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -385,7 +385,7 @@ public class XmlData {
 	public float getFloat() {
 
 		try {
-			return Convertor.convert(null, this.textContent, float.class);
+			return Conversions.convert(this.textContent, float.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -400,7 +400,7 @@ public class XmlData {
 	public double getDouble() {
 
 		try {
-			return Convertor.convert(null, this.textContent, double.class);
+			return Conversions.convert(this.textContent, double.class);
 		} catch (Exception ex) {
 			return 0;
 		}
@@ -415,7 +415,7 @@ public class XmlData {
 	public Date getDate() {
 
 		try {
-			return Convertor.convert(null, this.textContent, Date.class);
+			return Conversions.convert(this.textContent, Date.class);
 		} catch (Exception ex) {
 			return null;
 		}

@@ -12,6 +12,7 @@ import java.util.Map;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ArrayConvertor implements IConvertor<Object> {
 
 	/** インスタンス. */

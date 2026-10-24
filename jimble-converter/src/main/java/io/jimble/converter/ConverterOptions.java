@@ -47,6 +47,7 @@ public final class ConverterOptions {
 	private final boolean cycleToNull;
 	private final ZoneId zone;
 	private final Supplier<? extends Map<String, Object>> mapFactory;
+	private final Map<Class<?>, TypeConverter<?>> typeConverters;
 
 	private ConverterOptions (Builder builder) {
 
@@ -57,6 +58,7 @@ public final class ConverterOptions {
 		this.cycleToNull = builder.cycleToNull;
 		this.zone = builder.zone;
 		this.mapFactory = builder.mapFactory;
+		this.typeConverters = Map.copyOf(builder.typeConverters);
 
 	}
 
@@ -86,6 +88,7 @@ public final class ConverterOptions {
 		builder.cycleToNull = cycleToNull;
 		builder.zone = zone;
 		builder.mapFactory = mapFactory;
+		builder.typeConverters.putAll(typeConverters);
 		return builder;
 
 	}
@@ -168,6 +171,18 @@ public final class ConverterOptions {
 	}
 
 	/**
+	 * 足した、型ごとの変換のしかた
+	 *
+	 * @param type	型
+	 * @return	変換のしかた（足していなければ null）
+	 */
+	public TypeConverter<?> typeConverter (Class<?> type) {
+
+		return typeConverters.isEmpty() ? null : typeConverters.get(type);
+
+	}
+
+	/**
 	 * 危ない型か
 	 *
 	 * @param type	型
@@ -209,6 +224,7 @@ public final class ConverterOptions {
 		private boolean cycleToNull = false;
 		private ZoneId zone = null;
 		private Supplier<? extends Map<String, Object>> mapFactory = LinkedHashMap::new;
+		private final Map<Class<?>, TypeConverter<?>> typeConverters = new LinkedHashMap<>();
 
 		private Builder () {
 		}
@@ -302,6 +318,26 @@ public final class ConverterOptions {
 		public Builder mapFactory (Supplier<? extends Map<String, Object>> mapFactory) {
 
 			this.mapFactory = Objects.requireNonNull(mapFactory, "mapFactory");
+			return this;
+
+		}
+
+		/**
+		 * 型ごとの変換のしかたを足す
+		 *
+		 * <p>
+		 * 型がちょうど一致するときに使う（派生クラスには使わない）。危ない型（{@code Pattern} など）に足せば、
+		 * {@link #allowUnsafeTypes(boolean)} を true にしなくても、足した変換のしかたで作る。
+		 * </p>
+		 *
+		 * @param type		型
+		 * @param converter	変換のしかた
+		 * @param <T>		型
+		 * @return	自身
+		 */
+		public <T> Builder typeConverter (Class<T> type, TypeConverter<? extends T> converter) {
+
+			typeConverters.put(Objects.requireNonNull(type, "type"), Objects.requireNonNull(converter, "converter"));
 			return this;
 
 		}

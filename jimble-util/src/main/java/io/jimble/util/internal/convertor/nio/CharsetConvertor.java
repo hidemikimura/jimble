@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class CharsetConvertor implements IConvertor<Charset> {
 
 	/** インスタンス. */

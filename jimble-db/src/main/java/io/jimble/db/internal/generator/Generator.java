@@ -1,6 +1,6 @@
 package io.jimble.db.internal.generator;
 
-import io.jimble.util.convertor.Convertor;
+import io.jimble.util.internal.convertor.Conversions;
 import io.jimble.util.io.FileUtil;
 import io.jimble.util.io.output.TextOutput;
 import io.jimble.util.string.StringUtil;
@@ -1043,7 +1043,7 @@ public class Generator {
 		columnInfo.defaultValueString = value;
 
 		try {
-			columnInfo.defaultValue = Convertor.convert(null, value, columnInfo.typeClass);
+			columnInfo.defaultValue = Conversions.convert(value, columnInfo.typeClass);
 		} catch (Exception ignore) {
 			columnInfo.defaultValue = value;
 		}

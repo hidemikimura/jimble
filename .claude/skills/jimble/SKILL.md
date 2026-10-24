@@ -145,6 +145,9 @@ db.transaction(tx -> { ... });                // 例外で抜ければ巻き戻�
   setter があれば setter に入る。知らないキーは飛ばす。`List<Item>` は `Dson.decodes(json, List.class, Item.class)` か `Json.read(json, new TypeRef<List<Item>>() {})`
 - **`Convertor.convert` / `convertClass` / `getIntList` / `getDate` も、値が変わる変換は例外**（2.7.0〜。`jimble-converter`。`"abc"` → int・桁あふれ・ありえない日付・`2` → boolean。
   `"no"` は false、`"...Z"` の時差を読む、文字から `Class` / `Pattern` / `InetAddress` / `File` は作らない）。読めない値を 0 / null にしたいなら `Converter.convert(v, int.class, ConverterOptions.LENIENT)`
+- **新しく書く型変換は `Converter.convert(map, Order.class)` / `Converter.convert(rows, new TypeRef<List<Item>>() {})`**（`jimble-converter`）。
+  `Convertor` / `IConvertor` / `PropertyUtil` は 2.7.0 で deprecated。`Convertor.addConvertor` の代わりは `ConverterOptions.builder().typeConverter(型, v -> ...)`。
+  `Converter` は JSON の文字を読まない・型が合えば写さない・循環参照は例外（`Convertor` と違う）
 - **`Data.put` は `Data` を返さない**（`Map.put` なので前の値）。続けて書くなら `putData("a", 1).putData("b", 2)`
 - **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さない。**隠れた列や `role` を当てられる。
   許す列を渡す形にする：`apply(data, User.name, User.created_at)`（`jimble-db`）

@@ -11,6 +11,7 @@ import java.util.List;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class UserListConvertor implements IConvertor<List<Object>> {
 
 	/** 変換クラス. */

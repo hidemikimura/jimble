@@ -11,6 +11,7 @@ import java.math.BigDecimal;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class BigDecimalConvertor implements IConvertor<BigDecimal> {
 
 	/** インスタンス. */

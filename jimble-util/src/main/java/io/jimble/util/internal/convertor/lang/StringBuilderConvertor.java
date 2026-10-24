@@ -8,6 +8,7 @@ import io.jimble.util.convertor.IConvertor;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class StringBuilderConvertor implements IConvertor<StringBuilder> {
 
 	/** インスタンス. */

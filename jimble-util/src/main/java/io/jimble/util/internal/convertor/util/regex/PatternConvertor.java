@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class PatternConvertor implements IConvertor<Pattern> {
 
 	/** インスタンス. */

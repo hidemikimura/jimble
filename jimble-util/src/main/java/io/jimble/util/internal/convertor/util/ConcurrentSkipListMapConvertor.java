@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class ConcurrentSkipListMapConvertor implements IConvertor<ConcurrentSkipListMap<Object, Object>> {
 
 	/** インスタンス. */

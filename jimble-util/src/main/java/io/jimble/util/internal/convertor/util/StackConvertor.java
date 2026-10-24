@@ -10,6 +10,7 @@ import java.util.Stack;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class StackConvertor implements IConvertor<Stack<Object>> {
 
 	/** インスタンス. */

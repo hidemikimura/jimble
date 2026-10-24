@@ -11,6 +11,7 @@ import java.net.URI;
  * 
  * @author DN
  */
+@Deprecated(since = "2.7.0")
 public class URIConvertor implements IConvertor<URI> {
 
 	/** インスタンス. */
