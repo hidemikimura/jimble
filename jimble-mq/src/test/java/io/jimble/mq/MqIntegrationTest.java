@@ -60,6 +60,9 @@ class MqIntegrationTest {
 	/* 見えた Context */
 	static final ConcurrentLinkedQueue<String> CONTEXTS = new ConcurrentLinkedQueue<>();
 
+	/* FlakyExecutor が呼ばれた時刻（System.nanoTime） */
+	static final ConcurrentLinkedQueue<Long> ATTEMPTED_AT = new ConcurrentLinkedQueue<>();
+
 	/* 何回目まで落ちるか */
 	static volatile int failUntil = 0;
 
@@ -122,6 +125,8 @@ class MqIntegrationTest {
 
 		@Override
 		public MqStatus execute (DB db, Data row) {
+
+			ATTEMPTED_AT.add(System.nanoTime());
 
 			int attempt = FAILED.incrementAndGet();
 
@@ -210,6 +215,7 @@ class MqIntegrationTest {
 		failUntil = 0;
 		HANDLED.clear();
 		CONTEXTS.clear();
+		ATTEMPTED_AT.clear();
 
 	}
 
@@ -428,15 +434,29 @@ class MqIntegrationTest {
 
 		new FlakyExecutor().put(DBUtil.getMainDB(), new Data().putData("name", "flaky"));
 
-		runUntil(1500, () -> FAILED.get() >= 1);
+		/*
+		 * <b>2回目が走るまで待ち、1回目との間を測る</b>。
+		 * かつては1回目で止めて retry_count が 1 であることを見ていたが、止めるまでに retry_backoff（1s）を超えると
+		 * 2回目が走って 2 になり、CI が遅いときに落ちた（止めるのが遅れただけで、間隔は空いている）
+		 */
+		runUntil(10000, () -> FAILED.get() >= 2);
+
+		List<Long> attemptedAt = List.copyOf(ATTEMPTED_AT);
+
+		assertTrue(attemptedAt.size() >= 2, "やり直されていない: " + attemptedAt.size());
+
+		long gapMs = (attemptedAt.get(1) - attemptedAt.get(0)) / 1_000_000;
+		long backoffMs = MqConf.backoff(1).toMillis();
+
+		// 次の時刻は秒に切り上げて書くので、retry_backoff より短くはならない（かつては最大 1 秒短くなった）
+		assertTrue(gapMs >= backoffMs, "間隔が retry_backoff（%dms）より短い: %dms".formatted(backoffMs, gapMs));
 
 		Data row = firstRow();
 
 		assertNotNull(row);
 		assertEquals(MqStatus.waiting.name(), row.getString("status"));
-		assertEquals(1, row.getInt("retry_count"));
+		assertEquals(FAILED.get(), row.getInt("retry_count"), "落ちた回数とやり直しの回数が合わない");
 		assertNotNull(row.getString("scheduled_at"), "次にやる時刻が入っていない");
-		assertTrue(FAILED.get() <= 2, "間隔を空けずに回している: " + FAILED.get());
 
 	}
 

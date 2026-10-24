@@ -153,4 +153,16 @@ class MqRegistryTest {
 
 	}
 
+	@Test
+	@DisplayName("次にやり直す時刻は秒に切り上げ、待ちより早くならない（DB へは秒に切り捨てて渡る）")
+	void retryAtRoundsUp () {
+
+		Duration wait = Duration.ofSeconds(1);
+
+		assertEquals(2_000L, MqQueue.retryAt(999L, wait).getTime(), "切り捨てると 1 秒早くなる");
+		assertEquals(2_000L, MqQueue.retryAt(1_000L, wait).getTime(), "秒ちょうどはそのまま");
+		assertEquals(3_000L, MqQueue.retryAt(1_001L, wait).getTime());
+
+	}
+
 }

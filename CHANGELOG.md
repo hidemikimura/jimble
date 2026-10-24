@@ -13,6 +13,12 @@
 | **MySQL / MariaDB への接続が、既定で TLS を使い、サーバーの証明書を確かめるようになります** | `jimble-db` が持つドライバ（MariaDB Connector/J）を 4.0 にしたためです（`sslMode` の既定が `verify-full` になりました）。これまでは、何も書かなければ暗号化せずに繋いでいました。**証明書を確かめられないと、起動時に繋がらずに落ちます**（自己署名の証明書の MySQL では `Cannot use authentication plugin caching_sha2_password with a Self signed certificates`）。本番は `sslMode=verify-full&serverSslCert=...` でサーバーの CA 証明書を渡し、手元の DB は `sslMode=disable` を書いてください。書き方は [DB](https://jimble.io/ja/db) の「接続の暗号化（TLS）」にあります。MariaDB 11.4 以降のサーバーは、何も書かずに繋がります |
 | **`select` に結果の無い文（`UPDATE` など）を渡すと、例外になります** | ドライバ 4.0 の `executeQuery()` が、JDBC の決まりどおり結果を返さない文を断るようになったためです。これまでは空の結果が返っていました。更新は `update` / `execute` で書いてください |
 
+### 直したこと
+
+| | |
+|---|---|
+| **MQ のやり直しが、`retry_backoff` より最大 1 秒早く走っていました** | DB に渡す時刻はミリ秒が切り捨てられるため、次にやる時刻（`scheduled_at`）が秒に切り捨てて書かれ、取り出しで比べるいまの時刻も切り捨てていました。合わせると、待ちが「`retry_backoff` − 1 秒」から `retry_backoff` までのどこかになっていました（`retry_backoff = 1s` では、ほとんど待たずにやり直すこともありました）。次にやる時刻を秒に切り上げて書くので、`retry_backoff` より短くはなりません（最大 1 秒長くなります） |
+
 ### 依存
 
 | | |
