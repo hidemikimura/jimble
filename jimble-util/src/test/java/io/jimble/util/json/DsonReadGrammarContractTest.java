@@ -220,6 +220,18 @@ class DsonReadGrammarContractTest {
 		}
 
 		@Test
+		@DisplayName("型を指定せずに配列の JSON を読むと List（中のオブジェクトは Data。作り直す前は添字がキーの Data）")
+		void untypedArray () {
+
+			Object read = Dson.decodes("[{\"a\":1},{\"a\":2}]");
+
+			assertEquals(List.of(Map.of("a", 1), Map.of("a", 2)), read);
+			assertTrue(((List<?>) read).getFirst() instanceof Data);
+			assertTrue(Dson.decodes("{\"a\":1}") instanceof Data);
+
+		}
+
+		@Test
 		@DisplayName("空の配列 [] を Dson.decodes(Data) で読むと空の Data（オブジェクトが空のときに [] を返す API がある）")
 		void emptyArrayAsData () {
 

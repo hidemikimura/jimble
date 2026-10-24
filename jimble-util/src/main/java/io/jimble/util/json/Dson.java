@@ -589,7 +589,9 @@ public final class Dson {
 
 			conf.isClearHashSet(false);
 
-			if (destClasses.length == 0) {
+			// 型を指定しなければ、オブジェクトは Data、配列は List（中のオブジェクトは Data）で返す
+			boolean untyped = destClasses.length == 0;
+			if (untyped) {
 				destClasses = new Class<?>[]{Data.class};
 			}
 
@@ -614,6 +616,14 @@ public final class Dson {
 			 */
 			if (dest != null && !(dest instanceof Map) && !(dest instanceof List)) {
 				throw new JsonParseException("JSON を読めませんでした（一番外がオブジェクトでも配列でもありません）: " + dest, null);
+			}
+
+			/*
+			 * 作り直す前は、型を指定せずに配列を読むと、添字がキーの Data（{"0":..,"1":..}）にしていた。
+			 * Data を指定して配列を読むのは、食い違いとして断る
+			 */
+			if (untyped && dest instanceof List<?>) {
+				return (T) dest;
 			}
 
 			if (PropertyUtil.isAssignableFrom(Data.class, destClasses[0])) {
