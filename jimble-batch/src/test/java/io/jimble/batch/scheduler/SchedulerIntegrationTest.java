@@ -160,8 +160,12 @@ class SchedulerIntegrationTest {
 	@AfterEach
 	void stopScheduler () {
 
+		/*
+		 * tick() で走らせた回が終わるまで待つ。待たないと、その回が次のテストで数え直したあとに走り、
+		 * 次のテストの走った数に混ざる（「cron のあるバッチだけを見る」の 12:01 の回が D-301 のテストに混ざっていた）
+		 */
 		if (scheduler != null) {
-			scheduler.stop();
+			scheduler.stopAndAwait();
 		}
 
 	}
@@ -222,8 +226,8 @@ class SchedulerIntegrationTest {
 			assertEquals(2, RUN_COUNT.get(), "次の回を2台で走らせました");
 
 		} finally {
-			serverA.stop();
-			serverB.stop();
+			serverA.stopAndAwait();
+			serverB.stopAndAwait();
 		}
 
 	}
@@ -273,7 +277,7 @@ class SchedulerIntegrationTest {
 				assertEquals(expected * 2, RUN_COUNT.get(), "同時実行数 %d の次の回で走った数".formatted(allow));
 
 			} finally {
-				servers.forEach(DbScheduler::stop);
+				servers.forEach(DbScheduler::stopAndAwait);
 			}
 
 		}
