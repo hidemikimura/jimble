@@ -28,7 +28,7 @@ io.jimble.db.sql.query
 io.jimble.util
 io.jimble.web
 
-[public] 公開 API（102）
+[public] 公開 API（103）
 io.jimble.batch
 io.jimble.batch.manager
 io.jimble.batch.scheduler
@@ -37,6 +37,7 @@ io.jimble.batch.status
 io.jimble.core.context
 io.jimble.core.executor
 io.jimble.core.lifecycle
+io.jimble.converter
 io.jimble.core.trace
 io.jimble.json
 io.jimble.db
@@ -144,8 +145,9 @@ io.jimble.mcp.tool
 # <b>1.0 の「壊す前に非推奨期間を1マイナー置く」と同居できない。</b>
 # 詳しくは docs/site/ja/versioning.md
 
-[internal] 内部実装（60）
+[internal] 内部実装（61）
 io.jimble.cli.internal
+io.jimble.converter.internal
 io.jimble.db.internal
 io.jimble.db.internal.generator
 io.jimble.db.internal.generator.info

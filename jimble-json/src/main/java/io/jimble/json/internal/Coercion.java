@@ -146,10 +146,16 @@ final class Coercion {
 			return integral(value, null, null, "BigInteger").toBigIntegerExact();
 		}
 		if (type == double.class || type == Double.class) {
+			if (value instanceof String s && isPlainNumber(s)) {
+				return Double.parseDouble(s);
+			}
 			return decimal(value).doubleValue();
 		}
 		if (type == float.class || type == Float.class) {
 			return decimal(value).floatValue();
+		}
+		if (type == BigDecimal.class && value instanceof String s && isPlainNumber(s)) {
+			return new BigDecimal(s);
 		}
 		if (type == BigDecimal.class || type == Number.class) {
 			return value instanceof Double d ? BigDecimal.valueOf(d) : decimal(value).bigDecimal;
@@ -315,6 +321,50 @@ final class Coercion {
 	}
 
 	/**
+	 * 整えなくてよい、ふつうの数の文字か（{@code -12.5e3} の形。空白・全角・カンマ・{@code 1d} などは含まない）
+	 */
+	private static boolean isPlainNumber (String s) {
+
+		int n = s.length();
+		if (n == 0 || n > 64) {
+			return false;
+		}
+
+		int i = s.charAt(0) == '-' || s.charAt(0) == '+' ? 1 : 0;
+		int digits = 0;
+		boolean dot = false;
+
+		for (; i < n; i++) {
+			char c = s.charAt(i);
+			if (c >= '0' && c <= '9') {
+				digits++;
+			} else if (c == '.' && !dot) {
+				dot = true;
+			} else if ((c == 'e' || c == 'E') && digits > 0) {
+				i++;
+				if (i < n && (s.charAt(i) == '+' || s.charAt(i) == '-')) {
+					i++;
+				}
+				if (i == n) {
+					return false;
+				}
+				for (; i < n; i++) {
+					c = s.charAt(i);
+					if (c < '0' || c > '9') {
+						return false;
+					}
+				}
+				return true;
+			} else {
+				return false;
+			}
+		}
+
+		return digits > 0;
+
+	}
+
+	/**
 	 * 数の文字を整える（前後の空白・全角の数字と記号・3 桁ごとのカンマ）
 	 */
 	private static String normalizeNumber (String s) {
@@ -453,7 +503,10 @@ final class Coercion {
 		LocalDateTime local = LocalDateTime.of(date, time);
 
 		if (type == LocalDateTime.class) {
-			return local;
+			// 時差があれば、時間帯の時刻にする（時差を捨てて、書かれた時刻のままにはしない）
+			return parsed.isSupported(ChronoField.OFFSET_SECONDS)
+				? OffsetDateTime.of(local, java.time.ZoneOffset.ofTotalSeconds(parsed.get(ChronoField.OFFSET_SECONDS))).atZoneSameInstant(zone).toLocalDateTime()
+				: local;
 		}
 
 		OffsetDateTime offset = parsed.isSupported(ChronoField.OFFSET_SECONDS)
