@@ -105,6 +105,39 @@ The exception says where the problem is (`line 3, column 15` — written as `3 �
 >
 > The instance method `new Dson().decode(...)` does not throw; check `isError()` / `getErrorException()` as before.
 
+### Writing
+
+Date-time and other types are written like this (since 2.7.0; before that, anything other than `Date` and `LocalDateTime` turned the JSON into `{}` or cut it off midway).
+
+| Type | Form |
+| --- | --- |
+| `Date` · `Timestamp` · `LocalDateTime` | `yyyy/MM/dd HH:mm:ss` (nothing below seconds) |
+| `Instant` · `OffsetDateTime` · `ZonedDateTime` · `Calendar` | `yyyy/MM/dd HH:mm:ss` in the server's time zone |
+| `LocalDate` · `java.sql.Date` | `yyyy/MM/dd` |
+| `LocalTime` · `java.sql.Time` | `HH:mm:ss` |
+| `Duration` · `Period` | ISO 8601 (`PT1H30M` / `P1Y2M`) |
+| `UUID` · `URI` · `File` and other JDK classes | A string (`toString`) |
+| `Optional` | Its content (`null` when empty) |
+| enum | Its name |
+| record | An object, components in declaration order |
+| Bean | An object, fields in declaration order (superclass first) |
+
+- **Bean keys come out in declaration order** (since 2.7.0; before that, the order could change each time the JVM started)
+- **A cyclic reference writes `{}` / `[]` the second time and carries on** (as in 2.6)
+- **Nesting is written up to 512 levels.** Beyond that nothing is written; `Dson.encodes` returns an empty string and logs an error (up to 2.6, anything past 50 levels silently became `{}` / `[]`)
+
+To keep offsets, to throw on a cycle, or to change how a type is written, use `Json.write(value, options)` from `jimble-json`:
+
+```java
+JsonWriteOptions options = JsonWriteOptions.builder()
+	.keepOffset(true)                 // Date / Instant / OffsetDateTime and so on as 2026-10-24T19:00:00+09:00
+	.cycle(JsonCycle.THROW)           // throw on a cycle, with where it happened (the default for Json.write)
+	.typeWriter(Money.class, (value, out) -> out.string(((Money) value).format()))
+	.build();
+
+String json = Json.write(value, options);
+```
+
 ## Type conversion
 
 `Convertor.convert(conf, src, Target.class)` is the way in.

@@ -421,6 +421,16 @@ public class Configration {
 	}
 
 	/**
+	 * 入れてある設定のキー（読むだけ）
+	 *
+	 * @return	キー
+	 */
+	public java.util.Set<Object> keys () {
+
+		return java.util.Collections.unmodifiableSet(config.keySet());
+	}
+
+	/**
 	 * 設定情報のハッシュ値を取得する.
 	 *
 	 * @return ハッシュ値

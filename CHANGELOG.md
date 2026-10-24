@@ -4,6 +4,37 @@
 
 ---
 
+## 未リリース
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **Bean を JSON にしたときのキーの順番が、フィールドを宣言した順になります**（D-307） | 親クラスのフィールドから順に、宣言した順に並びます。これまでは `Class.getMethods()` の順に頼っていて、JVM を起動するたびに変わることがありました。キーの順番に頼った比べ方（文字列のまま比べるテストなど）をしているなら、確かめてください |
+| **50 段より深い入れ子も書きます。512 段を超えると書きません**（D-307） | これまでは 50 段を超えたところを、黙って `{}` / `[]` にしていました（値が消えていました）。512 段を超えると、`Dson.encodes` は空文字を返してエラーをログに出します（読むときの上限と同じです） |
+| **enum は名前で書きます**（D-307） | これまでは `toString()` で書いていました。`toString()` を上書きした enum だけ、書かれる文字が変わります |
+
+### 直したこと
+
+| | |
+|---|---|
+| **`LocalDate` や `UUID` を JSON にすると、JSON が壊れていました**（D-307） | `LocalDate` / `LocalTime` / `Instant` / `OffsetDateTime` / `ZonedDateTime` / `Duration` / `java.sql.Date` / `java.sql.Time` / `Calendar` / `UUID` / `Optional` などを書くと、`Dson.encodes` は空文字、`getJsonString` は `{}`（同じ Data のほかの値も消える）、`outputJsonString` は途中で切れた JSON になっていました。それぞれ決まった形で書きます（日時は `Date` と同じくサーバーの時間帯にそろえます）。形は [ユーティリティ](https://jimble.io/ja/util) の「書き出し」にあります |
+| **JDK のクラスを、中のフィールドを読みに行って壊していました**（D-307） | 書き方の決まっていない JDK のクラス（`Locale` / `Currency` / `InetAddress` など）は、`toString()` の文字列で書きます |
+
+### 足したこと
+
+| | |
+|---|---|
+| **`jimble-json` で JSON を書けるようにしました**（D-307） | `Json.write(value)` / `Json.write(value, options)` で書きます。`JsonWriteOptions` で、時差を残す（`keepOffset`。`2026-10-24T19:00:00+09:00` の形）、循環参照のとき例外にする・空にする・`null` にする（`JsonCycle`。`Json.write` の既定は例外）、型ごとの書き方を足す（`typeWriter`）などを決められます。`Dson` / `Data` の書き出しも、これで書きます（形はこれまでと同じです） |
+
+### 速くしたこと
+
+| | |
+|---|---|
+| **JSON を書くのが 1〜2 割速くなりました**（D-307） | `OutputStream` に UTF-8 で書くときは、JDK の Writer を通さずにバイトにします。割り当ても、`OutputStream` へは半分ほどになりました |
+
+---
+
 ## 2.6.0（2026-10-24）
 
 **JSON を読む部品を作り直した版です。すべての人に上げてほしい版です**（[GHSA-5mqv-2g7c-fp23](https://github.com/hidemikimura/jimble/security/advisories/GHSA-5mqv-2g7c-fp23)）。

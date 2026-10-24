@@ -6,6 +6,13 @@ import io.jimble.util.convertor.Configration;
 import io.jimble.util.convertor.Convertor;
 import io.jimble.util.convertor.PropertyUtil;
 import io.jimble.json.Json;
+import io.jimble.json.JsonCycle;
+import io.jimble.json.JsonTypeWriter;
+import io.jimble.json.JsonWriteOptions;
+import io.jimble.util.data.TableNest;
+import io.jimble.util.data.async.AsyncData;
+import io.jimble.util.data.async.AsyncList;
+import io.jimble.util.internal.json.formatter.FormatterConfigKeys;
 import io.jimble.json.JsonException;
 import io.jimble.json.JsonReadOptions;
 import io.jimble.util.internal.json.decoder.DecodeConfigKeys;
@@ -40,8 +47,9 @@ public final class Dson {
 	 * コンストラクタ.
 	 */
 	public Dson () {
-		// JSONエンコーダーを保持する
-		this.encoder = new DefaultEncoder();
+		// 書くのは jimble-json（D-307）。古い書き手は、古い設定のときだけ作る
+		this.encoder = null;
+		this.legacyEncoder = false;
 		// 読むのは jimble-json（D-307）。古い読み手は、古い設定（DECODE_STRING_UNESCAPE）のときだけ作る
 		this.decoder = null;
 		this.legacyDecoder = false;
@@ -54,8 +62,9 @@ public final class Dson {
 	 * @param decoder JSONデコーダ
 	 */
 	public Dson (IEncoder encoder, IDecoder decoder) {
-		// JSONエンコーダーを保持する
-		this.encoder = encoder == null ? new DefaultEncoder() : encoder;
+		// JSONエンコーダーを保持する（渡されたら、それで書く）
+		this.encoder = encoder;
+		this.legacyEncoder = encoder != null;
 		// JSONデコーダーを保持する（渡されたら、それで読む）
 		this.decoder = decoder == null ? new StreamDecoder() : decoder;
 		this.legacyDecoder = decoder != null;
@@ -80,7 +89,7 @@ public final class Dson {
 	 */
 	public boolean isError () {
 
-		return error || this.encoder.isError() || (this.decoder != null && this.decoder.isError());
+		return error || (this.encoder != null && this.encoder.isError()) || (this.decoder != null && this.decoder.isError());
 	}
 
 	/**
@@ -90,7 +99,7 @@ public final class Dson {
 	 */
 	public Exception getErrorException () {
 
-		return error ? exception : this.encoder.isError() ? this.encoder.getErrorException() : this.decoder != null && this.decoder.isError() ? this.decoder.getErrorException() : null;
+		return error ? exception : this.encoder != null && this.encoder.isError() ? this.encoder.getErrorException() : this.decoder != null && this.decoder.isError() ? this.decoder.getErrorException() : null;
 	}
 
 	/**
@@ -111,7 +120,9 @@ public final class Dson {
 
 		this.error = false;
 		this.exception = null;
-		this.encoder.clearError();
+		if (this.encoder != null) {
+			this.encoder.clearError();
+		}
 		if (this.decoder != null) {
 			this.decoder.clearError();
 		}
@@ -715,6 +726,11 @@ public final class Dson {
 	private IEncoder encoder;
 
 	/**
+	 * 渡された書き手で書くか（渡されなければ jimble-json で書く。D-307）
+	 */
+	private boolean legacyEncoder;
+
+	/**
 	 * オブジェクトからJSON文字列にエンコードする.
 	 *
 	 * @param json オブジェクト
@@ -852,8 +868,7 @@ public final class Dson {
 	 */
 	public String encode (Object json) {
 
-		clearError();
-		return this.encoder.encode(new Configration(), json);
+		return encode(new Configration(), json);
 	}
 
 	/**
@@ -866,7 +881,21 @@ public final class Dson {
 	public String encode (Configration conf, Object json) {
 
 		clearError();
-		return this.encoder.encode(conf, json);
+
+		if (usesLegacyEncoder(conf)) {
+			return legacyEncoder().encode(conf, json);
+		}
+
+		if (json == null) {
+			return "";
+		}
+
+		try {
+			return Json.write(json, writeOptions(conf));
+		} catch (RuntimeException e) {
+			setError(e);
+			return "";
+		}
 	}
 
 	/**
@@ -879,8 +908,7 @@ public final class Dson {
 	 */
 	public void encode (Object json, OutputStream stream, String charset) {
 
-		clearError();
-		this.encoder.encode(new Configration(), json, stream, Charset.forName(charset));
+		encode(new Configration(), json, stream, charset);
 	}
 
 	/**
@@ -895,7 +923,14 @@ public final class Dson {
 	public void encode (Configration conf, Object json, OutputStream stream, String charset) {
 
 		clearError();
-		this.encoder.encode(conf, json, stream, Charset.forName(charset));
+
+		if (usesLegacyEncoder(conf)) {
+			legacyEncoder().encode(conf, json, stream, Charset.forName(charset));
+			return;
+		}
+
+		Charset cs = Charset.forName(charset);
+		writeTo(conf, json, stream, options -> Json.write(json, stream, cs, options));
 	}
 
 	/**
@@ -907,8 +942,7 @@ public final class Dson {
 	 */
 	public void encode (Object json, Writer writer) {
 
-		clearError();
-		this.encoder.encode(new Configration(), json, writer);
+		encode(new Configration(), json, writer);
 	}
 
 	/**
@@ -922,7 +956,167 @@ public final class Dson {
 	public void encode (Configration conf, Object json, Writer writer) {
 
 		clearError();
-		this.encoder.encode(conf, json, writer);
+
+		if (usesLegacyEncoder(conf)) {
+			legacyEncoder().encode(conf, json, writer);
+			return;
+		}
+
+		writeTo(conf, json, writer, options -> Json.write(json, writer, options));
+	}
+
+	/**
+	 * 書き先に書く（既定で書き先を閉じる。作り直す前と同じ）
+	 *
+	 * @param conf		設定
+	 * @param json		値（null なら何も書かず、閉じもしない）
+	 * @param closing	閉じるもの
+	 * @param write		書く処理
+	 */
+	private void writeTo (Configration conf, Object json, Closeable closing, java.util.function.Consumer<JsonWriteOptions> write) {
+
+		if (json == null) {
+			return;
+		}
+
+		boolean autoClose = conf == null || conf.isAutoClose();
+
+		try {
+			write.accept(writeOptions(conf));
+		} catch (RuntimeException e) {
+			setError(e);
+		} finally {
+			if (autoClose) {
+				try {
+					closing.close();
+				} catch (IOException e) {
+					if (!isError()) {
+						setError(e);
+					}
+				}
+			}
+		}
+
+	}
+
+
+	/**
+	 * 古い書き手で書くか（渡された IEncoder か、jimble-json に無い古い設定のとき）
+	 */
+	private boolean usesLegacyEncoder (Configration conf) {
+
+		if (legacyEncoder) {
+			return true;
+		}
+
+		if (conf == null) {
+			return false;
+		}
+
+		if (conf.get(FormatterConfigKeys.FORMAT_STRING_ESCAPE) != null || conf.get(FormatterConfigKeys.FORMAT_DATE_TO_STRING) != null) {
+			return true;
+		}
+
+		// クラスごとの書き手（内部の IFormatter）を設定に入れているとき
+		for (Object key : conf.keys()) {
+			if (key instanceof Class<?> && conf.get(key) instanceof io.jimble.util.internal.json.formatter.IFormatter) {
+				return true;
+			}
+		}
+
+		return false;
+
+	}
+
+	/**
+	 * 古い書き手（必要になってから作る）
+	 */
+	private IEncoder legacyEncoder () {
+
+		if (encoder == null) {
+			encoder = new DefaultEncoder();
+		}
+		return encoder;
+
+	}
+
+	/** 既定の書き方：循環は {} / []（作り直す前と同じ）、例外はメッセージとスタックの配列（D-307） */
+	private static final JsonWriteOptions WRITE_OPTIONS = JsonWriteOptions.builder()
+		.cycle(JsonCycle.EMPTY)
+		.typeWriter(Throwable.class, Dson::writeThrowable)
+		.build();
+
+	/**
+	 * 設定から、書き方を決める
+	 */
+	private static JsonWriteOptions writeOptions (Configration conf) {
+
+		if (conf == null || (!conf.isOutputIndent() && conf.isOutputNullValue() && !conf.isOutputStrict()
+			&& !conf.isRemove4ByteCharacter() && !conf.isOutputDateType() && conf.outputDateTypeFormat() == null
+			&& conf.tableNest() == TableNest.AS_IS)) {
+			return WRITE_OPTIONS;
+		}
+
+		JsonWriteOptions.Builder builder = WRITE_OPTIONS.toBuilder()
+			.indent(conf.isOutputIndent())
+			.writeNulls(conf.isOutputNullValue())
+			.escapeHtml(conf.isOutputStrict())
+			.dropSupplementary(conf.isRemove4ByteCharacter())
+			.datePrefix(conf.isOutputDateType() ? "date::" : null);
+
+		if (conf.outputDateTypeFormat() != null) {
+			builder.dateTimeFormat(conf.outputDateTypeFormat());
+		}
+
+		TableNest nest = conf.tableNest();
+		if (nest != TableNest.AS_IS) {
+			// 遅れて読むデータ（AsyncData / AsyncList）は、テーブルの入れ子を組み直してから書く（F-A-11）
+			builder.typeWriter(AsyncData.class, (value, out) -> writeReshaped(value, ((AsyncData) value).reshape(nest), out))
+				.typeWriter(AsyncList.class, (value, out) -> writeReshaped(value, ((AsyncList) value).reshape(nest), out));
+		}
+
+		return builder.build();
+
+	}
+
+	/**
+	 * 組み直したものを書く（組み直さなかったら、そのまま決まった書き方で）
+	 */
+	private static void writeReshaped (Object original, Object reshaped, JsonTypeWriter.Output out) {
+
+		if (reshaped == original) {
+			out.plain(original);
+		} else {
+			out.value(reshaped);
+		}
+
+	}
+
+	/**
+	 * 例外を、メッセージとスタックの文字列の配列で書く（作り直す前と同じ形）
+	 */
+	private static void writeThrowable (Object value, JsonTypeWriter.Output out) {
+
+		Throwable throwable = (Throwable) value;
+		java.util.List<String> lines = new java.util.ArrayList<>();
+
+		if (throwable.getMessage() != null && !throwable.getMessage().isEmpty()) {
+			lines.add(throwable.getMessage());
+		}
+		for (StackTraceElement element : throwable.getStackTrace()) {
+			lines.add(element.toString());
+		}
+
+		for (Throwable cause = throwable.getCause(); cause != null; cause = cause.getCause()) {
+			lines.add("");
+			lines.add("Caused by: " + cause.getClass().getCanonicalName() + ": " + cause.getMessage());
+			for (StackTraceElement element : cause.getStackTrace()) {
+				lines.add(element.toString());
+			}
+		}
+
+		out.value(lines);
+
 	}
 
 	/**
