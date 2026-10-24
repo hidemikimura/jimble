@@ -139,7 +139,7 @@ class DsonBench {
 
 		budget.measure("Dson 書く 小（10キー）Data → OutputStream", Runs.SMALL, 5_120
 			, () -> write(smallData, stream));
-		budget.measure("Dson 書く 中（100件）List → OutputStream", Runs.MEDIUM, 65_536
+		budget.measure("Dson 書く 中（100件）List → OutputStream", Runs.MEDIUM, 40_960
 			, () -> write(mediumList, stream));
 		budget.measure("Dson 書く 日本語とエスケープ（100件）List → OutputStream", Runs.MEDIUM, 24_576
 			, () -> write(stringsList, stream));

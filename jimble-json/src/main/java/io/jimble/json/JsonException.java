@@ -13,10 +13,10 @@ public class JsonException extends IllegalArgumentException {
 
 	private static final long serialVersionUID = 1L;
 
-	/* 行（1 から。位置が無ければ 0） */
+	/** 行（1 から。位置が無ければ 0） */
 	private final int line;
 
-	/* 行の中の文字の位置（1 から。位置が無ければ 0） */
+	/** 行の中の文字の位置（1 から。位置が無ければ 0） */
 	private final int column;
 
 	/**

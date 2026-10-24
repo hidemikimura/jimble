@@ -1,17 +1,21 @@
 package io.jimble.json;
 
+import io.jimble.json.internal.JsonGenerator;
 import io.jimble.json.internal.JsonParser;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.io.Reader;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * JSON を読む（D-307）
+ * JSON を読む・書く（D-307）
  *
  * <pre>{@code
  * Object value = Json.read("{\"name\": \"jimble\", \"tags\": [\"web\", \"db\"]}");
@@ -147,6 +151,91 @@ public final class Json {
 		Objects.requireNonNull(charset, "charset");
 
 		return read(new InputStreamReader(stream, charset), options);
+
+	}
+
+	/**
+	 * JSON の文字列にする（既定の書き方）
+	 *
+	 * @param value	値（Map / List / 配列 / Bean / record / 文字列 / 数値 / 日時など。null は {@code null}）
+	 * @return	JSON
+	 * @throws JsonException	書けなかったとき（循環参照・深すぎる入れ子など）
+	 */
+	public static String write (Object value) {
+
+		return write(value, JsonWriteOptions.DEFAULT);
+
+	}
+
+	/**
+	 * JSON の文字列にする
+	 *
+	 * @param value		値
+	 * @param options	書き方
+	 * @return	JSON
+	 * @throws JsonException	書けなかったとき
+	 */
+	public static String write (Object value, JsonWriteOptions options) {
+
+		Objects.requireNonNull(options, "options");
+
+		JsonGenerator generator = new JsonGenerator(options, null);
+		generator.writeDocument(value);
+		return generator.toString();
+
+	}
+
+	/**
+	 * Writer に JSON を書く
+	 *
+	 * <p><b>Writer は閉じない</b>（開いた人が閉じる）。書き終わったら flush する。</p>
+	 *
+	 * @param value		値
+	 * @param writer	書き先
+	 * @param options	書き方
+	 * @throws JsonException	書けなかったとき（書き先の失敗も、原因を付けてこれにする）
+	 */
+	public static void write (Object value, Writer writer, JsonWriteOptions options) {
+
+		Objects.requireNonNull(writer, "writer");
+		Objects.requireNonNull(options, "options");
+
+		try {
+			new JsonGenerator(options, writer).writeDocument(value);
+			writer.flush();
+		} catch (UncheckedIOException ex) {
+			throw new JsonException("JSON を書き先に書けませんでした: " + ex.getCause().getMessage(), ex.getCause());
+		} catch (IOException ex) {
+			throw new JsonException("JSON を書き先に書けませんでした: " + ex.getMessage(), ex);
+		}
+
+	}
+
+	/**
+	 * OutputStream に JSON を書く
+	 *
+	 * <p><b>OutputStream は閉じない</b>（開いた人が閉じる）。書き終わったら flush する。</p>
+	 *
+	 * @param value		値
+	 * @param stream	書き先
+	 * @param charset	文字コード
+	 * @param options	書き方
+	 * @throws JsonException	書けなかったとき
+	 */
+	public static void write (Object value, OutputStream stream, Charset charset, JsonWriteOptions options) {
+
+		Objects.requireNonNull(stream, "stream");
+		Objects.requireNonNull(charset, "charset");
+		Objects.requireNonNull(options, "options");
+
+		try {
+			new JsonGenerator(options, stream, charset).writeDocument(value);
+			stream.flush();
+		} catch (UncheckedIOException ex) {
+			throw new JsonException("JSON を書き先に書けませんでした: " + ex.getCause().getMessage(), ex.getCause());
+		} catch (IOException ex) {
+			throw new JsonException("JSON を書き先に書けませんでした: " + ex.getMessage(), ex);
+		}
 
 	}
 

@@ -101,6 +101,39 @@ DB の値は**列（`Column`）で読み書き**します。列版は**テーブ
 >
 > インスタンスの `new Dson().decode(...)` は例外を投げず、これまでどおり `isError()` / `getErrorException()` で見ます。
 
+### 書き出し
+
+日時などの型は、次の形で書きます（2.7.0 から。それまでは `Date` と `LocalDateTime` 以外を書くと、JSON が `{}` になったり途中で切れたりしていました）。
+
+| 型 | 形 |
+| --- | --- |
+| `Date`・`Timestamp`・`LocalDateTime` | `yyyy/MM/dd HH:mm:ss`（秒より細かいところは書かない） |
+| `Instant`・`OffsetDateTime`・`ZonedDateTime`・`Calendar` | サーバーの時間帯にそろえて `yyyy/MM/dd HH:mm:ss` |
+| `LocalDate`・`java.sql.Date` | `yyyy/MM/dd` |
+| `LocalTime`・`java.sql.Time` | `HH:mm:ss` |
+| `Duration`・`Period` | ISO 8601（`PT1H30M` / `P1Y2M`） |
+| `UUID`・`URI`・`File` など JDK のクラス | 文字列（`toString`） |
+| `Optional` | 中身（空なら `null`） |
+| enum | 名前 |
+| record | コンポーネントを宣言した順に、オブジェクト |
+| Bean | フィールドを宣言した順（親クラスから）に、オブジェクト |
+
+- **Bean のキーは宣言した順です**（2.7.0 から。それまでは JVM を起動するたびに順番が変わることがありました）
+- **循環参照は、2回目を `{}` / `[]` と書いて続けます**（2.6 までと同じ）
+- **入れ子は 512 段まで書きます。**超えたら書かず、`Dson.encodes` は空文字を返してエラーをログに出します（2.6 までは 50 段を超えたところを、黙って `{}` / `[]` にしていました）
+
+時差を残したいとき・循環で例外にしたいとき・型ごとに書き方を変えたいときは、`jimble-json` の `Json.write(value, options)` を使います。
+
+```java
+JsonWriteOptions options = JsonWriteOptions.builder()
+	.keepOffset(true)                 // Date / Instant / OffsetDateTime などを 2026-10-24T19:00:00+09:00 の形で
+	.cycle(JsonCycle.THROW)           // 循環参照は例外（どこで循環したかが載る。Json.write の既定）
+	.typeWriter(Money.class, (value, out) -> out.string(((Money) value).format()))
+	.build();
+
+String json = Json.write(value, options);
+```
+
 ## 型変換
 
 `Convertor.convert(conf, src, 変換先.class)` が入口です。

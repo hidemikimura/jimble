@@ -128,7 +128,7 @@ jimbleRun {
 | `io.jimble:jimble-batch` | バッチ・DB スケジューラ | `jimble-db` / `jimble-mq` |
 | `io.jimble:jimble-batch-manager` | バッチ管理画面 | `jimble-web` / `jimble-batch` |
 | `io.jimble:jimble-mcp` | MCP サーバー | `jimble-web` |
-| `io.jimble:jimble-json` | JSON の読み手だけ（jimble のほかを使わないとき） | なし |
+| `io.jimble:jimble-json` | JSON の読み書きだけ（jimble のほかを使わないとき） | なし |
 | `io.jimble:jimble-otel` | OpenTelemetry へトレースを出す（**足したときだけ 0.9MB 増えます**） | `jimble-core` |
 
 **DB のドライバは要りません**（MySQL / MariaDB と PostgreSQL は `jimble-db` が持っています）。
