@@ -74,10 +74,6 @@ public final class Convertor {
 			return null;
 		}
 
-		if (conf == null) {
-			conf = new Configration();
-		}
-
 		if (destClasses == null || destClasses.length == 0) {
 			destClasses = new Class<?>[]{Object.class};
 		}
@@ -87,6 +83,18 @@ public final class Convertor {
 				&& !PropertyUtil.isAssignableFrom(Map.class, src.getClass())) {
 				return (T) src;
 			}
+		}
+
+		/*
+		 * <b>変換は jimble-converter に任せる</b>（D-307）。古い変換器は、古い設定・足した変換器・XML のときだけ使う。
+		 * 作り直す前は、変換できない値を黙って null や 0 にし、setter を呼ばず、日付を 31 通り総当たりしていた
+		 */
+		if (!usesLegacy(conf, useCustom, src, destClasses)) {
+			return (T) convertWithConverter(conf, src, destClasses);
+		}
+
+		if (conf == null) {
+			conf = new Configration();
 		}
 
 		try {
@@ -158,6 +166,158 @@ public final class Convertor {
 	public static void addConvertor (Class<?> clz, IConvertor<?> convertor) {
 
 		CONVERTOR_MAP.put(clz, convertor);
+		CUSTOMIZED.add(clz);
+
+	}
+
+	/* addConvertor で変換器を足した型（その型への変換は、古い変換器で行う） */
+	private static final Set<Class<?>> CUSTOMIZED = ConcurrentHashMap.newKeySet();
+
+	/** jimble-converter で変換するときの、既定の変換のしかた（循環参照は null。作り直す前と同じ） */
+	private static final io.jimble.converter.ConverterOptions OPTIONS = io.jimble.converter.ConverterOptions.builder()
+		.cycleToNull(true)
+		.mapFactory(Data::new)
+		.build();
+
+	/**
+	 * 古い変換器で変換するか
+	 */
+	private static boolean usesLegacy (Configration conf, boolean useCustom, Object src, Class<?>[] destClasses) {
+
+		Class<?> dest = destClasses[0];
+
+		if (CUSTOMIZED.contains(dest)) {
+			return true;
+		}
+
+		// XML（Document）は jimble-converter に無い
+		if (dest == Document.class || src instanceof Document) {
+			return true;
+		}
+
+		// 型が合っている List / Map は写しを返す（作り直す前のまま。返した値を書き換えても元が変わらないことに頼るコードがある）
+		if (destClasses.length == 1 && dest.isInstance(src) && (src instanceof List<?> || src instanceof Map<?, ?>)) {
+			return true;
+		}
+
+		// Map・一覧 → 文字は、作り直す前のまま（Data は JSON、ほかは先頭の値）
+		if ((dest == String.class || dest == CharSequence.class)
+			&& (src instanceof Map<?, ?> || src instanceof Collection<?> || src != null && src.getClass().isArray() && !(src instanceof char[]))) {
+			return true;
+		}
+
+		if (conf == null) {
+			return false;
+		}
+
+		// 日付の書式を設定で渡しているとき
+		if (conf.get(ConvertorConfigKeys.CONVERT_STRING_TO_DATE) != null || conf.get(ConvertorConfigKeys.CONVERT_DATE_TO_STRING) != null) {
+			return true;
+		}
+
+		// 型ごとの変換器を設定で渡しているとき
+		if (useCustom) {
+			for (Object key : conf.keys()) {
+				if (key instanceof Class<?> && conf.get(key) instanceof IConvertor<?>) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+
+	}
+
+	/**
+	 * jimble-converter で変換する
+	 */
+	private static Object convertWithConverter (Configration conf, Object src, Class<?>[] destClasses) {
+
+		Class<?> dest = destClasses[0];
+
+		// 文字の JSON は、Data / List<Data> に読む（Data の getData / getDataList がこれに頼っている）
+		if (src instanceof CharSequence text && destClasses.length == 1 && PropertyUtil.isAssignableFrom(Data.class, dest)) {
+			return io.jimble.util.json.Dson.decodes(text.toString(), dest);
+		}
+
+		// byte[]（UTF-8 の JSON）→ Data も、JSON として読む（作り直す前は、各 byte が 0..n のキーで混ざっていた）
+		if (src instanceof byte[] bytes && destClasses.length == 1 && PropertyUtil.isAssignableFrom(Data.class, dest)) {
+			return io.jimble.util.json.Dson.decodes(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), dest);
+		}
+
+		// 文字 → byte[] は UTF-8 のバイト（作り直す前は [0] になっていた）
+		if (src instanceof CharSequence text && dest == byte[].class) {
+			return text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		}
+
+		// 文字の JSON の配列は、読んでから一覧・配列にする（Data の getIntList("[1,2]") など）
+		if (src instanceof CharSequence text && (Collection.class.isAssignableFrom(dest) || dest.isArray() && dest != char[].class)
+			&& text.toString().strip().startsWith("[")) {
+			src = io.jimble.util.json.Dson.decodes(text.toString(), List.class);
+		}
+
+		// 空の配列 → Map は、空の Map（オブジェクトが空のときに [] を返す API がある。PHP の json_encode など）
+		if (src instanceof Collection<?> collection && collection.isEmpty() && Map.class.isAssignableFrom(dest)) {
+			src = new LinkedHashMap<String, Object>();
+		}
+
+		// Map → 一覧・配列は、値の一覧（作り直す前のまま。getDataOptional で入った空の Data を getStringList で読むなど）
+		if (src instanceof Map<?, ?> map && (Collection.class.isAssignableFrom(dest) || dest.isArray())) {
+			src = new ArrayList<>(map.values());
+		}
+
+		io.jimble.converter.ConverterOptions options = OPTIONS;
+		if (conf != null && conf.get(ConvertorConfigKeys.CONVERT_FIELDNAME_DELIMITER) instanceof char[]) {
+			options = OPTIONS.toBuilder().snakeCaseKeys(true).build();
+		}
+
+		int[] index = {0};
+		java.lang.reflect.Type type = toType(destClasses, index);
+
+		return io.jimble.converter.Converter.convert(src, type, options);
+
+	}
+
+	/**
+	 * 平らに並べた型（{@code Map, String, List, Integer}）を、型の木（{@code Map<String, List<Integer>>}）に戻す
+	 */
+	private static java.lang.reflect.Type toType (Class<?>[] classes, int[] index) {
+
+		Class<?> raw = classes[index[0]++];
+
+		int arguments = Map.class.isAssignableFrom(raw) ? 2 : Collection.class.isAssignableFrom(raw) ? 1 : 0;
+		if (arguments == 0 || index[0] >= classes.length) {
+			return raw;
+		}
+
+		java.lang.reflect.Type[] args = new java.lang.reflect.Type[arguments];
+		for (int i = 0; i < arguments; i++) {
+			args[i] = index[0] < classes.length ? toType(classes, index) : Object.class;
+		}
+
+		return new FlatType(raw, args);
+
+	}
+
+	/**
+	 * 型の木
+	 */
+	private record FlatType (Class<?> rawType, java.lang.reflect.Type[] arguments) implements java.lang.reflect.ParameterizedType {
+
+		@Override
+		public java.lang.reflect.Type[] getActualTypeArguments () {
+			return arguments.clone();
+		}
+
+		@Override
+		public java.lang.reflect.Type getRawType () {
+			return rawType;
+		}
+
+		@Override
+		public java.lang.reflect.Type getOwnerType () {
+			return null;
+		}
 
 	}
 

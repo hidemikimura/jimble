@@ -82,7 +82,7 @@ final class Coercion {
 	 *
 	 * @param value	JSON の値（木で読んだもの。null も可）
 	 * @param type	型
-	 * @param zone	時差の無い日時を補う時間帯
+	 * @param zone	時差の無い日時を補う時間帯（null ならサーバーの時間帯）
 	 * @return	型にした値
 	 * @throws IllegalArgumentException	できないとき
 	 */
@@ -185,7 +185,7 @@ final class Coercion {
 			return other;
 		}
 
-		return temporal(value, type, zone);
+		return temporal(value, type, zone != null ? zone : ZoneId.systemDefault());
 
 	}
 
@@ -363,6 +363,11 @@ final class Coercion {
 
 		if (value instanceof BigInteger i) {
 			return new Decimal(new BigDecimal(i), i.toString());
+		}
+
+		// 真偽は 1 / 0（作り直す前の Convertor と同じ）
+		if (value instanceof Boolean b) {
+			return b ? new Decimal(BigDecimal.ONE, "true") : new Decimal(BigDecimal.ZERO, "false");
 		}
 
 		if (value instanceof String s) {
@@ -559,7 +564,7 @@ final class Coercion {
 		if (s.startsWith(DATE_PREFIX)) {
 			s = s.substring(DATE_PREFIX.length());
 		}
-		String input = s;
+		String input = japaneseToIso(s);
 
 		if (type == LocalTime.class || type == java.sql.Time.class) {
 			LocalTime time = parse(() -> LocalTime.from(TIME.parse(input)), value);
@@ -599,6 +604,21 @@ final class Coercion {
 		}
 
 		return fromInstant(offset.toInstant(), type, zone);
+
+	}
+
+	/**
+	 * 年月日・時分秒で書いた日時を、/ と : の形にする（{@code 2024年01月15日 10時20分} → {@code 2024/01/15 10:20}）
+	 */
+	private static String japaneseToIso (String s) {
+
+		if (s.indexOf('年') < 0) {
+			return s;
+		}
+
+		String replaced = s.replace('年', '/').replace('月', '/').replace("日", "")
+			.replace('時', ':').replace('分', ':').replace("秒", "").strip();
+		return replaced.endsWith(":") ? replaced.substring(0, replaced.length() - 1) : replaced;
 
 	}
 

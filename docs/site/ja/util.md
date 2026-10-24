@@ -170,12 +170,43 @@ String json = Json.write(value, options);
 ## 型変換
 
 `Convertor.convert(conf, src, 変換先.class)` が入口です。
-Bean ↔ `Data` ↔ Map ↔ List ↔ プリミティブが同じ1本を通ります。
-`data.convert(new MyBean())` も中身は同じものです。
+Bean ↔ `Data` ↔ Map ↔ List ↔ record ↔ プリミティブ・日時が同じ1本を通ります。
+`data.convertClass(MyBean.class)` や `Data` の `getIntList` なども中身は同じものです。
 変換できなければ**非検査例外**です（`throws` も `catch` も要りません）。
 
+中では `jimble-converter` の `Converter` で変換します（2.7.0 から）。決まりは [JSON を型に読む](#型に読む) ときと同じです。
+
+- **値が変わってしまうものは例外**です（`ConversionException`。どの項目か `$.items[1].qty` が載ります）。`1.5` → int、桁あふれ、`"abc"` → int、無い enum の名前、ありえない日付、後ろに余分のある日付
+- 意味がはっきりしているゆるさは受け付けます。前後の空白、全角の数字、`"1,234"`、`1.0` → int、`true` → 1、`"yes"` / `"on"` → true（`"no"` / `"off"` は false）、`"2024年01月15日"` → 日付
+- Bean には **setter があれば setter で**入れます（親クラスの private フィールドにも入れます。`static` / `transient` には入れません）。record は正準のコンストラクタで作ります
+- **知らないキーは飛ばします**
+- 日時は `Date`・`LocalDate`・`LocalDateTime`・`Instant`・`OffsetDateTime` などのあいだで変換します。`Z` や `+09:00` の時差は読みます（時差の無いものはサーバーの時間帯）
+- 自分を含む Map などの循環参照は、そこを `null` にします
+- 文字から `Class` / `InetAddress` / `Pattern` / `File` / `Path` は作りません（外から来た文字で、クラスの読み込み・DNS・ReDoS・ファイルへの到達を起こせるため）
+
+`Convertor` を通さずに、`jimble-converter` を直に使うこともできます（jimble のほかのモジュールに依存しません）。
+
+```java
+Order order = Converter.convert(map, Order.class);
+List<Item> items = Converter.convert(rows, new TypeRef<List<Item>>() {});
+
+ConverterOptions options = ConverterOptions.builder()
+	.rejectUnknownKeys(true)          // 知らないキーで断る
+	.zone(ZoneId.of("Asia/Tokyo"))    // 時差の無い日時を補う時間帯
+	.build();
+Order strict = Converter.convert(map, Order.class, options);
+
+int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // 読めない値を 0 / null に（CSV など）
+```
+
 > [!TRAP]
-> **`Configration` は使い回さないでください。**変換の途中で階層カウンタと
+> **2.6 までは、読めない値を黙って `null` / `0` にしていました**（`"abc"` → Integer が `null`、`1.9` → Integer が `1`、`3000000000` → Integer が桁あふれ、`"no"` → Boolean が true、`"...Z"` の時差を無視）。
+> setter しかない項目には値が入りませんでした。
+
+`Convertor.addConvertor(型, 変換器)` で足した変換器・`Configration` に渡した日付の書式（`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`）・XML の `Document` は、これまでの変換器で変換します。
+
+> [!TRAP]
+> **`Configration` は使い回さないでください。**これまでの変換器を通るとき、変換の途中で階層カウンタと
 > 循環参照の記録が書き換わります。**1回の変換に1つ**作ります。
 
 ## HTTP クライアント

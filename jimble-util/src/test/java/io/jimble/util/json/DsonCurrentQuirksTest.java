@@ -7,26 +7,13 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -64,57 +51,8 @@ class DsonCurrentQuirksTest {
 	}
 
 	@Nested
-	@DisplayName("現状: 読み先の型との食い違い（空の配列）")
-	class EmptyArrayTarget {
-
-		@Test
-		@DisplayName("現状: [] を Dson.decodes(Data) は空の Data で返し、Data.fromJsonString は JsonParseException")
-		void 現状_emptyArrayAsData () {
-
-			assertEquals(new Data(), Dson.decodes("[]", Data.class));
-			assertThrows(JsonParseException.class, () -> Data.fromJsonString("[]"));
-
-		}
-
-	}
-
-	@Nested
 	@DisplayName("現状: 読み先の型との食い違い")
 	class TargetMismatch {
-
-		/** 作り直しで JsonParseException（または変換の失敗）にする予定 */
-		@Test
-		@DisplayName("現状: 配列の JSON を Data で読むと、添字がキーの {\"0\":..,\"1\":..} になる")
-		void 現状_arrayAsData () {
-
-			Data data = Dson.decodes("[1,2]", Data.class);
-
-			assertEquals(List.of("0", "1"), new ArrayList<>(data.keySet()));
-			assertEquals(1, data.get("0"));
-
-		}
-
-		/** 作り直しで JsonParseException にする予定 */
-		@Test
-		@DisplayName("現状: Data.fromJsonString にオブジェクトの配列を渡すと {\"0\":{..}} になる")
-		void 現状_arrayOfObjectsFromJsonString () {
-
-			Data data = Data.fromJsonString("[{\"a\":1}]");
-
-			assertEquals(Map.of("0", Map.of("a", 1)), data);
-
-		}
-
-		/** 作り直しで扱いを揃える予定 */
-		@Test
-		@DisplayName("現状: 配列の JSON を Map で読んでも、添字がキーになる")
-		void 現状_arrayAsMap () {
-
-			Map<?, ?> map = Dson.decodes("[1,2]", Map.class);
-
-			assertEquals(Map.of("0", 1, "1", 2), map);
-
-		}
 
 		/** 作り直しで変換の失敗にする予定 */
 		@Test

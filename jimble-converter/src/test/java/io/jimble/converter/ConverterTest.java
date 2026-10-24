@@ -82,6 +82,14 @@ class ConverterTest {
 
 	}
 
+	/** transient の項目を持つ Bean */
+	public static class Holder {
+
+		private String name;
+		private transient String cache = "kept";
+
+	}
+
 	enum Status { ACTIVE, STOPPED }
 
 	@Nested
@@ -108,6 +116,8 @@ class ConverterTest {
 			assertEquals(1.5, Converter.convert("1.5", double.class));
 			assertEquals(new BigDecimal("1.50"), Converter.convert("1.50", BigDecimal.class));
 			assertEquals("12", Converter.convert(12, String.class));
+			assertEquals(1, Converter.convert(true, int.class));
+			assertEquals(0L, Converter.convert(false, Long.class));
 
 		}
 
@@ -140,6 +150,9 @@ class ConverterTest {
 			assertEquals(LocalDateTime.of(2026, 10, 24, 19, 0), Converter.convert("2026-10-24T10:00:00Z", LocalDateTime.class, tokyo));
 			assertEquals(LocalDate.of(1970, 1, 1), Converter.convert(new Date(0), LocalDate.class, tokyo));
 			assertEquals(0L, Converter.convert(OffsetDateTime.parse("1970-01-01T09:00:00+09:00"), Date.class).getTime());
+			assertEquals(LocalDate.of(2024, 1, 15), Converter.convert("2024年01月15日", LocalDate.class));
+			assertEquals(LocalDateTime.of(2024, 1, 15, 10, 20, 30), Converter.convert("2024年01月15日 10時20分30秒", LocalDateTime.class));
+			assertEquals(LocalDateTime.of(2024, 1, 15, 10, 20), Converter.convert("2024年01月15日 10:20", LocalDateTime.class));
 
 		}
 
@@ -245,6 +258,17 @@ class ConverterTest {
 			assertEquals("x", customer.getName());
 			assertEquals("yes", customer.setterCalled);
 			assertEquals(30, customer.getAge());
+
+		}
+
+		@Test
+		@DisplayName("static / transient の項目には入れない（キーは外から来る。D-226）")
+		void skipsTransient () {
+
+			Holder holder = Converter.convert(map("cache", "pwned", "name", "a"), Holder.class);
+
+			assertEquals("kept", holder.cache);
+			assertEquals("a", holder.name);
 
 		}
 

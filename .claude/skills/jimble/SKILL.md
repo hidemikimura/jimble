@@ -143,6 +143,8 @@ db.transaction(tx -> { ... });                // 例外で抜ければ巻き戻�
   時差を残すなら `Json.write(value, JsonWriteOptions.builder().keepOffset(true).build())`（`jimble-json`）
 - **JSON を Bean / record に読むと、読めない値は `JsonParseException`**（2.7.0〜。`"abc"` → int・`1.5` → int・桁あふれ。場所 `$.items[1].qty` が載る）。
   setter があれば setter に入る。知らないキーは飛ばす。`List<Item>` は `Dson.decodes(json, List.class, Item.class)` か `Json.read(json, new TypeRef<List<Item>>() {})`
+- **`Convertor.convert` / `convertClass` / `getIntList` / `getDate` も、値が変わる変換は例外**（2.7.0〜。`jimble-converter`。`"abc"` → int・桁あふれ・ありえない日付・`2` → boolean。
+  `"no"` は false、`"...Z"` の時差を読む、文字から `Class` / `Pattern` / `InetAddress` / `File` は作らない）。読めない値を 0 / null にしたいなら `Converter.convert(v, int.class, ConverterOptions.LENIENT)`
 - **`Data.put` は `Data` を返さない**（`Map.put` なので前の値）。続けて書くなら `putData("a", 1).putData("b", 2)`
 - **リクエストを `apply(Data)` / `setRow(Data)` / `valueRow(Data)` にそのまま渡さない。**隠れた列や `role` を当てられる。
   許す列を渡す形にする：`apply(data, User.name, User.created_at)`（`jimble-db`）

@@ -71,7 +71,7 @@ class PropertyUtilSafetyTest {
 		Map<Class<?>, Set<String>> cache = (Map<Class<?>, Set<String>>) field.get(null);
 
 		assertTrue(cache.getOrDefault(Form.class, Set.of()).size() <= PropertyUtil.MAX_NO_FIELD_CACHE
-			, "知らないキーを上限なしに覚えています: " + cache.get(Form.class).size());
+			, () -> "知らないキーを上限なしに覚えています: " + cache.get(Form.class).size());
 
 	}
 

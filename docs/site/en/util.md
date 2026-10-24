@@ -174,13 +174,44 @@ String json = Json.write(value, options);
 ## Type conversion
 
 `Convertor.convert(conf, src, Target.class)` is the way in.
-Bean ↔ `Data` ↔ Map ↔ List ↔ primitives all go down the same single path.
-`data.convert(new MyBean())` is the same machinery underneath.
+Bean ↔ `Data` ↔ Map ↔ List ↔ record ↔ primitives and date-times all go down the same single path.
+`data.convertClass(MyBean.class)` and `Data` getters such as `getIntList` are the same machinery underneath.
 When it cannot convert, it throws an **unchecked exception** (no `throws` or `catch` needed).
 
+Underneath, conversion is done by `Converter` from `jimble-converter` (since 2.7.0). The rules are the same as for [reading JSON into a type](#reading-into-a-type).
+
+- **Anything that would change the value throws** (`ConversionException`, carrying which property: `$.items[1].qty`): `1.5` → int, overflow, `"abc"` → int, an enum name that does not exist, an impossible date, a date with something extra at the end
+- Leniency with a clear meaning is accepted: surrounding blanks, full-width digits, `"1,234"`, `1.0` → int, `true` → 1, `"yes"` / `"on"` → true (`"no"` / `"off"` → false), `"2024年01月15日"` → a date
+- A Bean is filled **through its setter when there is one** (private fields of superclasses included; never `static` / `transient` fields). A record is built with its canonical constructor
+- **Unknown keys are skipped**
+- Date-times convert between `Date`, `LocalDate`, `LocalDateTime`, `Instant`, `OffsetDateTime`, and so on. Offsets such as `Z` and `+09:00` are honoured (values without one use the server's time zone)
+- A circular reference, such as a Map that contains itself, becomes `null` at that point
+- `Class` / `InetAddress` / `Pattern` / `File` / `Path` are never built from a string (outside text could trigger class loading, DNS lookups, ReDoS, or file access)
+
+You can also use `jimble-converter` directly, without `Convertor` (it depends on no other jimble module).
+
+```java
+Order order = Converter.convert(map, Order.class);
+List<Item> items = Converter.convert(rows, new TypeRef<List<Item>>() {});
+
+ConverterOptions options = ConverterOptions.builder()
+	.rejectUnknownKeys(true)          // refuse unknown keys
+	.zone(ZoneId.of("Asia/Tokyo"))    // time zone for date-times without an offset
+	.build();
+Order strict = Converter.convert(map, Order.class, options);
+
+int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // unreadable values become 0 / null (for CSV and the like)
+```
+
 > [!TRAP]
-> **Do not reuse a `Configration`.** Its depth counter and its record of circular
-> references are rewritten as the conversion runs. Make **one per conversion.**
+> **Up to 2.6, values that could not be read silently became `null` / `0`** (`"abc"` → Integer gave `null`, `1.9` → Integer gave `1`, `3000000000` → Integer overflowed, `"no"` → Boolean gave true, and the offset in `"...Z"` was ignored).
+> Properties with only a setter received no value.
+
+Converters added with `Convertor.addConvertor(type, converter)`, date formats passed in a `Configration` (`CONVERT_STRING_TO_DATE` / `CONVERT_DATE_TO_STRING`), and XML `Document`s still go through the previous converters.
+
+> [!TRAP]
+> **Do not reuse a `Configration`.** When the previous converters run, its depth counter and its record of
+> circular references are rewritten as the conversion runs. Make **one per conversion.**
 
 ## HTTP client
 

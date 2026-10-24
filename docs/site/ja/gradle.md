@@ -122,8 +122,8 @@ jimbleRun {
 
 | 足すもの | 何が入るか | いっしょに付いてくるもの |
 | --- | --- | --- |
-| `io.jimble:jimble-web` | Web（Router / Context / Session / テンプレート） | `jimble-db` → `jimble-util` → `jimble-json` / `jimble-core` |
-| `io.jimble:jimble-db` | DB だけ（バッチや CLI から使うとき） | `jimble-util` → `jimble-json` / `jimble-core` |
+| `io.jimble:jimble-web` | Web（Router / Context / Session / テンプレート） | `jimble-db` → `jimble-util` → `jimble-json` / `jimble-converter` / `jimble-core` |
+| `io.jimble:jimble-db` | DB だけ（バッチや CLI から使うとき） | `jimble-util` → `jimble-json` / `jimble-converter` / `jimble-core` |
 | `io.jimble:jimble-mq` | MQ | `jimble-db` |
 | `io.jimble:jimble-batch` | バッチ・DB スケジューラ | `jimble-db` / `jimble-mq` |
 | `io.jimble:jimble-batch-manager` | バッチ管理画面 | `jimble-web` / `jimble-batch` |

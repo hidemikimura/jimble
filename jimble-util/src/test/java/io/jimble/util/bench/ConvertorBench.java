@@ -112,11 +112,11 @@ class ConvertorBench {
 
 		Budget budget = new Budget();
 
-		budget.measure("Convertor 小 Data → Bean", Runs.SMALL, 1_408
+		budget.measure("Convertor 小 Data → Bean", Runs.SMALL, 640
 			, () -> Convertor.convert(null, json, SampleBean.class));
-		budget.measure("Convertor 小 Data → record", Runs.SMALL, 3_328
+		budget.measure("Convertor 小 Data → record", Runs.SMALL, 704
 			, () -> Convertor.convert(null, json, SampleRecord.class));
-		budget.measure("Convertor 中（100件）List<Data> → List<Bean>", Runs.MEDIUM, 102_400
+		budget.measure("Convertor 中（100件）List<Data> → List<Bean>", Runs.MEDIUM, 34_816
 			, () -> Convertor.convert(null, jsonList, List.class, SampleBean.class));
 
 		budget.assertWithin();
@@ -129,17 +129,17 @@ class ConvertorBench {
 
 		Budget budget = new Budget();
 
-		budget.measure("Convertor \"12345\" → Integer", Runs.SMALL, 1_024
+		budget.measure("Convertor \"12345\" → Integer", Runs.SMALL, 384
 			, () -> Convertor.convert(null, INTEGER_TEXT, Integer.class));
-		budget.measure("Convertor \"1234567890123\" → Long", Runs.SMALL, 1_024
+		budget.measure("Convertor \"1234567890123\" → Long", Runs.SMALL, 448
 			, () -> Convertor.convert(null, LONG_TEXT, Long.class));
-		budget.measure("Convertor \"1234.5678\" → Double", Runs.SMALL, 384
+		budget.measure("Convertor \"1234.5678\" → Double", Runs.SMALL, 192
 			, () -> Convertor.convert(null, DECIMAL_TEXT, Double.class));
-		budget.measure("Convertor \"1234.5678\" → BigDecimal", Runs.SMALL, 384
+		budget.measure("Convertor \"1234.5678\" → BigDecimal", Runs.SMALL, 192
 			, () -> Convertor.convert(null, DECIMAL_TEXT, BigDecimal.class));
-		budget.measure("Convertor \"2026-10-24 10:00:00\" → Date", Runs.SMALL, 76_800
+		budget.measure("Convertor \"2026-10-24 10:00:00\" → Date", Runs.SMALL, 5_120
 			, () -> Convertor.convert(null, DATE_TEXT, Date.class));
-		budget.measure("Convertor \"2026-10-24T10:00:00Z\" → Instant", Runs.SMALL, 10_240
+		budget.measure("Convertor \"2026-10-24T10:00:00Z\" → Instant", Runs.SMALL, 5_632
 			, () -> Convertor.convert(null, INSTANT_TEXT, Instant.class));
 
 		// 比べるための基準（JDK だけで変換したとき。上限は見ない）
@@ -168,7 +168,7 @@ class ConvertorBench {
 			, () -> json.getInt("age"));
 		budget.measure("Data getString ×1（String の値）", Runs.SMALL, 64
 			, () -> json.getString("name"));
-		budget.measure("Data getString ×1（Integer の値）", Runs.SMALL, 320
+		budget.measure("Data getString ×1（Integer の値）", Runs.SMALL, 192
 			, () -> json.getString("id"));
 
 		budget.assertWithin();
