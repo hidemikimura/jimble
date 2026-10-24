@@ -4,7 +4,7 @@ plugins {
 	id("jimble.publish-conventions")
 }
 
-description = "jimble の JSON。JDK だけで書いた読み書き（ゆるい文法・上限つき）"
+description = "jimble の JSON。JDK だけで書いた読み手（ゆるい文法・上限つき）"
 
 /*
  * <b>依存は持たない。</b>jimble のほかのモジュールにも、外のライブラリにも依存しない。

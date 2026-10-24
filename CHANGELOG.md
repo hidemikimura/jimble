@@ -4,7 +4,11 @@
 
 ---
 
-## 未リリース
+## 2.6.0（2026-10-24）
+
+**JSON を読む部品を作り直した版です。すべての人に上げてほしい版です**（[GHSA-5mqv-2g7c-fp23](https://github.com/hidemikimura/jimble/security/advisories/GHSA-5mqv-2g7c-fp23)）。
+JSON の読み手を新しいモジュール `jimble-json` にし、読むのが 2〜4 倍速くなりました。MySQL / MariaDB のドライバを 4.0 にしました。
+上げる前に見るところは4つです。**MySQL を使っているなら、接続の URL に `sslMode` を書く必要があるかを先に確かめてください**（何も書いていなければ、起動時に繋がらずに落ちることがあります）。壊れた JSON は例外になり、JSON の数値などに上限が付きます。
 
 ### 上げる前に見るところ
 
@@ -19,6 +23,7 @@
 
 | | |
 |---|---|
+| **JSON の数値の読み方を直しました**（D-307） | [GHSA-5mqv-2g7c-fp23](https://github.com/hidemikimura/jimble/security/advisories/GHSA-5mqv-2g7c-fp23) を見てください |
 | **MQ のやり直しが、`retry_backoff` より最大 1 秒早く走っていました** | DB に渡す時刻はミリ秒が切り捨てられるため、次にやる時刻（`scheduled_at`）が秒に切り捨てて書かれ、取り出しで比べるいまの時刻も切り捨てていました。合わせると、待ちが「`retry_backoff` − 1 秒」から `retry_backoff` までのどこかになっていました（`retry_backoff = 1s` では、ほとんど待たずにやり直すこともありました）。次にやる時刻を秒に切り上げて書くので、`retry_backoff` より短くはなりません（最大 1 秒長くなります） |
 
 ### 足したこと
