@@ -250,6 +250,31 @@ public final class DbScheduler implements CancelOrderNotify {
 	}
 
 	/**
+	 * 止めて、走らせたものが終わるまで待つ（テストから）
+	 *
+	 * <p>
+	 * <b>{@link #start} を呼ばずに {@link #tick} だけで走らせたときは、{@link #stop} では待たない。</b>
+	 * 待たずに次のテストへ進むと、前のテストの回が {@code batch_master} を数え直したあとに走り、
+	 * 次のテストの「1回で走った数」に混ざっていた（D-301 のテストが PostgreSQL でときどき落ちた）。
+	 * </p>
+	 */
+	void stopAndAwait () {
+
+		stopping = true;
+
+		VirtualThreadManager threads;
+
+		synchronized (this) {
+			threads = executeThreads;
+		}
+
+		if (threads != null) {
+			threads.waitThread();
+		}
+
+	}
+
+	/**
 	 * この JVM で動いているスケジューラを止める（要件 D-77）
 	 *
 	 * <p>
