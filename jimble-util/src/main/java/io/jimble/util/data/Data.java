@@ -2457,6 +2457,8 @@ public class Data extends LinkedHashMap<String, Object> {
 	/**
 	 * JSON文字列を出力する
 	 *
+	 * <p><b>書き終わると、渡したストリームを閉じます。</b>閉じたくなければ {@code outputJsonString(stream, false)} を使ってください。</p>
+	 *
 	 * @param outputStream  出力ストリーム
 	 */
 	public void outputJsonString (OutputStream outputStream) {
@@ -2493,6 +2495,8 @@ public class Data extends LinkedHashMap<String, Object> {
 
 	/**
 	 * JSON文字列を出力する
+	 *
+	 * <p><b>書き終わると、渡したストリームを閉じます。</b>閉じたくなければ {@code outputJsonString(stream, false)} を使ってください。</p>
 	 *
 	 * @param outputStream  ライター
 	 */

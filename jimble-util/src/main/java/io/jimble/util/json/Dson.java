@@ -233,7 +233,7 @@ public final class Dson {
 
 	/**
 	 * JSON文字ストリームをオブジェクトにデコードする.<br>
-	 * JSON文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した Reader を閉じます</b>（続けて使えません）。
 	 *
 	 * @param reader      JSON文字ストリーム
 	 * @param destClasses 変換希望クラス([0]=変換希望クラス、[1...]=ジェネリクス指定)
@@ -246,7 +246,7 @@ public final class Dson {
 
 	/**
 	 * JSON文字ストリームをオブジェクトにデコードする.<br>
-	 * JSON文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した Reader を閉じます</b>（続けて使えません）。
 	 *
 	 * @param conf        設定情報
 	 * @param reader      JSON文字ストリーム
@@ -260,7 +260,7 @@ public final class Dson {
 
 	/**
 	 * JSONストリームをオブジェクトにデコードする.<br>
-	 * JSONストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した InputStream を閉じます</b>（続けて使えません）。
 	 *
 	 * @param stream      JSONストリーム
 	 * @param charset     文字コード
@@ -274,7 +274,7 @@ public final class Dson {
 
 	/**
 	 * JSONストリームをオブジェクトにデコードする.<br>
-	 * JSONストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した InputStream を閉じます</b>（続けて使えません）。
 	 *
 	 * @param conf        設定情報
 	 * @param stream      JSONフストリーム
@@ -425,7 +425,7 @@ public final class Dson {
 
 	/**
 	 * JSON文字ストリームをオブジェクトにデコードする.<br>
-	 * JSON文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した Reader を閉じます</b>（続けて使えません）。
 	 *
 	 * @param reader      JSON文字ストリーム
 	 * @param destClasses 変換希望クラス([0]=変換希望クラス、[1...]=ジェネリクス指定)
@@ -438,7 +438,7 @@ public final class Dson {
 
 	/**
 	 * JSON文字ストリームをオブジェクトにデコードする.<br>
-	 * JSON文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した Reader を閉じます</b>（続けて使えません）。
 	 *
 	 * @param conf        設定情報
 	 * @param reader      JSON文字ストリーム
@@ -480,7 +480,7 @@ public final class Dson {
 
 	/**
 	 * JSONストリームをオブジェクトにデコードする.<br>
-	 * JSONストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した InputStream を閉じます</b>（続けて使えません）。
 	 *
 	 * @param stream      JSONストリーム
 	 * @param charset     文字コード
@@ -494,7 +494,7 @@ public final class Dson {
 
 	/**
 	 * JSONストリームをオブジェクトにデコードする.<br>
-	 * JSONストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>読み終わると、渡した InputStream を閉じます</b>（続けて使えません）。
 	 *
 	 * @param conf        設定情報
 	 * @param stream      JSONフストリーム
@@ -675,7 +675,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した OutputStream を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param json    オブジェクト
 	 * @param stream  出力先
@@ -688,7 +688,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した OutputStream を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param conf    設定情報
 	 * @param json    オブジェクト
@@ -702,7 +702,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * 文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した Writer を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param json   オブジェクト
 	 * @param writer 出力先
@@ -714,7 +714,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * 文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した Writer を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param conf   設定情報
 	 * @param json   オブジェクト
@@ -752,7 +752,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した OutputStream を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param json    オブジェクト
 	 * @param stream  出力先
@@ -766,7 +766,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した OutputStream を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param conf    設定情報
 	 * @param json    オブジェクト
@@ -781,7 +781,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * 文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した Writer を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param json   オブジェクト
 	 * @param writer 出力先
@@ -794,7 +794,7 @@ public final class Dson {
 
 	/**
 	 * オブジェクトからJSON文字列にエンコードし出力する.<br>
-	 * 文字ストリームは自動でcloseされません。呼び出し元でcloseを行なってください.
+	 * <b>書き終わると、渡した Writer を閉じます。</b>閉じたくなければ、{@code isAutoClose(false)} にした {@link Configration} を渡してください。
 	 *
 	 * @param conf   設定情報
 	 * @param json   オブジェクト

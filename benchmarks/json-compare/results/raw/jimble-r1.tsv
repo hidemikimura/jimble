@@ -1,0 +1,29 @@
+read tree small	843.2	3696	ok
+read tree medium	108115.1	471824	ok
+read tree large	4974855.2	22730904	ok
+read tree numbers	1512251.0	5896960	ok
+read tree strings	177832.5	862640	ok
+read tree bytes medium	128975.4	459064	ok
+read tree bytes large	6410127.6	20879416	ok
+read tree bytes strings	445558.6	739808	ok
+write tree small	388.0	3272	ok
+write tree medium	28274.9	125912	ok
+write tree large	1379303.7	4956136	ok
+write tree numbers	519888.9	1465280	ok
+write tree strings	103781.3	397376	ok
+write tree bytes medium	33458.0	131984	ok
+write tree bytes large	1650275.7	5012944	ok
+write tree bytes strings	245859.0	538488	ok
+read bean small	1619.7	4656	ok
+read record small	4376.1	6304	ok
+read bean list medium	170741.9	437523	ok
+read record list medium	384889.3	599904	ok
+read bean list large	8080631.2	21079784	ok
+read record list large	19310231.1	28874984	ok
+write bean small	485.7	3328	ok
+write record small	541.6	3328	ok
+write bean list medium	40374.5	122096	ok
+write record list medium	39611.7	121912	ok
+write bean list large	1858295.9	4770272	ok
+write record list large	1960495.0	4764136	ok
+write bean list bytes large	1997345.8	5867464	ok
