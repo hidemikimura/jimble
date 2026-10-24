@@ -19,6 +19,7 @@ import io.jimble.util.thread.VirtualThreadManager;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -896,7 +897,8 @@ public final class MqQueue {
 		}
 
 		int nextRetry = retryCount + 1;
-		long waitSeconds = MqConf.backoff(nextRetry).toSeconds();
+		Duration wait = MqConf.backoff(nextRetry);
+		long waitSeconds = wait.toSeconds();
 
 		Log.warn("MQ をやり直します: %s / id=%d / %d 回目 / %d 秒後"
 			.formatted(queueName, id, nextRetry, waitSeconds));
@@ -914,9 +916,30 @@ public final class MqQueue {
 			""".formatted(db.dialect().identifier(queueName))
 			, MqStatus.waiting.name()
 			, nextRetry
-			, new java.util.Date(System.currentTimeMillis() + waitSeconds * 1000)
+			, retryAt(System.currentTimeMillis(), wait)
 			, logInfo
 			, id);
+
+	}
+
+	/**
+	 * 次にやり直す時刻
+	 *
+	 * <p>
+	 * <b>秒に切り上げる。</b>DB に渡す時刻はミリ秒が切り捨てられる（{@link DB} が秒にそろえて渡す）ので、
+	 * そのまま書くと、取り出しで比べるいまの時刻（これも秒に切り捨て）と合わせて<b>最大 1 秒早くやり直していた</b>
+	 * （retry_backoff = 1s なら、間がほとんど空かないこともあった）
+	 * </p>
+	 *
+	 * @param nowMillis	いまの時刻（ミリ秒）
+	 * @param wait		待ち
+	 * @return	次にやり直す時刻（秒ちょうど）
+	 */
+	static java.util.Date retryAt (long nowMillis, Duration wait) {
+
+		long at = nowMillis + wait.toMillis();
+
+		return new java.util.Date(Math.ceilDiv(at, 1000L) * 1000L);
 
 	}
 
