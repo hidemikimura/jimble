@@ -27,6 +27,7 @@
 
 | | |
 |---|---|
+| **型変換のモジュール `jimble-converter`**（D-307） | jimble のほかのモジュールにも外のライブラリにも依存しない型変換です。`Converter.convert(map, Order.class)` / `Converter.convert(rows, new TypeRef<List<Item>>() {})` で、Map・Bean・record・コレクション・配列・日時のあいだを変換します。意味がはっきりしているゆるさ（全角の数字・`"1,234"`・`yes` → true など）は受け付け、値が変わってしまうもの（`1.5` → int・桁あふれ・ありえない日付）は、場所（`$.items[1].qty`）を付けた `ConversionException` にします。`ConverterOptions.LENIENT` で、読めない値を null / 0 にもできます。危ない型（`Class`・`InetAddress`・`Pattern`・`File`）は、許さなければ作りません。まだ `Convertor` / `Data` からは使っていません（次の版で切り替えます） |
 | **`jimble-json` で JSON を型に読めるようにしました**（D-307） | `Json.read(json, Order.class)` / `Json.read(json, new TypeRef<List<Item>>() {})` で、Bean・record・List・Map・配列・Optional に読みます。木を作らずに読みながら入れます。`JsonReadOptions.snakeCaseKeys(true)` で `user_name` を `userName` に入れます |
 | **`jimble-json` で JSON を書けるようにしました**（D-307） | `Json.write(value)` / `Json.write(value, options)` で書きます。`JsonWriteOptions` で、時差を残す（`keepOffset`。`2026-10-24T19:00:00+09:00` の形）、循環参照のとき例外にする・空にする・`null` にする（`JsonCycle`。`Json.write` の既定は例外）、型ごとの書き方を足す（`typeWriter`）などを決められます。`Dson` / `Data` の書き出しも、これで書きます（形はこれまでと同じです） |
 

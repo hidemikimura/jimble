@@ -67,6 +67,7 @@ class ConfigKeysTest {
 	private static final List<String> MODULES = List.of(
 		"jimble-core"
 		, "jimble-json"
+		, "jimble-converter"
 		, "jimble-util"
 		, "jimble-db"
 		, "jimble-web"

@@ -40,6 +40,11 @@ include("jimble-core")
  * jimble-util が依存して、Dson の窓口から使う。
  */
 include("jimble-json")
+
+/*
+ * 型変換（D-307。Convertor の作り直し）。<b>jimble のほかのモジュールに依存しない</b>（jimble-json にも）。
+ */
+include("jimble-converter")
 include("jimble-util")
 include("jimble-db")
 include("jimble-web")

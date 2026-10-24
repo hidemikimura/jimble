@@ -94,6 +94,25 @@ final class ReadPlan {
 	 */
 	static ReadPlan of (Type type) {
 
+		// 型の引数を持たないクラスは、クラスごとに1回だけ作って覚える
+		if (type instanceof Class<?> c && !c.isArray()) {
+			return CLASS_PLANS.get(c);
+		}
+
+		return build(type);
+
+	}
+
+	/* 型の引数を持たないクラスの読み方 */
+	private static final ClassValue<ReadPlan> CLASS_PLANS = new ClassValue<>() {
+		@Override
+		protected ReadPlan computeValue (Class<?> type) {
+			return build(type);
+		}
+	};
+
+	private static ReadPlan build (Type type) {
+
 		Class<?> raw = Types.raw(type);
 		Kind kind = KINDS.get(raw);
 
