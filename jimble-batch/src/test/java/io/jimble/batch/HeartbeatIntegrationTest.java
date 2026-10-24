@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,6 +45,12 @@ class HeartbeatIntegrationTest {
 	/** しばらくあとの updated_at（ミリ秒） */
 	static final AtomicLong LATER = new AtomicLong();
 
+	/** 心拍が打たれるのを待つ上限（ミリ秒）。打たれればすぐ抜けるので、CI が遅くても足りるだけ長くとる */
+	static final long BEAT_WAIT_MS = 10_000;
+
+	/** HoldBatch を終わらせる合図（テストが確かめ終えるまで走らせ続ける） */
+	static volatile CountDownLatch release = new CountDownLatch(0);
+
 	/**
 	 * 実行中に、心拍の表を一時的に読めなくするバッチ
 	 */
@@ -64,12 +72,22 @@ class HeartbeatIntegrationTest {
 				db.execute("ALTER TABLE batch_execute_info_off RENAME TO batch_execute_info");
 			}
 
-			RESTORED.set(updatedAt(db, args.uid()));
+			long restored = updatedAt(db, args.uid());
+			RESTORED.set(restored);
 
-			// NOW() は秒の精度なので、秒をまたぐまで待つ
-			sleep(2300);
+			/*
+			 * <b>心拍が打たれて updated_at が進むまで待つ</b>（MySQL の NOW() は秒の精度なので、秒をまたぐまでかかる）。
+			 * かつては 2300ms 待ってから1回だけ見ていたので、CI が遅れて心拍が間に合わないと落ちた
+			 */
+			long limit = System.currentTimeMillis() + BEAT_WAIT_MS;
+			long later = restored;
 
-			LATER.set(updatedAt(db, args.uid()));
+			while (later <= restored && System.currentTimeMillis() < limit) {
+				sleep(50);
+				later = updatedAt(db, args.uid());
+			}
+
+			LATER.set(later);
 
 		}
 
@@ -94,7 +112,11 @@ class HeartbeatIntegrationTest {
 	}
 
 	/**
-	 * しばらく走るバッチ（3つ並べて、心拍のスレッドが1本かを見る）
+	 * テストが終わらせるまで走るバッチ（3つ並べて、心拍のスレッドが1本かを見る）
+	 *
+	 * <p>
+	 * かつては 2 秒で終わっていたので、確かめるのが遅れると実行情報の行が消えていて落ちた
+	 * </p>
 	 */
 	public abstract static class HoldBatch extends AbstractBatch {
 
@@ -102,7 +124,8 @@ class HeartbeatIntegrationTest {
 		public void execute (BatchArgs args) {
 
 			try {
-				Thread.sleep(2000);
+				// 合図が来なくても、いつかは終わる（テストが落ちたときに残らないように）
+				release.await(30, TimeUnit.SECONDS);
 			} catch (InterruptedException ex) {
 				Thread.currentThread().interrupt();
 			}
@@ -183,30 +206,47 @@ class HeartbeatIntegrationTest {
 	@DisplayName("F-B-05 バッチが何本走っていても、心拍のスレッドは1本（1本の UPDATE で全部打つ）")
 	void oneHeartbeatThreadForAllBatches () throws Exception {
 
+		release = new CountDownLatch(1);
+
 		List<Thread> runs = new ArrayList<>();
 
-		for (Class<?> batch : List.of(HoldBatchA.class, HoldBatchB.class, HoldBatchC.class)) {
-			runs.add(Thread.ofVirtual().start(() -> BatchExecutor.execute(
-				BatchExecutor.parseArgs(new String[]{ "class=" + batch.getName() }))));
+		try {
+
+			for (Class<?> batch : List.of(HoldBatchA.class, HoldBatchB.class, HoldBatchC.class)) {
+				runs.add(Thread.ofVirtual().start(() -> BatchExecutor.execute(
+					BatchExecutor.parseArgs(new String[]{ "class=" + batch.getName() }))));
+			}
+
+			// 3本とも走り出すまで待つ
+			long deadline = System.currentTimeMillis() + 5000;
+			while (BatchHeartbeats.size() < 3 && System.currentTimeMillis() < deadline) {
+				Thread.sleep(20);
+			}
+
+			assertEquals(3, BatchHeartbeats.size(), "3本とも心拍に預けられていません");
+			assertEquals(1, heartbeatThreads(), "バッチの数だけ心拍のスレッドが立っています");
+
+			/*
+			 * 心拍が打たれている（1本の UPDATE で3本とも）。
+			 * <b>入れたときの時刻（created_at）より updated_at が進んだことを見る</b>。
+			 * かつては「1秒以内に更新された」を見ていたが、入れたときにも updated_at = NOW() が入るので、
+			 * 心拍が1回も打たれなくても通っていた
+			 */
+			long beaten = 0;
+			deadline = System.currentTimeMillis() + BEAT_WAIT_MS;
+
+			while (beaten < 3 && System.currentTimeMillis() < deadline) {
+				Thread.sleep(50);
+				beaten = DBUtil.getMainDB().select(
+						"SELECT count(*) AS n FROM batch_execute_info WHERE updated_at > created_at")
+					.map(row -> row.getLong("n")).orElse(0L);
+			}
+
+			assertEquals(3, beaten, "心拍が3本とも打たれていません");
+
+		} finally {
+			release.countDown();
 		}
-
-		// 3本とも走り出すまで待つ
-		long deadline = System.currentTimeMillis() + 5000;
-		while (BatchHeartbeats.size() < 3 && System.currentTimeMillis() < deadline) {
-			Thread.sleep(20);
-		}
-
-		assertEquals(3, BatchHeartbeats.size(), "3本とも心拍に預けられていません");
-		assertEquals(1, heartbeatThreads(), "バッチの数だけ心拍のスレッドが立っています");
-
-		// 心拍が打たれている（1本の UPDATE で3本とも）
-		Thread.sleep(600);
-		long fresh = DBUtil.getMainDB().select("""
-				SELECT count(*) AS n FROM batch_execute_info
-				WHERE updated_at >= %s
-			""".formatted(DBUtil.getMainDB().dialect().intervalFromNow("SECOND", true)), 1)
-			.map(row -> row.getLong("n")).orElse(0L);
-		assertEquals(3, fresh, "心拍が3本とも打たれていません");
 
 		for (Thread run : runs) {
 			run.join(10_000);
@@ -215,7 +255,7 @@ class HeartbeatIntegrationTest {
 		assertEquals(0, BatchHeartbeats.size(), "終わったバッチが心拍に残っています");
 
 		// 誰もいなくなれば、心拍のスレッドも終わる
-		deadline = System.currentTimeMillis() + 3000;
+		long deadline = System.currentTimeMillis() + 3000;
 		while (heartbeatThreads() > 0 && System.currentTimeMillis() < deadline) {
 			Thread.sleep(50);
 		}
