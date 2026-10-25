@@ -426,15 +426,27 @@ public class Patterns {
 		"(?:" + EMAIL_ADDRESS_LOCAL_PART + "@" + EMAIL_ADDRESS_DOMAIN + ")" +
 		WORD_BOUNDARY + ")"
 	);
-	public static final Pattern EMAIL_ADDRESS
-		= Pattern.compile(
-		"[a-zA-Z0-9\\+\\.\\_\\%\\-\\+]{1,256}" +
-			"\\@" +
-			"[a-zA-Z0-9][a-zA-Z0-9\\-]{0,64}" +
-			"(" +
-			"\\." +
-			"[a-zA-Z0-9][a-zA-Z0-9\\-]{0,25}" +
-			")+"
+	/* メールアドレスのローカル部の 1 語（ドットを含まない） */
+	private static final String EMAIL_ATOM = "[a-zA-Z0-9+_%\\-]+";
+	/* ドメインの 1 ラベル（英数字とハイフン、最初と最後はハイフンでない、1〜63 文字。RFC 1035） */
+	private static final String EMAIL_DOMAIN_LABEL = "[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?";
+	/**
+	 * メールアドレス（全体を当てるときは {@code matches()}。2.7.2）
+	 *
+	 * <p>メールを送る側（simplejavamail の既定の {@code JMail.strictValidator()}）が断る形は通さない。</p>
+	 * <ul>
+	 *   <li>ローカル部は RFC 5322 の dot-atom：ドットは続かず、最初と最後に来ない。64 文字まで（RFC 5321）。
+	 *       文字は英数字と {@code + _ % -} だけ（引用符・空白・日本語は通さない）</li>
+	 *   <li>ドメインは 2 つ以上のラベル。ラベルは英数字とハイフンで、最初と最後はハイフンでなく、1〜63 文字。
+	 *       最後のラベルは数字だけでない</li>
+	 * </ul>
+	 * <p>全体の長さ（254 文字まで）は見ない。正規表現にかける前に、呼ぶ側で見ること。</p>
+	 */
+	public static final Pattern EMAIL_ADDRESS = Pattern.compile(
+		"(?=[^@]{1,64}@)" + EMAIL_ATOM + "(?:\\." + EMAIL_ATOM + ")*" +
+			"@" +
+			"(?:" + EMAIL_DOMAIN_LABEL + "\\.)+" +
+			"(?=[a-zA-Z0-9\\-]*[a-zA-Z])" + EMAIL_DOMAIN_LABEL
 	);
 	/**
 	 * This pattern is intended for searching for things that look like they

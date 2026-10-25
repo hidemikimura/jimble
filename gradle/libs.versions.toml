@@ -23,6 +23,8 @@ jspecify = "1.0.1"
 hikaricp = "7.1.0"
 agroal = "3.2.1"
 mariadb = "4.0.0"
+# メールアドレスの検査を、送る側（simplejavamail の既定）と比べるテストだけで使う
+jmail = "2.2.2"
 postgresql = "42.7.14"
 redisson = "4.8.0"
 typesafe-config = "1.4.9"
@@ -86,6 +88,7 @@ jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 agroal-pool = { module = "io.agroal:agroal-pool", version.ref = "agroal" }
 mariadb-client = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mariadb" }
+jmail = { module = "com.sanctionco.jmail:jmail", version.ref = "jmail" }
 # PostgreSQL の JDBC ドライバ（要件 F-D-30）。BSD-2-Clause。
 postgresql-client = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 redisson = { module = "org.redisson:redisson", version.ref = "redisson" }

@@ -44,4 +44,6 @@ dependencies {
 
 	// 実 DB に繋ぐテスト（dbTest）用
 	testRuntimeOnly(libs.mariadb.client)
+	// email() を、メールを送る側の検査（JMail.strictValidator()）と比べるテスト用
+	testImplementation(libs.jmail)
 }

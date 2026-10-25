@@ -5,6 +5,8 @@ import io.jimble.util.exception.CodeException;
 import io.jimble.web.validation.error.ValidationErrorType;
 import io.jimble.web.validation.validator.CharacterTypeValidator.CharacterType;
 
+import com.sanctionco.jmail.EmailValidator;
+import com.sanctionco.jmail.JMail;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -281,6 +283,95 @@ class ValidatorsTest {
 
 	}
 
+	/** 送る側も通す形（2.7.2） */
+	private static final List<String> SENDABLE_EMAILS = List.of(
+		"a@example.com",
+		"user.name+tag@example.co.jp",
+		"a.b.c@example.test",
+		"a_b%c-d@example.test",
+		"a@b-c.example.test",
+		"a@123.example.com",
+		"a@x" + "y".repeat(26) + ".example.test",
+		"a@" + "x".repeat(63) + ".example.test",
+		"x".repeat(64) + "@example.test",
+		"a@" + ("x".repeat(63) + ".").repeat(3) + "x".repeat(60),
+		"A@EXAMPLE.TEST"
+	);
+
+	/** 送る側（simplejavamail の既定の JMail.strictValidator()）が断る形（2.7.2） */
+	private static final List<String> UNSENDABLE_EMAILS = List.of(
+		"a..b@example.test",
+		".a@example.test",
+		"a.@example.test",
+		"a@b-.test",
+		"a@-b.test",
+		"a@example.123",
+		"a@example",
+		"a@example..test",
+		"a@" + "x".repeat(64) + ".example.test",
+		"x".repeat(65) + "@example.test"
+	);
+
+	/** 送る側は通しても、これまでどおり通さない形 */
+	private static final List<String> STILL_REJECTED_EMAILS = List.of(
+		"a b@example.test",
+		"\"a\"@example.test",
+		"Name <a@example.test>",
+		"あ@example.test",
+		"a@例え.test",
+		"a@[127.0.0.1]",
+		"a@example.test\n"
+	);
+
+	@Test
+	@DisplayName("email() は、メールを送る側が断る形を通さない（2.7.2。a..b@ などが通っていた）")
+	void emailMatchesSender () throws CodeException {
+
+		ValidationRule rule = new ValidationRule().email();
+
+		for (String email : SENDABLE_EMAILS) {
+			assertTrue(ok(rule, email), email);
+		}
+		for (String email : UNSENDABLE_EMAILS) {
+			assertFalse(ok(rule, email), email);
+		}
+		for (String email : STILL_REJECTED_EMAILS) {
+			assertFalse(ok(rule, email), email);
+		}
+
+	}
+
+	@Test
+	@DisplayName("email() が通す形は、送る側（JMail.strictValidator()）も通す")
+	void emailAgreesWithJMail () {
+
+		EmailValidator sender = JMail.strictValidator();
+
+		for (String email : SENDABLE_EMAILS) {
+			assertTrue(sender.isValid(email), "送る側が断る形を、通す側に入れています: " + email);
+		}
+		for (String email : UNSENDABLE_EMAILS) {
+			assertFalse(sender.isValid(email), "送る側が通す形を、断る側に入れています: " + email);
+		}
+
+	}
+
+	@Test
+	@DisplayName("email() は 254 文字を超えると、正規表現にかけずに断る")
+	void emailLengthLimit () throws CodeException {
+
+		ValidationRule rule = new ValidationRule().email();
+		String domain = ("x".repeat(63) + ".").repeat(3) + "x".repeat(60);
+		String at254 = "a@" + domain;
+		String at255 = "ab@" + domain;
+
+		assertEquals(254, at254.length());
+		assertTrue(ok(rule, at254));
+		assertFalse(ok(rule, at255));
+		assertFalse(ok(rule, "a@" + "a.".repeat(10_000) + "test"), "長いものは正規表現にかけない");
+
+	}
+
 	@Test
 	@DisplayName("D-161 url() は全体が1つの URL であることを見る")
 	void urlIsWholeString () throws CodeException {
@@ -546,9 +637,6 @@ class ValidatorsTest {
 	 *   <b>DB の読み出しやリクエストの変換と同じ道</b>なので、
 	 *   ここだけ締めると影響が枠組み全体に及ぶ——<b>意図して手を付けていない</b>（要件 D-161）。
 	 *   厳密に見たい項目は {@code regex()} を重ねること
-	 * - <b>{@code email()} が RFC のどこまでを通すか</b>は見ていない。
-	 *   {@code Patterns.EMAIL_ADDRESS} が決めていて、<b>ここで固定すると
-	 *   パターンを直すたびにテストが落ちる</b>。見ているのは「全体で当てるか」だけである
 	 * - <b>{@code custom()} に渡した検証器</b>は見ていない（{@code ValidationTest} が見ている）
 	 * - <b>複数の規則を重ねたときの順番</b>も見ていない（同上）
 	 */

@@ -53,6 +53,13 @@ They run in the order you stacked them and **stop at the first failure** (one er
 > so **wrap it in `.*` when you want a partial match.**
 
 > [!NOTE]
+> **`email()` rejects every address the sending side (simplejavamail's default check) rejects**,
+> so an address that passed cannot later fail to send and pile up MQ retries.
+> The local part has no consecutive, leading or trailing dots (`a..b@`, `.a@` and `a.@` fail).
+> Domain labels are letters, digits and hyphens, do not start or end with a hyphen, and are at most 63 characters; the last label is not all digits.
+> The accepted characters are narrower than the sender's: letters, digits and `+ _ % - .` only (quotes, spaces, `Name <a@…>` and non-ASCII fail). The whole address is at most 254 characters.
+
+> [!NOTE]
 > **`bool()` accepts only `true` / `false` / `1` / `0`** (case does not matter).
 > `yes` fails — **the reading side uses the same spellings**, so widening this
 > means someone who answered "yes" gets stored as `false`.
