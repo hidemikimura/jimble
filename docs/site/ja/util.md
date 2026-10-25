@@ -191,7 +191,7 @@ int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // 読
 決まりは [JSON を型に読む](#型に読む) ときと同じです。
 
 - **値が変わってしまうものは例外**です（`ConversionException`。どの項目か `$.items[1].qty` が載ります）。`1.5` → int、桁あふれ、`"abc"` → int、無い enum の名前、ありえない日付、後ろに余分のある日付
-- 意味がはっきりしているゆるさは受け付けます。前後の空白、全角の数字、`"1,234"`、`1.0` → int、`true` → 1、`"yes"` / `"on"` → true（`"no"` / `"off"` は false）、`"2024年01月15日"` → 日付
+- 意味がはっきりしているゆるさは受け付けます。前後の空白、全角の数字、`"1,234"`、`1.0` → int、`true` → 1、`"yes"` / `"on"` → true（`"no"` / `"off"` は false）、`"2024年01月15日"`・`"2024/1/5 9:00"`（月・日・時が 1 桁）→ 日付
 - Bean には **setter があれば setter で**入れます（親クラスの private フィールドにも入れます。`static` / `transient` には入れません）。record は正準のコンストラクタで作ります
 - **知らないキーは飛ばします**
 - 日時は `Date`・`LocalDate`・`LocalDateTime`・`Instant`・`OffsetDateTime` などのあいだで変換します。`Z` や `+09:00` の時差は読みます（時差の無いものはサーバーの時間帯）
