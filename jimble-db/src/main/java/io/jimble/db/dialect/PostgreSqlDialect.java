@@ -716,6 +716,13 @@ public final class PostgreSqlDialect implements Dialect {
 
 	}
 
+	@Override
+	public boolean isLocalDateTimeType (String typeName) {
+
+		return "timestamp".equalsIgnoreCase(typeName);
+
+	}
+
 	/**
 	 * {@inheritDoc}
 	 *
