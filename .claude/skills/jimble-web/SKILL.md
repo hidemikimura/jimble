@@ -211,6 +211,8 @@ JSON も返す口にしたいなら `json(...)` で別に返す（元に戻す�
 大きいものは `context.response().outputStream()` に直接書く。
 **呼んだ時点でステータス・Cookie・Cache-Control が決まる**ので、`code(...)` やヘッダはその前に（送ったあとのヘッダ・Cookie は例外）。
 書いたものは `flush()` するまで溜まる——届いたそばから見せたいなら書くたびに `flush()`。
+分けて書く応答（chunked）は、**`server.tcp_no_delay`（既定 true。2.7.3）を `false` にすると、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れる**
+（Nagle と遅延 ACK。nginx の後ろでも起きる）。Nagle に頼りたい特別な場合を除き、`false` にしない。
 `InputStream` は `send(in, "型")` に渡せば、続きが来ていないところで送り出す（中継に使える）。
 
 ## セッション・CSRF・Flash

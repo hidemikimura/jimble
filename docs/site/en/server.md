@@ -58,13 +58,24 @@ queue is not a faster server.
 > **Leaving `write_queue_length` at 0 or 1 while setting `smart_async_writes = true` fails at startup** —
 > silently ignoring it would leave you with a setting that "is on but changes nothing".
 
-**`tcp_no_delay`** sets TCP_NODELAY on accepted connections (turns Nagle's algorithm off),
-so small writes go out at once instead of waiting for the ACK of what was sent before.
-**It helps responses that flush a little at a time, such as SSE and chunked output**: the tens of
-milliseconds lost when that wait meets the client's delayed ACK go away.
-Ordinary responses are written in one go (headers and body together), so **they barely change**.
-**The default is `true`** (Helidon's default is `false`): it only means more small packets, and
-removes the cases where a write waits. Write `false` only when you want Nagle back.
+**`tcp_no_delay`** sets TCP_NODELAY on accepted connections (turns Nagle's algorithm off).
+**The default is `true`** (Helidon's default is `false`).
+
+Without it, a response written to `outputStream()` in several pieces (`Transfer-Encoding: chunked`:
+HTML, SSE and so on) is **delayed by about 40 ms per request from the second request on the same connection**:
+the later small write waits for the ACK of the earlier one (Nagle), and that meets the client's delayed ACK.
+nginx reuses upstream connections (keepalive), so **this happens behind a proxy too**.
+Responses written in one go with `Content-Length` (`json()` and the like) are not delayed.
+
+In aqSell, turning it on was enough for this (one CPU, one user, reused connections, the checkout flow):
+
+| | off | on |
+|---|---|---|
+| Median HTML page time (same behind nginx) | 44–51 ms | 3–9 ms |
+| Checkouts per minute | 136 | 395 |
+
+Many small responses can mean more packets on the wire, but the delayed-ACK waits disappear.
+**Set it to `false` only in the special case where you rely on Nagle.**
 
 The startup log says which one was chosen.
 

@@ -321,6 +321,7 @@ jimbleRun {
 | J202 | ERROR | `${?ENV}` の行のあとで同じキーを書き直している（環境変数が効かない） |
 | J203 | WARN | `application.conf` や本番のファイルに `cookie.secure = false`（本番も引き継ぎ、Cookie が http でも送られる。`application.local.conf` にだけ書く） |
 | J204 | WARN | `server.trust_proxy = true` なのに `server.trusted_proxies` も `server.client_ip_header` も無い（中継が2段以上だと、全員が手前の中継の IP に見える） |
+| J205 | WARN | `server.tcp_no_delay = false`（分けて書く応答が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れる。Nagle に頼りたい特別な場合だけ） |
 | J301 | ERROR | `Migration.install()` が `DBUtil.load(...)` のあと（マイグレーションが流れない） |
 | J302 | ERROR | `BatchRegistry.sync` はあるのに `BatchTables.install` がどこにも無い |
 | J303 | ERROR | `BatchRegistry.sync` が `BatchRegistry.add` より前（全部のバッチが `nothing` になる） |

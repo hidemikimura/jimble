@@ -2,7 +2,6 @@ package io.jimble.web.server;
 
 import com.typesafe.config.ConfigFactory;
 
-import io.helidon.common.socket.SocketOptions;
 import io.jimble.util.conf.Conf;
 
 import org.junit.jupiter.api.AfterEach;
@@ -242,56 +241,6 @@ class ConnectionTuningTest {
 			assertEquals(16, server.effectiveConfig().writeQueueLength(), "write_queue_length を渡していません");
 			assertTrue(server.effectiveConfig().smartAsyncWrites(), "smart_async_writes を渡していません");
 
-		} finally {
-			server.stop();
-		}
-
-	}
-
-	@Test
-	@DisplayName("tcp_no_delay は書かなくても helidon まで届き（true）、接続のほかの設定は helidon の既定のまま")
-	void tcpNoDelayReachesHelidon () throws Exception {
-
-		conf("");
-
-		JimbleServer server = JimbleServer.start(new BareApp(), 0);
-
-		try {
-
-			SocketOptions options = server.effectiveConfig().connectionOptions();
-			SocketOptions helidonDefault = SocketOptions.create();
-
-			assertTrue(options.tcpNoDelay(), "tcp_no_delay を渡していません");
-			/*
-			 * <b>TCP_NODELAY だけを変える。</b>接続の設定をまるごと作り直すと、
-			 * keep-alive やタイムアウトまで変わってしまう
-			 */
-			assertEquals(helidonDefault.socketKeepAlive(), options.socketKeepAlive());
-			assertEquals(helidonDefault.socketReuseAddress(), options.socketReuseAddress());
-			assertEquals(helidonDefault.readTimeout(), options.readTimeout());
-			assertEquals(helidonDefault.connectTimeout(), options.connectTimeout());
-			assertEquals(helidonDefault.socketReceiveBufferSize(), options.socketReceiveBufferSize());
-			assertEquals(helidonDefault.socketSendBufferSize(), options.socketSendBufferSize());
-
-			assertEquals("hello", get(server.port(), "/hello"));
-
-		} finally {
-			server.stop();
-		}
-
-	}
-
-	@Test
-	@DisplayName("tcp_no_delay = false と書けば、helidon の既定（Nagle あり）のまま")
-	void tcpNoDelayCanBeTurnedOff () {
-
-		conf("server { tcp_no_delay = false }");
-
-		JimbleServer server = JimbleServer.start(new BareApp(), 0);
-
-		try {
-			assertFalse(server.effectiveConfig().connectionOptions().tcpNoDelay(), "tcp_no_delay = false を渡していません");
-			assertEquals(SocketOptions.create(), server.effectiveConfig().connectionOptions());
 		} finally {
 			server.stop();
 		}

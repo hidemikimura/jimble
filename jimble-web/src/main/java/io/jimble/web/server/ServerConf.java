@@ -341,14 +341,16 @@ public final class ServerConf {
 	 *
 	 * <p>
 	 * {@code true} にすると Nagle のアルゴリズムを切り、小さく書いたものもすぐに送る。
-	 * <b>効くのは、SSE や chunked のように少しずつ flush する応答</b>で、
-	 * 前に送った分の ACK を待つあいだの遅れ（相手の遅延 ACK と重なると数十 ms）が無くなる。
-	 * ふつうの応答はまとめて1回で書くので、ほとんど変わらない。
+	 * <b>効くのは、{@code outputStream()} へ何回かに分けて書く応答（chunked。HTML・SSE など）</b>で、
+	 * 付けないと同じ接続の 2 回目から、続く小さな書き込みが相手の遅延 ACK を待ち、1 回ごとに約 40ms 遅れる
+	 * （nginx の upstream keepalive の後ろでも起きる）。{@code Content-Length} を付けて1回で書く応答は変わらない。
 	 * </p>
 	 *
 	 * <p>
-	 * <b>既定は true</b>（helidon の既定は false）。小さなパケットが増えるだけで、遅れる場面が無くなるため。
-	 * Nagle を効かせたいときだけ {@code false} と書く。
+	 * <b>既定は true</b>（helidon の既定は false）。aqSell（AQSELL-98）では、
+	 * HTML のページの中央値が 44〜51ms → 3〜9ms、1 分あたりの購入が 136 件 → 395 件になった。
+	 * 小さな応答を多く返すと送る包みの数が増えうるが、遅延 ACK の待ちが無くなる。
+	 * <b>{@code false} にするのは、Nagle に頼りたい特別な場合だけ。</b>
 	 * </p>
 	 *
 	 * @return	付ける場合 = true

@@ -329,6 +329,7 @@ how to fix it is left out). Any `ERROR` fails the task; `WARN` alone does not.
 | J202 | ERROR | The same key written again after its `${?ENV}` line (the environment variable never wins) |
 | J203 | WARN | `cookie.secure = false` in `application.conf` or a production file (production inherits it and cookies go over http; write it only in `application.local.conf`) |
 | J204 | WARN | `server.trust_proxy = true` with neither `server.trusted_proxies` nor `server.client_ip_header` (with two or more hops, everyone looks like the nearer proxy's IP) |
+| J205 | WARN | `server.tcp_no_delay = false` (responses written in pieces are delayed about 40 ms each from the second request on a connection; only for the special case that relies on Nagle) |
 | J301 | ERROR | `Migration.install()` after `DBUtil.load(...)` (migrations never run) |
 | J302 | ERROR | `BatchRegistry.sync` is used but `BatchTables.install` is called nowhere |
 | J303 | ERROR | `BatchRegistry.sync` before `BatchRegistry.add` (every batch becomes `nothing`) |
