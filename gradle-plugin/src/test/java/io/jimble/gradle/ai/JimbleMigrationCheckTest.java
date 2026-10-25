@@ -125,6 +125,109 @@ class JimbleMigrationCheckTest {
 
 	}
 
+	/**
+	 * ファイルをまるごと書いて、J8xx / J9xx を見る
+	 */
+	private static List<String> runFile (Path root, String source) throws IOException {
+
+		Path file = root.resolve("src/main/java/app/A.java");
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, source, StandardCharsets.UTF_8);
+
+		return JimbleChecker.check(root, root, "2.7.4").stream()
+			.filter(f -> f.rule().startsWith("J8") || f.rule().startsWith("J9"))
+			.map(f -> f.rule() + ":" + f.line())
+			.toList();
+
+	}
+
+	@Test
+	@DisplayName("J810 アプリのクラスの static な insert（ClientRepository.insert(db, ...)）は見つけない")
+	void insertOnAppClass (@TempDir Path root) throws IOException {
+
+		assertEquals(List.of(), runFile(root, """
+			import io.jimble.db.DB;
+			class A {
+				void a (DB db, Data input) {
+					long clientId = ClientRepository.insert(db, input.getString("name"));
+					long id = app.repo.ClientRepository.insert(db, "x");
+				}
+			}
+			"""));
+
+	}
+
+	@Test
+	@DisplayName("J810 受け手の型を宣言していれば、その型で決める（DB / Tx なら見つけ、アプリの型なら見つけない）")
+	void insertByDeclaredType (@TempDir Path root) throws IOException {
+
+		assertEquals(List.of("J810:5", "J810:6"), runFile(root, """
+			import io.jimble.db.DB;
+			import io.jimble.db.Tx;
+			class A {
+				void a (DB main, Tx t, ClientRepository repo) {
+					long a = main.insert(b);
+					long c = t.insert(b);
+					long d = repo.insert(main, "x");
+				}
+			}
+			"""));
+
+	}
+
+	@Test
+	@DisplayName("J903 自分で作ったクラスの isError()（McpClient.Result など）は見つけない。db.isError() は見つける")
+	void isErrorOnAppClass (@TempDir Path root) throws IOException {
+
+		assertEquals(List.of(), runFile(root, """
+			import ecx.aos.support.McpClient;
+			class A {
+				void a (McpClient worker) {
+					McpClient.Result wrongLease = worker.call("heartbeat");
+					assertTrue(wrongLease.isError());
+					var result = worker.call("x");
+					assertTrue(result.isError());
+				}
+			}
+			"""));
+
+		assertEquals(List.of("J903:4", "J903:5"), runFile(root, """
+			import io.jimble.db.DB;
+			class A {
+				void a (DB db, DB other) {
+					if (db.isError()) { }
+					if (other.isError()) { }
+				}
+			}
+			"""));
+
+	}
+
+	@Test
+	@DisplayName("J810 / J903 型が分からない受け手は、名前が db / tx などか、io.jimble.db を import しているときだけ見つける")
+	void unknownReceiver (@TempDir Path root) throws IOException {
+
+		assertEquals(List.of(), runFile(root, """
+			class A {
+				void a () {
+					long id = store.insert(b);
+					if (result.isError()) { }
+				}
+			}
+			"""));
+
+		assertEquals(List.of("J810:4", "J903:5"), runFile(root, """
+			import io.jimble.db.*;
+			class A {
+				void a () {
+					long id = store.insert(b);
+					if (result.isError()) { }
+				}
+			}
+			"""));
+
+	}
+
 	@Test
 	@DisplayName("J803 / J810 / J901 / J902 呼び出し元は引数の中まで読まない（insertKey(SQL.insert(...)) を insert と取り違えない）")
 	void receiverStopsAtArguments (@TempDir Path root) throws IOException {
