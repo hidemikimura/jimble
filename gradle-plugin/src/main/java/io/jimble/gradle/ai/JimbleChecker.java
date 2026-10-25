@@ -212,7 +212,7 @@ public final class JimbleChecker {
 		new MigrationRule("J807", Pattern.compile("\\.\\s*(?:eq|not)\\s*\\(\\s*null\\s*\\)"), false
 			, "eq(null) / not(null) は 2.0 で例外になった（「= NULL」はどの行にも当たらない）"
 			, "is_null() / is_not_null() を使う"),
-		new MigrationRule("J810", Pattern.compile("\\blong\\s+\\w+\\s*=\\s*" + RECEIVER + "insert\\s*\\("), false
+		new MigrationRule("J810", Pattern.compile("\\blong\\s+\\w+\\s*=\\s*(?<receiver>" + RECEIVER + ")insert\\s*\\("), false
 			, "insert(...) は 2.0 で値を返さなくなった（1.x は「採番値か件数のどちらか」で、採番列の有無で決まっていた）"
 			, "採番値が欲しいなら insertKey(...)（無ければ例外）、件数が欲しいなら execute(...)"),
 		new MigrationRule("J901", Pattern.compile("\\bData\\s+\\w+\\s*=\\s*" + RECEIVER + "select(?:Cached)?\\s*\\("), true
@@ -221,7 +221,7 @@ public final class JimbleChecker {
 		new MigrationRule("J902", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*)" + RECEIVER + "execute\\s*\\("), true
 			, "execute(...) は 2.0 で件数（int）を返し、失敗は例外になった（この行はコンパイルが通らない）"
 			, "失敗は例外で受ける。db.transaction(...) の中なら何も書かなくてよい"),
-		new MigrationRule("J903", Pattern.compile("\\.\\s*isError\\s*\\(\\s*\\)"), true
+		new MigrationRule("J903", Pattern.compile("(?<receiver>" + RECEIVER + ")isError\\s*\\(\\s*\\)"), true
 			, "isError() は 2.0 で無くなった（DB の失敗は SqlExecuteException）"
 			, "db.transaction(...) の中なら確定しないことで守られる。分岐したいのは一意制約くらいなので DuplicateKeyException で受ける"),
 		new MigrationRule("J904", Pattern.compile("(?:\\bif\\s*\\(\\s*!\\s*|\\bboolean\\s+\\w+\\s*=\\s*|assert\\w*\\s*\\(\\s*)(?:DBUtil\\s*\\.\\s*load|DBLock\\s*\\.\\s*(?:lock|create))\\s*\\("), true
@@ -268,6 +268,79 @@ public final class JimbleChecker {
 			}
 		}
 		return false;
+
+	}
+
+	/*
+	 * 受け手が jimble の DB でなければ出さない呼び出し（insert・isError は、アプリのクラスにもよくある名前）
+	 */
+	private static final java.util.Set<String> DB_RECEIVER = java.util.Set.of("J810", "J903");
+
+	/* jimble の DB を指す型（1.x の DBTransaction も） */
+	private static final java.util.Set<String> DB_TYPES = java.util.Set.of("DB", "Tx", "DBTransaction");
+
+	/* 名前から DB と読める受け手（db・ctx.db()・this.db・tx・userDb など） */
+	private static final Pattern DB_NAME = Pattern.compile("(?:db|tx|\\w*(?:Db|DB|Tx))");
+
+	/* io.jimble.db の DB を import しているか */
+	private static final Pattern DB_IMPORT = Pattern.compile("\\bimport\\s+io\\s*\\.\\s*jimble\\s*\\.\\s*db\\s*\\.\\s*(?:DB|Tx|DBTransaction|\\*)\\s*;");
+
+	/**
+	 * 受け手が jimble の DB（Tx）でありうるか
+	 *
+	 * <ul>
+	 *   <li>クラス名（大文字で始まる。{@code ClientRepository.insert(db, ...)}）なら違う——static の呼び出しで、DB のメソッドではない</li>
+	 *   <li>変数で、このファイルで型を宣言していれば、その型で決める（{@code McpClient.Result r = ...; r.isError()} は違う）</li>
+	 *   <li>型が分からなければ、名前が db / tx などか、io.jimble.db の DB を import しているときだけ出す</li>
+	 * </ul>
+	 *
+	 * @param code		文字列の中身を空白にしたソース
+	 * @param receiver	呼び出し元（{@code ctx.db().} など、末尾の . まで）
+	 * @param at		呼び出しの位置
+	 * @return	DB でありうれば true
+	 */
+	static boolean mayBeJimbleDb (String code, String receiver, int at) {
+
+		String last = receiver.replaceAll("\\s+", "");
+		last = last.substring(0, last.length() - 1);
+		boolean isCall = last.endsWith("()");
+		if (isCall) {
+			last = last.substring(0, last.length() - 2);
+		}
+		last = last.substring(last.lastIndexOf('.') + 1);
+
+		if (!isCall && Character.isUpperCase(last.charAt(0))) {
+			return false;
+		}
+
+		if (!isCall) {
+			String type = declaredType(code, last, at);
+			if (type != null) {
+				return DB_TYPES.contains(type.substring(type.lastIndexOf('.') + 1));
+			}
+		}
+
+		return DB_NAME.matcher(last).matches() || DB_IMPORT.matcher(code).find();
+
+	}
+
+	/**
+	 * 変数の宣言の型（呼び出しより前で、いちばん近いもの。{@code var} や見つからなければ null）
+	 *
+	 * @param code	文字列の中身を空白にしたソース
+	 * @param name	変数の名前
+	 * @param at	呼び出しの位置
+	 * @return	型（{@code McpClient.Result} など。型の引数は外す）
+	 */
+	static String declaredType (String code, String name, int at) {
+
+		Matcher m = Pattern.compile("\\b([A-Z][\\w.]*)(?:\\s*<[^;=(){}]*>)?(?:\\s*\\[\\s*\\])*\\s+" + Pattern.quote(name) + "\\s*[=;,):]")
+			.matcher(code).region(0, Math.min(at, code.length()));
+		String type = null;
+		while (m.find()) {
+			type = m.group(1);
+		}
+		return type;
 
 	}
 
@@ -318,6 +391,10 @@ public final class JimbleChecker {
 				// 2.0 の正しい書き方（Optional を受け取っている）は出さない
 				if (OPTIONAL_RESULT.contains(rule.id())
 					&& (takesOptional(code, m.end() - 1) || assignedToOptional(code, m.start()))) {
+					continue;
+				}
+				// アプリのクラスの insert / isError（受け手が jimble の DB でない）は出さない
+				if (DB_RECEIVER.contains(rule.id()) && !mayBeJimbleDb(code, m.group("receiver"), m.start("receiver"))) {
 					continue;
 				}
 				add(findings, rawLines, rule.id(), Level.WARN, file, lineOf(code, m.start()), rule.message(), rule.fix(), MIGRATE);
