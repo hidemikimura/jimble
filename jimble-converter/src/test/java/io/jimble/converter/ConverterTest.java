@@ -156,6 +156,20 @@ class ConverterTest {
 
 		}
 
+		@ParameterizedTest
+		@CsvSource(delimiter = '|', value = {
+			"2024/1/5|2024-01-05T00:00", "2024/1/05|2024-01-05T00:00", "2024/01/5|2024-01-05T00:00", "2024-1-5|2024-01-05T00:00",
+			"2024/1/5 9:00|2024-01-05T09:00", "2024/1/5 9:00:00|2024-01-05T09:00", "2024/01/05 9:00|2024-01-05T09:00",
+			"2024年1月5日|2024-01-05T00:00", "1955/1/1|1955-01-01T00:00", "2027/11/3|2027-11-03T00:00"
+		})
+		@DisplayName("日時：月・日・時が 1 桁でも読む（2.5.12 で読めた形。2.7.0 で読めなくなっていた）")
+		void unpaddedDates (String text, LocalDateTime expected) {
+
+			assertEquals(expected, Converter.convert(text, LocalDateTime.class));
+			assertEquals(expected.toLocalDate(), Converter.convert(text, LocalDate.class));
+
+		}
+
 		@Test
 		@DisplayName("空文字と null は、プリミティブなら 0 / false、それ以外は null")
 		void blanks () {
@@ -183,7 +197,8 @@ class ConverterTest {
 		@ParameterizedTest
 		@CsvSource(delimiter = '|', value = {
 			"1.5|int", "abc|int", "3000000000|int", "1,23|int", "maybe|boolean", "UNKNOWN|Status",
-			"2024-13-45|LocalDate", "2024-02-30|LocalDate", "2024-01-15abc|LocalDate"
+			"2024-13-45|LocalDate", "2024-02-30|LocalDate", "2024-01-15abc|LocalDate",
+			"2024/2/30|LocalDate", "2024/1/5abc|LocalDate", "2024/1/32|LocalDate", "2024/123/5|LocalDate"
 		})
 		@DisplayName("値が変わる・読めない・ありえない")
 		void rejects (String text, String typeName) {

@@ -195,7 +195,7 @@ int qty = Converter.convert("abc", int.class, ConverterOptions.LENIENT);  // unr
 The rules are the same as for [reading JSON into a type](#reading-into-a-type).
 
 - **Anything that would change the value throws** (`ConversionException`, carrying which property: `$.items[1].qty`): `1.5` → int, overflow, `"abc"` → int, an enum name that does not exist, an impossible date, a date with something extra at the end
-- Leniency with a clear meaning is accepted: surrounding blanks, full-width digits, `"1,234"`, `1.0` → int, `true` → 1, `"yes"` / `"on"` → true (`"no"` / `"off"` → false), `"2024年01月15日"` → a date
+- Leniency with a clear meaning is accepted: surrounding blanks, full-width digits, `"1,234"`, `1.0` → int, `true` → 1, `"yes"` / `"on"` → true (`"no"` / `"off"` → false), `"2024年01月15日"` and `"2024/1/5 9:00"` (one-digit month, day or hour) → a date
 - A Bean is filled **through its setter when there is one** (private fields of superclasses included; never `static` / `transient` fields). A record is built with its canonical constructor
 - **Unknown keys are skipped**
 - Date-times convert between `Date`, `LocalDate`, `LocalDateTime`, `Instant`, `OffsetDateTime`, and so on. Offsets such as `Z` and `+09:00` are honoured (values without one use the server's time zone)

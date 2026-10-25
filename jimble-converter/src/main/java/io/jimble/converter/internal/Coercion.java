@@ -21,6 +21,8 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 値を、型にする（D-307。jimble-json の同じ名前のクラスを写し、JSON 以外の値（Date・java.time・enum など）も受けるようにしたもの）
@@ -33,7 +35,7 @@ import java.util.UUID;
  *       小数点以下のある小数を整数に（{@code 1.5} → int）、桁あふれ、読めない文字は断る</li>
  *   <li>真偽：{@code true/false/1/0/yes/no/on/off}（大文字小文字は問わない）。それ以外は断る</li>
  *   <li>enum：名前（大文字小文字は問わない）。合わなければ断る</li>
- *   <li>日時：{@code yyyy/MM/dd HH:mm:ss}・{@code yyyy-MM-dd HH:mm:ss}・ISO 8601（時差つきも）・{@code yyyy/MM/dd}・{@code HH:mm:ss}。
+ *   <li>日時：{@code yyyy/MM/dd HH:mm:ss}・{@code yyyy-MM-dd HH:mm:ss}・ISO 8601（時差つきも）・{@code yyyy/MM/dd}・{@code HH:mm:ss}・月日時が 1 桁（{@code 2024/1/5 9:00}）・{@code yyyy年M月d日}。
  *       ありえない日付（{@code 2024-02-30}）と後ろの余分は断る。時差が無ければ、時間帯で補う</li>
  *   <li>空文字は、プリミティブなら 0 / false、それ以外は null</li>
  * </ul>
@@ -70,6 +72,9 @@ final class Coercion {
 		.optionalStart().appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true).optionalEnd()
 		.toFormatter(Locale.ROOT)
 		.withResolverStyle(ResolverStyle.STRICT);
+
+	/* 月・日・時が 1 桁の日時（2024/1/5・2024-1-5 9:00）。後ろ（分から先）はそのまま DATE_TIME で読む */
+	private static final Pattern UNPADDED_DATE = Pattern.compile("(\\d{4})([/-])(\\d{1,2})([/-])(\\d{1,2})(?:([ T])(\\d{1,2})(?=:))?");
 
 	/* 書くときに日時の前に付けることのある文字（読むときは外す） */
 	private static final String DATE_PREFIX = "date::";
@@ -564,7 +569,7 @@ final class Coercion {
 		if (s.startsWith(DATE_PREFIX)) {
 			s = s.substring(DATE_PREFIX.length());
 		}
-		String input = japaneseToIso(s);
+		String input = padDate(japaneseToIso(s));
 
 		if (type == LocalTime.class || type == java.sql.Time.class) {
 			LocalTime time = parse(() -> LocalTime.from(TIME.parse(input)), value);
@@ -619,6 +624,58 @@ final class Coercion {
 		String replaced = s.replace('年', '/').replace('月', '/').replace("日", "")
 			.replace('時', ':').replace('分', ':').replace("秒", "").strip();
 		return replaced.endsWith(":") ? replaced.substring(0, replaced.length() - 1) : replaced;
+
+	}
+
+	/**
+	 * 月・日・時が 1 桁なら 0 を埋める（{@code 2024/1/5 9:00} → {@code 2024/01/05 09:00}。2.5.12 で読めた形）
+	 */
+	private static String padDate (String s) {
+
+		if (isPadded(s)) {
+			return s;
+		}
+
+		Matcher m = UNPADDED_DATE.matcher(s);
+		if (!m.lookingAt()) {
+			return s;
+		}
+
+		StringBuilder sb = new StringBuilder(s.length() + 3)
+			.append(m.group(1)).append(m.group(2)).append(twoDigits(m.group(3))).append(m.group(4)).append(twoDigits(m.group(5)));
+		if (m.group(6) != null) {
+			sb.append(m.group(6)).append(twoDigits(m.group(7)));
+		}
+		return sb.append(s, m.end(), s.length()).toString();
+
+	}
+
+	/* 0 を埋めなくてよいなら true（区切りの無い形と、2024/01/05・2024/01/05 09:00 の形。よくある形で正規表現を使わない） */
+	private static boolean isPadded (String s) {
+
+		if (s.length() < 5 || !isDateSeparator(s.charAt(4))) {
+			return true;
+		}
+		if (s.length() < 10 || !isDateSeparator(s.charAt(7))) {
+			return false;
+		}
+		if (s.length() == 10) {
+			return true;
+		}
+		char afterDate = s.charAt(10);
+		return afterDate != ' ' && afterDate != 'T' || s.length() > 13 && s.charAt(13) == ':';
+
+	}
+
+	private static boolean isDateSeparator (char c) {
+
+		return c == '/' || c == '-';
+
+	}
+
+	private static String twoDigits (String digits) {
+
+		return digits.length() == 1 ? "0" + digits : digits;
 
 	}
 
