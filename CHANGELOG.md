@@ -4,6 +4,29 @@
 
 ---
 
+## 2.7.3（2026-10-25）
+
+**受け付けた接続に TCP_NODELAY を付けるようにした版です。**分けて書く応答（chunked。HTML・SSE など）が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れていたのが無くなります。
+上げる前に見るところは1つです。TCP_NODELAY を既定で付けます（`server.tcp_no_delay = false` で、これまでどおり）。
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **受け付けた接続に TCP_NODELAY を付けます（Nagle を切ります）** | これまでは helidon の既定のまま、TCP_NODELAY を付けていませんでした。小さな応答を多く返すときに送る包みの数が増えますが、遅延 ACK の待ちが無くなります。元に戻すなら `server.tcp_no_delay = false` と書いてください（Nagle に頼りたい特別な場合だけ） |
+
+### 直したこと
+
+| | |
+|---|---|
+| **分けて書く応答が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れていました** | `outputStream()` へ何回かに分けて書く応答（`Transfer-Encoding: chunked`。HTML・SSE など）で、続く小さな書き込みが相手の遅延 ACK を待っていました（Nagle）。nginx は upstream の keepalive で接続を使い回すので、プロキシの後ろでも起きていました。`Content-Length` を付けて1回で書く応答（`json()` など）は遅れていませんでした。aqSell では、HTML のページの中央値が 44〜51ms → 3〜9ms、1 分あたりの購入が 136 件 → 395 件になりました（AQSELL-98） |
+
+### 足したこと
+
+| | |
+|---|---|
+| **helidon の TCP_NODELAY を設定できるようになりました** | `server.tcp_no_delay`（既定 true）です。helidon がサーバーの接続に使う既定の値を写し、TCP_NODELAY だけを替えます（keep-alive・タイムアウトなどは変わりません）。起動ログの「サーバー設定（接続）」に、いまの値が出ます。`server.tcp_no_delay = false` と書いていると、`jimbleCheck` が J205（WARN）を出します |
+
 ## 2.7.2（2026-10-25）
 
 **`email()` が、メールとして送れないアドレスを通していたのを直した版です。**

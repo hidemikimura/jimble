@@ -371,6 +371,25 @@ class JimbleCheckerTest {
 	}
 
 	@Test
+	@DisplayName("J205 server.tcp_no_delay = false（ブロックでも、ドット区切りでも）")
+	void tcpNoDelayOff (@TempDir Path root) throws IOException {
+
+		write(root, "conf/application.conf", """
+			server {
+				tcp_no_delay = false
+			}
+			""");
+		assertEquals(List.of("J205:2"), rules(check(root)));
+
+		write(root, "conf/application.conf", "server.tcp_no_delay = false\n");
+		assertEquals(List.of("J205:1"), rules(check(root)));
+
+		write(root, "conf/application.conf", "server.tcp_no_delay = true\n");
+		assertTrue(check(root).isEmpty(), "true なら出さない");
+
+	}
+
+	@Test
 	@DisplayName("J204 trust_proxy = true だけで、trusted_proxies も client_ip_header も無い")
 	void trustProxy (@TempDir Path root) throws IOException {
 

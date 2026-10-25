@@ -18,9 +18,9 @@ order: 2
 ```kotlin
 plugins {
 	application
-	id("io.jimble.jte") version "2.7.2"
-	id("io.jimble.run") version "2.7.2"
-	id("io.jimble.db")  version "2.7.2"
+	id("io.jimble.jte") version "2.7.3"
+	id("io.jimble.run") version "2.7.3"
+	id("io.jimble.db")  version "2.7.3"
 }
 ```
 
@@ -62,9 +62,9 @@ rootProject.name = "memo"
 // build.gradle.kts
 plugins {
 	application
-	id("io.jimble.jte") version "2.7.2"   // src/main/jte を使うなら
-	id("io.jimble.run") version "2.7.2"   // ホットリロードを使うなら
-	id("io.jimble.db")  version "2.7.2"   // DB を使うなら
+	id("io.jimble.jte") version "2.7.3"   // src/main/jte を使うなら
+	id("io.jimble.run") version "2.7.3"   // ホットリロードを使うなら
+	id("io.jimble.db")  version "2.7.3"   // DB を使うなら
 }
 
 repositories {
@@ -79,7 +79,7 @@ java {
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:2.7.2")
+	implementation("io.jimble:jimble-web:2.7.3")
 
 	testImplementation(platform("org.junit:junit-bom:5.11.4"))
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -113,7 +113,7 @@ jimbleRun {
 >
 > ```
 > Dependency resolution is looking for a library compatible with JVM runtime version 21,
-> but 'io.jimble:jimble-web:2.7.2' is only compatible with JVM runtime version 25 or newer
+> but 'io.jimble:jimble-web:2.7.3' is only compatible with JVM runtime version 25 or newer
 > ```
 
 ## どれを依存に足すか
@@ -321,6 +321,7 @@ jimbleRun {
 | J202 | ERROR | `${?ENV}` の行のあとで同じキーを書き直している（環境変数が効かない） |
 | J203 | WARN | `application.conf` や本番のファイルに `cookie.secure = false`（本番も引き継ぎ、Cookie が http でも送られる。`application.local.conf` にだけ書く） |
 | J204 | WARN | `server.trust_proxy = true` なのに `server.trusted_proxies` も `server.client_ip_header` も無い（中継が2段以上だと、全員が手前の中継の IP に見える） |
+| J205 | WARN | `server.tcp_no_delay = false`（分けて書く応答が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れる。Nagle に頼りたい特別な場合だけ） |
 | J301 | ERROR | `Migration.install()` が `DBUtil.load(...)` のあと（マイグレーションが流れない） |
 | J302 | ERROR | `BatchRegistry.sync` はあるのに `BatchTables.install` がどこにも無い |
 | J303 | ERROR | `BatchRegistry.sync` が `BatchRegistry.add` より前（全部のバッチが `nothing` になる） |

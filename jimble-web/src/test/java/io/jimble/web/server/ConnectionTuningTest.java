@@ -80,7 +80,7 @@ class ConnectionTuningTest {
 	// region 既定
 
 	@Test
-	@DisplayName("D-165 既定は helidon と同じ（接続待ち 1024 / 列は作らない）")
+	@DisplayName("D-165 既定は helidon と同じ（接続待ち 1024 / 列は作らない）。TCP_NODELAY だけは付ける")
 	void theDefaultsMatchHelidon () {
 
 		conf("");
@@ -94,17 +94,24 @@ class ConnectionTuningTest {
 		assertEquals(0, ServerConf.writeQueueLength());
 		assertFalse(ServerConf.smartAsyncWrites());
 
+		/*
+		 * <b>TCP_NODELAY だけは helidon と違い、既定で付ける</b>（helidon の既定は false）。
+		 * 小さなパケットが増えるだけで、少しずつ flush する応答（SSE など）が ACK 待ちで遅れなくなる
+		 */
+		assertTrue(ServerConf.tcpNoDelay());
+
 	}
 
 	@Test
 	@DisplayName("設定から読む")
 	void theValuesComeFromTheConfig () {
 
-		conf("server { backlog = 2048, write_queue_length = 32, smart_async_writes = true }");
+		conf("server { backlog = 2048, write_queue_length = 32, smart_async_writes = true, tcp_no_delay = false }");
 
 		assertEquals(2048, ServerConf.backlog());
 		assertEquals(32, ServerConf.writeQueueLength());
 		assertTrue(ServerConf.smartAsyncWrites());
+		assertFalse(ServerConf.tcpNoDelay());
 
 	}
 

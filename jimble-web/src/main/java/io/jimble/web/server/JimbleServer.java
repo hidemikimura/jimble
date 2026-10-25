@@ -1,6 +1,7 @@
 package io.jimble.web.server;
 
 import io.jimble.util.internal.Docs;
+import io.helidon.common.socket.SocketOptions;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http1.Http1Config;
 import io.helidon.webserver.http.ServerRequest;
@@ -212,6 +213,8 @@ public final class JimbleServer {
 			.backlog(ServerConf.backlog())
 			.writeQueueLength(ServerConf.writeQueueLength())
 			.smartAsyncWrites(ServerConf.smartAsyncWrites())
+			// 受け付けた接続の TCP_NODELAY（既定は true。下の connectionOptions を参照）
+			.connectionOptions(connectionOptions())
 			// 応答の圧縮（要件 F-H-03）
 			// 文字の応答で 1KB 以上のものだけ（画像やダウンロードは圧縮し直さない。D-279）
 			.contentEncoding(SelectiveContentEncoding.create(ServerConf.compression()))
@@ -305,12 +308,13 @@ public final class JimbleServer {
 		 */
 		WebServerConfig effective = server.prototype();
 
-		Log.info("サーバー設定（接続）: 接続待ち=%d / 書き出し列=%s".formatted(
+		Log.info("サーバー設定（接続）: 接続待ち=%d / 書き出し列=%s / TCP_NODELAY=%s".formatted(
 			effective.backlog()
 			, effective.writeQueueLength() < ServerConf.MIN_WRITE_QUEUE_LENGTH
 				? "作らない（その場で書く）"
 				: "%d（%s）".formatted(effective.writeQueueLength()
-					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")));
+					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")
+			, effective.connectionOptions().tcpNoDelay()));
 
 		warnSecureCookieInLocal();
 		warnInsecureCookieOutsideLocal();
@@ -564,6 +568,37 @@ public final class JimbleServer {
 		STARTED.clear();
 
 		return count;
+
+	}
+
+	/**
+	 * 受け付けた接続の設定（helidon の既定に、TCP_NODELAY だけを替えたもの）
+	 *
+	 * <p>
+	 * <b>既定で TCP_NODELAY を付ける</b>（helidon の既定は付けない）。
+	 * 付けないと、{@code outputStream()} へ何回かに分けて書く応答（chunked。HTML など）が、
+	 * 同じ接続の 2 回目から、続く小さな書き込みが相手の遅延 ACK を待ち（Nagle）、1 回ごとに約 40ms 遅れる。
+	 * nginx が upstream の keepalive で接続を使い回すので、プロキシの後ろでも起きる。
+	 * aqSell（AQSELL-98）では、HTML のページの中央値が 44〜51ms → 3〜9ms、
+	 * 1 分あたりの購入が 136 件 → 395 件になった。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code SocketOptions.builder()} から作り直さない。</b>
+	 * helidon の {@code connectionOptions(Consumer)} は空の builder から作るので、
+	 * helidon がサーバーに使う既定と食い違いうる（keep-alive・reuse address・タイムアウト）。
+	 * 何も渡さないときに helidon が使う値を写してから、TCP_NODELAY だけを替える。
+	 * </p>
+	 *
+	 * @return	接続の設定
+	 */
+	static SocketOptions connectionOptions () {
+
+		SocketOptions helidonDefault = WebServerConfig.builder().buildPrototype().connectionOptions();
+		return SocketOptions.builder()
+			.from(helidonDefault)
+			.tcpNoDelay(ServerConf.tcpNoDelay())
+			.build();
 
 	}
 

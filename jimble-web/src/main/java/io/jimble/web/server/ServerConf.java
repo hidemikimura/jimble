@@ -24,6 +24,7 @@ import io.jimble.util.conf.ConfFlag;
  *   backlog              = 1024       # OS が持ってくれる接続待ちの数
  *   write_queue_length   = 0          # 応答を書き出す列の長さ。0/1 は「列を作らない」
  *   smart_async_writes   = false      # 列があるとき、混み具合で書き方を切り替えるか
+ *   tcp_no_delay         = true       # TCP_NODELAY（Nagle を切る）か
  * }
  * </pre>
  *
@@ -81,6 +82,9 @@ public final class ServerConf {
 
 	/** 設定キー：混み具合で書き方を切り替えるか */
 	public static final String KEY_SMART_ASYNC_WRITES = "server.smart_async_writes";
+
+	/** 設定キー：受け付けた接続に TCP_NODELAY を付けるか */
+	public static final String KEY_TCP_NO_DELAY = "server.tcp_no_delay";
 
 	/** 設定キー：止め始めてから新規を断つまでの猶予 */
 	public static final String KEY_SHUTDOWN_GRACE = "server.shutdown_grace";
@@ -329,6 +333,31 @@ public final class ServerConf {
 	public static boolean smartAsyncWrites () {
 
 		return Conf.conf().getBoolean(KEY_SMART_ASYNC_WRITES, false);
+
+	}
+
+	/**
+	 * 受け付けた接続に TCP_NODELAY を付けるか（要件 F-H-01）
+	 *
+	 * <p>
+	 * {@code true} にすると Nagle のアルゴリズムを切り、小さく書いたものもすぐに送る。
+	 * <b>効くのは、{@code outputStream()} へ何回かに分けて書く応答（chunked。HTML・SSE など）</b>で、
+	 * 付けないと同じ接続の 2 回目から、続く小さな書き込みが相手の遅延 ACK を待ち、1 回ごとに約 40ms 遅れる
+	 * （nginx の upstream keepalive の後ろでも起きる）。{@code Content-Length} を付けて1回で書く応答は変わらない。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>既定は true</b>（helidon の既定は false）。aqSell（AQSELL-98）では、
+	 * HTML のページの中央値が 44〜51ms → 3〜9ms、1 分あたりの購入が 136 件 → 395 件になった。
+	 * 小さな応答を多く返すと送る包みの数が増えうるが、遅延 ACK の待ちが無くなる。
+	 * <b>{@code false} にするのは、Nagle に頼りたい特別な場合だけ。</b>
+	 * </p>
+	 *
+	 * @return	付ける場合 = true
+	 */
+	public static boolean tcpNoDelay () {
+
+		return Conf.conf().getBoolean(KEY_TCP_NO_DELAY, true);
 
 	}
 

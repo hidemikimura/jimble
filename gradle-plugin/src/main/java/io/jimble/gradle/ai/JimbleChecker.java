@@ -807,6 +807,14 @@ public final class JimbleChecker {
 					, DOCS + "config.md");
 			}
 
+			// J205: TCP_NODELAY を外している（分けて書く応答が、同じ接続の 2 回目から約 40ms ずつ遅れる）
+			if (key.equals("server.tcp_no_delay") && value.equals("false")) {
+				add(findings, lines, "J205", Level.WARN, file, lineNo
+					, "server.tcp_no_delay = false がある。outputStream() へ分けて書く応答（chunked。HTML・SSE など）が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れる（Nagle と遅延 ACK。nginx の後ろでも起きる）"
+					, "この行を消す（既定は true）。Nagle に頼りたい特別な場合だけ残す（# jimble-check:ignore J205）"
+					, DOCS + "server.md");
+			}
+
 			if (value.startsWith("${?")) {
 				envOnly.put(key, lineNo);
 			} else if (envOnly.containsKey(key)) {

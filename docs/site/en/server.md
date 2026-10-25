@@ -27,6 +27,7 @@ server {
 	backlog            = 1024  # Connections the OS holds while accept catches up
 	write_queue_length = 0     # Length of the response write queue; 0/1 means "no queue"
 	smart_async_writes = false # With a queue, write inline while it is not busy
+	tcp_no_delay       = true  # TCP_NODELAY (turn Nagle off; send small writes at once)
 }
 ```
 
@@ -57,11 +58,30 @@ queue is not a faster server.
 > **Leaving `write_queue_length` at 0 or 1 while setting `smart_async_writes = true` fails at startup** —
 > silently ignoring it would leave you with a setting that "is on but changes nothing".
 
+**`tcp_no_delay`** sets TCP_NODELAY on accepted connections (turns Nagle's algorithm off).
+**The default is `true`** (Helidon's default is `false`).
+
+Without it, a response written to `outputStream()` in several pieces (`Transfer-Encoding: chunked`:
+HTML, SSE and so on) is **delayed by about 40 ms per request from the second request on the same connection**:
+the later small write waits for the ACK of the earlier one (Nagle), and that meets the client's delayed ACK.
+nginx reuses upstream connections (keepalive), so **this happens behind a proxy too**.
+Responses written in one go with `Content-Length` (`json()` and the like) are not delayed.
+
+In aqSell, turning it on was enough for this (one CPU, one user, reused connections, the checkout flow):
+
+| | off | on |
+|---|---|---|
+| Median HTML page time (same behind nginx) | 44–51 ms | 3–9 ms |
+| Checkouts per minute | 136 | 395 |
+
+Many small responses can mean more packets on the wire, but the delayed-ACK waits disappear.
+**Set it to `false` only in the special case where you rely on Nagle.**
+
 The startup log says which one was chosen.
 
 ```
-サーバー設定（接続）: 接続待ち=1024 / 書き出し列=作らない（その場で書く）
-サーバー設定（接続）: 接続待ち=1024 / 書き出し列=32（空いていればその場で書く）
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=作らない（その場で書く） / TCP_NODELAY=true
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=32（空いていればその場で書く） / TCP_NODELAY=false
 ```
 
 **Write nothing and you get the defaults above.** What is actually in effect is printed in the startup log.
