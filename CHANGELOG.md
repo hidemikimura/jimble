@@ -4,6 +4,14 @@
 
 ---
 
+## 未リリース
+
+### 速くしたこと
+
+| | |
+|---|---|
+| **結果の行を `Data` にするところの CPU を減らしました** | 行の多い結果（一覧・CSV の書き出し・バッチ）で効きます。100 行を読む `selectList` と結合で、CPU が約 3 割、メモリの確保が 23〜35% 減りました（MySQL 8.4 で、JFR のサンプル数とスレッドの確保量で測定）。<br>・`db.remove_all_null_table_data` を 1 行ごとに設定から読んでいたのを、結果ごとに 1 回にしました（CPU の約 1 割）<br>・SQL ビルダーの結果で、入れ子の `Data`（テーブルごと）を列ごとに引き直していたのをやめました<br>・時差を持たない日時の列（MySQL の `DATETIME`・PostgreSQL の `timestamp`）を `LocalDateTime` で読んでから `Timestamp` にします。ドライバの `getObject` は値ごとに `Calendar` を作り、それだけで CPU の約 2 割を使っていました。**返る値（`java.sql.Timestamp`）は変わりません。**時差を持つ型（MySQL の `TIMESTAMP`・PostgreSQL の `timestamptz`）と、`LocalDateTime` で表せない値（MySQL の月や日が 0 の日付・PostgreSQL の `infinity`）は、これまでどおりドライバの `getObject` で読みます |
+
 ## 2.7.3（2026-10-25）
 
 **受け付けた接続に TCP_NODELAY を付けるようにした版です。**分けて書く応答（chunked。HTML・SSE など）が、同じ接続の 2 回目から 1 回ごとに約 40ms 遅れていたのが無くなります。

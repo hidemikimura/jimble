@@ -491,6 +491,22 @@ public sealed interface Dialect permits MySqlDialect, PostgreSqlDialect {
 	boolean isGeometryType (String typeName);
 
 	/**
+	 * この型名は、時差を持たない日時か（MySQL の {@code DATETIME}・PostgreSQL の {@code timestamp}）
+	 *
+	 * <p>
+	 * この型の列は {@code LocalDateTime} で読んでから {@code Timestamp} にする。
+	 * ドライバの {@code getObject} は値ごとに {@code Calendar} を作り、行の多い結果で CPU の 2 割ほどを使っていた。
+	 * <b>時差を持つ型（MySQL の {@code TIMESTAMP}・PostgreSQL の {@code timestamptz}）は含めない</b>——
+	 * 接続の時間帯で読み替わり、{@code timestamptz} は {@code LocalDateTime} で読めない
+	 * （JDBC の型番号はどちらも {@code TIMESTAMP} なので、型名で見分ける）。
+	 * </p>
+	 *
+	 * @param typeName	{@code ResultSetMetaData#getColumnTypeName}
+	 * @return	時差を持たない日時なら true
+	 */
+	boolean isLocalDateTimeType (String typeName);
+
+	/**
 	 * 地理空間の列をテキスト表現で読む（要件 F-D-30）
 	 *
 	 * <p>

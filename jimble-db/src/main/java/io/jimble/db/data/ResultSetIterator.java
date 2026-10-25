@@ -10,6 +10,7 @@ import io.jimble.db.sql.definition.column.Column;
 
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -143,6 +144,9 @@ class ResultSetIterator implements Iterator<Data> {
 
 	private boolean isKeyGot = false;
 
+	/* 全部 null のテーブルを落とすか（結果を読み始めたときに1回だけ設定から読む） */
+	private boolean removeAllNullTableData;
+
 	/* キー情報一覧 */
 	private final List<KeyInfo> keyInfoList = new ArrayList<>();
 
@@ -202,6 +206,8 @@ class ResultSetIterator implements Iterator<Data> {
 								columnTypeList.add(ResultSetConverter.TYPE_JSON);
 							} else if (dialect.isGeometryType(typeName)) {
 								columnTypeList.add(ResultSetConverter.TYPE_GEOMETRY);
+							} else if (metaData.getColumnType(i + 1) == Types.TIMESTAMP && dialect.isLocalDateTimeType(typeName)) {
+								columnTypeList.add(ResultSetConverter.TYPE_LOCAL_DATETIME);
 							} else {
 								columnTypeList.add(metaData.getColumnType(i + 1));
 							}
@@ -218,6 +224,7 @@ class ResultSetIterator implements Iterator<Data> {
 								keyInfoList.add(keyInfo);
 							}
 						}
+						removeAllNullTableData = ResultSetConverter.removesAllNullTableData();
 						isKeyGot = true;
 					} catch (Exception ex) {
 						// 1.4 までは握りつぶして、<b>キーの無い空の行</b>を返していた（要件 D-190）
@@ -227,7 +234,7 @@ class ResultSetIterator implements Iterator<Data> {
 				}
 
 				// データを変換して保持する
-				currentData = ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList, dialect());
+				currentData = ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList, dialect(), removeAllNullTableData);
 
 			}
 

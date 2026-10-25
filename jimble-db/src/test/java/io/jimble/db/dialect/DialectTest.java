@@ -259,6 +259,20 @@ class DialectTest {
 
 	}
 
+	@Test
+	@DisplayName("時差を持たない日時の型名（時差を持つ TIMESTAMP / timestamptz は含めない）")
+	void localDateTimeTypes () {
+
+		assertTrue(MYSQL.isLocalDateTimeType("DATETIME"));
+		assertFalse(MYSQL.isLocalDateTimeType("TIMESTAMP"), "接続の時間帯で読み替わる");
+		assertFalse(MYSQL.isLocalDateTimeType("DATE"));
+
+		assertTrue(POSTGRESQL.isLocalDateTimeType("timestamp"));
+		assertFalse(POSTGRESQL.isLocalDateTimeType("timestamptz"), "LocalDateTime で読めない（JDBC の型番号は TIMESTAMP と同じ）");
+		assertFalse(POSTGRESQL.isLocalDateTimeType("date"));
+
+	}
+
 	// endregion
 
 	// region 接続

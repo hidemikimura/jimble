@@ -510,6 +510,13 @@ public final class MySqlDialect implements Dialect {
 	}
 
 	@Override
+	public boolean isLocalDateTimeType (String typeName) {
+
+		return "DATETIME".equalsIgnoreCase(typeName);
+
+	}
+
+	@Override
 	public String geometryText (ResultSet resultSet, int index) throws Exception {
 
 		return GeometryUtil.parseMySQLGeometry(resultSet.getBytes(index));
