@@ -158,6 +158,7 @@ server {
 	backlog              = 1024     # 受け付け待ちの接続を OS に持たせる数
 	write_queue_length   = 0        # 応答を書き出す列の長さ。0/1 は「列を作らない」
 	smart_async_writes   = false    # 列があるとき、空いていればその場で書く
+	tcp_no_delay         = true     # TCP_NODELAY（Nagle を切り、小さく書いたものもすぐ送る）
 }
 
 metrics {

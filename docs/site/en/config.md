@@ -165,6 +165,7 @@ server {
 	backlog              = 1024     # connections the OS holds while accept catches up
 	write_queue_length   = 0        # length of the response write queue; 0/1 means "no queue"
 	smart_async_writes   = false    # with a queue, write inline while it is not busy
+	tcp_no_delay         = true     # TCP_NODELAY (turn Nagle off; send small writes at once)
 }
 
 metrics {

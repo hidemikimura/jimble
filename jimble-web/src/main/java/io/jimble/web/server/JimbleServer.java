@@ -212,6 +212,8 @@ public final class JimbleServer {
 			.backlog(ServerConf.backlog())
 			.writeQueueLength(ServerConf.writeQueueLength())
 			.smartAsyncWrites(ServerConf.smartAsyncWrites())
+			// 受け付けた接続の TCP_NODELAY（既定は true。helidon の既定は false）。ほかの値は helidon の既定のまま
+			.connectionOptions(options -> options.tcpNoDelay(ServerConf.tcpNoDelay()))
 			// 応答の圧縮（要件 F-H-03）
 			// 文字の応答で 1KB 以上のものだけ（画像やダウンロードは圧縮し直さない。D-279）
 			.contentEncoding(SelectiveContentEncoding.create(ServerConf.compression()))
@@ -305,12 +307,13 @@ public final class JimbleServer {
 		 */
 		WebServerConfig effective = server.prototype();
 
-		Log.info("サーバー設定（接続）: 接続待ち=%d / 書き出し列=%s".formatted(
+		Log.info("サーバー設定（接続）: 接続待ち=%d / 書き出し列=%s / TCP_NODELAY=%s".formatted(
 			effective.backlog()
 			, effective.writeQueueLength() < ServerConf.MIN_WRITE_QUEUE_LENGTH
 				? "作らない（その場で書く）"
 				: "%d（%s）".formatted(effective.writeQueueLength()
-					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")));
+					, effective.smartAsyncWrites() ? "空いていればその場で書く" : "いつも列に積む")
+			, effective.connectionOptions().tcpNoDelay()));
 
 		warnSecureCookieInLocal();
 		warnInsecureCookieOutsideLocal();

@@ -2,6 +2,7 @@ package io.jimble.web.server;
 
 import com.typesafe.config.ConfigFactory;
 
+import io.helidon.common.socket.SocketOptions;
 import io.jimble.util.conf.Conf;
 
 import org.junit.jupiter.api.AfterEach;
@@ -80,7 +81,7 @@ class ConnectionTuningTest {
 	// region 既定
 
 	@Test
-	@DisplayName("D-165 既定は helidon と同じ（接続待ち 1024 / 列は作らない）")
+	@DisplayName("D-165 既定は helidon と同じ（接続待ち 1024 / 列は作らない）。TCP_NODELAY だけは付ける")
 	void theDefaultsMatchHelidon () {
 
 		conf("");
@@ -94,17 +95,24 @@ class ConnectionTuningTest {
 		assertEquals(0, ServerConf.writeQueueLength());
 		assertFalse(ServerConf.smartAsyncWrites());
 
+		/*
+		 * <b>TCP_NODELAY だけは helidon と違い、既定で付ける</b>（helidon の既定は false）。
+		 * 小さなパケットが増えるだけで、少しずつ flush する応答（SSE など）が ACK 待ちで遅れなくなる
+		 */
+		assertTrue(ServerConf.tcpNoDelay());
+
 	}
 
 	@Test
 	@DisplayName("設定から読む")
 	void theValuesComeFromTheConfig () {
 
-		conf("server { backlog = 2048, write_queue_length = 32, smart_async_writes = true }");
+		conf("server { backlog = 2048, write_queue_length = 32, smart_async_writes = true, tcp_no_delay = false }");
 
 		assertEquals(2048, ServerConf.backlog());
 		assertEquals(32, ServerConf.writeQueueLength());
 		assertTrue(ServerConf.smartAsyncWrites());
+		assertFalse(ServerConf.tcpNoDelay());
 
 	}
 
@@ -234,6 +242,56 @@ class ConnectionTuningTest {
 			assertEquals(16, server.effectiveConfig().writeQueueLength(), "write_queue_length を渡していません");
 			assertTrue(server.effectiveConfig().smartAsyncWrites(), "smart_async_writes を渡していません");
 
+		} finally {
+			server.stop();
+		}
+
+	}
+
+	@Test
+	@DisplayName("tcp_no_delay は書かなくても helidon まで届き（true）、接続のほかの設定は helidon の既定のまま")
+	void tcpNoDelayReachesHelidon () throws Exception {
+
+		conf("");
+
+		JimbleServer server = JimbleServer.start(new BareApp(), 0);
+
+		try {
+
+			SocketOptions options = server.effectiveConfig().connectionOptions();
+			SocketOptions helidonDefault = SocketOptions.create();
+
+			assertTrue(options.tcpNoDelay(), "tcp_no_delay を渡していません");
+			/*
+			 * <b>TCP_NODELAY だけを変える。</b>接続の設定をまるごと作り直すと、
+			 * keep-alive やタイムアウトまで変わってしまう
+			 */
+			assertEquals(helidonDefault.socketKeepAlive(), options.socketKeepAlive());
+			assertEquals(helidonDefault.socketReuseAddress(), options.socketReuseAddress());
+			assertEquals(helidonDefault.readTimeout(), options.readTimeout());
+			assertEquals(helidonDefault.connectTimeout(), options.connectTimeout());
+			assertEquals(helidonDefault.socketReceiveBufferSize(), options.socketReceiveBufferSize());
+			assertEquals(helidonDefault.socketSendBufferSize(), options.socketSendBufferSize());
+
+			assertEquals("hello", get(server.port(), "/hello"));
+
+		} finally {
+			server.stop();
+		}
+
+	}
+
+	@Test
+	@DisplayName("tcp_no_delay = false と書けば、helidon の既定（Nagle あり）のまま")
+	void tcpNoDelayCanBeTurnedOff () {
+
+		conf("server { tcp_no_delay = false }");
+
+		JimbleServer server = JimbleServer.start(new BareApp(), 0);
+
+		try {
+			assertFalse(server.effectiveConfig().connectionOptions().tcpNoDelay(), "tcp_no_delay = false を渡していません");
+			assertEquals(SocketOptions.create(), server.effectiveConfig().connectionOptions());
 		} finally {
 			server.stop();
 		}

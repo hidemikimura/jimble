@@ -27,6 +27,7 @@ server {
 	backlog            = 1024  # Connections the OS holds while accept catches up
 	write_queue_length = 0     # Length of the response write queue; 0/1 means "no queue"
 	smart_async_writes = false # With a queue, write inline while it is not busy
+	tcp_no_delay       = true  # TCP_NODELAY (turn Nagle off; send small writes at once)
 }
 ```
 
@@ -57,11 +58,19 @@ queue is not a faster server.
 > **Leaving `write_queue_length` at 0 or 1 while setting `smart_async_writes = true` fails at startup** —
 > silently ignoring it would leave you with a setting that "is on but changes nothing".
 
+**`tcp_no_delay`** sets TCP_NODELAY on accepted connections (turns Nagle's algorithm off),
+so small writes go out at once instead of waiting for the ACK of what was sent before.
+**It helps responses that flush a little at a time, such as SSE and chunked output**: the tens of
+milliseconds lost when that wait meets the client's delayed ACK go away.
+Ordinary responses are written in one go (headers and body together), so **they barely change**.
+**The default is `true`** (Helidon's default is `false`): it only means more small packets, and
+removes the cases where a write waits. Write `false` only when you want Nagle back.
+
 The startup log says which one was chosen.
 
 ```
-サーバー設定（接続）: 接続待ち=1024 / 書き出し列=作らない（その場で書く）
-サーバー設定（接続）: 接続待ち=1024 / 書き出し列=32（空いていればその場で書く）
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=作らない（その場で書く） / TCP_NODELAY=true
+サーバー設定（接続）: 接続待ち=1024 / 書き出し列=32（空いていればその場で書く） / TCP_NODELAY=false
 ```
 
 **Write nothing and you get the defaults above.** What is actually in effect is printed in the startup log.
