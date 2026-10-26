@@ -4,7 +4,7 @@ import io.jimble.db.dialect.SqlWriter;
 /**
  * where
  */
-public interface IWhere {
+public interface IWhere extends io.jimble.db.sql.query.ParameterSource {
 
 	/**
 	 * and

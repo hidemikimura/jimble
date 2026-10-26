@@ -57,6 +57,19 @@ class SipHashTest {
 
 	}
 
+	@Test
+	@DisplayName("sipHashOf（バイト列）は sipHash（文字列）と同じ値。空と null は 0")
+	void bytesSameAsString () {
+
+		for (String value : new String[] { "a", "user:1234", "記事一覧", "x".repeat(64) }) {
+			assertEquals(Hash.sipHash(value), Hash.sipHashOf(value.getBytes(StandardCharsets.UTF_8)), value);
+		}
+
+		assertEquals(0, Hash.sipHashOf(new byte[0]));
+		assertEquals(0, Hash.sipHashOf(null));
+
+	}
+
 	/**
 	 * UTF-8 にしてからハッシュを取る
 	 *

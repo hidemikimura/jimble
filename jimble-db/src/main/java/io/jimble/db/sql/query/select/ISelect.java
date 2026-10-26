@@ -8,7 +8,7 @@ import io.jimble.db.sql.query.where.WhereQuery;
 /**
  * select句
  */
-public interface ISelect {
+public interface ISelect extends io.jimble.db.sql.query.ParameterSource {
 
 	/**
 	 * 別名を設定する

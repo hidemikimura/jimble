@@ -118,6 +118,24 @@ public class FromQuery implements IFrom {
 	 * {@inheritDoc}
 	 */
 	@Override
+	public void collectParameters (List<Object> out) {
+
+		// 継承したクラスは hasParameter / getParameter を上書きしているかもしれないので、既定の形で集める
+		if (getClass() != FromQuery.class) {
+			io.jimble.db.sql.query.ParameterSource.collectByGetParameter(this, out);
+			return;
+		}
+
+		for (IFrom from : fromList) {
+			from.collectParameters(out);
+		}
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
 	public List<ITable> getTableList() {
 
 		List<ITable> tableList = new ArrayList<>();
@@ -324,6 +342,25 @@ public class FromQuery implements IFrom {
 			}
 
 			return params;
+
+		}
+
+		/**
+		 * {@inheritDoc}
+		 */
+		@Override
+		public void collectParameters (List<Object> out) {
+
+			if (from != null) {
+				from.collectParameters(out);
+			} else if (join != null) {
+				join.collectParameters(out);
+				if (where != null) {
+					for (IWhere w : where) {
+						w.collectParameters(out);
+					}
+				}
+			}
 
 		}
 

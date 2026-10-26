@@ -1,6 +1,7 @@
 package io.jimble.db.redis;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfValue;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
@@ -22,6 +23,9 @@ public class RedisClient {
 
 	/** 設定キー：ホスト */
 	public static final String KEY_HOST = "redis.host";
+
+	/* 設定があるか（要求のたびに見るので、読み込んだ設定 1 つにつき 1 回だけ読む。2.7.5） */
+	private static final ConfValue<Boolean> CONFIGURED = ConfValue.of(c -> !c.getString(KEY_HOST, "").isEmpty());
 
 	/** 設定キー：ポート */
 	public static final String KEY_PORT = "redis.port";
@@ -104,7 +108,7 @@ public class RedisClient {
 	 */
 	public static boolean isConfigured () {
 
-		return !Conf.conf().getString(KEY_HOST, "").isEmpty();
+		return CONFIGURED.get();
 
 	}
 

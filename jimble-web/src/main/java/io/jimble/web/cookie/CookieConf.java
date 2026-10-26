@@ -1,7 +1,8 @@
 package io.jimble.web.cookie;
 
 import java.time.Duration;
-import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
+import io.jimble.util.conf.ConfValue;
 import io.jimble.util.crypto.Secrets;
 import java.util.List;
 
@@ -73,6 +74,28 @@ public final class CookieConf {
 	/** 既定の有効期間（1年） */
 	public static final Duration DEFAULT_MAX_AGE = Duration.ofDays(365);
 
+	/*
+	 * 読み込んだ設定 1 つにつき 1 回だけ解釈して持つ（2.7.5）。
+	 * Cookie を 1 つ付けるたびに下の 8 つを読んでいて、要求ごとの CPU の 1.5% ほどを使っていた。
+	 * 設定を差し替える（Conf.replace / reload）と読み直す
+	 */
+	private static final ConfValue<String> SECRET = ConfValue.of(c -> c.getString(KEY_SECRET, ""));
+	private static final ConfValue<List<String>> SECRETS = ConfValue.of(
+		c -> Secrets.of(c.getString(KEY_SECRET, ""), c.getStringListOptional(KEY_PREVIOUS_SECRETS)));
+	private static final ConfFlag ACCEPT_UNSIGNED = ConfFlag.of(KEY_ACCEPT_UNSIGNED, false);
+	private static final ConfFlag ACCEPT_LEGACY_SIGNATURE = ConfFlag.of(KEY_ACCEPT_LEGACY_SIGNATURE, false);
+	private static final ConfFlag SECURE = ConfFlag.of(KEY_SECURE, true);
+	private static final ConfFlag HTTP_ONLY = ConfFlag.of(KEY_HTTP_ONLY, true);
+	private static final ConfValue<SameSite> SAME_SITE = ConfValue.of(c -> {
+		SameSite sameSite = SameSite.of(c.getString(KEY_SAME_SITE, "lax"));
+		return sameSite == null ? SameSite.LAX : sameSite;
+	});
+	private static final ConfValue<String> DOMAIN = ConfValue.of(c -> c.getString(KEY_DOMAIN, ""));
+	private static final ConfValue<Long> MAX_AGE = ConfValue.of(c -> {
+		long maxAge = c.getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE).toSeconds();
+		return maxAge > 0 ? maxAge : Cookie.MAX_AGE_SESSION;
+	});
+
 	private CookieConf () {}
 
 	/**
@@ -84,7 +107,7 @@ public final class CookieConf {
 	 */
 	public static String secret () {
 
-		return Conf.conf().getString(KEY_SECRET, "");
+		return SECRET.get();
 
 	}
 
@@ -108,7 +131,7 @@ public final class CookieConf {
 	 */
 	public static List<String> secrets () {
 
-		return Secrets.of(secret(), Conf.conf().getStringListOptional(KEY_PREVIOUS_SECRETS));
+		return SECRETS.get();
 
 	}
 
@@ -134,7 +157,7 @@ public final class CookieConf {
 	 */
 	public static boolean acceptUnsigned () {
 
-		return Conf.conf().getBoolean(KEY_ACCEPT_UNSIGNED, false);
+		return ACCEPT_UNSIGNED.get();
 
 	}
 
@@ -151,7 +174,7 @@ public final class CookieConf {
 	 */
 	public static boolean acceptLegacySignature () {
 
-		return Conf.conf().getBoolean(KEY_ACCEPT_LEGACY_SIGNATURE, false);
+		return ACCEPT_LEGACY_SIGNATURE.get();
 
 	}
 
@@ -167,7 +190,7 @@ public final class CookieConf {
 	 */
 	public static boolean secure () {
 
-		return Conf.conf().getBoolean(KEY_SECURE, true);
+		return SECURE.get();
 
 	}
 
@@ -178,7 +201,7 @@ public final class CookieConf {
 	 */
 	public static boolean httpOnly () {
 
-		return Conf.conf().getBoolean(KEY_HTTP_ONLY, true);
+		return HTTP_ONLY.get();
 
 	}
 
@@ -191,9 +214,7 @@ public final class CookieConf {
 	 */
 	public static SameSite sameSite () {
 
-		SameSite sameSite = SameSite.of(Conf.conf().getString(KEY_SAME_SITE, "lax"));
-
-		return sameSite == null ? SameSite.LAX : sameSite;
+		return SAME_SITE.get();
 
 	}
 
@@ -204,7 +225,7 @@ public final class CookieConf {
 	 */
 	public static String domain () {
 
-		return Conf.conf().getString(KEY_DOMAIN, "");
+		return DOMAIN.get();
 
 	}
 
@@ -220,9 +241,7 @@ public final class CookieConf {
 	 */
 	public static long maxAge () {
 
-		long maxAge = Conf.conf().getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE).toSeconds();
-
-		return maxAge > 0 ? maxAge : Cookie.MAX_AGE_SESSION;
+		return MAX_AGE.get();
 
 	}
 

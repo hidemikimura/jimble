@@ -1,6 +1,7 @@
 package io.jimble.db.sql.query.where;
 
 import io.jimble.db.dialect.SqlWriter;
+import io.jimble.db.internal.sql.query.parameter.Parameter;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.util.data.definition.IColumn;
@@ -404,6 +405,24 @@ public class WhereQuery implements IWhere {
 			}
 		}
 		return params;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void collectParameters (List<Object> out) {
+
+		// 継承したクラスは hasParameter / getParameter を上書きしているかもしれないので、既定の形で集める
+		if (getClass() != WhereQuery.class) {
+			io.jimble.db.sql.query.ParameterSource.collectByGetParameter(this, out);
+			return;
+		}
+
+		for (IWhere where : whereList) {
+			where.collectParameters(out);
+		}
 
 	}
 
@@ -877,6 +896,52 @@ public class WhereQuery implements IWhere {
 			}
 
 			return params;
+
+		}
+
+		/**
+		 * {@inheritDoc}
+		 *
+		 * <p>{@link #getParameter()} と同じ順（左辺の式・左・右）で、平らにして足す。</p>
+		 */
+		@Override
+		public void collectParameters (List<Object> out) {
+
+			if (this.leftExpression instanceof IDsl dsl) {
+				collectDsl(dsl, out);
+			} else if (this.leftExpression instanceof ISelect select) {
+				select.collectParameters(out);
+			}
+
+			if (this.left != null) {
+				this.left.collectParameters(out);
+			}
+
+			if (this.right instanceof IWhere where) {
+				where.collectParameters(out);
+			} else if (this.right instanceof ICondition condition) {
+				if (condition.hasParameter()) {
+					Parameter.flattenInto(condition.getParameter(), out);
+				}
+			} else if (this.right instanceof IDsl dsl) {
+				collectDsl(dsl, out);
+			} else if (this.right instanceof ISelect select) {
+				select.collectParameters(out);
+			}
+
+		}
+
+		/**
+		 * 式のパラメータを足す
+		 *
+		 * @param dsl	式
+		 * @param out	足す先
+		 */
+		private static void collectDsl (IDsl dsl, List<Object> out) {
+
+			if (dsl.hasParameter()) {
+				Parameter.flattenInto(dsl.getParameter(), out);
+			}
 
 		}
 

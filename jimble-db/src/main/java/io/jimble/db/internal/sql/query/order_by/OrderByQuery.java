@@ -91,4 +91,20 @@ public class OrderByQuery implements IOrderBy {
 
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void collectParameters (java.util.List<Object> out) {
+
+		// 継承したクラスは hasParameter / getParameter を上書きしているかもしれないので、既定の形で集める
+		if (getClass() != OrderByQuery.class) {
+			io.jimble.db.sql.query.ParameterSource.collectByGetParameter(this, out);
+			return;
+		}
+
+		this.select.collectParameters(out);
+
+	}
+
 }

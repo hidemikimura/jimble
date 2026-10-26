@@ -25,7 +25,7 @@ public class Parameter {
 		List<Object> res = new ArrayList<>();
 
 		for (Object o : params) {
-			res.addAll(flattenObject(o));
+			flattenInto(o, res);
 		}
 
 		return res;
@@ -82,17 +82,19 @@ public class Parameter {
 	}
 
 	/**
-	 * オブジェクトをフラットリストにする
+	 * オブジェクトを平らにして足す
 	 *
-	 * @param o	オブジェクト
-	 * @return	フラットリスト
+	 * <p>
+	 * 2.7.4 までは入れ子 1 段ごとにリストを作って返し、呼び出し元で addAll していた（2.7.5 で足す先を渡す形に）。
+	 * </p>
+	 *
+	 * @param o		オブジェクト
+	 * @param out	足す先
 	 */
-	private static List<Object> flattenObject (Object o) {
-
-		List<Object> res = new ArrayList<>();
+	public static void flattenInto (Object o, List<Object> out) {
 
 		if (o == null) {
-			res.add(null);
+			out.add(null);
 		} else if (o instanceof Data data) {
 			/*
 			 * ここで JSON 文字列にしてはいけない（要件 F-D-30）。
@@ -102,24 +104,22 @@ public class Parameter {
 			 * Data のまま渡し、DB#setParameters で製品ごとの渡し方
 			 * （{@code Dialect#bindJson}）に任せる。
 			 */
-			res.add(data);
+			out.add(data);
 		} else if (o instanceof Collection<?> list) {
 			for (Object listObj : list) {
-				res.addAll(flattenObject(listObj));
+				flattenInto(listObj, out);
 			}
 		} else if (o instanceof byte[]) {
 			// バイナリは1つの値（D-204）。かつては1バイトずつに平らにされ、プレースホルダーとずれていた
-			res.add(o);
+			out.add(o);
 		} else if (o.getClass().isArray()) {
 			// 素の配列（long[] など）も通る（要件 D-162）
 			for (Object arrObj : ArrayUtil.toList(o)) {
-				res.addAll(flattenObject(arrObj));
+				flattenInto(arrObj, out);
 			}
 		} else {
-			res.add(o);
+			out.add(o);
 		}
-
-		return res;
 
 	}
 
