@@ -33,18 +33,7 @@ public final class SessionId {
 
 		if (sessionId != null && !sessionId.isEmpty()) {
 
-			/*
-			 * 古い鍵で読めたなら、<b>今の鍵で署名し直す</b>（要件 NF-S-09）。
-			 * ここで書き直さないと、この人が来るたびに古い鍵で読み続けることになり、
-			 * <b>入れ替えが終わらない</b>。
-			 *
-			 * 有効期限は<b>発行するときと同じもの</b>を使う。
-			 * 既定の有効期限（1年）で書き直すと、
-			 * <b>30分で切れるはずの Cookie が1年ブラウザに残る</b>
-			 */
-			if (context.cookies().isStale(name)) {
-				context.cookies().put(name, sessionId, SessionConf.timeout().toSeconds());
-			}
+			resignIfStale(context);
 
 			return sessionId;
 
@@ -54,6 +43,35 @@ public final class SessionId {
 		context.cookies().put(name, sessionId, SessionConf.timeout().toSeconds());
 
 		return sessionId;
+
+	}
+
+	/**
+	 * 古い鍵で署名されたセッション ID を、今の鍵で署名し直す（要件 NF-S-09）
+	 *
+	 * <p>
+	 * ここで書き直さないと、この人が来るたびに古い鍵で読み続けることになり、
+	 * <b>入れ替えが終わらない</b>。ID が無ければ何もしない（発行はしない）。
+	 * </p>
+	 *
+	 * <p>
+	 * 有効期限は<b>発行するときと同じもの</b>を使う。
+	 * 既定の有効期限（1年）で書き直すと、
+	 * <b>30分で切れるはずの Cookie が1年ブラウザに残る</b>
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @since 2.7.6
+	 */
+	public static void resignIfStale (WebContext context) {
+
+		String name = SessionConf.cookieName();
+
+		String sessionId = context.cookies().get(name);
+
+		if (sessionId != null && !sessionId.isEmpty() && context.cookies().isStale(name)) {
+			context.cookies().put(name, sessionId, SessionConf.timeout().toSeconds());
+		}
 
 	}
 

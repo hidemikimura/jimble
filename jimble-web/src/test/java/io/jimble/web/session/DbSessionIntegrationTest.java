@@ -49,7 +49,12 @@ class DbSessionIntegrationTest {
 	@AfterAll
 	static void stopDataSource () {
 
-		DBUtil.getMainDB().execute("DROP TABLE IF EXISTS %s".formatted(quoted()));
+		/*
+		 * 表は消さずに、中身だけ消す。DBVersion は表の有無を JVM の中で覚えているので、
+		 * ここで DROP すると、あとに走るテスト（ApiTokenIntegrationTest ほか）のセッションの保存が
+		 * 「表がありません」で落ちる（Gradle は前回落ちたクラスを先に流すので、順序はそのたびに変わる）
+		 */
+		DBUtil.getMainDB().execute("DELETE FROM %s".formatted(quoted()));
 		DBUtil.stop();
 
 	}
@@ -252,6 +257,44 @@ class DbSessionIntegrationTest {
 		try (WebContext context = new WebContext(again, new Fakes.FakeResponseSink())) {
 			assertEquals(0, context.session().getInt("user_id"), "ログアウトしたのに、まだログインしている");
 		}
+
+	}
+
+	@Test
+	@DisplayName("2.7.6 読んだだけの save() は中身を書き戻さない（同時に入れた値が消えない）。最後に使った日時は延ばす")
+	void readOnlySaveDoesNotOverwrite () {
+
+		String sessionId = saveUser(1);
+
+		// 最後に使ったのを 20 分前にしておく
+		DBUtil.getMainDB().update("UPDATE %s SET last_accessed_at = %s WHERE session_id = ?"
+			.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true)), 20, sessionId);
+
+		// 読むだけのリクエスト。先に読み込む
+		try (WebContext reader = withSession(sessionId)) {
+
+			assertEquals(1, reader.session().getInt("user_id"));
+
+			// そのあいだに、同じ人の別のリクエストがカートに入れた
+			try (WebContext writer = withSession(sessionId)) {
+				writer.session().put("cart", "x");
+				writer.session().save();
+			}
+
+			// 読むだけのリクエストが、終わりに save() する
+			reader.session().save();
+
+		}
+
+		try (WebContext context = withSession(sessionId)) {
+			assertEquals("x", context.session().get("cart"), "読むだけのリクエストが、入れた値を消した");
+			assertEquals(1, context.session().getInt("user_id"));
+		}
+
+		long recent = DBUtil.getMainDB().select("SELECT COUNT(*) AS cnt FROM %s WHERE session_id = ? AND last_accessed_at >= %s"
+			.formatted(quoted(), DBUtil.getMainDB().dialect().intervalFromNow("MINUTE", true)), sessionId, 1).orElseThrow().getLong("cnt");
+
+		assertEquals(1, recent, "最後に使った日時が延びていない");
 
 	}
 
@@ -573,6 +616,16 @@ class DbSessionIntegrationTest {
 
 		SessionStores.reset();
 		SessionStores.defaultStore().cleanupExpired();
+
+	}
+
+	/** セッション Cookie を持ったリクエスト */
+	private static WebContext withSession (String sessionId) {
+
+		Fakes.FakeRequestSource source = new Fakes.FakeRequestSource("GET", "/");
+		source.cookie(SessionConf.cookieName(), sessionId);
+
+		return new WebContext(source, new Fakes.FakeResponseSink());
 
 	}
 

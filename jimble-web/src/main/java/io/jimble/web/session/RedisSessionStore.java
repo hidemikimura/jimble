@@ -270,6 +270,14 @@ public final class RedisSessionStore implements SessionStore {
 	@Override
 	public void touch (WebContext context, SessionEntry entry) {
 
+		/*
+		 * <b>読んだセッションは、読んだときに延ばし終えている</b>（load を参照）。
+		 * 読んだだけで save() したリクエストは、Redis に何も送らない（2.7.6）
+		 */
+		if (entry.isExisting()) {
+			return;
+		}
+
 		String sessionId = SessionId.get(context);
 		if (sessionId == null || sessionId.isEmpty()) {
 			return;

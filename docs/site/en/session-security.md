@@ -14,6 +14,8 @@ order: 8
 
 **Nothing is saved automatically.** Nothing is written unless you call `save()`.
 That is to avoid writing on every request that only ever read.
+**`save()` does not write the contents unless you changed them** (2.7.6); it only extends the lifetime.
+Even if you call `save()` on every request, a page that only reads does not rewrite the session, and it cannot wipe out a value another request from the same user just put in.
 
 **Change it with `session().put(...)` / `remove(...)` / `clear()`.**
 `session().data()` (and `request().session()`) is **a read-only copy**; writing to it throws `UnsupportedOperationException`.
