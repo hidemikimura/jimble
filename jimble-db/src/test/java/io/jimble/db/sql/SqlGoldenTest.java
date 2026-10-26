@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.TimeZone;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -29,11 +30,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * {@code golden/sql-2.7.4.txt} は、{@link SqlGoldenCases} を <b>Maven Central の 2.7.4 の jar で動かして</b>書き出したもの。
  * 組み立てを足したら、同じクラスを 2.7.4 の jar で動かして作り直す
  * （{@code io.jimble:jimble-db:2.7.4} に依存する小さなプロジェクトに {@link SqlGoldenCases}・{@link TestSchema}・{@link DslSchema} を写し、
- * 下と同じ設定で {@code SqlGoldenCases.render()} をファイルに書く）。
+ * 下と同じ設定・時間帯（Asia/Tokyo）で {@code SqlGoldenCases.render()} をファイルに書く）。
  * <b>今のソースで作り直してはいけない</b>——今の出力を答えにすると、何も確かめていないのと同じになる。
  * </p>
  */
 class SqlGoldenTest {
+
+	/** 答えを作ったときの JVM の既定の時間帯 */
+	private static final String GOLDEN_TIME_ZONE = "Asia/Tokyo";
 
 	@AfterEach
 	void restore () {
@@ -54,9 +58,20 @@ class SqlGoldenTest {
 			expected = new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		}
 
-		// 2 回目は、全列の字面をテーブルが覚えたあと（1 回目と同じでなければならない）
-		assertEquals(expected, SqlGoldenCases.render());
-		assertEquals(expected, SqlGoldenCases.render());
+		/*
+		 * 答えを作ったときの時間帯に揃える。キャッシュのキーは日時のパラメータを Date#toString で文字にするので
+		 * （2.7.4 から同じ）、JVM の既定の時間帯でキーの字面が変わる。CI は UTC で動く
+		 */
+		TimeZone original = TimeZone.getDefault();
+		TimeZone.setDefault(TimeZone.getTimeZone(GOLDEN_TIME_ZONE));
+
+		try {
+			// 2 回目は、全列の字面をテーブルが覚えたあと（1 回目と同じでなければならない）
+			assertEquals(expected, SqlGoldenCases.render());
+			assertEquals(expected, SqlGoldenCases.render());
+		} finally {
+			TimeZone.setDefault(original);
+		}
 
 	}
 
