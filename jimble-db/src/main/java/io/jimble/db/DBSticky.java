@@ -4,7 +4,7 @@ import io.jimble.util.log.Log;
 import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.core.lifecycle.AppLifecycle;
-import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
 import io.jimble.util.thread.ThreadUtil;
 import io.jimble.util.data.Data;
 import io.jimble.db.internal.version.DBVersion;
@@ -51,6 +51,9 @@ public class DBSticky {
 
 	/** 設定キー：sticky を使うか（移送元は jooby.db_sticky.use だった） */
 	public static final String KEY_USE = "db_sticky.use";
+
+	/* 要求ごとに作るので、読み込んだ設定 1 つにつき 1 回だけ読む（2.7.5） */
+	private static final ConfFlag USE = ConfFlag.of(KEY_USE, true);
 
 	/**
 	 * 更新
@@ -169,7 +172,7 @@ public class DBSticky {
 		 */
 		this.isUse = isUseDBSticky != null
 			? isUseDBSticky
-			: Conf.conf().getBoolean(KEY_USE, true);
+			: USE.get();
 
 		this.isPersist = this.isUse
 			&& cookieId != null && !cookieId.isEmpty()

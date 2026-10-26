@@ -72,6 +72,12 @@ public final class SqlCache {
 			+ "[B;[Ljava.lang.Object;;"
 			+ "!*");
 
+	/* キーの元の文字列を作るとき、SQL のほかに見込む大きさ（名前空間・データソース・パラメータ） */
+	private static final int KEY_EXTRA_CAPACITY = 128;
+
+	/* キーの 16 進（小文字。%016x / %08x と同じ字面） */
+	private static final java.util.HexFormat HEX = java.util.HexFormat.of();
+
 	/* キーを作るときの区切り（SQL にもパラメータにも出ない文字） */
 	private static final char KEY_SEPARATOR = (char) 1;
 
@@ -227,7 +233,7 @@ public final class SqlCache {
 	 */
 	public static String key (String dataSource, String sql, List<Object> params) {
 
-		StringBuilder builder = new StringBuilder()
+		StringBuilder builder = new StringBuilder((sql == null ? 0 : sql.length()) + KEY_EXTRA_CAPACITY)
 			.append(SqlCacheConf.namespace()).append(KEY_SEPARATOR)
 			.append(dataSource == null ? "" : dataSource).append(KEY_SEPARATOR)
 			.append(sql);
@@ -252,14 +258,16 @@ public final class SqlCache {
 
 		}
 
-		String text = builder.toString();
-		byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+		byte[] bytes = builder.toString().getBytes(StandardCharsets.UTF_8);
 
 		/*
 		 * ハッシュだけだと衝突したときに<b>別のクエリの結果が返る</b>ので、長さも混ぜる。
 		 * SQL 全文をキーにできればいちばん確かだが、置き場の主キーに入らない。
+		 *
+		 * 2.7.4 までは "%016x%08x".formatted(Hash.sipHash(text), bytes.length) で、
+		 * UTF-8 にするのを 2 回（長さとハッシュ）していた。字面は同じ（2.7.5）
 		 */
-		return "%016x%08x".formatted(Hash.sipHash(text), bytes.length);
+		return HEX.toHexDigits(Hash.sipHashOf(bytes)) + HEX.toHexDigits(bytes.length);
 
 	}
 

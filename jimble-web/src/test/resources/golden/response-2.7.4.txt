@@ -1,0 +1,103 @@
+== default
+conf: secret= secrets=[] signed=false acceptUnsigned=false acceptLegacy=false secure=true httpOnly=true sameSite=LAX domain= maxAge=31536000
+status: 200
+add Set-Cookie: cart=c0ffee-1234; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: pref=x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: SAMEORIGIN
+header Referrer-Policy: strict-origin-when-cross-origin
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read plain: unsigned-value
+stale: []
+== signed
+conf: secret=golden-secret-1 secrets=[golden-secret-1] signed=true acceptUnsigned=false acceptLegacy=false secure=true httpOnly=true sameSite=LAX domain= maxAge=31536000
+status: 200
+add Set-Cookie: cart=v2:dZm5t9c-VeJtf6gmKCQ5QtfSW3kt7QY3T47o-stUDtU|c0ffee-1234; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: pref=v2:20C_zDCdySQpCgW_r5HsJ-PpHQ0hUQJXPpq7enTRzOE|x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: SAMEORIGIN
+header Referrer-Policy: strict-origin-when-cross-origin
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: c0ffee
+read plain: 
+stale: []
+== signed rotated strict
+conf: secret=golden-secret-2 secrets=[golden-secret-2, golden-secret-1] signed=true acceptUnsigned=false acceptLegacy=false secure=false httpOnly=false sameSite=STRICT domain=example.jp maxAge=-1
+status: 200
+add Set-Cookie: cart=v2:sNSxeV773OHJJwYsKY6rgLGd0L48joff8ePaijIp-S4|c0ffee-1234; Path=/; Domain=example.jp; SameSite=Strict
+add Set-Cookie: pref=v2:zqCIZwZVm0zuihvCGxjUB-hYRAn6ZfJ6z1MVd4TDr9g|x%20y%3B%C3%A9; Path=/; Domain=example.jp; Max-Age=3600; SameSite=Strict
+add Set-Cookie: old=; Path=/; Domain=example.jp; Max-Age=0; SameSite=Strict
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: SAMEORIGIN
+header Referrer-Policy: strict-origin-when-cross-origin
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: c0ffee
+read plain: 
+stale: [cart]
+== signed none 7d
+conf: secret=golden-secret-1 secrets=[golden-secret-1] signed=true acceptUnsigned=true acceptLegacy=true secure=true httpOnly=true sameSite=NONE domain= maxAge=604800
+status: 200
+add Set-Cookie: cart=v2:dZm5t9c-VeJtf6gmKCQ5QtfSW3kt7QY3T47o-stUDtU|c0ffee-1234; Path=/; Max-Age=604800; Secure; HttpOnly; SameSite=None
+add Set-Cookie: pref=v2:20C_zDCdySQpCgW_r5HsJ-PpHQ0hUQJXPpq7enTRzOE|x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=None
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=None
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: SAMEORIGIN
+header Referrer-Policy: strict-origin-when-cross-origin
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: c0ffee
+read plain: unsigned-value
+stale: []
+== hsts
+conf: secret= secrets=[] signed=false acceptUnsigned=false acceptLegacy=false secure=true httpOnly=true sameSite=LAX domain= maxAge=31536000
+status: 200
+add Set-Cookie: cart=c0ffee-1234; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: pref=x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: DENY
+header Referrer-Policy: no-referrer
+header Strict-Transport-Security: max-age=31536000; includeSubDomains
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read plain: unsigned-value
+stale: []
+== headers off
+conf: secret= secrets=[] signed=false acceptUnsigned=false acceptLegacy=false secure=true httpOnly=true sameSite=LAX domain= maxAge=31536000
+status: 200
+add Set-Cookie: cart=c0ffee-1234; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: pref=x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read plain: unsigned-value
+stale: []
+== default again
+conf: secret= secrets=[] signed=false acceptUnsigned=false acceptLegacy=false secure=true httpOnly=true sameSite=LAX domain= maxAge=31536000
+status: 200
+add Set-Cookie: cart=c0ffee-1234; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: pref=x%20y%3B%C3%A9; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax
+add Set-Cookie: old=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax
+header X-Content-Type-Options: nosniff
+header X-Frame-Options: SAMEORIGIN
+header Referrer-Policy: strict-origin-when-cross-origin
+header Cache-Control: no-store
+send ok
+signFor: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read cart: v2:Q7x24m8TzYelT0IFL3JunLhE8LCzneozH3FY5sAJQjc|c0ffee
+read plain: unsigned-value
+stale: []

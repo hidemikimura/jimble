@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * from句
  */
-public interface IFrom {
+public interface IFrom extends io.jimble.db.sql.query.ParameterSource {
 
 	/**
 	 * inner join

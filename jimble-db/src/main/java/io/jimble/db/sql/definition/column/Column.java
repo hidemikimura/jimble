@@ -2,6 +2,7 @@ package io.jimble.db.sql.definition.column;
 
 import io.jimble.util.annotation.CheckReturnValue;
 
+import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
 
@@ -244,7 +245,7 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	@Override
 	public void selectSql (SqlWriter sb) {
 
-		sb.qualified(table() == null ? null : table().name(), name);
+		sb.append(rendered(sb.dialect()).qualified());
 
 	}
 
@@ -476,7 +477,7 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	@Override
 	public void whereSql (SqlWriter sb) {
 
-		sb.qualified(table() == null ? null : table().name(), name);
+		sb.append(rendered(sb.dialect()).qualified());
 
 	}
 
@@ -497,6 +498,23 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	public Object getParameter() {
 
 		return null;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * 列そのものにパラメータは無い。
+	 * 継承して {@code hasParameter()} / {@code getParameter()} を上書きした列（計算列など）は、既定の形で集める。
+	 * </p>
+	 */
+	@Override
+	public void collectParameters (java.util.List<Object> out) {
+
+		if (getClass() != Column.class && getClass() != TemporaryColumn.class) {
+			io.jimble.db.sql.query.ParameterSource.collectByGetParameter(this, out);
+		}
 
 	}
 
@@ -530,7 +548,7 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 	@Override
 	public void orderBySql (SqlWriter sb) {
 
-		sb.qualified(table() == null ? null : table().name(), name);
+		sb.append(rendered(sb.dialect()).qualified());
 
 	}
 
@@ -549,6 +567,80 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 		return this.joinName;
 
 	}
+
+	// region 書き出した字面（2.7.5）
+
+	/**
+	 * 方言で書き出した字面
+	 *
+	 * @param dialect	方言
+	 * @param qualified	テーブル修飾つきの列（{@code `t`.`c`}）
+	 * @param alias		SELECT 句の別名（{@code `t__c`}）
+	 */
+	private record Rendered (Dialect dialect, String qualified, String alias) {}
+
+	/*
+	 * <b>列の字面は方言が同じなら毎回同じなので、1度だけ作る</b>（2.7.5）。
+	 * 列はどれも final で、作ったあと変わらない。SELECT・WHERE・ORDER BY のたびに
+	 * 識別子を囲み直していて、主キー 1 行の SELECT を組み立てる CPU の 3 分の 1 ほどを使っていた。
+	 * 方言はふつう 1 つなので、最後に使った方言の分だけ持つ（record 1 つを volatile で入れ替える）
+	 */
+	private volatile Rendered rendered;
+
+	/**
+	 * 方言で書き出した字面
+	 *
+	 * @param dialect	方言
+	 * @return	字面
+	 */
+	private Rendered rendered (Dialect dialect) {
+
+		Rendered current = rendered;
+
+		if (current != null && current.dialect() == dialect) {
+			return current;
+		}
+
+		SqlWriter qualified = new SqlWriter(dialect);
+		qualified.qualified(table() == null ? null : table().name(), name);
+
+		SqlWriter alias = new SqlWriter(dialect);
+		alias.identifier(joinName);
+
+		Rendered created = new Rendered(dialect, qualified.toString(), alias.toString());
+		rendered = created;
+
+		return created;
+
+	}
+
+	/**
+	 * SELECT 句に書く形（{@code `t`.`c` AS `t__c`}）
+	 *
+	 * <p>{@code select()} で列を並べないとき、テーブルの全列をこの形で書く。</p>
+	 *
+	 * @param sb	書き出し先
+	 */
+	public void selectAsJoinNameSql (SqlWriter sb) {
+
+		Rendered current = rendered(sb.dialect());
+
+		sb.append(current.qualified()).append(" AS ").append(current.alias());
+
+	}
+
+	/**
+	 * 別名（{@code `t__c`}）を書く
+	 *
+	 * @param sb	書き出し先
+	 */
+	public void joinNameSql (SqlWriter sb) {
+
+		sb.append(rendered(sb.dialect()).alias());
+
+	}
+
+	// endregion
 
 	// endregion
 

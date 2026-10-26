@@ -22,6 +22,7 @@ import io.jimble.util.paging.Paging;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -45,6 +46,42 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/* SELECT句一覧 */
 	private final List<ISelect> selectList = new ArrayList<>();
 
+	/*
+	 * 列を並べずに sql() を呼んだので、全列を書いたか（2.7.5）。
+	 *
+	 * 2.7.4 までは、ここで selectList に全列を<b>詰めて</b>から書いていた。
+	 * いまは字面をテーブルから受け取るだけで詰めない（要求のたびの CPU の大半がここだった）。
+	 * ただ、詰めていたので<b>そのあとの select(...) や copy() は全列を引き継いでいた</b>——
+	 * その字面を変えないよう、そのときだけ詰める
+	 */
+	private boolean allColumnsWritten = false;
+
+	/*
+	 * 全列を最初に書いたときのテーブルの並び。
+	 * 2.7.4 は最初の sql() で詰めたので、そのあと FROM の部品（FromQuery）を外から足しても列は増えなかった。同じにする
+	 */
+	private List<ITable> allColumnsTables = null;
+
+	/**
+	 * 全列を書いたあとなら、selectList に全列を詰める（2.7.4 までと同じ並びにする）
+	 */
+	private void materializeAllColumns () {
+
+		if (!allColumnsWritten) {
+			return;
+		}
+
+		// 先に下ろす（setSelectList は select(...) を呼ぶので、下ろさないと戻ってくる）
+		allColumnsWritten = false;
+		List<ITable> tables = allColumnsTables;
+		allColumnsTables = null;
+
+		if (selectList.isEmpty()) {
+			setSelectList(tables);
+		}
+
+	}
+
 	/**
 	 * SELECT句
 	 *
@@ -57,6 +94,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			return this;
 		}
 
+		materializeAllColumns();
 		this.selectList.addAll(expandSelectArray(select));
 
 		return this;
@@ -112,6 +150,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	public SelectBuilder copy () {
 
 		SelectBuilder copy = new SelectBuilder();
+		materializeAllColumns();
 		copy.selectList.addAll(this.selectList);
 		copy.from = this.from;
 		copy.whereList.addAll(this.whereList);
@@ -164,6 +203,8 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 					+ "（テーブルの定数が null です。生成物のクラス初期化の順を疑ってください）");
 		}
 
+		// FROM を変える前に書いた全列は、2.7.4 までと同じく前の FROM のまま残す
+		materializeAllColumns();
 		this.from = from;
 		return this;
 
@@ -181,6 +222,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public SelectBuilder inner(IFrom from) {
 
+		materializeAllColumns();
 		if (this.from == null) {
 			this.from = from;
 		} else {
@@ -198,6 +240,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public SelectBuilder left(IFrom from) {
 
+		materializeAllColumns();
 		if (this.from == null) {
 			this.from = from;
 		} else {
@@ -266,7 +309,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			return this;
 		}
 
-		this.whereList.addAll(Arrays.asList(where));
+		Collections.addAll(this.whereList, where);
 		return this;
 
 	}
@@ -598,13 +641,19 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 	// endregion
 
+	/*
+	 * 書き出し先の最初の大きさ（2.7.5）。
+	 * 全列の SELECT はふつう数百文字なので、16 文字から伸ばすと 5 回ほど写し直していた
+	 */
+	private static final int SQL_CAPACITY = 512;
+
 	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		SqlWriter sb = new SqlWriter(dialect);
+		SqlWriter sb = new SqlWriter(new StringBuilder(SQL_CAPACITY), dialect);
 
 		// SELECT
 		sqlSelect(sb);
@@ -814,7 +863,8 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		sb.append("SELECT");
 		if (selectList.isEmpty()) {
-			setSelectList();
+			writeAllColumns(sb);
+			return;
 		}
 
 		for (int i = 0; i < selectList.size(); i++) {
@@ -833,19 +883,66 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	}
 
 	/**
+	 * 全テーブルの全列を書く
+	 *
+	 * <p>
+	 * {@link #setSelectList()} で詰めてから書いたときと同じ字面になる。
+	 * 列の字面はテーブルが方言ごとに 1 回だけ作る（{@link Table#selectAllSql}）。
+	 * </p>
+	 *
+	 * @param sb	書き出し先
+	 */
+	private void writeAllColumns (SqlWriter sb) {
+
+		List<ITable> tableList = allColumnsTables != null ? allColumnsTables : from.getTableList();
+
+		allColumnsWritten = true;
+		allColumnsTables = tableList;
+
+		if (tableList == null) {
+			return;
+		}
+
+		boolean written = false;
+		for (ITable iTable : tableList) {
+			if (written) {
+				SqlWriter part = new SqlWriter(sb.dialect());
+				if (((Table) iTable).selectAllSql(part)) {
+					sb.append(",").append(part.toString());
+				}
+			} else {
+				written = ((Table) iTable).selectAllSql(sb);
+			}
+		}
+
+	}
+
+	/**
 	 * 全テーブルのselect句を設定する
 	 */
 	private void setSelectList () {
 
 		if (from != null) {
-			List<ITable> tableList = from.getTableList();
-			if (tableList != null) {
-				for (ITable iTable : tableList) {
-					Table table = (Table) iTable;
-					for (Column column : table.getColumnList()) {
-						select(column.as(column.getJoinSelectName()));
-					}
-				}
+			setSelectList(from.getTableList());
+		}
+
+	}
+
+	/**
+	 * 指定したテーブルの全列を select 句に設定する
+	 *
+	 * @param tableList	テーブルの並び（null なら何もしない）
+	 */
+	private void setSelectList (List<ITable> tableList) {
+
+		if (tableList == null) {
+			return;
+		}
+
+		for (ITable iTable : tableList) {
+			Table table = (Table) iTable;
+			for (Column column : table.getColumnList()) {
+				select(column.as(column.getJoinSelectName()));
 			}
 		}
 
@@ -1001,48 +1098,48 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	@Override
 	public List<Object> params() {
 
+		/*
+		 * 木を 1 回たどって、平らなリストに直接足す（2.7.5）。
+		 * 2.7.4 までは句ごとに hasParameter() と getParameter() で 2 回たどり、
+		 * 入れ子のリストを作ってから Parameter.flatten で平らにしていた。並びは同じ
+		 */
 		List<Object> params = new ArrayList<>();
 
 		// SELECT
 		for (ISelect select : selectList) {
-			if (select.hasParameter()) {
-				params.add(select.getParameter());
+			select.collectParameters(params);
+		}
+
+		// SELECT（全列を書いたあと。2.7.4 は sql() で全列を selectList に詰めていたので、その列の値もここに来た）
+		if (allColumnsWritten && selectList.isEmpty() && allColumnsTables != null) {
+			for (ITable iTable : allColumnsTables) {
+				((Table) iTable).selectAllParameters(params);
 			}
 		}
 
 		// FROM
 		if (from != null) {
-			if (from.hasParameter()) {
-				params.add(from.getParameter());
-			}
+			from.collectParameters(params);
 		}
 
 		// WHERE
 		for (IWhere where : whereList) {
-			if (where.hasParameter()) {
-				params.add(where.getParameter());
-			}
+			where.collectParameters(params);
 		}
 
 		// GROUP BY
 		for (ISelect select : groupByList) {
-			if (select.hasParameter()) {
-				params.add(select.getParameter());
-			}
+			select.collectParameters(params);
 		}
 
 		// HAVING
 		for (IWhere where : havingList) {
-			if (where.hasParameter()) {
-				params.add(where.getParameter());
-			}
+			where.collectParameters(params);
 		}
 
 		// ORDER BY
 		for (IOrderBy orderBy : orderByList) {
-			if (orderBy.hasParameter()) {
-				params.add(orderBy.getParameter());
-			}
+			orderBy.collectParameters(params);
 		}
 
 		// LIMIT
@@ -1053,7 +1150,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			}
 		}
 
-		return Parameter.flatten(params);
+		return params;
 
 	}
 

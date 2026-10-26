@@ -18,6 +18,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -205,6 +207,7 @@ public class Table implements ITable, IFrom {
 
 	}
 
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -366,6 +369,195 @@ public class Table implements ITable, IFrom {
 		}
 
 		isGetColumnList = true;
+
+	}
+
+	// endregion
+
+	// region SELECT 句（全列。2.7.5）
+
+	/*
+	 * 全列の SELECT 句の字面。<b>テーブルのクラスと方言の組ごとに 1 つ覚える</b>。
+	 *
+	 * select() で列を並べないと全列を {@code `t`.`c` AS `t__c`} の形で書く。
+	 * 2.7.4 までは要求のたびに列ごとに SelectQuery を作って書き出していて、
+	 * 主キー 1 行の SELECT を組み立てる CPU の 4 分の 3 がここだった。
+	 *
+	 * - 覚えるのは declareColumns() で列一覧を宣言したテーブルだけ（生成物）。
+	 *   使う前に、覚えたときの列と今の宣言を<b>1 つずつ同一性で比べ</b>、違えば作り直す
+	 *   （宣言を毎回作り直すテーブルや、同じクラスで名前の違うテーブルでも、字面は今の列から作ったものになる）
+	 * - Column そのもの（と TemporaryColumn）以外の列があれば覚えない。継承した列は selectSql などを
+	 *   上書きしているかもしれないので、2.7.4 と同じ道（column.as(...)）で書く
+	 * - getColumnList() を一度でも呼んだインスタンスは覚えた字面を使わない。返した一覧は書き換えられるので、
+	 *   2.7.4 と同じく、そのインスタンスの一覧から書く
+	 * - ClassValue に置くので、アプリのクラスを読み直してもクラスローダーを引き留めない。数はテーブルのクラスの数で止まる
+	 */
+	private static final ClassValue<Map<io.jimble.db.dialect.Dialect, SelectAll>> SELECT_ALL = new ClassValue<>() {
+
+		@Override
+		protected Map<io.jimble.db.dialect.Dialect, SelectAll> computeValue (Class<?> type) {
+			return new ConcurrentHashMap<>();
+		}
+
+	};
+
+	/**
+	 * 覚えた全列の字面
+	 *
+	 * @param columns	作ったときの列（同一性で比べる）
+	 * @param sql		字面
+	 */
+	private record SelectAll (Column[] columns, String sql) {
+
+		/**
+		 * 今の列から作ったものと同じか
+		 *
+		 * @param current	今の列
+		 * @return	同じなら true
+		 */
+		boolean matches (List<Column> current) {
+
+			if (current.size() != columns.length) {
+				return false;
+			}
+
+			for (int i = 0; i < columns.length; i++) {
+				if (current.get(i) != columns[i]) {
+					return false;
+				}
+			}
+
+			return true;
+
+		}
+
+	}
+
+	/**
+	 * 全列を SELECT 句に書く
+	 *
+	 * <p>
+	 * 列ごとに {@code " `t`.`c` AS `t__c`"} を {@code ","} でつないで書く
+	 * （{@code SelectBuilder} が {@code select(column.as(column.getJoinSelectName()))} を並べたときと同じ字面）。
+	 * 列が無ければ何も書かない。
+	 * </p>
+	 *
+	 * @param sb	書き出し先
+	 * @return	1 列でも書いたら true
+	 */
+	public boolean selectAllSql (SqlWriter sb) {
+
+		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
+
+		if (declared == null || !isPlainColumns(declared)) {
+			List<Column> columns = getColumnList();
+			writeSelectAll(sb, columns);
+			return !columns.isEmpty();
+		}
+
+		if (declared.isEmpty()) {
+			return false;
+		}
+
+		Map<io.jimble.db.dialect.Dialect, SelectAll> byDialect = SELECT_ALL.get(getClass());
+		SelectAll cached = byDialect.get(sb.dialect());
+
+		if (cached == null || !cached.matches(declared)) {
+			SqlWriter written = new SqlWriter(sb.dialect());
+			writeSelectAll(written, declared);
+			cached = new SelectAll(declared.toArray(new Column[0]), written.toString());
+			byDialect.put(sb.dialect(), cached);
+		}
+
+		sb.append(cached.sql());
+
+		return true;
+
+	}
+
+	/**
+	 * 全列を SELECT 句に書いたときのパラメータを足す
+	 *
+	 * <p>
+	 * {@link #selectAllSql(SqlWriter)} で書いた列の値（継承して値を持たせた列だけにある）を、書いた順に足す。
+	 * 2.7.4 は全列を {@code select(column.as(...))} で並べてから集めていたので、同じ値になる。
+	 * Column そのもの（と TemporaryColumn）は値を持たないので、生成物では何もしない。
+	 * </p>
+	 *
+	 * @param out	足す先
+	 */
+	public void selectAllParameters (List<Object> out) {
+
+		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
+
+		if (declared != null && isPlainColumns(declared)) {
+			return;
+		}
+
+		for (Column column : getColumnList()) {
+			if (column.getClass() != Column.class && column.getClass() != TemporaryColumn.class) {
+				column.as(column.getJoinSelectName()).collectParameters(out);
+			}
+		}
+
+	}
+
+	/**
+	 * 宣言した列一覧（宣言していないか、宣言で落ちたら null）
+	 *
+	 * @return	列一覧
+	 */
+	private List<Column> declaredColumnsOrNull () {
+
+		try {
+			return declareColumns();
+		} catch (RuntimeException ex) {
+			// 2.7.4 と同じく getColumnList() の道で（ログに出して）読む
+			return null;
+		}
+
+	}
+
+	/**
+	 * どの列も Column そのもの（か TemporaryColumn）か
+	 *
+	 * @param columns	列一覧
+	 * @return	そうなら true
+	 */
+	private static boolean isPlainColumns (List<Column> columns) {
+
+		for (Column column : columns) {
+			if (column == null
+				|| (column.getClass() != Column.class && column.getClass() != TemporaryColumn.class)) {
+				return false;
+			}
+		}
+
+		return true;
+
+	}
+
+	/**
+	 * 全列を書き出す
+	 *
+	 * @param sb		書き出し先
+	 * @param columns	列一覧
+	 */
+	private static void writeSelectAll (SqlWriter sb, List<Column> columns) {
+
+		for (int i = 0; i < columns.size(); i++) {
+			if (i > 0) {
+				sb.append(",");
+			}
+			sb.append(" ");
+			Column column = columns.get(i);
+			if (column.getClass() == Column.class || column.getClass() == TemporaryColumn.class) {
+				column.selectAsJoinNameSql(sb);
+			} else {
+				// 継承した列は 2.7.4 と同じ道で書く（selectSql / getJoinSelectName の上書きが効くように）
+				column.as(column.getJoinSelectName()).selectSql(sb);
+			}
+		}
 
 	}
 

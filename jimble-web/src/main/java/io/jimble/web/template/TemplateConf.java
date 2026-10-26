@@ -1,6 +1,7 @@
 package io.jimble.web.template;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
 
 /**
  * テンプレートの設定
@@ -36,6 +37,9 @@ public final class TemplateConf {
 	 * </p>
 	 */
 	public static final String KEY_JSON_FALLBACK = "template.json_fallback";
+
+	/* view() のたびに読むので、読み込んだ設定 1 つにつき 1 回だけ読む（2.7.5） */
+	private static final ConfFlag JSON_FALLBACK = ConfFlag.of(KEY_JSON_FALLBACK, false);
 
 	/** 既定の種別 */
 	public static final String DEFAULT_CONTENT_TYPE = "Html";
@@ -74,7 +78,7 @@ public final class TemplateConf {
 	 */
 	public static boolean jsonFallback () {
 
-		return Conf.conf().getBoolean(KEY_JSON_FALLBACK, false);
+		return JSON_FALLBACK.get();
 
 	}
 

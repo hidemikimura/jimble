@@ -3,6 +3,7 @@ package io.jimble.web.session;
 import java.time.Duration;
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfValue;
 import io.jimble.util.crypto.Secrets;
 import java.util.List;
 
@@ -64,6 +65,11 @@ public final class SessionConf {
 	/** 既定のテーブル名 */
 	public static final String DEFAULT_TABLE = FrameworkTables.SESSION;
 
+	/* 要求のたびに読むものは、読み込んだ設定 1 つにつき 1 回だけ解釈して持つ（2.7.5） */
+	private static final ConfValue<Duration> TIMEOUT = ConfValue.of(c -> c.getDuration(KEY_TIMEOUT, DEFAULT_TIMEOUT));
+	private static final ConfValue<String> COOKIE_NAME = ConfValue.of(
+		c -> c.getString(KEY_COOKIE_NAME, DEFAULT_COOKIE_NAME));
+
 	private SessionConf () {}
 
 	/**
@@ -84,7 +90,7 @@ public final class SessionConf {
 	 */
 	public static Duration timeout () {
 
-		return Conf.conf().getDuration(KEY_TIMEOUT, DEFAULT_TIMEOUT);
+		return TIMEOUT.get();
 
 	}
 
@@ -129,7 +135,7 @@ public final class SessionConf {
 	 */
 	public static String cookieName () {
 
-		return Conf.conf().getString(KEY_COOKIE_NAME, DEFAULT_COOKIE_NAME);
+		return COOKIE_NAME.get();
 
 	}
 
