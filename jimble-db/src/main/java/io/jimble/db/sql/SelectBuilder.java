@@ -15,6 +15,7 @@ import io.jimble.db.internal.sql.query.from.IFrom;
 import io.jimble.db.internal.sql.query.order_by.IOrderBy;
 import io.jimble.db.internal.sql.query.order_by.OrderByQuery;
 import io.jimble.db.internal.sql.query.parameter.Parameter;
+import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.select.SelectValue;
 import io.jimble.db.sql.query.where.IWhere;
@@ -123,12 +124,38 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 				for (Object arrayObject : ArrayUtil.toList(o)) {
 					selectList.addAll(expandSelectArray(arrayObject));
 				}
+			} else if (isSqlPart(o)) {
+				throw new SqlBuildException(
+					"SELECT 句に置けない部品が来ました（%s）。式は ISelect にして渡してください（例: new SelectQuery().dsl(...)）"
+						.formatted(o.getClass().getName()));
 			} else {
 				selectList.add(new SelectValue().value(o));
 			}
 
 		}
 		return selectList;
+
+	}
+
+	/**
+	 * SQL の部品か（値として {@code ?} にしてはいけないものか）
+	 *
+	 * <p>
+	 * {@code ISelect} でない部品を値として扱うと、SQL には {@code ?} が出て、
+	 * <b>部品のオブジェクトそのもの</b>（toString は {@code Match@1e67b872} のようなもの）がバインドされる。
+	 * DB は文字列として受けるので落ちず、<b>黙って違う値が返る</b>。組み立てたところで落とす。
+	 * </p>
+	 *
+	 * @param o	引数
+	 * @return	部品なら true
+	 */
+	private static boolean isSqlPart (Object o) {
+
+		return o instanceof IDsl
+			|| o instanceof IWhere
+			|| o instanceof IOrderBy
+			|| o instanceof IBuilder
+			|| o instanceof ITable;
 
 	}
 

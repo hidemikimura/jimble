@@ -4,6 +4,7 @@ import io.jimble.db.internal.sql.query.parameter.Parameter;
 
 import io.jimble.db.dialect.SqlWriter;
 import io.jimble.util.data.definition.IColumn;
+import io.jimble.db.sql.query.dsl.AbstractDsl;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 
@@ -12,8 +13,15 @@ import java.util.List;
 
 /**
  * concat
+ *
+ * <p>
+ * <b>そのまま式として書ける</b>（{@code SQL.select(Dsl.concat(...).as("label"))}・
+ * {@code groupBy}・{@code orderBy(Dsl.concat(...).asc())}・{@code Dsl.concat(...).eq(...)}）。
+ * 2.7.4 までは {@code IDsl} だけだったので、{@code select(...)} に渡すと
+ * 「ただの値」として {@code ?} になり、このオブジェクトそのものがバインドされていた。
+ * </p>
  */
-public class Concat implements IDsl {
+public class Concat extends AbstractDsl implements IDsl {
 
 	/* 値一覧 */
 	private Object[] values;
