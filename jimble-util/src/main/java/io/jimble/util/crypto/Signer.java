@@ -6,6 +6,8 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Base64;
 
 /**
@@ -119,6 +121,62 @@ public final class Signer {
 
 	}
 
+	/*
+	 * 鍵で初期化した Mac の原本（鍵ごと。2.7.5）。
+	 *
+	 * Cookie を 1 つ署名・検証するたびに Mac.getInstance（プロバイダを探す）と init（鍵の前処理）を
+	 * していて、Cookie を付けた応答の CPU の 4 割近くがここだった。原本を写す（clone）だけにする。
+	 * 原本そのものには値を入れないので、同時に写しても壊れない。
+	 * 鍵は設定から来る数個なので、上限を超えたら覚えずに毎回作る
+	 */
+	private static final Map<String, Mac> PROTOTYPES = new ConcurrentHashMap<>();
+
+	/* 覚える鍵の数の上限 */
+	private static final int PROTOTYPE_LIMIT = 16;
+
+	/**
+	 * 鍵で初期化した Mac を作る
+	 *
+	 * @param secret	鍵
+	 * @return	Mac（呼んだ側だけが使う）
+	 * @throws Exception	鍵が空などで作れないとき
+	 */
+	private static Mac newMac (String secret) throws Exception {
+
+		Mac prototype = PROTOTYPES.get(secret);
+
+		if (prototype == null) {
+			Mac created = initMac(secret);
+			if (PROTOTYPES.size() >= PROTOTYPE_LIMIT) {
+				return created;
+			}
+			prototype = PROTOTYPES.computeIfAbsent(secret, ignore -> created);
+		}
+
+		try {
+			return (Mac) prototype.clone();
+		} catch (CloneNotSupportedException ex) {
+			// 写せないプロバイダなら、これまでどおり毎回作る
+			return initMac(secret);
+		}
+
+	}
+
+	/**
+	 * Mac を作って鍵で初期化する
+	 *
+	 * @param secret	鍵
+	 * @return	Mac
+	 * @throws Exception	鍵が空などで作れないとき
+	 */
+	private static Mac initMac (String secret) throws Exception {
+
+		Mac mac = Mac.getInstance(ALGORITHM);
+		mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM));
+		return mac;
+
+	}
+
 	/**
 	 * HMAC を計算する
 	 *
@@ -130,8 +188,7 @@ public final class Signer {
 
 		try {
 
-			Mac mac = Mac.getInstance(ALGORITHM);
-			mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM));
+			Mac mac = newMac(secret);
 
 			return Base64.getUrlEncoder().withoutPadding()
 				.encodeToString(mac.doFinal(value.getBytes(StandardCharsets.UTF_8)));

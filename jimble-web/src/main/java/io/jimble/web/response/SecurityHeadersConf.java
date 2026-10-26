@@ -1,6 +1,8 @@
 package io.jimble.web.response;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
+import io.jimble.util.conf.ConfValue;
 
 import java.time.Duration;
 
@@ -50,6 +52,16 @@ public final class SecurityHeadersConf {
 	/** 設定キー：HSTS に includeSubDomains を付けるか */
 	public static final String KEY_HSTS_INCLUDE_SUBDOMAINS = "security_headers.hsts_include_subdomains";
 
+	/* 読み込んだ設定 1 つにつき 1 回だけ解釈して持つ（2.7.5。応答のたびに読んでいた） */
+	private static final ConfFlag ENABLED = ConfFlag.of(KEY_ENABLED, true);
+	private static final ConfValue<String> CONTENT_TYPE_OPTIONS = ConfValue.of(
+		c -> c.getString(KEY_CONTENT_TYPE_OPTIONS, "nosniff"));
+	private static final ConfValue<String> FRAME_OPTIONS = ConfValue.of(
+		c -> c.getString(KEY_FRAME_OPTIONS, "SAMEORIGIN"));
+	private static final ConfValue<String> REFERRER_POLICY = ConfValue.of(
+		c -> c.getString(KEY_REFERRER_POLICY, "strict-origin-when-cross-origin"));
+	private static final ConfValue<String> HSTS = ConfValue.of(SecurityHeadersConf::readHsts);
+
 	private SecurityHeadersConf () {}
 
 	/**
@@ -59,7 +71,7 @@ public final class SecurityHeadersConf {
 	 */
 	public static boolean enabled () {
 
-		return Conf.conf().getBoolean(KEY_ENABLED, true);
+		return ENABLED.get();
 
 	}
 
@@ -70,7 +82,7 @@ public final class SecurityHeadersConf {
 	 */
 	public static String contentTypeOptions () {
 
-		return Conf.conf().getString(KEY_CONTENT_TYPE_OPTIONS, "nosniff");
+		return CONTENT_TYPE_OPTIONS.get();
 
 	}
 
@@ -81,7 +93,7 @@ public final class SecurityHeadersConf {
 	 */
 	public static String frameOptions () {
 
-		return Conf.conf().getString(KEY_FRAME_OPTIONS, "SAMEORIGIN");
+		return FRAME_OPTIONS.get();
 
 	}
 
@@ -92,7 +104,7 @@ public final class SecurityHeadersConf {
 	 */
 	public static String referrerPolicy () {
 
-		return Conf.conf().getString(KEY_REFERRER_POLICY, "strict-origin-when-cross-origin");
+		return REFERRER_POLICY.get();
 
 	}
 
@@ -103,14 +115,26 @@ public final class SecurityHeadersConf {
 	 */
 	public static String hsts () {
 
-		Duration maxAge = Conf.conf().getDuration(KEY_HSTS, Duration.ZERO);
+		return HSTS.get();
+
+	}
+
+	/**
+	 * HSTS の値を設定から作る
+	 *
+	 * @param conf	設定
+	 * @return	ヘッダの値。出さないなら null
+	 */
+	private static String readHsts (Conf conf) {
+
+		Duration maxAge = conf.getDuration(KEY_HSTS, Duration.ZERO);
 
 		if (maxAge.isZero() || maxAge.isNegative()) {
 			return null;
 		}
 
 		return "max-age=" + maxAge.toSeconds()
-			+ (Conf.conf().getBoolean(KEY_HSTS_INCLUDE_SUBDOMAINS, false) ? "; includeSubDomains" : "");
+			+ (conf.getBoolean(KEY_HSTS_INCLUDE_SUBDOMAINS, false) ? "; includeSubDomains" : "");
 
 	}
 

@@ -1,0 +1,833 @@
+== pk / all columns [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+params: [Long:1]
+key: 9699dab2a2a5db73000000f4
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+paramsAgain: [Long:1]
+== pk / all columns [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+params: [Long:1]
+key: b97c16306acc1c24000000f4
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+paramsAgain: [Long:1]
+== named columns and alias [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site_name`, `site`.`feed_count` AS `site__feed_count` FROM `site` WHERE ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+params: [Long:3]
+key: 2b32e3f8c12e4fd2000000ca
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)) __count_table
+rowCountParams: [Long:3]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site_name`, `site`.`feed_count` AS `site__feed_count`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site_name`, `site`.`feed_count` AS `site__feed_count` FROM `site` WHERE ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+paramsAgain: [Long:3]
+== named columns and alias [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."name" AS "site_name", "site"."feed_count" AS "site__feed_count" FROM "site" WHERE ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+params: [Long:3]
+key: 0346fd4e86a2701c000000ca
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)) __count_table
+rowCountParams: [Long:3]
+simple: SELECT "site"."id" AS "site__id", "site"."name" AS "site_name", "site"."feed_count" AS "site__feed_count", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."name" AS "site_name", "site"."feed_count" AS "site__feed_count" FROM "site" WHERE ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+paramsAgain: [Long:3]
+== inner join on / all columns [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) WHERE ( `site`.`id` = ?)
+params: [Long:5]
+key: 9856cc1589d37a9b0000018e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) WHERE ( `site`.`id` = ?)) __count_table
+rowCountParams: [Long:5]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title`, `site`.`id` AS `site__id` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) WHERE ( `site`.`id` = ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) WHERE ( `site`.`id` = ?)
+paramsAgain: [Long:5]
+== inner join on / all columns [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) WHERE ( "site"."id" = ?)
+params: [Long:5]
+key: 848c9ae0587ccc9a0000018e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) WHERE ( "site"."id" = ?)) __count_table
+rowCountParams: [Long:5]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title", "site"."id" AS "site__id" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) WHERE ( "site"."id" = ?)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) WHERE ( "site"."id" = ?)
+paramsAgain: [Long:5]
+== left join on with value / named [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `feed`.`title` AS `feed__title` FROM `site` LEFT JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`) AND ( `feed`.`title` LIKE ?)) WHERE ( `site`.`group_id` = ?) ORDER BY `site`.`id` DESC
+params: [String:%news%, Long:1]
+key: c3cdf01e1d36b17c000000f5
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` LEFT JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`) AND ( `feed`.`title` LIKE ?)) WHERE ( `site`.`group_id` = ?)) __count_table
+rowCountParams: [String:%news%, Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `feed`.`title` AS `feed__title`, `site`.`id` AS `site__id` FROM `site` LEFT JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`) AND ( `feed`.`title` LIKE ?)) WHERE ( `site`.`group_id` = ?) ORDER BY `site`.`id` DESC
+sqlAgain: SELECT `site`.`id` AS `site__id`, `feed`.`title` AS `feed__title` FROM `site` LEFT JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`) AND ( `feed`.`title` LIKE ?)) WHERE ( `site`.`group_id` = ?) ORDER BY `site`.`id` DESC
+paramsAgain: [String:%news%, Long:1]
+== left join on with value / named [postgresql]
+sql: SELECT "site"."id" AS "site__id", "feed"."title" AS "feed__title" FROM "site" LEFT JOIN "feed" ON (( "feed"."site_id" = "site"."id") AND ( "feed"."title" LIKE ?)) WHERE ( "site"."group_id" = ?) ORDER BY "site"."id" DESC
+params: [String:%news%, Long:1]
+key: 7d67f16907e6f876000000f5
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" LEFT JOIN "feed" ON (( "feed"."site_id" = "site"."id") AND ( "feed"."title" LIKE ?)) WHERE ( "site"."group_id" = ?)) __count_table
+rowCountParams: [String:%news%, Long:1]
+simple: SELECT "site"."id" AS "site__id", "feed"."title" AS "feed__title", "site"."id" AS "site__id" FROM "site" LEFT JOIN "feed" ON (( "feed"."site_id" = "site"."id") AND ( "feed"."title" LIKE ?)) WHERE ( "site"."group_id" = ?) ORDER BY "site"."id" DESC
+sqlAgain: SELECT "site"."id" AS "site__id", "feed"."title" AS "feed__title" FROM "site" LEFT JOIN "feed" ON (( "feed"."site_id" = "site"."id") AND ( "feed"."title" LIKE ?)) WHERE ( "site"."group_id" = ?) ORDER BY "site"."id" DESC
+paramsAgain: [String:%news%, Long:1]
+== three tables / all columns [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title`, `customer`.`id` AS `customer__id`, `customer`.`code` AS `customer__code`, `customer`.`name` AS `customer__name` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) LEFT JOIN `customer` ON (( `customer`.`id` = `site`.`group_id`)) WHERE ( `customer`.`code` = ?)
+params: [String:C-1]
+key: 41d79a6ca6bedf2d00000248
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) LEFT JOIN `customer` ON (( `customer`.`id` = `site`.`group_id`)) WHERE ( `customer`.`code` = ?)) __count_table
+rowCountParams: [String:C-1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title`, `customer`.`id` AS `customer__id`, `customer`.`code` AS `customer__code`, `customer`.`name` AS `customer__name`, `site`.`id` AS `site__id` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) LEFT JOIN `customer` ON (( `customer`.`id` = `site`.`group_id`)) WHERE ( `customer`.`code` = ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title`, `customer`.`id` AS `customer__id`, `customer`.`code` AS `customer__code`, `customer`.`name` AS `customer__name` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) LEFT JOIN `customer` ON (( `customer`.`id` = `site`.`group_id`)) WHERE ( `customer`.`code` = ?)
+paramsAgain: [String:C-1]
+== three tables / all columns [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title", "customer"."id" AS "customer__id", "customer"."code" AS "customer__code", "customer"."name" AS "customer__name" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) LEFT JOIN "customer" ON (( "customer"."id" = "site"."group_id")) WHERE ( "customer"."code" = ?)
+params: [String:C-1]
+key: 3556509fe558240200000248
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) LEFT JOIN "customer" ON (( "customer"."id" = "site"."group_id")) WHERE ( "customer"."code" = ?)) __count_table
+rowCountParams: [String:C-1]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title", "customer"."id" AS "customer__id", "customer"."code" AS "customer__code", "customer"."name" AS "customer__name", "site"."id" AS "site__id" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) LEFT JOIN "customer" ON (( "customer"."id" = "site"."group_id")) WHERE ( "customer"."code" = ?)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title", "customer"."id" AS "customer__id", "customer"."code" AS "customer__code", "customer"."name" AS "customer__name" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) LEFT JOIN "customer" ON (( "customer"."id" = "site"."group_id")) WHERE ( "customer"."code" = ?)
+paramsAgain: [String:C-1]
+== in / not in / between / like [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` IN (?, ?, ?)) AND ( `site`.`group_id` NOT IN (?, ?)) AND ( `site`.`feed_count` BETWEEN ? AND ?) AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` NOT LIKE ?)
+params: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+key: 4ffe7f1e7cc7f09700000205
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` IN (?, ?, ?)) AND ( `site`.`group_id` NOT IN (?, ?)) AND ( `site`.`feed_count` BETWEEN ? AND ?) AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` NOT LIKE ?)) __count_table
+rowCountParams: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` IN (?, ?, ?)) AND ( `site`.`group_id` NOT IN (?, ?)) AND ( `site`.`feed_count` BETWEEN ? AND ?) AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` NOT LIKE ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` IN (?, ?, ?)) AND ( `site`.`group_id` NOT IN (?, ?)) AND ( `site`.`feed_count` BETWEEN ? AND ?) AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` LIKE ? ESCAPE '!') AND ( `site`.`name` NOT LIKE ?)
+paramsAgain: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+== in / not in / between / like [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" IN (?, ?, ?)) AND ( "site"."group_id" NOT IN (?, ?)) AND ( "site"."feed_count" BETWEEN ? AND ?) AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" NOT LIKE ?)
+params: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+key: 1f0f1c542ca593a600000205
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" IN (?, ?, ?)) AND ( "site"."group_id" NOT IN (?, ?)) AND ( "site"."feed_count" BETWEEN ? AND ?) AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" NOT LIKE ?)) __count_table
+rowCountParams: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" IN (?, ?, ?)) AND ( "site"."group_id" NOT IN (?, ?)) AND ( "site"."feed_count" BETWEEN ? AND ?) AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" NOT LIKE ?)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" IN (?, ?, ?)) AND ( "site"."group_id" NOT IN (?, ?)) AND ( "site"."feed_count" BETWEEN ? AND ?) AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" LIKE ? ESCAPE '!') AND ( "site"."name" NOT LIKE ?)
+paramsAgain: [Long:1, Long:2, Long:3, Long:7, Long:8, Long:10, Long:20, String:%a!_b!%%, String:x%, String:%y, String:%z%]
+== comparisons [mysql]
+sql: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` > ?) AND ( `site`.`id` < ?) AND ( `site`.`feed_count` >= ?) AND ( `site`.`feed_count` <= ?) AND ( `site`.`name` <> ?) AND ( `site`.`name` IS NOT NULL)
+params: [Long:1, Long:100, Long:0, Long:9, String:bad]
+key: 4441802c346c51d1000000f6
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` > ?) AND ( `site`.`id` < ?) AND ( `site`.`feed_count` >= ?) AND ( `site`.`feed_count` <= ?) AND ( `site`.`name` <> ?) AND ( `site`.`name` IS NOT NULL)) __count_table
+rowCountParams: [Long:1, Long:100, Long:0, Long:9, String:bad]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` > ?) AND ( `site`.`id` < ?) AND ( `site`.`feed_count` >= ?) AND ( `site`.`feed_count` <= ?) AND ( `site`.`name` <> ?) AND ( `site`.`name` IS NOT NULL)
+sqlAgain: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` > ?) AND ( `site`.`id` < ?) AND ( `site`.`feed_count` >= ?) AND ( `site`.`feed_count` <= ?) AND ( `site`.`name` <> ?) AND ( `site`.`name` IS NOT NULL)
+paramsAgain: [Long:1, Long:100, Long:0, Long:9, String:bad]
+== comparisons [postgresql]
+sql: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" > ?) AND ( "site"."id" < ?) AND ( "site"."feed_count" >= ?) AND ( "site"."feed_count" <= ?) AND ( "site"."name" <> ?) AND ( "site"."name" IS NOT NULL)
+params: [Long:1, Long:100, Long:0, Long:9, String:bad]
+key: 3fea73e12cf1d8be000000f6
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" > ?) AND ( "site"."id" < ?) AND ( "site"."feed_count" >= ?) AND ( "site"."feed_count" <= ?) AND ( "site"."name" <> ?) AND ( "site"."name" IS NOT NULL)) __count_table
+rowCountParams: [Long:1, Long:100, Long:0, Long:9, String:bad]
+simple: SELECT "site"."id" AS "site__id", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" > ?) AND ( "site"."id" < ?) AND ( "site"."feed_count" >= ?) AND ( "site"."feed_count" <= ?) AND ( "site"."name" <> ?) AND ( "site"."name" IS NOT NULL)
+sqlAgain: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" > ?) AND ( "site"."id" < ?) AND ( "site"."feed_count" >= ?) AND ( "site"."feed_count" <= ?) AND ( "site"."name" <> ?) AND ( "site"."name" IS NOT NULL)
+paramsAgain: [Long:1, Long:100, Long:0, Long:9, String:bad]
+== and / or groups [mysql]
+sql: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ? OR  `site`.`id` = ?) AND (( `site`.`name` = ? AND  `site`.`group_id` = ?) OR  `site`.`feed_count` > ?) AND ( `site`.`deleted_at` IS NULL AND ( `site`.`id` IN (?, ?) OR  `site`.`group_id` = ?))
+params: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+key: ac4e8d72e1cd249e00000128
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` = ? OR  `site`.`id` = ?) AND (( `site`.`name` = ? AND  `site`.`group_id` = ?) OR  `site`.`feed_count` > ?) AND ( `site`.`deleted_at` IS NULL AND ( `site`.`id` IN (?, ?) OR  `site`.`group_id` = ?))) __count_table
+rowCountParams: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ? OR  `site`.`id` = ?) AND (( `site`.`name` = ? AND  `site`.`group_id` = ?) OR  `site`.`feed_count` > ?) AND ( `site`.`deleted_at` IS NULL AND ( `site`.`id` IN (?, ?) OR  `site`.`group_id` = ?))
+sqlAgain: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ? OR  `site`.`id` = ?) AND (( `site`.`name` = ? AND  `site`.`group_id` = ?) OR  `site`.`feed_count` > ?) AND ( `site`.`deleted_at` IS NULL AND ( `site`.`id` IN (?, ?) OR  `site`.`group_id` = ?))
+paramsAgain: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+== and / or groups [postgresql]
+sql: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ? OR  "site"."id" = ?) AND (( "site"."name" = ? AND  "site"."group_id" = ?) OR  "site"."feed_count" > ?) AND ( "site"."deleted_at" IS NULL AND ( "site"."id" IN (?, ?) OR  "site"."group_id" = ?))
+params: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+key: f6dd394330432de900000128
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" = ? OR  "site"."id" = ?) AND (( "site"."name" = ? AND  "site"."group_id" = ?) OR  "site"."feed_count" > ?) AND ( "site"."deleted_at" IS NULL AND ( "site"."id" IN (?, ?) OR  "site"."group_id" = ?))) __count_table
+rowCountParams: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+simple: SELECT "site"."id" AS "site__id", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ? OR  "site"."id" = ?) AND (( "site"."name" = ? AND  "site"."group_id" = ?) OR  "site"."feed_count" > ?) AND ( "site"."deleted_at" IS NULL AND ( "site"."id" IN (?, ?) OR  "site"."group_id" = ?))
+sqlAgain: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ? OR  "site"."id" = ?) AND (( "site"."name" = ? AND  "site"."group_id" = ?) OR  "site"."feed_count" > ?) AND ( "site"."deleted_at" IS NULL AND ( "site"."id" IN (?, ?) OR  "site"."group_id" = ?))
+paramsAgain: [Long:1, Long:2, String:a, Long:4, Long:5, Long:9, Long:10, Long:11]
+== in subquery [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site__name` FROM `site` WHERE ( `site`.`id` IN (SELECT `feed`.`site_id` AS `feed__site_id` FROM `feed` WHERE ( `feed`.`title` = ?))) AND ( `site`.`group_id` = ?)
+params: [String:t, Long:2]
+key: 10f9cabe31875c17000000ea
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` IN (SELECT `feed`.`site_id` AS `feed__site_id` FROM `feed` WHERE ( `feed`.`title` = ?))) AND ( `site`.`group_id` = ?)) __count_table
+rowCountParams: [String:t, Long:2]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site__name`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` IN (SELECT `feed`.`site_id` AS `feed__site_id` FROM `feed` WHERE ( `feed`.`title` = ?))) AND ( `site`.`group_id` = ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site__name` FROM `site` WHERE ( `site`.`id` IN (SELECT `feed`.`site_id` AS `feed__site_id` FROM `feed` WHERE ( `feed`.`title` = ?))) AND ( `site`.`group_id` = ?)
+paramsAgain: [String:t, Long:2]
+== in subquery [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."name" AS "site__name" FROM "site" WHERE ( "site"."id" IN (SELECT "feed"."site_id" AS "feed__site_id" FROM "feed" WHERE ( "feed"."title" = ?))) AND ( "site"."group_id" = ?)
+params: [String:t, Long:2]
+key: e6ef6a995d2ae2d3000000ea
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" IN (SELECT "feed"."site_id" AS "feed__site_id" FROM "feed" WHERE ( "feed"."title" = ?))) AND ( "site"."group_id" = ?)) __count_table
+rowCountParams: [String:t, Long:2]
+simple: SELECT "site"."id" AS "site__id", "site"."name" AS "site__name", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" IN (SELECT "feed"."site_id" AS "feed__site_id" FROM "feed" WHERE ( "feed"."title" = ?))) AND ( "site"."group_id" = ?)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."name" AS "site__name" FROM "site" WHERE ( "site"."id" IN (SELECT "feed"."site_id" AS "feed__site_id" FROM "feed" WHERE ( "feed"."title" = ?))) AND ( "site"."group_id" = ?)
+paramsAgain: [String:t, Long:2]
+== group by / having / order by [mysql]
+sql: SELECT `dsl_item`.`group_id` AS `dsl_item__group_id`, SUM(`dsl_item`.`amount`) AS `total`, COUNT(*) AS `cnt` FROM `dsl_item` WHERE ( `dsl_item`.`at` >= ?) GROUP BY `dsl_item`.`group_id` HAVING (SUM(`dsl_item`.`amount`) > ?) ORDER BY `dsl_item`.`group_id` ASC, COUNT(*) DESC
+params: [Date:1700000000000, Long:100]
+key: 2d1943e57ce1fcce00000143
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item` WHERE ( `dsl_item`.`at` >= ?) GROUP BY `dsl_item`.`group_id` HAVING (SUM(`dsl_item`.`amount`) > ?)) __count_table
+rowCountParams: [Date:1700000000000, Long:100]
+simple: SELECT `dsl_item`.`group_id` AS `dsl_item__group_id`, SUM(`dsl_item`.`amount`) AS `total`, COUNT(*) AS `cnt`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE ( `dsl_item`.`at` >= ?) GROUP BY `dsl_item`.`group_id` HAVING (SUM(`dsl_item`.`amount`) > ?) ORDER BY `dsl_item`.`group_id` ASC, COUNT(*) DESC
+sqlAgain: SELECT `dsl_item`.`group_id` AS `dsl_item__group_id`, SUM(`dsl_item`.`amount`) AS `total`, COUNT(*) AS `cnt` FROM `dsl_item` WHERE ( `dsl_item`.`at` >= ?) GROUP BY `dsl_item`.`group_id` HAVING (SUM(`dsl_item`.`amount`) > ?) ORDER BY `dsl_item`.`group_id` ASC, COUNT(*) DESC
+paramsAgain: [Date:1700000000000, Long:100]
+== group by / having / order by [postgresql]
+sql: SELECT "dsl_item"."group_id" AS "dsl_item__group_id", SUM("dsl_item"."amount") AS "total", COUNT(*) AS "cnt" FROM "dsl_item" WHERE ( "dsl_item"."at" >= ?) GROUP BY "dsl_item"."group_id" HAVING (SUM("dsl_item"."amount") > ?) ORDER BY "dsl_item"."group_id" ASC, COUNT(*) DESC
+params: [Date:1700000000000, Long:100]
+key: 8fe8e731cccefb2e00000143
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item" WHERE ( "dsl_item"."at" >= ?) GROUP BY "dsl_item"."group_id" HAVING (SUM("dsl_item"."amount") > ?)) __count_table
+rowCountParams: [Date:1700000000000, Long:100]
+simple: SELECT "dsl_item"."group_id" AS "dsl_item__group_id", SUM("dsl_item"."amount") AS "total", COUNT(*) AS "cnt", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ( "dsl_item"."at" >= ?) GROUP BY "dsl_item"."group_id" HAVING (SUM("dsl_item"."amount") > ?) ORDER BY "dsl_item"."group_id" ASC, COUNT(*) DESC
+sqlAgain: SELECT "dsl_item"."group_id" AS "dsl_item__group_id", SUM("dsl_item"."amount") AS "total", COUNT(*) AS "cnt" FROM "dsl_item" WHERE ( "dsl_item"."at" >= ?) GROUP BY "dsl_item"."group_id" HAVING (SUM("dsl_item"."amount") > ?) ORDER BY "dsl_item"."group_id" ASC, COUNT(*) DESC
+paramsAgain: [Date:1700000000000, Long:100]
+== arithmetic with parameters [mysql]
+sql: SELECT `dsl_item`.`id` AS `dsl_item__id`, (`dsl_item`.`amount` + ?) * ? AS `calc`, `dsl_item`.`amount` - `dsl_item`.`id` AS `diff` FROM `dsl_item` WHERE (`dsl_item`.`amount` + ? > ?)
+params: [Long:1, Long:2, Long:10, Long:50]
+key: dc19c797f80619ca000000d1
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item` WHERE (`dsl_item`.`amount` + ? > ?)) __count_table
+rowCountParams: [Long:10, Long:50]
+simple: SELECT `dsl_item`.`id` AS `dsl_item__id`, (`dsl_item`.`amount` + ?) * ? AS `calc`, `dsl_item`.`amount` - `dsl_item`.`id` AS `diff`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE (`dsl_item`.`amount` + ? > ?)
+sqlAgain: SELECT `dsl_item`.`id` AS `dsl_item__id`, (`dsl_item`.`amount` + ?) * ? AS `calc`, `dsl_item`.`amount` - `dsl_item`.`id` AS `diff` FROM `dsl_item` WHERE (`dsl_item`.`amount` + ? > ?)
+paramsAgain: [Long:1, Long:2, Long:10, Long:50]
+== arithmetic with parameters [postgresql]
+sql: SELECT "dsl_item"."id" AS "dsl_item__id", ("dsl_item"."amount" + ?) * ? AS "calc", "dsl_item"."amount" - "dsl_item"."id" AS "diff" FROM "dsl_item" WHERE ("dsl_item"."amount" + ? > ?)
+params: [Long:1, Long:2, Long:10, Long:50]
+key: bf73de6c55f1154f000000d1
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item" WHERE ("dsl_item"."amount" + ? > ?)) __count_table
+rowCountParams: [Long:10, Long:50]
+simple: SELECT "dsl_item"."id" AS "dsl_item__id", ("dsl_item"."amount" + ?) * ? AS "calc", "dsl_item"."amount" - "dsl_item"."id" AS "diff", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ("dsl_item"."amount" + ? > ?)
+sqlAgain: SELECT "dsl_item"."id" AS "dsl_item__id", ("dsl_item"."amount" + ?) * ? AS "calc", "dsl_item"."amount" - "dsl_item"."id" AS "diff" FROM "dsl_item" WHERE ("dsl_item"."amount" + ? > ?)
+paramsAgain: [Long:1, Long:2, Long:10, Long:50]
+== functions [mysql]
+sql: SELECT `dsl_item`.`id` AS `dsl_item__id`, COALESCE(`dsl_item`.`name`, ?) AS `n`, IF(`dsl_item`.`amount` > ?, ?, ?) AS `size`, LOWER(`dsl_item`.`name`) AS `lower_name`, ABS(`dsl_item`.`amount`) AS `abs_amount`, COUNT(DISTINCT `dsl_item`.`group_id`) AS `groups` FROM `dsl_item` GROUP BY `dsl_item`.`id`, `dsl_item`.`name`, `dsl_item`.`amount`
+params: [String:none, Long:10, String:big, String:small]
+key: d2c2d1fe1ebacea300000177
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item` GROUP BY `dsl_item`.`id`, `dsl_item`.`name`, `dsl_item`.`amount`) __count_table
+rowCountParams: []
+simple: SELECT `dsl_item`.`id` AS `dsl_item__id`, COALESCE(`dsl_item`.`name`, ?) AS `n`, IF(`dsl_item`.`amount` > ?, ?, ?) AS `size`, LOWER(`dsl_item`.`name`) AS `lower_name`, ABS(`dsl_item`.`amount`) AS `abs_amount`, COUNT(DISTINCT `dsl_item`.`group_id`) AS `groups`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` GROUP BY `dsl_item`.`id`, `dsl_item`.`name`, `dsl_item`.`amount`
+sqlAgain: SELECT `dsl_item`.`id` AS `dsl_item__id`, COALESCE(`dsl_item`.`name`, ?) AS `n`, IF(`dsl_item`.`amount` > ?, ?, ?) AS `size`, LOWER(`dsl_item`.`name`) AS `lower_name`, ABS(`dsl_item`.`amount`) AS `abs_amount`, COUNT(DISTINCT `dsl_item`.`group_id`) AS `groups` FROM `dsl_item` GROUP BY `dsl_item`.`id`, `dsl_item`.`name`, `dsl_item`.`amount`
+paramsAgain: [String:none, Long:10, String:big, String:small]
+== functions [postgresql]
+sql: SELECT "dsl_item"."id" AS "dsl_item__id", COALESCE("dsl_item"."name", ?) AS "n", (CASE WHEN "dsl_item"."amount" > ? THEN ? ELSE ? END) AS "size", LOWER("dsl_item"."name") AS "lower_name", ABS("dsl_item"."amount") AS "abs_amount", COUNT(DISTINCT "dsl_item"."group_id") AS "groups" FROM "dsl_item" GROUP BY "dsl_item"."id", "dsl_item"."name", "dsl_item"."amount"
+params: [String:none, Long:10, String:big, String:small]
+key: d48aa556421713e10000018b
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item" GROUP BY "dsl_item"."id", "dsl_item"."name", "dsl_item"."amount") __count_table
+rowCountParams: []
+simple: SELECT "dsl_item"."id" AS "dsl_item__id", COALESCE("dsl_item"."name", ?) AS "n", (CASE WHEN "dsl_item"."amount" > ? THEN ? ELSE ? END) AS "size", LOWER("dsl_item"."name") AS "lower_name", ABS("dsl_item"."amount") AS "abs_amount", COUNT(DISTINCT "dsl_item"."group_id") AS "groups", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" GROUP BY "dsl_item"."id", "dsl_item"."name", "dsl_item"."amount"
+sqlAgain: SELECT "dsl_item"."id" AS "dsl_item__id", COALESCE("dsl_item"."name", ?) AS "n", (CASE WHEN "dsl_item"."amount" > ? THEN ? ELSE ? END) AS "size", LOWER("dsl_item"."name") AS "lower_name", ABS("dsl_item"."amount") AS "abs_amount", COUNT(DISTINCT "dsl_item"."group_id") AS "groups" FROM "dsl_item" GROUP BY "dsl_item"."id", "dsl_item"."name", "dsl_item"."amount"
+paramsAgain: [String:none, Long:10, String:big, String:small]
+== limit / offset [mysql]
+sql: SELECT `dsl_item`.`id` AS `dsl_item__id`, `dsl_item`.`group_id` AS `dsl_item__group_id`, `dsl_item`.`name` AS `dsl_item__name`, `dsl_item`.`amount` AS `dsl_item__amount`, `dsl_item`.`at` AS `dsl_item__at` FROM `dsl_item` WHERE ( `dsl_item`.`group_id` = ?) ORDER BY `dsl_item`.`id` ASC LIMIT ? OFFSET ?
+params: [Long:1, Long:20, Long:40]
+key: 492943f7025c6b1300000146
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item` WHERE ( `dsl_item`.`group_id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `dsl_item`.`id` AS `dsl_item__id`, `dsl_item`.`group_id` AS `dsl_item__group_id`, `dsl_item`.`name` AS `dsl_item__name`, `dsl_item`.`amount` AS `dsl_item__amount`, `dsl_item`.`at` AS `dsl_item__at`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE ( `dsl_item`.`group_id` = ?) ORDER BY `dsl_item`.`id` ASC LIMIT ? OFFSET ?
+sqlAgain: SELECT `dsl_item`.`id` AS `dsl_item__id`, `dsl_item`.`group_id` AS `dsl_item__group_id`, `dsl_item`.`name` AS `dsl_item__name`, `dsl_item`.`amount` AS `dsl_item__amount`, `dsl_item`.`at` AS `dsl_item__at` FROM `dsl_item` WHERE ( `dsl_item`.`group_id` = ?) ORDER BY `dsl_item`.`id` ASC LIMIT ? OFFSET ?
+paramsAgain: [Long:1, Long:20, Long:40]
+== limit / offset [postgresql]
+sql: SELECT "dsl_item"."id" AS "dsl_item__id", "dsl_item"."group_id" AS "dsl_item__group_id", "dsl_item"."name" AS "dsl_item__name", "dsl_item"."amount" AS "dsl_item__amount", "dsl_item"."at" AS "dsl_item__at" FROM "dsl_item" WHERE ( "dsl_item"."group_id" = ?) ORDER BY "dsl_item"."id" ASC LIMIT ? OFFSET ?
+params: [Long:1, Long:20, Long:40]
+key: de95c8247d144dbb00000146
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item" WHERE ( "dsl_item"."group_id" = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "dsl_item"."id" AS "dsl_item__id", "dsl_item"."group_id" AS "dsl_item__group_id", "dsl_item"."name" AS "dsl_item__name", "dsl_item"."amount" AS "dsl_item__amount", "dsl_item"."at" AS "dsl_item__at", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ( "dsl_item"."group_id" = ?) ORDER BY "dsl_item"."id" ASC LIMIT ? OFFSET ?
+sqlAgain: SELECT "dsl_item"."id" AS "dsl_item__id", "dsl_item"."group_id" AS "dsl_item__group_id", "dsl_item"."name" AS "dsl_item__name", "dsl_item"."amount" AS "dsl_item__amount", "dsl_item"."at" AS "dsl_item__at" FROM "dsl_item" WHERE ( "dsl_item"."group_id" = ?) ORDER BY "dsl_item"."id" ASC LIMIT ? OFFSET ?
+paramsAgain: [Long:1, Long:20, Long:40]
+== limit only [mysql]
+sql: SELECT `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` LIMIT ?
+params: [Long:5]
+key: d0009da74bad580000000053
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item`) __count_table
+rowCountParams: []
+simple: SELECT `dsl_item`.`id` AS `dsl_item__id`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` LIMIT ?
+sqlAgain: SELECT `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` LIMIT ?
+paramsAgain: [Long:5]
+== limit only [postgresql]
+sql: SELECT "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" LIMIT ?
+params: [Long:5]
+key: a6cc163fab22d3d000000053
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item") __count_table
+rowCountParams: []
+simple: SELECT "dsl_item"."id" AS "dsl_item__id", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" LIMIT ?
+sqlAgain: SELECT "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" LIMIT ?
+paramsAgain: [Long:5]
+== for update [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE
+params: [Long:1]
+key: dfb50e362238523f000000ff
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE
+paramsAgain: [Long:1]
+== for update [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE
+params: [Long:1]
+key: 99501f9a00657215000000ff
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE
+paramsAgain: [Long:1]
+== for update nowait [mysql]
+sql: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE NOWAIT
+params: [Long:1]
+key: 8b8a592a4b6f983e0000006a
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE NOWAIT
+sqlAgain: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE NOWAIT
+paramsAgain: [Long:1]
+== for update nowait [postgresql]
+sql: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE NOWAIT
+params: [Long:1]
+key: de67408b879f07ac0000006a
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "site"."id" AS "site__id", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE NOWAIT
+sqlAgain: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE NOWAIT
+paramsAgain: [Long:1]
+== for update skip locked [mysql]
+sql: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE SKIP LOCKED
+params: [Long:1]
+key: 3c850f5eda3d1cdf0000006f
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE SKIP LOCKED
+sqlAgain: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?) FOR UPDATE SKIP LOCKED
+paramsAgain: [Long:1]
+== for update skip locked [postgresql]
+sql: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE SKIP LOCKED
+params: [Long:1]
+key: 1aea6f9fc0ca96640000006f
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "site"."id" AS "site__id", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE SKIP LOCKED
+sqlAgain: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?) FOR UPDATE SKIP LOCKED
+paramsAgain: [Long:1]
+== where(Data) [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` IN (?, ?)) AND ( `site`.`name` LIKE ?) AND ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+params: [Integer:1, Integer:2, String:%a%, Integer:3]
+key: 92a988eacb51fea90000015e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`id` IN (?, ?)) AND ( `site`.`name` LIKE ?) AND ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)) __count_table
+rowCountParams: [Integer:1, Integer:2, String:%a%, Integer:3]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` IN (?, ?)) AND ( `site`.`name` LIKE ?) AND ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` IN (?, ?)) AND ( `site`.`name` LIKE ?) AND ( `site`.`group_id` = ?) AND ( `site`.`deleted_at` IS NULL)
+paramsAgain: [Integer:1, Integer:2, String:%a%, Integer:3]
+== where(Data) [postgresql]
+sql: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" IN (?, ?)) AND ( "site"."name" LIKE ?) AND ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+params: [Integer:1, Integer:2, String:%a%, Integer:3]
+key: 82c4a0a758fd5bda0000015e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."id" IN (?, ?)) AND ( "site"."name" LIKE ?) AND ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)) __count_table
+rowCountParams: [Integer:1, Integer:2, String:%a%, Integer:3]
+simple: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" IN (?, ?)) AND ( "site"."name" LIKE ?) AND ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+sqlAgain: SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" IN (?, ?)) AND ( "site"."name" LIKE ?) AND ( "site"."group_id" = ?) AND ( "site"."deleted_at" IS NULL)
+paramsAgain: [Integer:1, Integer:2, String:%a%, Integer:3]
+== apply(Data) with order [mysql]
+sql: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`feed_count` BETWEEN ? AND ?) ORDER BY `site`.`name` DESC, `site`.`id` ASC
+params: [Date:1704034800000, Date:1735570800000]
+key: c215f787b542b047000000d1
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` WHERE ( `site`.`feed_count` BETWEEN ? AND ?)) __count_table
+rowCountParams: [Date:1704034800000, Date:1735570800000]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`feed_count` BETWEEN ? AND ?) ORDER BY `site`.`name` DESC, `site`.`id` ASC
+sqlAgain: SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`feed_count` BETWEEN ? AND ?) ORDER BY `site`.`name` DESC, `site`.`id` ASC
+paramsAgain: [Date:1704034800000, Date:1735570800000]
+== apply(Data) with order [postgresql]
+sql: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."feed_count" BETWEEN ? AND ?) ORDER BY "site"."name" DESC, "site"."id" ASC
+params: [Date:1704034800000, Date:1735570800000]
+key: 2f7b0918982b5f52000000d1
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "site" WHERE ( "site"."feed_count" BETWEEN ? AND ?)) __count_table
+rowCountParams: [Date:1704034800000, Date:1735570800000]
+simple: SELECT "site"."id" AS "site__id", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."feed_count" BETWEEN ? AND ?) ORDER BY "site"."name" DESC, "site"."id" ASC
+sqlAgain: SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."feed_count" BETWEEN ? AND ?) ORDER BY "site"."name" DESC, "site"."id" ASC
+paramsAgain: [Date:1704034800000, Date:1735570800000]
+== force index [mysql]
+sql: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` FORCE INDEX (`idx_group`) WHERE ( `site`.`group_id` = ?)
+params: [Long:1]
+key: f20cab567a6a780400000114
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `site` FORCE INDEX (`idx_group`) WHERE ( `site`.`group_id` = ?)) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` FORCE INDEX (`idx_group`) WHERE ( `site`.`group_id` = ?)
+sqlAgain: SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` FORCE INDEX (`idx_group`) WHERE ( `site`.`group_id` = ?)
+paramsAgain: [Long:1]
+== force index [postgresql]
+sql: !DialectException: インデックスのヒント（FORCE INDEX） は postgresql では使えません
+params: [Long:1]
+rowCount: !DialectException: インデックスのヒント（FORCE INDEX） は postgresql では使えません
+rowCountParams: [Long:1]
+simple: !DialectException: インデックスのヒント（FORCE INDEX） は postgresql では使えません
+sqlAgain: !DialectException: インデックスのヒント（FORCE INDEX） は postgresql では使えません
+paramsAgain: [Long:1]
+== odd values [mysql]
+sql: SELECT `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE ( `dsl_item`.`name` = ?) AND ( `dsl_item`.`amount` = ?) AND ( `dsl_item`.`id` IN (?, ?, ?)) AND ( `dsl_item`.`group_id` = ?)
+params: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+key: cbfe15f08234bad8000000fa
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `dsl_item` WHERE ( `dsl_item`.`name` = ?) AND ( `dsl_item`.`amount` = ?) AND ( `dsl_item`.`id` IN (?, ?, ?)) AND ( `dsl_item`.`group_id` = ?)) __count_table
+rowCountParams: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+simple: SELECT `dsl_item`.`id` AS `dsl_item__id`, `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE ( `dsl_item`.`name` = ?) AND ( `dsl_item`.`amount` = ?) AND ( `dsl_item`.`id` IN (?, ?, ?)) AND ( `dsl_item`.`group_id` = ?)
+sqlAgain: SELECT `dsl_item`.`id` AS `dsl_item__id` FROM `dsl_item` WHERE ( `dsl_item`.`name` = ?) AND ( `dsl_item`.`amount` = ?) AND ( `dsl_item`.`id` IN (?, ?, ?)) AND ( `dsl_item`.`group_id` = ?)
+paramsAgain: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+== odd values [postgresql]
+sql: SELECT "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ( "dsl_item"."name" = ?) AND ( "dsl_item"."amount" = ?) AND ( "dsl_item"."id" IN (?, ?, ?)) AND ( "dsl_item"."group_id" = ?)
+params: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+key: 0a23d75731906f14000000fa
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "dsl_item" WHERE ( "dsl_item"."name" = ?) AND ( "dsl_item"."amount" = ?) AND ( "dsl_item"."id" IN (?, ?, ?)) AND ( "dsl_item"."group_id" = ?)) __count_table
+rowCountParams: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+simple: SELECT "dsl_item"."id" AS "dsl_item__id", "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ( "dsl_item"."name" = ?) AND ( "dsl_item"."amount" = ?) AND ( "dsl_item"."id" IN (?, ?, ?)) AND ( "dsl_item"."group_id" = ?)
+sqlAgain: SELECT "dsl_item"."id" AS "dsl_item__id" FROM "dsl_item" WHERE ( "dsl_item"."name" = ?) AND ( "dsl_item"."amount" = ?) AND ( "dsl_item"."id" IN (?, ?, ?)) AND ( "dsl_item"."group_id" = ?)
+paramsAgain: [String:O'Reilly "q" `b` \ 日本語, BigDecimal:12.30, Integer:1, Long:2, String:3, Boolean:true]
+== generated / pk all columns [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` WHERE ( `product`.`id` = ?)
+params: [Long:7]
+key: 411a4cb4c7acc8e00000010c
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` WHERE ( `product`.`id` = ?)) __count_table
+rowCountParams: [Long:7]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`id` = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` WHERE ( `product`.`id` = ?)
+paramsAgain: [Long:7]
+== generated / pk all columns [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" WHERE ( "product"."id" = ?)
+params: [Long:7]
+key: cbcb06b9c32d89b70000010c
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" WHERE ( "product"."id" = ?)) __count_table
+rowCountParams: [Long:7]
+simple: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "product"."id" AS "product__id" FROM "product" WHERE ( "product"."id" = ?)
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" WHERE ( "product"."id" = ?)
+paramsAgain: [Long:7]
+== generated / join all columns [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) WHERE ( `product`.`shop_id` = ?) AND ( `product`.`id` IN (?, ?, ?)) AND ( `product`.`deleted_at` IS NULL) ORDER BY `product`.`price` DESC LIMIT ? OFFSET ?
+params: [Long:1, Long:1, Long:2, Long:3, Long:20, Long:0]
+key: 360264601893d22d0000023b
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) WHERE ( `product`.`shop_id` = ?) AND ( `product`.`id` IN (?, ?, ?)) AND ( `product`.`deleted_at` IS NULL)) __count_table
+rowCountParams: [Long:1, Long:1, Long:2, Long:3]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name`, `product`.`id` AS `product__id` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) WHERE ( `product`.`shop_id` = ?) AND ( `product`.`id` IN (?, ?, ?)) AND ( `product`.`deleted_at` IS NULL) ORDER BY `product`.`price` DESC LIMIT ? OFFSET ?
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) WHERE ( `product`.`shop_id` = ?) AND ( `product`.`id` IN (?, ?, ?)) AND ( `product`.`deleted_at` IS NULL) ORDER BY `product`.`price` DESC LIMIT ? OFFSET ?
+paramsAgain: [Long:1, Long:1, Long:2, Long:3, Long:20, Long:0]
+== generated / join all columns [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) WHERE ( "product"."shop_id" = ?) AND ( "product"."id" IN (?, ?, ?)) AND ( "product"."deleted_at" IS NULL) ORDER BY "product"."price" DESC LIMIT ? OFFSET ?
+params: [Long:1, Long:1, Long:2, Long:3, Long:20, Long:0]
+key: 694f613db88c1dd30000023b
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) WHERE ( "product"."shop_id" = ?) AND ( "product"."id" IN (?, ?, ?)) AND ( "product"."deleted_at" IS NULL)) __count_table
+rowCountParams: [Long:1, Long:1, Long:2, Long:3]
+simple: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name", "product"."id" AS "product__id" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) WHERE ( "product"."shop_id" = ?) AND ( "product"."id" IN (?, ?, ?)) AND ( "product"."deleted_at" IS NULL) ORDER BY "product"."price" DESC LIMIT ? OFFSET ?
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) WHERE ( "product"."shop_id" = ?) AND ( "product"."id" IN (?, ?, ?)) AND ( "product"."deleted_at" IS NULL) ORDER BY "product"."price" DESC LIMIT ? OFFSET ?
+paramsAgain: [Long:1, Long:1, Long:2, Long:3, Long:20, Long:0]
+== generated / empty table first [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `empty` INNER JOIN `product` ON (( `product`.`id` = ?))
+params: [Long:1]
+key: 81020a468b79066c0000011e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `empty` INNER JOIN `product` ON (( `product`.`id` = ?))) __count_table
+rowCountParams: [Long:1]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `empty` INNER JOIN `product` ON (( `product`.`id` = ?))
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `empty` INNER JOIN `product` ON (( `product`.`id` = ?))
+paramsAgain: [Long:1]
+== generated / empty table first [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "empty" INNER JOIN "product" ON (( "product"."id" = ?))
+params: [Long:1]
+key: bea485f0a56fb4270000011e
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "empty" INNER JOIN "product" ON (( "product"."id" = ?))) __count_table
+rowCountParams: [Long:1]
+simple: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "empty" INNER JOIN "product" ON (( "product"."id" = ?))
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "empty" INNER JOIN "product" ON (( "product"."id" = ?))
+paramsAgain: [Long:1]
+== generated / empty table last [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` LEFT JOIN `empty` ON (( `product`.`id` = ?))
+params: [Long:2]
+key: f221717fee7b59d50000011d
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` LEFT JOIN `empty` ON (( `product`.`id` = ?))) __count_table
+rowCountParams: [Long:2]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `product`.`id` AS `product__id` FROM `product` LEFT JOIN `empty` ON (( `product`.`id` = ?))
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` LEFT JOIN `empty` ON (( `product`.`id` = ?))
+paramsAgain: [Long:2]
+== generated / empty table last [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" LEFT JOIN "empty" ON (( "product"."id" = ?))
+params: [Long:2]
+key: 278cd509bb8b94fa0000011d
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" LEFT JOIN "empty" ON (( "product"."id" = ?))) __count_table
+rowCountParams: [Long:2]
+simple: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "product"."id" AS "product__id" FROM "product" LEFT JOIN "empty" ON (( "product"."id" = ?))
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" LEFT JOIN "empty" ON (( "product"."id" = ?))
+paramsAgain: [Long:2]
+== generated / empty table only [mysql]
+sql: SELECT FROM `empty`
+params: []
+key: 74d70174d17d653d00000024
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `empty`) __count_table
+rowCountParams: []
+simple: SELECT FROM `empty`
+sqlAgain: SELECT FROM `empty`
+paramsAgain: []
+== generated / empty table only [postgresql]
+sql: SELECT FROM "empty"
+params: []
+key: 2217d9bcf73f88b100000024
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "empty") __count_table
+rowCountParams: []
+simple: SELECT FROM "empty"
+sqlAgain: SELECT FROM "empty"
+paramsAgain: []
+== generated / mixed with reflected [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `product` LEFT JOIN `site` ON (( `site`.`id` = `product`.`shop_id`)) WHERE ( `shop`.`we``ird"name` = ?)
+params: [String:x]
+key: fe3d7aff5332348100000205
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` LEFT JOIN `site` ON (( `site`.`id` = `product`.`shop_id`)) WHERE ( `shop`.`we``ird"name` = ?)) __count_table
+rowCountParams: [String:x]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `product`.`id` AS `product__id` FROM `product` LEFT JOIN `site` ON (( `site`.`id` = `product`.`shop_id`)) WHERE ( `shop`.`we``ird"name` = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `product` LEFT JOIN `site` ON (( `site`.`id` = `product`.`shop_id`)) WHERE ( `shop`.`we``ird"name` = ?)
+paramsAgain: [String:x]
+== generated / mixed with reflected [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "product" LEFT JOIN "site" ON (( "site"."id" = "product"."shop_id")) WHERE ( "shop"."we`ird""name" = ?)
+params: [String:x]
+key: 312dc705525ade8900000205
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" LEFT JOIN "site" ON (( "site"."id" = "product"."shop_id")) WHERE ( "shop"."we`ird""name" = ?)) __count_table
+rowCountParams: [String:x]
+simple: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "product"."id" AS "product__id" FROM "product" LEFT JOIN "site" ON (( "site"."id" = "product"."shop_id")) WHERE ( "shop"."we`ird""name" = ?)
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "product" LEFT JOIN "site" ON (( "site"."id" = "product"."shop_id")) WHERE ( "shop"."we`ird""name" = ?)
+paramsAgain: [String:x]
+== generated / named columns [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `shop`.`we``ird"name` AS `shop__we``ird"name`, `product`.`name` AS `n` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) ORDER BY `shop`.`we``ird"name` ASC
+params: []
+key: b5ba2e66049473af000000ed
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`))) __count_table
+rowCountParams: []
+simple: SELECT `product`.`id` AS `product__id`, `shop`.`we``ird"name` AS `shop__we``ird"name`, `product`.`name` AS `n`, `product`.`id` AS `product__id` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) ORDER BY `shop`.`we``ird"name` ASC
+sqlAgain: SELECT `product`.`id` AS `product__id`, `shop`.`we``ird"name` AS `shop__we``ird"name`, `product`.`name` AS `n` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) ORDER BY `shop`.`we``ird"name` ASC
+paramsAgain: []
+== generated / named columns [postgresql]
+sql: SELECT "product"."id" AS "product__id", "shop"."we`ird""name" AS "shop__we`ird""name", "product"."name" AS "n" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) ORDER BY "shop"."we`ird""name" ASC
+params: []
+key: 4f4229b9743c21b5000000ed
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id"))) __count_table
+rowCountParams: []
+simple: SELECT "product"."id" AS "product__id", "shop"."we`ird""name" AS "shop__we`ird""name", "product"."name" AS "n", "product"."id" AS "product__id" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) ORDER BY "shop"."we`ird""name" ASC
+sqlAgain: SELECT "product"."id" AS "product__id", "shop"."we`ird""name" AS "shop__we`ird""name", "product"."name" AS "n" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) ORDER BY "shop"."we`ird""name" ASC
+paramsAgain: []
+== subclass / table with parameters [mysql]
+sql: SELECT `product`.`id` AS `product__id` FROM fn_table(?, ?) WHERE ( `product`.`id` = ?)
+params: [String:from-a, Long:42, Long:3]
+key: a6c63964eee2e39300000073
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM fn_table(?, ?) WHERE ( `product`.`id` = ?)) __count_table
+rowCountParams: [String:from-a, Long:42, Long:3]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`id` AS `product__id` FROM fn_table(?, ?) WHERE ( `product`.`id` = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id` FROM fn_table(?, ?) WHERE ( `product`.`id` = ?)
+paramsAgain: [String:from-a, Long:42, Long:3]
+== subclass / table with parameters [postgresql]
+sql: SELECT "product"."id" AS "product__id" FROM fn_table(?, ?) WHERE ( "product"."id" = ?)
+params: [String:from-a, Long:42, Long:3]
+key: 0f7a725042bd295d00000073
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM fn_table(?, ?) WHERE ( "product"."id" = ?)) __count_table
+rowCountParams: [String:from-a, Long:42, Long:3]
+simple: SELECT "product"."id" AS "product__id", "product"."id" AS "product__id" FROM fn_table(?, ?) WHERE ( "product"."id" = ?)
+sqlAgain: SELECT "product"."id" AS "product__id" FROM fn_table(?, ?) WHERE ( "product"."id" = ?)
+paramsAgain: [String:from-a, Long:42, Long:3]
+== subclass / column overriding sql and parameters [mysql]
+sql: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain` FROM `product` WHERE ( `product`.`secret` = ?) ORDER BY AES_DECRYPT(`product`.`secret`, ?) ASC
+params: [String:key-1, String:key-1, String:x, String:key-1]
+key: 1d4c6d65da64c628000000e9
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` WHERE ( `product`.`secret` = ?)) __count_table
+rowCountParams: [String:key-1, String:x]
+simple: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain`, `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`secret` = ?) ORDER BY AES_DECRYPT(`product`.`secret`, ?) ASC
+sqlAgain: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain` FROM `product` WHERE ( `product`.`secret` = ?) ORDER BY AES_DECRYPT(`product`.`secret`, ?) ASC
+paramsAgain: [String:key-1, String:key-1, String:x, String:key-1]
+== subclass / column overriding sql and parameters [postgresql]
+sql: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain" FROM "product" WHERE ( "product"."secret" = ?) ORDER BY AES_DECRYPT("product"."secret", ?) ASC
+params: [String:key-1, String:key-1, String:x, String:key-1]
+key: a6995421eefdac60000000e9
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" WHERE ( "product"."secret" = ?)) __count_table
+rowCountParams: [String:key-1, String:x]
+simple: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain", "product"."id" AS "product__id" FROM "product" WHERE ( "product"."secret" = ?) ORDER BY AES_DECRYPT("product"."secret", ?) ASC
+sqlAgain: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain" FROM "product" WHERE ( "product"."secret" = ?) ORDER BY AES_DECRYPT("product"."secret", ?) ASC
+paramsAgain: [String:key-1, String:key-1, String:x, String:key-1]
+== subclass / all columns with overriding column [mysql]
+sql: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain` FROM `product` WHERE ( `product`.`id` = ?)
+params: [String:key-1, Long:4]
+key: ab7cb7051b8ff4ae000000a9
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` WHERE ( `product`.`id` = ?)) __count_table
+rowCountParams: [Long:4]
+simple: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain`, `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`id` = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id`, AES_DECRYPT(`product`.`secret`, ?) AS `product__secret_plain` FROM `product` WHERE ( `product`.`id` = ?)
+paramsAgain: [String:key-1, Long:4]
+== subclass / all columns with overriding column [postgresql]
+sql: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain" FROM "product" WHERE ( "product"."id" = ?)
+params: [String:key-1, Long:4]
+key: e9e3cf88fa951e4f000000a9
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" WHERE ( "product"."id" = ?)) __count_table
+rowCountParams: [Long:4]
+simple: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain", "product"."id" AS "product__id" FROM "product" WHERE ( "product"."id" = ?)
+sqlAgain: SELECT "product"."id" AS "product__id", AES_DECRYPT("product"."secret", ?) AS "product__secret_plain" FROM "product" WHERE ( "product"."id" = ?)
+paramsAgain: [String:key-1, Long:4]
+== subclass / where query [mysql]
+sql: SELECT `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`name` = ? OR 1 = ?)
+params: [String:n, String:extra]
+key: afc5d5a16fb52d3000000075
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` WHERE ( `product`.`name` = ? OR 1 = ?)) __count_table
+rowCountParams: [String:n, String:extra]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`name` = ? OR 1 = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`name` = ? OR 1 = ?)
+paramsAgain: [String:n, String:extra]
+== subclass / where query [postgresql]
+sql: SELECT "product"."id" AS "product__id" FROM "product" WHERE ( "product"."name" = ? OR 1 = ?)
+params: [String:n, String:extra]
+key: fdbe95799f5ffbfe00000075
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" WHERE ( "product"."name" = ? OR 1 = ?)) __count_table
+rowCountParams: [String:n, String:extra]
+simple: SELECT "product"."id" AS "product__id", "product"."id" AS "product__id" FROM "product" WHERE ( "product"."name" = ? OR 1 = ?)
+sqlAgain: SELECT "product"."id" AS "product__id" FROM "product" WHERE ( "product"."name" = ? OR 1 = ?)
+paramsAgain: [String:n, String:extra]
+== subclass / order by query [mysql]
+sql: SELECT `product`.`id` AS `product__id` FROM `product` ORDER BY FIELD(?, 1) `product`.`price` DESC
+params: [Long:9]
+key: f6d65b2270947ae600000074
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product`) __count_table
+rowCountParams: []
+simple: SELECT `product`.`id` AS `product__id`, `product`.`id` AS `product__id` FROM `product` ORDER BY FIELD(?, 1) `product`.`price` DESC
+sqlAgain: SELECT `product`.`id` AS `product__id` FROM `product` ORDER BY FIELD(?, 1) `product`.`price` DESC
+paramsAgain: [Long:9]
+== subclass / order by query [postgresql]
+sql: SELECT "product"."id" AS "product__id" FROM "product" ORDER BY FIELD(?, 1) "product"."price" DESC
+params: [Long:9]
+key: 1f38dddefec2e79200000074
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product") __count_table
+rowCountParams: []
+simple: SELECT "product"."id" AS "product__id", "product"."id" AS "product__id" FROM "product" ORDER BY FIELD(?, 1) "product"."price" DESC
+sqlAgain: SELECT "product"."id" AS "product__id" FROM "product" ORDER BY FIELD(?, 1) "product"."price" DESC
+paramsAgain: [Long:9]
+== declared / fresh list each call [mysql]
+sql: SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name` FROM `fresh` WHERE ( `product`.`id` = ?)
+params: [Long:5]
+key: 178ca9fa9a4225c900000087
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `fresh` WHERE ( `product`.`id` = ?)) __count_table
+rowCountParams: [Long:5]
+simple: SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name`, `product`.`id` AS `product__id` FROM `fresh` WHERE ( `product`.`id` = ?)
+sqlAgain: SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name` FROM `fresh` WHERE ( `product`.`id` = ?)
+paramsAgain: [Long:5]
+== declared / fresh list each call [postgresql]
+sql: SELECT "product"."id" AS "product__id", "product"."name" AS "product__name" FROM "fresh" WHERE ( "product"."id" = ?)
+params: [Long:5]
+key: 3128995c0a9a0f2e00000087
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "fresh" WHERE ( "product"."id" = ?)) __count_table
+rowCountParams: [Long:5]
+simple: SELECT "product"."id" AS "product__id", "product"."name" AS "product__name", "product"."id" AS "product__id" FROM "fresh" WHERE ( "product"."id" = ?)
+sqlAgain: SELECT "product"."id" AS "product__id", "product"."name" AS "product__name" FROM "fresh" WHERE ( "product"."id" = ?)
+paramsAgain: [Long:5]
+== declared / throws [mysql]
+sql: SELECT FROM `broken`
+params: []
+key: f28ec84ff877377d00000025
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `broken`) __count_table
+rowCountParams: []
+simple: SELECT FROM `broken`
+sqlAgain: SELECT FROM `broken`
+paramsAgain: []
+== declared / throws [postgresql]
+sql: SELECT FROM "broken"
+params: []
+key: 2ca9c7d0989afcf200000025
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "broken") __count_table
+rowCountParams: []
+simple: SELECT FROM "broken"
+sqlAgain: SELECT FROM "broken"
+paramsAgain: []
+== no columns no from [mysql]
+sql: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+params: []
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt) __count_table
+rowCountParams: []
+simple: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+sqlAgain: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+paramsAgain: []
+== no columns no from [postgresql]
+sql: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+params: []
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt) __count_table
+rowCountParams: []
+simple: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+sqlAgain: !SqlBuildException: SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）
+paramsAgain: []
+== select literal without from [mysql]
+sql: SELECT NOW() AS `now`
+params: []
+key: 3958fcc1995bc94100000026
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt) __count_table
+rowCountParams: []
+simple: SELECT NOW() AS `now`
+sqlAgain: SELECT NOW() AS `now`
+paramsAgain: []
+== select literal without from [postgresql]
+sql: SELECT NOW() AS "now"
+params: []
+key: 1562a8abca5dbe6e00000026
+rowCount: SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt) __count_table
+rowCountParams: []
+simple: SELECT NOW() AS "now"
+sqlAgain: SELECT NOW() AS "now"
+paramsAgain: []
+== sql twice [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+[Long:1]
+== sql twice [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+[Long:1]
+== sql then select more [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, COUNT(*) AS `cnt` FROM `site` WHERE ( `site`.`id` = ?)
+[Long:1]
+== sql then select more [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", COUNT(*) AS "cnt" FROM "site" WHERE ( "site"."id" = ?)
+[Long:1]
+== sql then copy then where [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`name` AS `again` FROM `site` WHERE ( `site`.`id` = ?) AND ( `site`.`group_id` = ?)
+[Long:1, Long:2]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+== sql then copy then where [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."name" AS "again" FROM "site" WHERE ( "site"."id" = ?) AND ( "site"."group_id" = ?)
+[Long:1, Long:2]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+== sql then join [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` INNER JOIN `feed` ON (( `feed`.`site_id` = `site`.`id`)) WHERE ( `site`.`id` = ?)
+[Long:1]
+== sql then join [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" INNER JOIN "feed" ON (( "feed"."site_id" = "site"."id")) WHERE ( "site"."id" = ?)
+[Long:1]
+== sql then from [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site`
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `feed`
+== sql then from [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site"
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "feed"
+== copy before sql [mysql]
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?)
+SELECT `site`.`id` AS `site__id`, `site`.`group_id` AS `site__group_id`, `site`.`name` AS `site__name`, `site`.`feed_count` AS `site__feed_count`, `site`.`deleted_at` AS `site__deleted_at`, `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`id` = ?)
+== copy before sql [postgresql]
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?)
+SELECT "site"."id" AS "site__id", "site"."group_id" AS "site__group_id", "site"."name" AS "site__name", "site"."feed_count" AS "site__feed_count", "site"."deleted_at" AS "site__deleted_at", "site"."id" AS "site__id" FROM "site" WHERE ( "site"."id" = ?)
+== sql then simpleSql then sql [mysql]
+SELECT `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title` FROM `feed` WHERE ( `feed`.`site_id` = ?)
+SELECT `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title`, `feed`.`id` AS `feed__id` FROM `feed` WHERE ( `feed`.`site_id` = ?)
+SELECT `feed`.`id` AS `feed__id`, `feed`.`site_id` AS `feed__site_id`, `feed`.`title` AS `feed__title` FROM `feed` WHERE ( `feed`.`site_id` = ?)
+== sql then simpleSql then sql [postgresql]
+SELECT "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title" FROM "feed" WHERE ( "feed"."site_id" = ?)
+SELECT "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title", "feed"."id" AS "feed__id" FROM "feed" WHERE ( "feed"."site_id" = ?)
+SELECT "feed"."id" AS "feed__id", "feed"."site_id" AS "feed__site_id", "feed"."title" AS "feed__title" FROM "feed" WHERE ( "feed"."site_id" = ?)
+== empty in [mysql]
+!SqlBuildException: IN に空の一覧（または null）が渡されました。そのままでは壊れた SQL になります。「どれにも当たらない」なら 1 = 0 などを書き、「条件を付けない」なら呼び出し側で分岐してください
+[]
+== empty in [postgresql]
+!SqlBuildException: IN に空の一覧（または null）が渡されました。そのままでは壊れた SQL になります。「どれにも当たらない」なら 1 = 0 などを書き、「条件を付けない」なら呼び出し側で分岐してください
+[]
+== list where one value [mysql]
+SELECT `site`.`id` AS `site__id` FROM `site` WHERE ( `site`.`name` = ?)
+!SqlBuildException: 1つの値を書く場所に、リストや配列が来ました（List12）。IN で比べるなら in(...) を使ってください
+== list where one value [postgresql]
+SELECT "site"."id" AS "site__id" FROM "site" WHERE ( "site"."name" = ?)
+!SqlBuildException: 1つの値を書く場所に、リストや配列が来ました（List12）。IN で比べるなら in(...) を使ってください
+== generated / sql then select then copy [mysql]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` WHERE ( `product`.`id` = ?)
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `product`.`price` * ? AS `double_price` FROM `product` WHERE ( `product`.`id` = ?)
+[Long:2, Long:1]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product` WHERE ( `product`.`id` = ?)
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `product`.`price` * ? AS `double_price`, `product`.`id` AS `product__id` FROM `product` WHERE ( `product`.`id` = ?)
+SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM `product` WHERE ( `product`.`id` = ?)) __count_table
+== generated / sql then select then copy [postgresql]
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" WHERE ( "product"."id" = ?)
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "product"."price" * ? AS "double_price" FROM "product" WHERE ( "product"."id" = ?)
+[Long:2, Long:1]
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product" WHERE ( "product"."id" = ?)
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "product"."price" * ? AS "double_price", "product"."id" AS "product__id" FROM "product" WHERE ( "product"."id" = ?)
+SELECT COUNT(__count_table.cnt) AS cnt FROM (SELECT 1 AS cnt FROM "product" WHERE ( "product"."id" = ?)) __count_table
+== generated / mysql then postgresql on one builder [mysql]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`))
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id"))
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`))
+== generated / mysql then postgresql on one builder [postgresql]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`))
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id"))
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id"))
+== column list / mutated on one instance [mysql]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`deleted_at` AS `product__deleted_at` FROM `product`
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at` FROM `product`
+== column list / mutated on one instance [postgresql]
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."deleted_at" AS "product__deleted_at" FROM "product"
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at" FROM "product"
+== column list / static declaration changed [mysql]
+SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price` FROM `mutable`
+SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name` FROM `mutable`
+SELECT `product`.`id` AS `product__id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price` FROM `mutable`
+== column list / static declaration changed [postgresql]
+SELECT "product"."id" AS "product__id", "product"."name" AS "product__name", "product"."price" AS "product__price" FROM "mutable"
+SELECT "product"."id" AS "product__id", "product"."name" AS "product__name" FROM "mutable"
+SELECT "product"."id" AS "product__id", "product"."name" AS "product__name", "product"."price" AS "product__price" FROM "mutable"
+== from query changed after sql [mysql]
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`))
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) LEFT JOIN `site`
+SELECT `product`.`id` AS `product__id`, `product`.`shop_id` AS `product__shop_id`, `product`.`name` AS `product__name`, `product`.`price` AS `product__price`, `product`.`deleted_at` AS `product__deleted_at`, `shop`.`id` AS `shop__id`, `shop`.`code` AS `shop__code`, `shop`.`we``ird"name` AS `shop__we``ird"name` FROM `product` INNER JOIN `shop` ON (( `shop`.`id` = `product`.`shop_id`)) LEFT JOIN `site`
+[]
+== from query changed after sql [postgresql]
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id"))
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) LEFT JOIN "site"
+SELECT "product"."id" AS "product__id", "product"."shop_id" AS "product__shop_id", "product"."name" AS "product__name", "product"."price" AS "product__price", "product"."deleted_at" AS "product__deleted_at", "shop"."id" AS "shop__id", "shop"."code" AS "shop__code", "shop"."we`ird""name" AS "shop__we`ird""name" FROM "product" INNER JOIN "shop" ON (( "shop"."id" = "product"."shop_id")) LEFT JOIN "site"
+[]
+== cache key namespaces [mysql]
+5f8b1a4d6cc719d2000000eb
+3ced51268b3d77c2000000f3
+5f8b1a4d6cc719d2000000eb
+bb95a5b303af43d4000000fb
+1c98324f69e979a300000103
+503182095ff0de0f00000029
+== cache key namespaces [postgresql]
+1903330c949cd48b000000eb
+72871f10513b67c1000000f3
+1903330c949cd48b000000eb
+9e30190ae5e4c795000000fb
+210ff350ee221ecf00000103
+503182095ff0de0f00000029
+== insert values [mysql]
+sql: INSERT INTO `site` ( `id`,  `group_id`,  `name`,  `deleted_at`) VALUES (?, ?, ?, ?)
+params: [Long:1, Long:2, String:名前, null]
+== insert values [postgresql]
+sql: INSERT INTO "site" ( "id",  "group_id",  "name",  "deleted_at") VALUES (?, ?, ?, ?)
+params: [Long:1, Long:2, String:名前, null]
+== insert upsert [mysql]
+sql: INSERT INTO `customer` ( `id`,  `code`,  `name`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`customer`.`name`), `code` = ?
+params: [Long:1, String:C, String:n, String:D]
+== insert upsert [postgresql]
+sql: INSERT INTO "customer" ( "id",  "code",  "name") VALUES (?, ?, ?) ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "code" = ?
+params: [Long:1, String:C, String:n, String:D]
+== insert select [mysql]
+sql: INSERT INTO `feed` ( `site_id`) SELECT `site`.`id` AS `site__id`, `site`.`name` AS `site__name` FROM `site` WHERE ( `site`.`group_id` = ?)
+params: [Long:5]
+== insert select [postgresql]
+sql: INSERT INTO "feed" ( "site_id") SELECT "site"."id" AS "site__id", "site"."name" AS "site__name" FROM "site" WHERE ( "site"."group_id" = ?)
+params: [Long:5]
+== update set where [mysql]
+sql: UPDATE `site` SET `name` = ?, `feed_count` = `site`.`feed_count` + ? WHERE ( `site`.`id` IN (?, ?)) AND ( `site`.`deleted_at` IS NULL)
+params: [String:new, Long:1, Long:1, Long:2]
+== update set where [postgresql]
+sql: UPDATE "site" SET "name" = ?, "feed_count" = "site"."feed_count" + ? WHERE ( "site"."id" IN (?, ?)) AND ( "site"."deleted_at" IS NULL)
+params: [String:new, Long:1, Long:1, Long:2]
+== update bytes and data [mysql]
+sql: UPDATE `dsl_item` SET `name` = ?, `amount` = ? WHERE ( `dsl_item`.`id` = ?)
+params: [byte[]:4142, Data:{"a":1}, Long:9]
+== update bytes and data [postgresql]
+sql: UPDATE "dsl_item" SET "name" = ?, "amount" = ? WHERE ( "dsl_item"."id" = ?)
+params: [byte[]:4142, Data:{"a":1}, Long:9]
+== delete where [mysql]
+sql: DELETE FROM `feed` WHERE ( `feed`.`site_id` = ?) AND ( `feed`.`title` LIKE ?)
+params: [Long:3, String:old%]
+== delete where [postgresql]
+sql: DELETE FROM "feed" WHERE ( "feed"."site_id" = ?) AND ( "feed"."title" LIKE ?)
+params: [Long:3, String:old%]
+== delete all rows [mysql]
+sql: DELETE FROM `feed`
+params: []
+== delete all rows [postgresql]
+sql: DELETE FROM "feed"
+params: []

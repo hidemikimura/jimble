@@ -87,6 +87,13 @@ public final class IndexHintFrom implements IFrom {
 	}
 
 	@Override
+	public void collectParameters (java.util.List<Object> out) {
+
+		table.collectParameters(out);
+
+	}
+
+	@Override
 	public List<ITable> getTableList () {
 
 		return table.getTableList();

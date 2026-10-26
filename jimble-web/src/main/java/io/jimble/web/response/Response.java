@@ -7,6 +7,7 @@ import io.jimble.web.template.ModelAndView;
 import io.jimble.web.template.Templates;
 import com.typesafe.config.ConfigValueType;
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfValue;
 import io.jimble.util.internal.WarnOnce;
 import io.jimble.db.cache.CacheData;
 import io.jimble.util.convertor.Configration;
@@ -181,7 +182,21 @@ public final class Response extends Data {
 	 */
 	static int configuredIoBufferSize () {
 
-		Conf conf = Conf.conf();
+		return IO_BUFFER_SIZE.get();
+
+	}
+
+	/* 読み込んだ設定 1 つにつき 1 回だけ解釈して持つ（2.7.5。応答のたびに読んでいた） */
+	private static final ConfValue<Integer> IO_BUFFER_SIZE = ConfValue.of(Response::readIoBufferSize);
+
+	/**
+	 * IOバッファサイズを設定から読む
+	 *
+	 * @param conf	設定
+	 * @return	バイト
+	 * @throws IllegalStateException	0 以下か、int に収まらない場合
+	 */
+	private static int readIoBufferSize (Conf conf) {
 
 		if (!conf.has(KEY_IO_BUFFER_SIZE)) {
 			return DEFAULT_IO_BUFFER_SIZE;

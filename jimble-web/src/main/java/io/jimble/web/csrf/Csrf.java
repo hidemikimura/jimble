@@ -3,6 +3,8 @@ package io.jimble.web.csrf;
 import io.jimble.util.annotation.CheckReturnValue;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfValue;
+import io.jimble.util.conf.ConfFlag;
 import io.jimble.web.context.WebContext;
 import io.jimble.web.http.HttpException;
 
@@ -101,6 +103,12 @@ public final class Csrf {
 	 */
 	public static final String KEY_BIND_SESSION = "csrf.bind_session";
 
+	/* 要求のたびに読むので、読み込んだ設定 1 つにつき 1 回だけ読む（2.7.5） */
+	private static final ConfFlag BIND_SESSION = ConfFlag.of(KEY_BIND_SESSION, false);
+
+	/* トークンの Cookie を出すたびに読むので、同じく 1 回だけ読む（2.7.5） */
+	private static final ConfValue<Duration> MAX_AGE = ConfValue.of(c -> c.getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE));
+
 	/** セッションのキー：トークン（csrf.bind_session = true のとき） */
 	static final String SESSION_KEY = "__csrf_token";
 
@@ -175,7 +183,7 @@ public final class Csrf {
 	 */
 	public static Duration maxAge () {
 
-		return Conf.conf().getDuration(KEY_MAX_AGE, DEFAULT_MAX_AGE);
+		return MAX_AGE.get();
 
 	}
 
@@ -261,7 +269,7 @@ public final class Csrf {
 	 */
 	public static boolean bindSession () {
 
-		return Conf.conf().getBoolean(KEY_BIND_SESSION, false);
+		return BIND_SESSION.get();
 
 	}
 

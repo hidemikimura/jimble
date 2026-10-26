@@ -4,7 +4,7 @@ import io.jimble.db.dialect.SqlWriter;
 /**
  * order by
  */
-public interface IOrderBy {
+public interface IOrderBy extends io.jimble.db.sql.query.ParameterSource {
 
 	/**
 	 * asc

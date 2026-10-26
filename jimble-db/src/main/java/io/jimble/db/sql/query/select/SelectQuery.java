@@ -252,6 +252,41 @@ public class SelectQuery implements ISelect {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>{@link #getParameter()} と同じ順（中身・演算の値）で、平らにして足す。</p>
+	 */
+	@Override
+	public void collectParameters (List<Object> out) {
+
+		// 継承したクラスは hasParameter / getParameter を上書きしているかもしれないので、既定の形で集める
+		if (getClass() != SelectQuery.class) {
+			io.jimble.db.sql.query.ParameterSource.collectByGetParameter(this, out);
+			return;
+		}
+
+		if (this.dsl == null) {
+			this.select.collectParameters(out);
+		} else if (this.dsl.hasParameter()) {
+			Parameter.flattenInto(this.dsl.getParameter(), out);
+		}
+
+		for (Operation operation : operations) {
+			Object operand = operation.operand();
+			if (operand instanceof IDsl d) {
+				if (d.hasParameter()) {
+					Parameter.flattenInto(d.getParameter(), out);
+				}
+			} else if (operand instanceof ISelect s) {
+				s.collectParameters(out);
+			} else {
+				Parameter.flattenInto(Parameter.single(operand), out);
+			}
+		}
+
+	}
+
+	/**
 	 * パラメータ追加
 	 *
 	 * @param params	パラメータ一覧

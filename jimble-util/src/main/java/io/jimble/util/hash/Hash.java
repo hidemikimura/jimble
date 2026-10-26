@@ -61,6 +61,28 @@ public class Hash {
 	}
 
 	/**
+	 * SipHashを作成（バイト列から。2.7.5）
+	 *
+	 * <p>
+	 * {@link #sipHash(String)} と同じ値になる（オーバーロードにしないのは、{@code sipHash(null)} があいまいになるため）（文字列は UTF-8 のバイト列にしてから計算している）。
+	 * バイト列をほかにも使うとき、UTF-8 にするのを 1 回で済ませるためにある。空なら 0。
+	 * </p>
+	 *
+	 * @param bytes	バイト列
+	 * @return	SipHash
+	 * @since 2.7.5
+	 */
+	public static long sipHashOf (byte[] bytes) {
+
+		if (bytes == null || bytes.length == 0) {
+			return 0;
+		}
+
+		return SipHash.hash(bytes);
+
+	}
+
+	/**
 	 * SHA256を作成.
 	 *
 	 * @param key	キー

@@ -1,6 +1,8 @@
 package io.jimble.db.sqlcache;
 
 import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
+import io.jimble.util.conf.ConfValue;
 
 import java.time.Duration;
 
@@ -75,11 +77,13 @@ public final class SqlCacheConf {
 	 *
 	 * 設定を丸ごと読み直したか（Conf.reload / Conf.replace）は
 	 * インスタンスが入れ替わったかで分かる。参照の比較1つで済む。
+	 * 2.7.4 までは「読んだ Conf」と「値」を別々の volatile で持っていたので、
+	 * 入れ替わった瞬間に古い値と新しい印の組み合わせが見えうった（ConfFlag は 1 つにまとめて持つ）
 	 */
-	private static volatile Conf enabledSource = null;
+	private static final ConfFlag ENABLED = ConfFlag.of(KEY_ENABLED, false);
 
-	/* 有効か（上のインスタンスに対する答え） */
-	private static volatile boolean enabledValue = false;
+	/* 名前空間はキャッシュのキーを作るたびに読む（2.7.5） */
+	private static final ConfValue<String> NAMESPACE = ConfValue.of(c -> c.getString(KEY_NAMESPACE, ""));
 
 	/**
 	 * コンストラクタ
@@ -113,14 +117,7 @@ public final class SqlCacheConf {
 	 */
 	public static boolean enabled () {
 
-		Conf current = Conf.conf();
-
-		if (current != enabledSource) {
-			enabledValue = current.getBoolean(KEY_ENABLED, false);
-			enabledSource = current;
-		}
-
-		return enabledValue;
+		return ENABLED.get();
 
 	}
 
@@ -154,7 +151,7 @@ public final class SqlCacheConf {
 	 */
 	public static String namespace () {
 
-		return Conf.conf().getString(KEY_NAMESPACE, "");
+		return NAMESPACE.get();
 
 	}
 

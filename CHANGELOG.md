@@ -4,6 +4,32 @@
 
 ---
 
+## 未リリース
+
+### 速くしたこと
+
+**生成される SQL・パラメータ・SQL 結果キャッシュのキー・Cookie・応答のヘッダは、2.7.4 と 1 文字も変わりません。**アプリ側で書き方を変えるところはありません。
+2.7.4 の公開版で書き出したものを答えにして、1 文字ずつ比べるテストを足しました。SQL は MySQL・PostgreSQL の両方で、JOIN・サブクエリ・IN・ページング・FOR UPDATE・関数・INSERT / UPDATE / DELETE と、`sql()` のあとに `select()` / `copy()` / `inner()` を呼ぶ形、`Column` や `Table` を継承して字面や値を上書きしたクラスを含む 833 行です。Cookie と応答は、設定を 7 通りに差し替えながら比べています。
+
+| | |
+|---|---|
+| **SQL の組み立ての CPU を減らしました** | 主キー 1 行の SELECT の組み立ては 652ns → 148ns（−77%）、JOIN・IN・ORDER BY・LIMIT つきは 1,175ns → 478ns（−59%）です（JMH。`benchmarks/sql-cpu`）。<br>・`select()` で列を並べないときの全列の SELECT 句（`` `t`.`c` AS `t__c` ``）を、テーブルの列一覧と方言の組ごとに 1 回だけ作ります。これまでは要求のたびに、列ごとに部品を作って書き出していて、組み立ての CPU の 4 分の 3 がここでした。覚えるのは列一覧を宣言したテーブル（`jimbleGenerate` の生成物）だけです。リフレクションで列を集める手書きのテーブル定義と、`Column` を継承した列を持つテーブルは、これまでどおり毎回書き出します。`getColumnList()` を呼んで一覧を書き換えたインスタンスも、その一覧から書きます<br>・列の字面（`` `t`.`c` ``）も、方言ごとに 1 回だけ作ります（WHERE・ORDER BY でも効きます）<br>・パラメータは木を 1 回たどって、そのまま平らなリストに集めます。これまでは句ごとに `hasParameter()` と `getParameter()` で 2 回たどり、入れ子のリストを作ってから平らにしていました。jimble の部品（`Column`・`Table`・`WhereQuery`・`SelectQuery`・`FromQuery`・`OrderByQuery`）を継承して `hasParameter()` / `getParameter()` を上書きしたクラスは、これまでどおりそれを通して集めます |
+| **SQL 結果キャッシュに当たる SELECT の CPU を約半分にしました** | 1,325ns → 659ns（−50%）です。上の組み立てが軽くなったのに加え、キーを作るときに SQL を UTF-8 にするのを 2 回から 1 回にし、`String.formatted` をやめました。**キーの字面は変わりません**（Redis・DB に置いたキャッシュは、上げたあともそのまま当たります） |
+| **要求ごとに読んでいた設定を、読み込んだときに 1 回だけ解釈して持つようにしました** | `cookie.*`・`security_headers.*`・`session.timeout` / `session.cookie_name`・`csrf.bind_session` / `csrf.max_age`・`jimble.io.buffer_size`・`sql_cache.enabled` / `sql_cache.namespace`・`db.remove_all_null_table_data`・`redis.host`・`db_sticky.use`・`template.json_fallback` です。これまでは読むたびに typesafe-config がキーの文字列を解釈していました。**`Conf.replace` / `Conf.reload` で設定を差し替えると、次に読むときに読み直します**（古い値は残りません）。書き間違い（単位の無い時間など）は、これまでどおり読むたびに例外になります |
+| **Cookie の署名・検証の CPU を減らしました** | 鍵で初期化した HMAC を鍵ごとに覚えておき、写して使います。これまでは署名・検証のたびにプロバイダを探して鍵を初期化し直していました。上の設定の読み出しと合わせて、Cookie を 1 つ付けた応答は 1,447ns → 545ns（−62%）です |
+
+### 足したこと
+
+| | |
+|---|---|
+| **`ConfValue`（設定の値を、読み込んだ設定 1 つにつき 1 回だけ解釈して持つ）** | `ConfFlag`（真偽値だけ）の一般形です。`ConfValue.of(c -> c.getDuration("app.timeout", Duration.ofSeconds(5)))` のように、設定から値を作る関数を渡します。アプリが要求のたびに読む設定にも使えます |
+| **`Hash.sipHashOf(byte[])`** | `Hash.sipHash(String)` と同じ値を、バイト列から計算します |
+| **`ParameterSource`（`ISelect` / `IWhere` / `IFrom` / `IOrderBy` の共通の親）** | パラメータを平らなリストに足す `collectParameters` の既定の形を持ちます。これらを自分で実装しているクラスは、変えずにそのまま動きます |
+
+### 測り方
+
+`benchmarks/sql-cpu/run.sh` で、Maven Central の 2.7.4 とこのソースを JMH で測り比べます（bench 用の MySQL を使います。手順はスクリプトの先頭）。上の数字は Apple M5（10 コア）・Java 25 で、2 回ずつ JVM を起動し直して測りました。DB を往復する主キー 1 行の SELECT は、スレッドの CPU 時間で 15.8µs → 15.1µs です。手元の Docker の MySQL では、ドライバとソケットの CPU（約 15µs）が大半を占めるためです。aqSell の購入導線のように、組み立てる SELECT が多く結果が小さいアプリほど効きます。
+
 ## 2.7.4（2026-10-25）
 
 **DB の結果の行を `Data` にするところの CPU を減らした版です。**一覧・CSV の書き出し・バッチのように行の多い結果を読むところで、CPU が約 3 割減ります。返る値は変わりません。

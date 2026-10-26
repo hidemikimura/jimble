@@ -1,7 +1,7 @@
 package io.jimble.db.data;
 
 import io.jimble.db.dialect.Dialect;
-import io.jimble.util.conf.Conf;
+import io.jimble.util.conf.ConfFlag;
 import io.jimble.util.json.Dson;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
@@ -29,6 +29,9 @@ public class ResultSetConverter {
 	/* 全ての列がNullのテーブルデータを削除する */
 	/** 設定キー：全部 null のテーブルを結果から落とすか */
 	public static final String KEY_REMOVE_ALL_NULL_TABLE_DATA = "db.remove_all_null_table_data";
+
+	/* 結果を読むたびに見るので、読み込んだ設定 1 つにつき 1 回だけ読む（2.7.5） */
+	private static final ConfFlag REMOVE_ALL_NULL_TABLE_DATA = ConfFlag.of(KEY_REMOVE_ALL_NULL_TABLE_DATA, false);
 
 	/**
 	 * ResultSetからオブジェクトへ変換する.
@@ -77,8 +80,9 @@ public class ResultSetConverter {
 		 * {@code static final} で読むと、<b>設定を読み直しても反映されず</b>、
 		 * Conf が立ち上がる前にこのクラスに触れると落ちる
 		 * （{@code CipherUtil} が鍵を static で読んでいたのと同じ形）。
+		 * ConfFlag は呼ばれたときに読み、設定が入れ替われば読み直す（2.7.5）。
 		 */
-		return Conf.conf().getBoolean(KEY_REMOVE_ALL_NULL_TABLE_DATA, false);
+		return REMOVE_ALL_NULL_TABLE_DATA.get();
 
 	}
 
