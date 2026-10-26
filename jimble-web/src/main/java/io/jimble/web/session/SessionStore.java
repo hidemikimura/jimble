@@ -48,8 +48,14 @@ public interface SessionStore {
 	 *
 	 * <p>中身は変わっていないが、生存期間を延ばしたいとき。</p>
 	 *
+	 * <p>
+	 * <b>読んだだけで {@code save()} したときもここに来る</b>（2.7.6。それまでは {@link #save} だった）。
+	 * そのときは {@link #load} が返した中身がそのまま渡る。触っていなければ空の新規
+	 * （{@link SessionEntry#isExisting()} が false）。
+	 * </p>
+	 *
 	 * @param context	コンテキスト
-	 * @param entry		セッション
+	 * @param entry		セッション（読んだ中身。触っていなければ空の新規）
 	 */
 	void touch (WebContext context, SessionEntry entry);
 

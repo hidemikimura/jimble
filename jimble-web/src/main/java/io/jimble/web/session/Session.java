@@ -68,7 +68,14 @@ public final class Session {
 	 *
 	 * <p>
 	 * 1リクエストで何度呼んでも保存は1回。
-	 * 一度も読み書きしていなければ、最終アクセス日時だけ更新する。
+	 * <b>中身を変えていなければ書かない</b>——生存期間だけ延ばす（2.7.6）。
+	 * </p>
+	 *
+	 * <p>
+	 * 2.7.5 までは、<b>読んだだけでも中身を丸ごと書き直していた</b>
+	 * （Redis は DEL・項目の数だけ HSET・PEXPIRE、DB は {@code UPDATE ... SET data = ?}）。
+	 * 要求ごとに {@code save()} を呼ぶアプリでは、読むだけのページでも毎回これが走り、
+	 * さらに<b>読むだけのリクエストが、同じ人の別のリクエストが入れた値を古い中身で消していた</b>。
 	 * </p>
 	 */
 	public void save () {
@@ -79,13 +86,19 @@ public final class Session {
 
 		saved = true;
 
-		if (entry == null) {
-			// 触っていない。生存期間だけ延ばす
-			store.touch(context, SessionEntry.empty());
+		if (entry != null && dirty) {
+			store.save(context, entry);
 			return;
 		}
 
-		store.save(context, entry);
+		/*
+		 * 触っていない・読んだだけ。生存期間だけ延ばす。
+		 * 読んだ中身を渡すので、保存先は読み直さずに済む（Redis は読んだときに延ばし終えている）。
+		 * 書いていたころは中で ID を取り直していたので、古い鍵で署名された ID もここで署名し直す（NF-S-09）
+		 */
+		SessionId.resignIfStale(context);
+
+		store.touch(context, entry == null ? SessionEntry.empty() : entry);
 
 	}
 

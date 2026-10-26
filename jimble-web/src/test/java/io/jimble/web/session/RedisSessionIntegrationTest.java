@@ -391,6 +391,52 @@ class RedisSessionIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("2.7.6 読んだだけの save() は中身を書き戻さない（同時に入れた値が消えない）。期限は読んだときに延びている")
+	void readOnlySaveDoesNotOverwrite () {
+
+		Fakes.FakeResponseSink sink = new Fakes.FakeResponseSink();
+
+		try (WebContext context = new WebContext(new Fakes.FakeRequestSource("GET", "/"), sink)) {
+			context.sessionStore(store);
+			context.session().put("user_id", 1);
+			context.session().save();
+			context.response().send("ok");
+		}
+
+		String sessionId = sessionIdFrom(sink);
+		String key = RedisSessionStore.KEY_PREFIX + sessionId;
+
+		// 残りを短くしておく
+		RedisClient.client().getMap(key).expire(java.time.Duration.ofSeconds(60));
+
+		try (WebContext reader = withSession(sessionId)) {
+
+			reader.sessionStore(store);
+			assertEquals(1, reader.session().getInt("user_id"));
+
+			// そのあいだに、同じ人の別のリクエストがカートに入れた
+			try (WebContext writer = withSession(sessionId)) {
+				writer.sessionStore(store);
+				writer.session().put("cart", "x");
+				writer.session().save();
+			}
+
+			// 書いた側の値に、目印を足しておく（書き戻されたら消える）
+			RedisClient.client().<String, String>getMap(key).fastPut("marker", "kept");
+
+			reader.session().save();
+
+		}
+
+		java.util.Map<String, String> all = RedisClient.client().<String, String>getMap(key).readAllMap();
+
+		assertEquals("x", all.get("cart"), "読むだけのリクエストが、入れた値を消した");
+		assertEquals("kept", all.get("marker"), "読むだけのリクエストが、中身を書き直した");
+		assertTrue(RedisClient.client().getMap(key).remainTimeToLive() > 60_000, "期限が延びていない");
+
+	}
+
+	@Test
 	@DisplayName("触らなければ Redis に何も作らない（F-S-12）")
 	void untouched () {
 
