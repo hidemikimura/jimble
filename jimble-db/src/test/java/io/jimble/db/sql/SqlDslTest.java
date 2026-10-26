@@ -38,8 +38,8 @@ class SqlDslTest {
 	void caseExpression () {
 
 		/*
-		 * Case は IDsl なので、SELECT に置くときは ISelect に包む。
-		 * SQL.select(caseWhen) と直接渡すと「ただの値」として ? にバインドされる。
+		 * ISelect に包む書き方（2.7.4 まではこれしか無かった）。
+		 * いまは SQL.select(Dsl.caseWhen()...as("volume")) とそのまま書ける（DslAsExpressionTest）。
 		 */
 		SelectBuilder builder = SQL
 			.select(new SelectQuery().dsl(Dsl.caseWhen()

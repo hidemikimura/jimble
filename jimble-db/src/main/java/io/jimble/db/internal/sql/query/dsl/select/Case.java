@@ -1,6 +1,7 @@
 package io.jimble.db.internal.sql.query.dsl.select;
 
 import io.jimble.db.dialect.SqlWriter;
+import io.jimble.db.sql.query.dsl.AbstractDsl;
 import io.jimble.db.sql.query.dsl.IDsl;
 import io.jimble.db.sql.query.select.ISelect;
 import io.jimble.db.sql.query.select.SelectQuery;
@@ -12,8 +13,15 @@ import java.util.List;
 
 /**
  * case
+ *
+ * <p>
+ * {@link #end()} を付けなくても<b>そのまま式として書ける</b>
+ * （{@code SQL.select(Dsl.caseWhen()...elseCase(...).as("v"))}）。
+ * 2.7.4 までは {@code IDsl} だけだったので、{@code select(...)} に直接渡すと
+ * 「ただの値」として {@code ?} になっていた。
+ * </p>
  */
-public class Case implements IDsl {
+public class Case extends AbstractDsl implements IDsl {
 
 	/* When Then List */
 	private final List<WhenThen> whenThenList = new ArrayList<>();
