@@ -365,3 +365,36 @@ An unauthenticated `/mcp` called from the same source address cannot tell caller
 A client starts with `server/discover` to find out which revisions the server speaks
 and what it has. **That one call does not need the version header** — it is the call
 you make to learn the version.
+
+### Connecting from LangChain4j
+
+The LangChain4j MCP client speaks the 2026-07-28 revision
+(checked with langchain4j-mcp 1.22.0-beta32 and jimble 2.7.6: listing, calls, resources, prompts, subscriptions and failed authentication).
+
+```java
+McpTransport transport = StreamableHttpMcpTransport.builder()
+	.url("https://app.example.com/mcp")
+	.customHeaders(() -> Map.of("Authorization", "Bearer " + tokens.current()))
+	.build();
+
+McpClient client = DefaultMcpClient.builder()
+	.key("app")
+	.transport(transport)
+	.protocolVersion("2026-07-28")   // pin the revision (see below)
+	.onResourceUpdated((c, uri) -> refresh(uri))
+	.build();
+
+long subscription = client.subscribeToResources(List.of("blog://latest"));
+```
+
+- **Set `protocolVersion("2026-07-28")`.**
+  Without it the client still picks 2026-07-28 through `server/discover`, but when the auth on `/mcp` answers 401,
+  it retries with the old revision's `initialize` and ends up with an exception saying the server answered neither revision —
+  which does not look like an authentication failure.
+  With it, `statusCode()` on `dev.langchain4j.exception.HttpException` is 401 (the 401 body is dropped)
+- **Tool failures become exceptions.** `ToolResult.error(...)`, a missing required argument and a tool that throws
+  all arrive as `McpApplicationErrorException`. The message is the text you gave `ToolResult.error(...)`
+  (what the tool threw is not exposed). Catch it if you call `executeTool` directly
+- **When a result has `structured(...)`, that JSON is what the model gets;** the `ToolResult.text(...)` text is not used.
+  Put anything you want the model to read into the structured value
+- Lists are followed to the last page, a subscription receives only the URIs it asked for, and `unsubscribeFromResources` works

@@ -364,3 +364,36 @@ public class BlogMcp extends McpController {
 クライアントは最初に `server/discover` を投げて、
 話せる版と、そのサーバーが何を持っているかを見ます。
 **この呼び出しにだけは版のヘッダが要りません**（版を知るための呼び出しなので）。
+
+### LangChain4j からつなぐ
+
+LangChain4j の MCP クライアントは 2026-07-28 版で話せます
+（langchain4j-mcp 1.22.0-beta32 と jimble 2.7.6 で、一覧・呼び出し・リソース・プロンプト・購読・認証の失敗まで確かめています）。
+
+```java
+McpTransport transport = StreamableHttpMcpTransport.builder()
+	.url("https://app.example.com/mcp")
+	.customHeaders(() -> Map.of("Authorization", "Bearer " + tokens.current()))
+	.build();
+
+McpClient client = DefaultMcpClient.builder()
+	.key("app")
+	.transport(transport)
+	.protocolVersion("2026-07-28")   // 版を決めておく（下を参照）
+	.onResourceUpdated((c, uri) -> refresh(uri))
+	.build();
+
+long subscription = client.subscribeToResources(List.of("blog://latest"));
+```
+
+- **`protocolVersion("2026-07-28")` を書いてください。**
+  書かなくても `server/discover` で 2026-07-28 を選びますが、`/mcp` の認証で 401 を返すと、
+  古い版の `initialize` を送り直したうえで「どちらの版にも答えない」という例外になり、認証の失敗に見えません。
+  書いておけば `dev.langchain4j.exception.HttpException` の `statusCode()` が 401 になります
+  （401 の本文は捨てられます）
+- **ツールの失敗は例外になります。**`ToolResult.error(...)` も、必須の引数が無いときも、ツールが例外を投げたときも、
+  `McpApplicationErrorException` です。メッセージは `ToolResult.error(...)` に書いた文です
+  （ツールが投げた例外の中身は出ません）。`executeTool` を直に呼ぶなら捕まえてください
+- **`structured(...)` を付けた結果は、その JSON がモデルに渡ります。**`ToolResult.text(...)` の文は使われません。
+  読ませたい説明があるなら、構造化した値に入れてください
+- 一覧はページを最後までたどり、購読は頼んだ URI の通知だけを受け取ります。取り消し（`unsubscribeFromResources`）も効きます
