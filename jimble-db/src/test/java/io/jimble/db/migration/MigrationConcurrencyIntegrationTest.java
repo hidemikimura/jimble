@@ -7,6 +7,7 @@ import io.jimble.db.DBSource;
 import io.jimble.db.DBUtil;
 import io.jimble.db.TestDdl;
 import io.jimble.db.dialect.PostgreSqlDialect;
+import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.conf.Conf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -104,7 +105,40 @@ class MigrationConcurrencyIntegrationTest {
 	void appliedOnceAtTheSameTime () throws Exception {
 
 		DBSource source = DBUtil.getMainDataSource();
-		List<MigrationInfo> files = files(sleepSql(source));
+
+		migrateAtTheSameTime(source, files(sleepSql(source)));
+
+		assertAppliedOnce();
+
+	}
+
+	@Test
+	@DisplayName("空の DB（記録の表がまだ無い）に何台かが同時に当てても、記録の表を取り合わずに1回だけ当たる")
+	void appliedOnceOnEmptyDatabase () throws Exception {
+
+		DBSource source = DBUtil.getMainDataSource();
+
+		// 初めての起動と同じにする（記録の表が無く、どの台も「無い」と読んである）
+		try (DB db = DBUtil.getMainDB()) {
+			db.execute("DROP TABLE IF EXISTS migration_history");
+			db.execute("DROP TABLE IF EXISTS migration");
+			DBVersion.reload(db);
+		}
+
+		migrateAtTheSameTime(source, files(sleepSql(source)));
+
+		assertAppliedOnce();
+
+	}
+
+	/**
+	 * 何台かで同時に当てる
+	 *
+	 * @param source	データソース
+	 * @param files		ファイル
+	 * @throws Exception	どれかの台が失敗した場合
+	 */
+	private static void migrateAtTheSameTime (DBSource source, List<MigrationInfo> files) throws Exception {
 
 		CountDownLatch start = new CountDownLatch(1);
 		ExecutorService pool = Executors.newFixedThreadPool(INSTANCES);
@@ -129,6 +163,13 @@ class MigrationConcurrencyIntegrationTest {
 		} finally {
 			pool.shutdownNow();
 		}
+
+	}
+
+	/**
+	 * ファイルが1回だけ当たったか
+	 */
+	private static void assertAppliedOnce () {
 
 		try (DB db = DBUtil.getMainDB()) {
 			assertEquals("complete", db.select("SELECT state FROM migration WHERE name = ?", FILE).orElseThrow().getString("state"));
@@ -227,8 +268,11 @@ class MigrationConcurrencyIntegrationTest {
 
 		try (DB db = DBUtil.getMainDB()) {
 			dropTables(db);
+			// 前の実行が途中で止まっていると、片方の表だけが残っていることがある
 			if (hasTable(db, "migration")) {
 				db.execute("DELETE FROM migration WHERE name = ?", FILE);
+			}
+			if (hasTable(db, "migration_history")) {
 				db.execute("DELETE FROM migration_history WHERE name = ?", FILE);
 			}
 		}

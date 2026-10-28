@@ -153,8 +153,6 @@ public final class Migration {
 	 */
 	public static void migrate (DBSource dbSource, List<MigrationInfo> fileList) {
 
-		createTables(dbSource);
-
 		/*
 		 * 「いまの製品で流すもの」と「置いてあるもの全部」の両方を持つ。
 		 * 消えた判定（down）は<b>全部</b>を見なければならない。
@@ -194,6 +192,13 @@ public final class Migration {
 								.formatted(MigrationConf.lockTimeout().toSeconds()), ex
 						);
 					}
+
+					/*
+					 * 記録の表はロックを取ってから作る。ロックの前に作ると、空の DB に何台かが同時に起動したとき、
+					 * どの台も「無い」と見て CREATE TABLE を流し、2 台目からが「もうある」で起動に失敗する。
+					 * 起動時に読んだ表の一覧は、待っていたあいだにほかの台が作った表を知らないので、読み直してから作る
+					 */
+					createTables(dbSource);
 
 					apply(dbSource, sorted, all);
 
@@ -1141,7 +1146,9 @@ public final class Migration {
 	 */
 	private static void createTables (DBSource dbSource) {
 
-		DB db = DBUtil.getDB(dbSource.name());
+		DB db = DBUtil.getDB(dbSource.name()).setUseWriteConnectionOnly();
+
+		DBVersion.reload(db);
 
 		DBVersion migration = new DBVersion(FrameworkTables.MIGRATION, "マイグレーション情報");
 		migration.add(1)

@@ -113,8 +113,6 @@ public final class CodeMigration {
 			return;
 		}
 
-		init();
-
 		// ロックを持つ接続と、移行を流す接続の 2 本が要る
 		Migration.requireTwoConnections(DBUtil.getMainDataSource());
 
@@ -128,6 +126,9 @@ public final class CodeMigration {
 			try (Tx tx = lockDB.begin()) {
 
 				DBLock.lock(lockDB, Migration.LOCK_KEY);
+
+				// 記録の表はロックを取ってから作る（何台かが同時に起動しても、表を取り合わない。Migration と同じ）
+				init();
 
 				for (AbstractCodeMigration migration : migrations()) {
 					migration.migrate();
@@ -173,7 +174,11 @@ public final class CodeMigration {
 				)
 			""");
 
-		if (!dbVersion.apply(DBUtil.getMainDB())) {
+		// ほかの台が作ったあとかもしれないので、書き込みの接続で表の一覧を読み直してから作る
+		DB db = DBUtil.getMainDB().setUseWriteConnectionOnly();
+		DBVersion.reload(db);
+
+		if (!dbVersion.apply(db)) {
 			throw new MigrationException("migration_code テーブルを作成できませんでした");
 		}
 

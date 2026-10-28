@@ -205,6 +205,9 @@ The row in `db_lock` is taken with `FOR UPDATE` before anything is applied, so
 **only one machine runs.** The one that could not wait long enough fails to start
 (`migration.lock_timeout`, 60 seconds by default).
 
+The record tables (`migration` and the rest) are also created after the lock
+is taken, so several servers starting on an empty database for the first time
+do not fight over them (since 2.7.8).
 The lock is held in a transaction on its own connection, and the SQL runs on
 another connection. An implicit commit from DDL only affects the connection
 that ran it, so **running DDL does not release the lock.** That is why **the
