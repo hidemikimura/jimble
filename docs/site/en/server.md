@@ -241,6 +241,16 @@ get("/health_check", context ->
 	context.response().send(Shutdown.isStopping() ? 503 : 200));
 ```
 
+To check the database too, add `DBUtil.healthCheck()`. It looks only at data sources with
+`db.<name>.required = true` (the default; since 2.7.8). For a data source such as one shop's database,
+where one going down should not take the whole machine out of rotation, set `required = false`
+([DB](./db#data-sources-that-may-be-down)).
+
+```java
+get("/health_check", context ->
+	context.response().send(Shutdown.isStopping() || !DBUtil.healthCheck() ? 503 : 200));
+```
+
 > [!TIP]
 > It takes the load balancer a while to pull this machine out of rotation.
 > Answer 503 to the requests that arrive in the meantime and **from the outside that is an error.**

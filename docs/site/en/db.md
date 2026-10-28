@@ -257,6 +257,29 @@ The SQL in `conf/migration/shop/` is applied once to `shop_a` and once to
 to the other one only. Migrations written in Java (`CodeMigration`) run on the
 main data source only.
 
+### Data sources that may be down
+
+With many data sources, **one that cannot be reached stops startup**, and `DBUtil.healthCheck()` turns
+false. For a data source whose outage should not stop everything, set `required = false` (since 2.7.8).
+
+```conf
+db {
+	main   { main = true, ... }                  # the main data source cannot be required = false
+	shop_a { url = "...", required = false, connection_timeout = 3s }
+}
+```
+
+- If it cannot be reached at startup, a log line is written and startup goes on. Using that data source
+  throws the usual connection exception
+- **Once the database is back, it just works** (the pool reconnects; HikariCP stretches its retry interval
+  up to 5 seconds while it cannot connect, so it takes a few seconds after the database comes back)
+- A data source that could not be reached at startup **did not get its framework tables or migrations**.
+  Restart once it is reachable, or apply them with the CLI's `migrate --data-source`
+- If it is reached but a migration fails, startup still stops as before
+- `DBUtil.healthCheck()` looks only at `required = true` data sources. Per data source, use
+  `DBUtil.healthCheckAll()` (name → readable)
+- An unreachable data source can delay startup by up to `connection_timeout` (keep it short)
+
 If all you want is **one more handle without copying the settings**, use `subs`.
 
 ```conf

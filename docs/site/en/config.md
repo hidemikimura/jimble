@@ -399,6 +399,7 @@ db {
 		codegen_name = ""                  # name for generated code (package tail and class name). empty means the block's name. same name = one shared set (since 2.7.8)
 		codegen      = true                # generate code for this data source? (since 2.7.8)
 		mq           = true                # put MQ queues on this data source? (since 2.7.8)
+		required     = true                # stop startup if unreachable, and include in the health check? main cannot be false (since 2.7.8)
 
 		maximum_pool_size     = 10         # largest the pool gets
 		minimum_idle          = 1          # connections always kept open
