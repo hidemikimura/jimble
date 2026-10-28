@@ -398,6 +398,7 @@ db {
 		# migrate_on_startup = false        # apply migrations at startup? unset means follow migration.on_startup (since 2.7.8)
 		codegen_name = ""                  # name for generated code (package tail and class name). empty means the block's name. same name = one shared set (since 2.7.8)
 		codegen      = true                # generate code for this data source? (since 2.7.8)
+		mq           = true                # put MQ queues on this data source? (since 2.7.8)
 
 		maximum_pool_size     = 10         # largest the pool gets
 		minimum_idle          = 1          # connections always kept open
@@ -467,6 +468,11 @@ mq {
 	thread_count {
 		short_time = 2
 		long_time  = 8
+	}
+
+	# per-queue settings (since 2.7.8). data_sources is where the queue lives (unset means every data source with db.<name>.mq = true)
+	queues {
+		mq_notice { data_sources = ["shop_a", "shop_b"] }
 	}
 }
 

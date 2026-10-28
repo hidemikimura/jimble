@@ -1040,6 +1040,9 @@ public class DBUtil {
 		if (has(config, "codegen")) {
 			dbConf.codegen(innerConf.getBoolean(spelling(config, "codegen")));
 		}
+		if (has(config, "mq")) {
+			dbConf.mq(innerConf.getBoolean(spelling(config, "mq")));
+		}
 
 	}
 
@@ -1078,7 +1081,7 @@ public class DBUtil {
 		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
 		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
-		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "product", "create_database_sql", "connection_pool_type"
+		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "mq", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"
 		// 入れ子（値ではなく、中にまた db の設定が入るもの）
 		, "main", "read", "subs");
