@@ -4,7 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigValueFactory;
 
 /**
- * データソースを 2 つにする（テスト用）
+ * データソースを増やす（テスト用）
  *
  * <p>このモジュールのテストの設定には主しか無いので、同じサーバーの別の DB を指すものを足す。</p>
  */
@@ -21,27 +21,38 @@ final class TwoDataSources {
 	/**
 	 * 主の設定を写して、もう1つのデータソース（jimble_test_sub）を足す
 	 *
-	 * <p>このモジュールのテストの設定には主しか無いので、同じサーバーの別の DB を指すものを足す。</p>
-	 *
 	 * @param base	設定
 	 * @return	足した設定
 	 */
 	static Config withOther (Config base) {
 
-		Config main = base.getConfig("db." + MAIN);
-		String url = main.getString("url").replaceFirst("/" + MAIN + "(\\?|$)", "/" + OTHER + "$1");
+		return withCopy(base, OTHER);
 
-		Config other = main
+	}
+
+	/**
+	 * 主の設定を写して、同じサーバーの別の DB を指すデータソースを足す
+	 *
+	 * @param base	設定
+	 * @param name	データソース名（DB の名前も同じ）
+	 * @return	足した設定
+	 */
+	static Config withCopy (Config base, String name) {
+
+		Config main = base.getConfig("db." + MAIN);
+		String url = main.getString("url").replaceFirst("/" + MAIN + "(\\?|$)", "/" + name + "$1");
+
+		Config copy = main
 			.withValue("main", ConfigValueFactory.fromAnyRef(false))
 			.withValue("url", ConfigValueFactory.fromAnyRef(url));
 
 		// 無ければ作る（CI では、このモジュールのテストが jimble-db のテストより先に走り、まだ無いことがある）
 		if (main.hasPath("create_database_sql")) {
-			other = other.withValue("create_database_sql", ConfigValueFactory.fromAnyRef(
-				main.getString("create_database_sql").replace(MAIN, OTHER)));
+			copy = copy.withValue("create_database_sql", ConfigValueFactory.fromAnyRef(
+				main.getString("create_database_sql").replace(MAIN, name)));
 		}
 
-		return base.withValue("db." + OTHER, other.root());
+		return base.withValue("db." + name, copy.root());
 
 	}
 

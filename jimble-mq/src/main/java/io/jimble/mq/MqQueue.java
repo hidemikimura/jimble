@@ -22,9 +22,12 @@ import java.io.StringWriter;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
@@ -435,6 +438,7 @@ public final class MqQueue {
 			if (count > 0) {
 				Log.warn("MQ の迷子を戻しました: %s / %d 件".formatted(queueName, count));
 				total += count;
+				MqHints.mark(queueName, source.name());
 			}
 
 		}
@@ -556,87 +560,108 @@ public final class MqQueue {
 		// 直前に行を取ったデータソース（次の周は、この次から見始める）
 		String lastClaimed = null;
 
-		while (!cancelOrderNotify.isCancelOrder()) {
+		// 仕事のある印（mq.hint）。off ならこれまでどおり毎周すべてを見る
+		Targets targets = new Targets(queueName, MqConf.hint());
 
-			// ここから先で手が空いた分だけ、次の起こしになる
-			wake.drainPermits();
+		if (targets.hint != MqConf.Hint.off) {
+			MqHints.register(queueName, wake);
+		}
 
-			boolean found = false;
-			boolean anyIdle = false;
+		try {
 
-			/*
-			 * このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）。
-			 *
-			 * <b>直前に行を取ったデータソースの次から見る</b>（2.7.8）。
-			 * かつては毎周同じ順に見て、手の空いたワーカーの数を使い切ったら抜けていたので、
-			 * 前のデータソースに行が溜まり続けると、<b>後ろのデータソースの行は、前が空になるまで取り出されなかった</b>。
-			 * 周の数でずらすのでは足りない。ワーカーが手を空けるたびに「取る周」と「全員が処理中の周」が交互に来るので、
-			 * 取る周がいつも同じデータソースから始まる。データソースが1つなら、これまでと同じ
-			 */
-			List<DBSource> sources = startAfter(dataSources(), lastClaimed);
+			while (!cancelOrderNotify.isCancelOrder()) {
 
-			for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
+				// ここから先で手が空いた分だけ、次の起こしになる
+				wake.drainPermits();
 
-				Handoff handoff = entry.getValue();
+				boolean found = false;
+				boolean anyIdle = false;
 
-				for (DBSource source : sources) {
+				/*
+				 * このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）。
+				 *
+				 * <b>直前に行を取ったデータソースの次から見る</b>（2.7.8）。
+				 * かつては毎周同じ順に見て、手の空いたワーカーの数を使い切ったら抜けていたので、
+				 * 前のデータソースに行が溜まり続けると、<b>後ろのデータソースの行は、前が空になるまで取り出されなかった</b>。
+				 * 周の数でずらすのでは足りない。ワーカーが手を空けるたびに「取る周」と「全員が処理中の周」が交互に来るので、
+				 * 取る周がいつも同じデータソースから始まる。データソースが1つなら、これまでと同じ。
+				 *
+				 * mq.hint を使うときは、印の付いたもの・まだ残っていそうなもの・sweep_interval ごとの全部、だけを見る（Targets）
+				 */
+				List<DBSource> sources = startAfter(targets.next(dataSources(), System.currentTimeMillis()), lastClaimed);
 
-					// 待っているワーカーがいなければ、DB を見にいかない
-					int want = handoff.acquireIdle();
+				for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
 
-					if (want == 0) {
-						break;
-					}
+					Handoff handoff = entry.getValue();
 
-					anyIdle = true;
+					for (DBSource source : sources) {
 
-					List<Data> rows = claim(DBUtil.getDB(source), entry.getKey(), want);
+						// 待っているワーカーがいなければ、DB を見にいかない
+						int want = handoff.acquireIdle();
 
-					if (rows.size() < want) {
-						handoff.idle.release(want - rows.size());
-					}
+						if (want == 0) {
+							break;
+						}
 
-					if (rows.isEmpty()) {
-						continue;
-					}
+						anyIdle = true;
 
-					found = true;
-					lastClaimed = source.name();
+						List<Data> rows = claim(DBUtil.getDB(source), entry.getKey(), want);
 
-					/*
-					 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
-					 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
-					 *
-					 * <b>{@link DB} は1件ごとに作り直す。</b>DB は握っている接続をフィールドに持つので、
-					 * 1つを何本ものワーカーで使うと接続を取り合い、プールへ戻らなくなる（D-295）
-					 */
-					for (Data row : rows) {
-						putUninterruptibly(handoff.queue, new Claimed(DBUtil.getDB(source), row));
+						if (rows.size() < want) {
+							handoff.idle.release(want - rows.size());
+						}
+
+						// 欲しいだけ取れたなら、まだ残っているかもしれない（印が無くても次の周も見る）
+						targets.claimed(source.name(), rows.size() >= want);
+
+						if (rows.isEmpty()) {
+							continue;
+						}
+
+						found = true;
+						lastClaimed = source.name();
+
+						/*
+						 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
+						 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
+						 *
+						 * <b>{@link DB} は1件ごとに作り直す。</b>DB は握っている接続をフィールドに持つので、
+						 * 1つを何本ものワーカーで使うと接続を取り合い、プールへ戻らなくなる（D-295）
+						 */
+						for (Data row : rows) {
+							putUninterruptibly(handoff.queue, new Claimed(DBUtil.getDB(source), row));
+						}
+
 					}
 
 				}
 
+				if (found) {
+					// 取れた。続けて見る（取れる限り、待たずに回す）
+					sleepManager.reset();
+				} else if (!anyIdle) {
+					/*
+					 * 全員が処理中。DB は見ずに、<b>誰かの手が空くまで待つ</b>（D-295）。
+					 * かつては poll_min（10ms）だけ眠っていたので、眠り始めた直後に手が空いたワーカーは
+					 * 最大 10ms 何もせずに待たされた。数 ms で終わる処理を少ないスレッドで回すと、
+					 * 処理しているより待っている時間のほうが長かった（2本・5ms の処理で約 130 件/秒。起こすようにして約 240 件/秒）
+					 */
+					sleepManager.sleepMax(wake);
+				} else {
+					/*
+					 * 手は空いているが、キューが空。だんだん間隔を伸ばす。
+					 * <b>ほかの種別のワーカーの手が空いたら、そこで起きる</b>（その種別にはまだ溜まっているかもしれない）
+					 */
+					sleepManager.sleep(wake);
+				}
+
 			}
 
-			if (found) {
-				// 取れた。続けて見る（取れる限り、待たずに回す）
-				sleepManager.reset();
-			} else if (!anyIdle) {
-				/*
-				 * 全員が処理中。DB は見ずに、<b>誰かの手が空くまで待つ</b>（D-295）。
-				 * かつては poll_min（10ms）だけ眠っていたので、眠り始めた直後に手が空いたワーカーは
-				 * 最大 10ms 何もせずに待たされた。数 ms で終わる処理を少ないスレッドで回すと、
-				 * 処理しているより待っている時間のほうが長かった（2本・5ms の処理で約 130 件/秒。起こすようにして約 240 件/秒）
-				 */
-				sleepManager.sleepMax(wake);
-			} else {
-				/*
-				 * 手は空いているが、キューが空。だんだん間隔を伸ばす。
-				 * <b>ほかの種別のワーカーの手が空いたら、そこで起きる</b>（その種別にはまだ溜まっているかもしれない）
-				 */
-				sleepManager.sleep(wake);
-			}
 
+		} finally {
+			if (targets.hint != MqConf.Hint.off) {
+				MqHints.unregister(queueName, wake);
+			}
 		}
 
 	}
@@ -755,6 +780,104 @@ public final class MqQueue {
 
 		if (interrupted) {
 			Thread.currentThread().interrupt();
+		}
+
+	}
+
+	/**
+	 * その周に見に行くデータソースを決める（取り出し役ごとに1つ）
+	 *
+	 * <p>
+	 * {@code mq.hint} が off か、データソースが1つなら、毎周すべて（これまでどおり）。
+	 * そうでなければ、次のものだけを見る。
+	 * </p>
+	 *
+	 * <ul>
+	 * <li>印の付いたデータソース（印を見てから {@link MqHints#WATCH} の間）</li>
+	 * <li>直前の周で、欲しいだけ取れたデータソース（まだ残っているかもしれない）</li>
+	 * <li>{@code mq.sweep_interval} ごとの周は、すべて（印の無い行を拾う）</li>
+	 * </ul>
+	 */
+	static final class Targets {
+
+		/* キュー名 */
+		private final String queueName;
+
+		/* 印の置き場 */
+		final MqConf.Hint hint;
+
+		/* 次にすべてを回る時刻 */
+		private long nextSweep = 0;
+
+		/* 次に Redis の印を読む時刻（毎周は読まない） */
+		private long nextRemote = 0;
+
+		/* まだ残っているかもしれないデータソース */
+		private final Set<String> busy = new HashSet<>();
+
+		/* 印の付いたデータソース → 見続ける時刻 */
+		private final Map<String, Long> watching = new HashMap<>();
+
+		Targets (String queueName, MqConf.Hint hint) {
+
+			this.queueName = queueName;
+			this.hint = hint;
+
+		}
+
+		/**
+		 * その周に見に行くデータソース
+		 *
+		 * @param all	このキューを置いたデータソース（名前の順）
+		 * @param now	いま（ミリ秒）
+		 * @return	見に行くデータソース（名前の順）
+		 */
+		List<DBSource> next (List<DBSource> all, long now) {
+
+			if (hint == MqConf.Hint.off || all.size() <= 1) {
+				return all;
+			}
+
+			boolean remote = hint == MqConf.Hint.redis && now >= nextRemote;
+			if (remote) {
+				nextRemote = now + MqConf.pollMin().toMillis();
+			}
+
+			for (String name : MqHints.take(queueName, now, remote)) {
+				watching.put(name, now + MqHints.WATCH.toMillis());
+			}
+			watching.values().removeIf(until -> until < now);
+
+			if (now >= nextSweep) {
+				nextSweep = now + MqConf.sweepInterval().toMillis();
+				return all;
+			}
+
+			List<DBSource> targets = new ArrayList<>();
+			for (DBSource source : all) {
+				if (busy.contains(source.name()) || watching.containsKey(source.name())) {
+					targets.add(source);
+				}
+			}
+
+			return targets;
+
+		}
+
+		/**
+		 * 取った結果を覚える
+		 *
+		 * @param name	データソース名
+		 * @param full	欲しいだけ取れた場合 = true
+		 */
+		void claimed (String name, boolean full) {
+
+			if (full) {
+				busy.add(name);
+			} else {
+				busy.remove(name);
+			}
+
 		}
 
 	}
@@ -1078,6 +1201,9 @@ public final class MqQueue {
 			, retryAt(System.currentTimeMillis(), wait)
 			, logInfo
 			, id);
+
+		// やり直す時刻に、このデータソースを見に来るように（このプロセスの中の印）
+		MqHints.markAt(queueName, db.getDBName(), System.currentTimeMillis() + wait.toMillis());
 
 	}
 

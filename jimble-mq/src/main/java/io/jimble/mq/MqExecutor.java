@@ -190,7 +190,7 @@ public abstract class MqExecutor {
 	 */
 	public long put (DB db, Data data, Date scheduledAt) {
 
-		requireTarget(db);
+		DBSource source = requireTarget(db);
 
 		/*
 		 * 積んだところを1区間として残す（要件 NF-O-05）。
@@ -231,6 +231,10 @@ public abstract class MqExecutor {
 			}
 
 			span.attribute("messaging.message.id", id);
+
+			// 仕事のある印（mq.hint）。積んだ側のトランザクションが確定する前に見に来ても、取り出し役はしばらく見続ける
+			MqHints.markAt(queueName(), source == null ? db.getDBName() : source.name()
+				, scheduledAt == null ? System.currentTimeMillis() : scheduledAt.getTime());
 
 			return id;
 
@@ -329,28 +333,31 @@ public abstract class MqExecutor {
 	 * </p>
 	 *
 	 * @param db	積む DB
+	 * @return	データソース（分からなければ null）
 	 * @throws MqException	置いていないデータソースの場合
 	 */
-	private void requireTarget (DB db) {
+	private DBSource requireTarget (DB db) {
 
 		DBSource source = dataSource(db);
 
 		if (source == null) {
 			// DBUtil の外で作った DB（テストなど）。確かめようがないので、これまでどおり積む
-			return;
+			return null;
 		}
 
 		if (mainOnly()) {
 			if (source != DBUtil.getMainDataSource()) {
 				throw new MqException("キュー %s は主のデータソースにしか積めません（積もうとした先: %s）".formatted(queueName(), source.name()));
 			}
-			return;
+			return source;
 		}
 
 		if (!MqQueue.isTarget(queueName(), source)) {
 			throw new MqException(("データソース %s にはキュー %s を置いていません（db.%s.mq と mq.queues.%s.data_sources を見てください）")
 				.formatted(source.name(), queueName(), source.name(), queueName()));
 		}
+
+		return source;
 
 	}
 
