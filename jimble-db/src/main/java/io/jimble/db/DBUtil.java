@@ -968,6 +968,7 @@ public class DBUtil {
 		dbConf.connectionInitSql(string(innerConf, config, "connection_init_sql", dbConf.connectionInitSql()));
 		dbConf.connectionTestQuery(string(innerConf, config, "connection_test_query", dbConf.connectionTestQuery()));
 		dbConf.schema(string(innerConf, config, "schema", dbConf.schema()));
+		dbConf.migrationDir(string(innerConf, config, "migration_dir", dbConf.migrationDirSetting()));
 
 		// DB 製品（要件 F-D-30）。書かなければ mysql
 		dbConf.product(string(innerConf, config, io.jimble.db.dialect.Dialects.KEY_PRODUCT, dbConf.product()));
@@ -1020,7 +1021,7 @@ public class DBUtil {
 		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
 		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
-		, "schema", "product", "create_database_sql", "connection_pool_type"
+		, "schema", "migration_dir", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"
 		// 入れ子（値ではなく、中にまた db の設定が入るもの）
 		, "main", "read", "subs");

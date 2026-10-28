@@ -16,7 +16,7 @@ You write it in `conf/application.conf`. The format is HOCON.
 ```
 conf/application.conf          configuration
 conf/application.local.conf    per environment
-conf/migration/<schema name>/  migrations
+conf/migration/<folder name>/  migrations
 ```
 
 Add `conf` to your resources in `build.gradle.kts`.
@@ -393,7 +393,8 @@ db {
 		username = ${?DB_USER}
 		password = ${?DB_PASSWORD}
 		product  = "mysql"                 # mysql | mariadb | postgresql | postgres | pgsql
-		schema   = ""                      # empty means the block's name. spelled scheme before
+		schema   = ""                      # migration folder name. empty means the block's name. spelled scheme before
+		migration_dir = ""                 # migration folder name. wins over schema when set (since 2.7.8). give same-shaped DBs the same name
 
 		maximum_pool_size     = 10         # largest the pool gets
 		minimum_idle          = 1          # connections always kept open

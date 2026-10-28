@@ -371,12 +371,16 @@ Optional<RedisLockResult> got = RedisLock.tryLock("report", 1000, 60000);   // �
 ## マイグレーションとコード生成
 
 ```
-conf/migration/<スキーマ名>/001_xxx.sql      # --- !Ups / # --- !Downs
+conf/migration/<フォルダ名>/001_xxx.sql      # --- !Ups / # --- !Downs
 ./gradlew migrate
 ./gradlew codegen
 ```
 
 生成物は**リポジトリに入れる**（入れないと DB の無い環境でビルドできない）。
+
+- `<フォルダ名>` は `db.<名前>.migration_dir`。無ければ `schema`、それも無ければデータソース名（2.7.8 から）。
+  **同じ表の作りの DB を並べるときは、どれにも同じ `migration_dir` を書く**。同じ SQL がそれぞれの DB に1回ずつ当たり、記録もそれぞれの DB に残る
+- **`CodeMigration`（Java で書くマイグレーション）は主にしか当たらない**
 
 起動時に流すなら `Migration.install()` を **`DBUtil.load(...)` より前**に呼ぶ。
 
@@ -445,7 +449,7 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 ## db.<名前> の設定（要件 D-159）
 
 **snake_case で書く**（`maximum_pool_size` / `minimum_idle` / `idle_timeout` /
-`max_lifetime` / `connection_timeout` / `keepalive_time` / `fetch_size` / `schema`）。
+`max_lifetime` / `connection_timeout` / `keepalive_time` / `fetch_size` / `schema` / `migration_dir`）。
 **camelCase の古い綴りも読めるが、起動時に1度だけ警告が出る**（`scheme` は綴り違いだった）。
 
 **表に無いキーを書くと起動時に落ちる。**以前は黙って無視されたので、

@@ -54,6 +54,7 @@ class DbConfKeysTest {
 			password = "p"
 			product = "postgresql"
 			schema = "s"
+			migration_dir = "shop"
 			maximum_pool_size = 4
 			minimum_idle = 1
 			fetch_size = 100

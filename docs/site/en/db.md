@@ -231,9 +231,25 @@ The one with `main = true` is `DBUtil.getMainDB()` (there is no no-argument `get
 
 Everything listed at the top level is **treated as its own thing**:
 
-- migrations under `conf/migration/<data source name>/` are applied to it
+- migrations under `conf/migration/<data source name>/` are applied to it (`migration_dir` picks another folder; see below)
 - codegen generates `db/<data source name>/` for it
 - `migration` / `db_lock` / `db_value` / `db_cache` are created there too
+
+When you line up several databases with the same tables, they can share one
+migration folder (since 2.7.8).
+
+```conf
+db {
+	shop_a { url = "...", migration_dir = "shop" }
+	shop_b { url = "...", migration_dir = "shop" }
+}
+```
+
+The SQL in `conf/migration/shop/` is applied once to `shop_a` and once to
+`shop_b`. Each database keeps its own record (`migration` and
+`migration_history`), so if only one of them has a file applied, it is applied
+to the other one only. Migrations written in Java (`CodeMigration`) run on the
+main data source only.
 
 If all you want is **one more handle without copying the settings**, use `subs`.
 
@@ -433,7 +449,7 @@ int count = db.execute("INSERT INTO archive SELECT * FROM post WHERE ...");  // 
 
 ## Migrations
 
-Put them in `conf/migration/<schema name>/001_xxx.sql`.
+Put them in `conf/migration/<folder name>/001_xxx.sql` (the folder name is `migration_dir`, else `schema`, else the data source name).
 
 ```sql
 # --- !Ups

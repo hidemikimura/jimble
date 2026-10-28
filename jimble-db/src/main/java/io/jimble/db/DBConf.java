@@ -80,6 +80,9 @@ public final class DBConf {
 	/** スキーマ名 */
 	private String schema;
 
+	/** マイグレーションのフォルダ名（空なら schema） */
+	private String migrationDir;
+
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
 
@@ -271,6 +274,24 @@ public final class DBConf {
 	public String schema () {
 
 		return schema;
+
+	}
+
+	/**
+	 * マイグレーションのフォルダ名
+	 *
+	 * <p>
+	 * {@code migration.resource_dir} の下の、このデータソースの SQL を置くフォルダである。
+	 * {@code migration_dir} を書けばそれ、書かなければ {@link #schema()}（それも無ければデータソース名）。
+	 * 同じ表の作りの DB を何本も並べるときは、どれにも同じ {@code migration_dir} を書けば、同じ SQL が当たる。
+	 * </p>
+	 *
+	 * @return	フォルダ名
+	 * @since 2.7.8
+	 */
+	public String migrationDir () {
+
+		return migrationDir == null || migrationDir.isEmpty() ? schema : migrationDir;
 
 	}
 
@@ -517,6 +538,28 @@ public final class DBConf {
 	}
 
 	/**
+	 * マイグレーションのフォルダ名 を決める
+	 *
+	 * @param migrationDir	マイグレーションのフォルダ名（空なら schema）
+	 */
+	void migrationDir (String migrationDir) {
+
+		this.migrationDir = migrationDir;
+
+	}
+
+	/**
+	 * 書いてあるマイグレーションのフォルダ名（schema で補わない）
+	 *
+	 * @return	書いてあるフォルダ名（無ければ null）
+	 */
+	String migrationDirSetting () {
+
+		return migrationDir;
+
+	}
+
+	/**
 	 * DB 製品（要件 F-D-30。mysql / postgresql） を決める
 	 *
 	 * @param product	DB 製品（要件 F-D-30。mysql / postgresql）
@@ -610,6 +653,7 @@ public final class DBConf {
 		conf.validateOnBorrow = from.validateOnBorrow;
 		conf.fetchSize = from.fetchSize;
 		conf.schema = from.schema;
+		conf.migrationDir = from.migrationDir;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;
