@@ -235,6 +235,12 @@ Everything listed at the top level is **treated as its own thing**:
 - codegen generates `db/<data source name>/` for it
 - `migration` / `db_lock` / `db_value` / `db_cache` are created there too
 
+jimble creates the tables it uses at startup when they are missing. When
+several servers start on an empty database for the first time, a table another
+server has just created is used as it is (since 2.7.8; it is recognised by the
+table comment, "description:version"). If your application has its own table
+with the same name, startup still stops as before.
+
 When you line up several databases with the same tables, they can share one
 migration folder (since 2.7.8).
 
