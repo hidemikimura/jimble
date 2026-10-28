@@ -44,6 +44,9 @@ public final class MqConf {
 	/** 設定キー：落ちたとみなす時間 */
 	public static final String KEY_STALE = "mq.stale";
 
+	/** 処理中のまま残った行を戻す間隔（0s なら起動のときだけ） */
+	public static final String KEY_RECOVER_INTERVAL = "mq.recover_interval";
+
 	/** 仕事のある印（off / memory / redis） */
 	public static final String KEY_HINT = "mq.hint";
 
@@ -220,6 +223,23 @@ public final class MqConf {
 	public static Duration sweepInterval () {
 
 		return Conf.conf().getDuration(KEY_SWEEP_INTERVAL, Duration.ofSeconds(10));
+
+	}
+
+	/**
+	 * 処理中のまま残った行を戻す間隔（{@code mq.recover_interval}）
+	 *
+	 * <p>
+	 * キューを回している間、この間隔で {@code recoverStale} を呼ぶ。既定は 1 分。
+	 * {@code 0s} なら、これまでどおりキューを起動するときだけ戻す。
+	 * </p>
+	 *
+	 * @return	間隔（0 なら起動のときだけ）
+	 * @since 2.7.8
+	 */
+	public static Duration recoverInterval () {
+
+		return Conf.conf().getDuration(KEY_RECOVER_INTERVAL, Duration.ofMinutes(1));
 
 	}
 
