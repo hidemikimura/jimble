@@ -122,6 +122,12 @@ public class Generator {
 	/**
 	 * ソースコード生成
 	 *
+	 * <p>
+	 * データソースを {@code codegen_name}（無ければデータソース名）ごとにまとめ、<b>1 組ずつ</b>生成する。
+	 * 同じ {@code codegen_name} のデータソースは、代表（主があれば主、無ければ名前の順で最初）の DB から生成し、
+	 * ほかの表の作りが代表と違えば警告する。{@code codegen = false} のデータソースは生成しない。
+	 * </p>
+	 *
 	 * @param outputDir     出力ディレクトリ
 	 * @param packageName   パッケージ名
 	 */
@@ -129,8 +135,19 @@ public class Generator {
 
 		outputDir.mkdirs();
 
-		for (DBSource dbSource : DBUtil.getDataSourceList()) {
-			generate(outputDir, packageName, dbSource);
+		for (Map.Entry<String, List<DBSource>> group : CodegenGroups.of(DBUtil.getDataSourceList()).entrySet()) {
+
+			List<DBSource> sources = group.getValue();
+			DBSource representative = CodegenGroups.representative(sources);
+
+			if (sources.size() > 1) {
+				Log.info("codegen: %s を %s から生成します（%s で共有）".formatted(group.getKey(), representative.name()
+					, sources.stream().map(DBSource::name).toList()));
+				CodegenGroups.warnIfDifferent(representative, sources);
+			}
+
+			generate(outputDir, packageName, representative, group.getKey());
+
 		}
 
 	}
@@ -155,30 +172,44 @@ public class Generator {
 	 */
 	public static void generate (File outputDir, String packageName, DBSource dbSource) {
 
+		generate(outputDir, packageName, dbSource, CodegenGroups.codegenName(dbSource));
+
+	}
+
+	/**
+	 * 対象データソースのソースコードを、名前を決めて生成する
+	 *
+	 * @param outputDir     出力ディレクトリ
+	 * @param packageName   パッケージ名
+	 * @param dbSource      DBソース（表を読む。{@code db()} もこれに結び付く）
+	 * @param segment       パッケージの末尾とクラス名の元
+	 */
+	private static void generate (File outputDir, String packageName, DBSource dbSource, String segment) {
+
 		// ルートディレクトリ(db/{スキーマ名})
-		File rootDir = new File(outputDir, dbSource.name().toLowerCase());
+		File rootDir = new File(outputDir, segment.toLowerCase());
 
 		// 消えたテーブルのクラスが残らないよう、生成前に掃除する
 		FileUtil.delete(rootDir);
 		rootDir.mkdirs();
 
 		// スキーマクラス名
-		String schemeClassName = upperCamel(dbSource.name());
+		String schemeClassName = upperCamel(segment);
 
 		// テーブル定義一覧を取得する
 		List<TableInfo> tableInfoList = getTableInfoList(dbSource);
 
 		// スキーマの実体（テーブルの定数を持たない。テーブルクラスはこちらを使う）
-		outputSchemeBase(rootDir, packageName, dbSource, schemeClassName);
+		outputSchemeBase(rootDir, packageName, dbSource, segment, schemeClassName);
 
 		// スキーマクラス（SchemaSQL は製品ごとの DDL で書く。要件 F-D-30）
-		outputScheme(rootDir, packageName, dbSource, dbSource.name(), schemeClassName, tableInfoList
+		outputScheme(rootDir, packageName, dbSource, segment, segment, schemeClassName, tableInfoList
 			, TableMetaReader.of(dbSource.dialect()));
 
 		// テーブルクラス
 		for (TableInfo tableInfo : tableInfoList) {
-			outputTable(rootDir, packageName, dbSource, schemeClassName, tableInfo);
-			outputTableData(rootDir, packageName, dbSource, schemeClassName, tableInfo);
+			outputTable(rootDir, packageName, dbSource, segment, schemeClassName, tableInfo);
+			outputTableData(rootDir, packageName, dbSource, segment, schemeClassName, tableInfo);
 		}
 
 	}
@@ -217,9 +248,10 @@ public class Generator {
 	 * @param rootDir           ルートディレクトリ
 	 * @param packageName       パッケージ名
 	 * @param dbSource          DBソース
+	 * @param segment           パッケージの末尾（codegen_name、無ければデータソース名）
 	 * @param schemeClassName   スキーマクラス名
 	 */
-	private static void outputSchemeBase (File rootDir, String packageName, DBSource dbSource, String schemeClassName) {
+	private static void outputSchemeBase (File rootDir, String packageName, DBSource dbSource, String segment, String schemeClassName) {
 
 		String baseClassName = schemeBaseClassName(schemeClassName);
 		File sourceFile = new File(rootDir, baseClassName + ".java");
@@ -230,12 +262,12 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name()));
+			textOutput.writeLine("package %s.%s;".formatted(packageName, segment));
 			textOutput.writeLine("");
 			textOutput.writeLine("import io.jimble.db.sql.definition.schema.AbstractSchema;");
 			textOutput.writeLine("");
 			textOutput.writeLine("/**");
-			textOutput.writeLine(" * %s（スキーマの実体。テーブルの定数は {@link %s}）".formatted(dbSource.name(), schemeClassName));
+			textOutput.writeLine(" * %s（スキーマの実体。テーブルの定数は {@link %s}）".formatted(segment, schemeClassName));
 			textOutput.writeLine(" *");
 			textOutput.writeLine(" * <p>");
 			textOutput.writeLine(" * テーブルクラスはこちらを使う。{@link %s} を使うと、クラスの初期化が輪になり、".formatted(schemeClassName));
@@ -272,12 +304,13 @@ public class Generator {
 	 * @param rootDir           ルートディレクトリ
 	 * @param packageName       パッケージ名
 	 * @param dbSource          DBソース
+	 * @param segment           パッケージの末尾（codegen_name、無ければデータソース名）
 	 * @param schemeName        スキーマ名
 	 * @param schemeClassName   スキーマクラス名
 	 * @param tableInfoList     テーブル情報一覧
 	 * @param reader            テーブル定義の読み手（DDL の書き方も持つ）
 	 */
-	private static void outputScheme (File rootDir, String packageName, DBSource dbSource, String schemeName, String schemeClassName, List<TableInfo> tableInfoList, TableMetaReader reader) {
+	private static void outputScheme (File rootDir, String packageName, DBSource dbSource, String segment, String schemeName, String schemeClassName, List<TableInfo> tableInfoList, TableMetaReader reader) {
 
 		File sourceFile = new File(rootDir, schemeClassName + ".java");
 
@@ -287,11 +320,11 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s;".formatted(packageName, dbSource.name()));
+			textOutput.writeLine("package %s.%s;".formatted(packageName, segment));
 			textOutput.writeLine("");
 
 			for (TableInfo tableInfo : tableInfoList) {
-				textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name(), tableInfo.name, tableInfo.className));
+				textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, segment, tableInfo.name, tableInfo.className));
 			}
 			textOutput.writeLine("import io.jimble.db.DB;");
 			textOutput.writeLine("import io.jimble.db.DBUtil;");
@@ -525,6 +558,7 @@ public class Generator {
 	 * @param rootDir           ルートディレクトリ
 	 * @param packageName       パッケージ名
 	 * @param dbSource          DBソース
+	 * @param segment           パッケージの末尾（codegen_name、無ければデータソース名）
 	 * @param schemeClassName   スキーマクラス名
 	 * @param tableInfo         テーブル情報
 	 */
@@ -558,7 +592,7 @@ public class Generator {
 
 	}
 
-	private static void outputTable (File rootDir, String packageName, DBSource dbSource, String schemeClassName, TableInfo tableInfo) {
+	private static void outputTable (File rootDir, String packageName, DBSource dbSource, String segment, String schemeClassName, TableInfo tableInfo) {
 
 		File tableRootDir = new File(rootDir, "table");
 		File tableDir = new File(tableRootDir, tableInfo.name);
@@ -573,10 +607,10 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, dbSource.name(), tableInfo.name));
+			textOutput.writeLine("package %s.%s.table.%s;".formatted(packageName, segment, tableInfo.name));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, dbSource.name(), schemeBaseClassName(schemeClassName)));
+			textOutput.writeLine("import %s.%s.%s;".formatted(packageName, segment, schemeBaseClassName(schemeClassName)));
 			textOutput.writeLine("import io.jimble.db.sql.definition.column.Column;");
 			textOutput.writeLine("import io.jimble.util.data.definition.ISchema;");
 			textOutput.writeLine("import io.jimble.db.sql.definition.table.Table;");
@@ -710,10 +744,11 @@ public class Generator {
 	 * @param rootDir           ルートディレクトリ
 	 * @param packageName       パッケージ名
 	 * @param dbSource          DBソース
+	 * @param segment           パッケージの末尾（codegen_name、無ければデータソース名）
 	 * @param schemeClassName   スキーマクラス名
 	 * @param tableInfo         テーブル情報
 	 */
-	private static void outputTableData (File rootDir, String packageName, DBSource dbSource, String schemeClassName, TableInfo tableInfo) {
+	private static void outputTableData (File rootDir, String packageName, DBSource dbSource, String segment, String schemeClassName, TableInfo tableInfo) {
 
 		File tableRootDir = new File(rootDir, "table_data");
 		File tableDir = new File(tableRootDir, tableInfo.name);
@@ -728,10 +763,10 @@ public class Generator {
 
 			writeGeneratedHeader(textOutput);
 
-			textOutput.writeLine("package %s.%s.table_data.%s;".formatted(packageName, dbSource.name(), tableInfo.name));
+			textOutput.writeLine("package %s.%s.table_data.%s;".formatted(packageName, segment, tableInfo.name));
 			textOutput.writeLine("");
 
-			textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, dbSource.name(), tableInfo.name, tableInfo.className));
+			textOutput.writeLine("import %s.%s.table.%s.%s;".formatted(packageName, segment, tableInfo.name, tableInfo.className));
 			textOutput.writeLine("import io.jimble.db.generator.data.AbstractTableData;");
 			textOutput.writeLine("import io.jimble.util.data.Data;");
 			textOutput.writeLine("import io.jimble.db.sql.InsertBuilder;");
@@ -825,7 +860,7 @@ public class Generator {
 	 * @param dbSource  DBソース
 	 * @return  テーブル定義一覧
 	 */
-	private static List<TableInfo> getTableInfoList (DBSource dbSource) {
+	static List<TableInfo> getTableInfoList (DBSource dbSource) {
 
 		List<TableInfo> tableInfoList = new ArrayList<>();
 		Set<String> excludes = GeneratorConf.excludeTables();

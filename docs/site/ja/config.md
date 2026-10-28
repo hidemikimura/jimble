@@ -389,6 +389,8 @@ db {
 		schema   = ""                      # マイグレーションのフォルダ名。空ならブロックの名前。以前は scheme という綴りだった
 		migration_dir = ""                 # マイグレーションのフォルダ名。書けば schema より優先（2.7.8 から）。同じ作りの DB には同じ名前を書く
 		# migrate_on_startup = false        # 起動時にマイグレーションを当てるか。書かなければ migration.on_startup に従う（2.7.8 から）
+		codegen_name = ""                  # 生成コードの名前（パッケージの末尾とクラス名）。空ならブロックの名前。同じ名前のデータソースは 1 組を共有（2.7.8 から）
+		codegen      = true                # 生成コードを作るか（2.7.8 から）
 
 		maximum_pool_size     = 10         # プールの最大
 		minimum_idle          = 1          # 常に開けておく数

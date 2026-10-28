@@ -331,6 +331,44 @@ runtime).
 > In English: "jimble wrote this file (codegen). Do not edit it by hand — an edit
 > is gone at the next codegen."
 
+### Sharing generated code across databases with the same tables
+
+When several data sources are databases with the same tables, give them the
+same `codegen_name` and you keep **only one set of generated code** (since
+2.7.8).
+
+```conf
+db {
+	main   { main = true, ... }
+	shop_a { url = "...", codegen_name = "shop" }
+	shop_b { url = "...", codegen_name = "shop" }
+	log    { url = "...", codegen = false }      # not generated
+}
+```
+
+- Only `db/shop/` is generated (package `<codegen.package>.shop`, schema class
+  `Shop`). `codegenCheck` compares that one set too
+- The tables are read from the **representative** database (the main data
+  source if it is in the group, otherwise the first by name). If another
+  database's tables (table names, column names and types) differ from it, a
+  warning is logged at generation time (generation does not stop)
+- Table classes put **only the table name** into SQL, so they run on whichever
+  database you pass. **For a shared set, run them with the database chosen for
+  the request (the one you keep in `ContextDb` or the like).** `Shop.db()`
+  returns the representative database
+- `codegen_name` becomes a package name and a folder name, so it is lowercase
+  letters, digits and `_`, starting with a letter
+- A data source with `codegen = false` is not generated
+- Without these settings, code is generated per data source as before (the
+  output does not change)
+
+> [!NOTE]
+> If a data source name has uppercase letters, the folder (`db/blog/`) and the
+> package (`db.Blog`) are spelled differently. That is how it has always been,
+> and changing it would move the generated files, so it stays; a warning is
+> logged at generation time. To line them up, write `codegen_name = "blog"`
+> (the package becomes `db.blog`).
+
 ### Type mapping
 
 | DB type | Java |
