@@ -13,6 +13,7 @@ import io.jimble.web.session.SessionStores;
 import io.jimble.web.support.Fakes;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -103,6 +105,13 @@ class RememberIntegrationTest {
 
 		SessionStores.reset();
 		Remember.forgetAll(ALICE.id());
+
+	}
+
+	@AfterEach
+	void restoreClock () {
+
+		Remember.clock = System::currentTimeMillis;
 
 	}
 
@@ -354,6 +363,13 @@ class RememberIntegrationTest {
 	@DisplayName("F-W-30 猶予を過ぎた古い Cookie は盗用とみなし、その人のぶんを全部消す")
 	void detectsTheft () {
 
+		/*
+		 * <b>時計を止める。</b>回してから盗んだ側が来るまでが同じミリ秒の中でも、
+		 * 猶予 0 なら猶予の外である（止めないと、DB が速いときにだけ同じミリ秒に収まり、時々しか確かめられない）。
+		 */
+		long now = System.currentTimeMillis();
+		Remember.clock = () -> now;
+
 		Browser browser = new Browser();
 
 		browser.visit("/me", context -> Remember.issue(context, ALICE));
@@ -395,6 +411,37 @@ class RememberIntegrationTest {
 		 * 盗んだ側と本人のどちらが先に使ったかは区別できないので、
 		 * 片方だけ消すと<b>本人だけが締め出されて盗んだ側が残る</b>ことがある。
 		 */
+		assertEquals(0, rowCount(), "その人のぶんが全部消えていない");
+
+	}
+
+	@Test
+	@DisplayName("F-W-30 猶予ちょうどが過ぎた古い Cookie は、盗用とみなす")
+	void oldCookieExactlyAtTheGraceIsTheft () {
+
+		AtomicLong now = new AtomicLong(System.currentTimeMillis());
+		Remember.clock = now::get;
+
+		Browser browser = new Browser();
+		browser.visit("/me", context -> Remember.issue(context, ALICE));
+
+		String old = browser.cookie(RememberConf.cookieName());
+
+		browser.forgetSession();
+		browser.visit("/me", context -> Remember.restore(context, LOOKUP));
+
+		// 猶予（既定 60 秒）は「回してから、この時間より前まで」
+		now.addAndGet(RememberConf.grace().toMillis());
+
+		Browser thief = new Browser();
+		thief.setCookie(RememberConf.cookieName(), old);
+
+		Principal restored = thief.get("/me", context -> {
+			Remember.restore(context, LOOKUP);
+			return Auth.principal(context);
+		});
+
+		assertFalse(restored.isAuthenticated(), "猶予が過ぎた Cookie で入れてしまっている");
 		assertEquals(0, rowCount(), "その人のぶんが全部消えていない");
 
 	}

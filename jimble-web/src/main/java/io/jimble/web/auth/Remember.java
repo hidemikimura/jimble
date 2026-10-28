@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
+import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -140,6 +141,9 @@ public final class Remember {
 
 	/* 最後に掃除した時刻 */
 	private static final AtomicReference<Instant> lastCleanup = new AtomicReference<>(Instant.now());
+
+	/* 時計（ミリ秒。テストで差し替える） */
+	static volatile LongSupplier clock = System::currentTimeMillis;
 
 	/* 乱数 */
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -795,8 +799,12 @@ public final class Remember {
 	 */
 	private static boolean inGrace (Data row) {
 
+		/*
+		 * <b>「より前」で比べる（「以下」にしない）。</b>
+		 * 以下だと、猶予 0 でも<b>回したのと同じミリ秒に来た古い Cookie</b>は猶予の中になり、盗用を見逃す。
+		 */
 		return nowMillis() - row.getLong("rotated_at")
-			<= RememberConf.grace().toMillis();
+			< RememberConf.grace().toMillis();
 
 	}
 
@@ -1089,7 +1097,7 @@ public final class Remember {
 	 */
 	private static long nowMillis () {
 
-		return Instant.now().toEpochMilli();
+		return clock.getAsLong();
 
 	}
 
