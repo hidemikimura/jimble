@@ -232,7 +232,7 @@ The one with `main = true` is `DBUtil.getMainDB()` (there is no no-argument `get
 Everything listed at the top level is **treated as its own thing**:
 
 - migrations under `conf/migration/<data source name>/` are applied to it (`migration_dir` picks another folder; see below)
-- codegen generates `db/<data source name>/` for it
+- codegen generates `db/<data source name>/` for it (`codegen_name` shares one set with databases that have the same tables; see [code generation](./codegen#sharing-generated-code-across-databases-with-the-same-tables))
 - `migration` / `db_lock` / `db_value` / `db_cache` are created there too
 
 jimble creates the tables it uses at startup when they are missing. When

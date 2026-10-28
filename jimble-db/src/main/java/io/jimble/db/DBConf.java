@@ -86,6 +86,12 @@ public final class DBConf {
 	/** 起動時にマイグレーションを当てるか（null なら migration.on_startup に従う） */
 	private Boolean migrateOnStartup;
 
+	/** 生成コードの名前（パッケージの末尾とクラス名の元。空ならデータソース名） */
+	private String codegenName;
+
+	/** 生成コードを作るか */
+	private boolean codegen = true;
+
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
 
@@ -569,6 +575,59 @@ public final class DBConf {
 	}
 
 	/**
+	 * 生成コードの名前
+	 *
+	 * <p>
+	 * {@code db.<名前>.codegen_name}。パッケージの末尾（{@code <codegen.package>.<これ>}）とクラス名の元になる。
+	 * 同じ名前を書いたデータソースは、<b>生成コードを 1 組だけ共有する</b>（代表の DB から作る）。
+	 * </p>
+	 *
+	 * @return	生成コードの名前（書いていなければ null。データソース名を使う）
+	 * @since 2.7.8
+	 */
+	public String codegenName () {
+
+		return codegenName;
+
+	}
+
+	/**
+	 * 生成コードの名前 を決める
+	 *
+	 * @param codegenName	生成コードの名前
+	 */
+	void codegenName (String codegenName) {
+
+		this.codegenName = codegenName;
+
+	}
+
+	/**
+	 * 生成コードを作るか
+	 *
+	 * <p>{@code db.<名前>.codegen}。既定は true。</p>
+	 *
+	 * @return	作る場合 = true
+	 * @since 2.7.8
+	 */
+	public boolean codegen () {
+
+		return codegen;
+
+	}
+
+	/**
+	 * 生成コードを作るか を決める
+	 *
+	 * @param codegen	作る場合 = true
+	 */
+	void codegen (boolean codegen) {
+
+		this.codegen = codegen;
+
+	}
+
+	/**
 	 * 起動時にマイグレーションを当てるか を決める
 	 *
 	 * @param migrateOnStartup	当てる場合 = true（null なら migration.on_startup に従う）
@@ -686,6 +745,8 @@ public final class DBConf {
 		conf.schema = from.schema;
 		conf.migrationDir = from.migrationDir;
 		conf.migrateOnStartup = from.migrateOnStartup;
+		conf.codegenName = from.codegenName;
+		conf.codegen = from.codegen;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;
