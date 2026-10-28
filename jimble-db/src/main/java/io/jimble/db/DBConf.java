@@ -83,6 +83,9 @@ public final class DBConf {
 	/** マイグレーションのフォルダ名（空なら schema） */
 	private String migrationDir;
 
+	/** 起動時にマイグレーションを当てるか（null なら migration.on_startup に従う） */
+	private Boolean migrateOnStartup;
+
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
 
@@ -549,6 +552,34 @@ public final class DBConf {
 	}
 
 	/**
+	 * 起動時にマイグレーションを当てるか
+	 *
+	 * <p>
+	 * {@code db.<名前>.migrate_on_startup}。書いていなければ null で、{@code migration.on_startup} に従う。
+	 * 並べた DB はデプロイの段で CLI から当て、起動では当てない、という使い方のためにある。
+	 * </p>
+	 *
+	 * @return	当てる場合 = true、当てない場合 = false、書いていなければ null
+	 * @since 2.7.8
+	 */
+	public Boolean migrateOnStartup () {
+
+		return migrateOnStartup;
+
+	}
+
+	/**
+	 * 起動時にマイグレーションを当てるか を決める
+	 *
+	 * @param migrateOnStartup	当てる場合 = true（null なら migration.on_startup に従う）
+	 */
+	void migrateOnStartup (Boolean migrateOnStartup) {
+
+		this.migrateOnStartup = migrateOnStartup;
+
+	}
+
+	/**
 	 * 書いてあるマイグレーションのフォルダ名（schema で補わない）
 	 *
 	 * @return	書いてあるフォルダ名（無ければ null）
@@ -654,6 +685,7 @@ public final class DBConf {
 		conf.fetchSize = from.fetchSize;
 		conf.schema = from.schema;
 		conf.migrationDir = from.migrationDir;
+		conf.migrateOnStartup = from.migrateOnStartup;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;

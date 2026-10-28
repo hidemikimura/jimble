@@ -246,6 +246,47 @@ They run once each, in `versionYyyyMmDd()` order, and the result is kept in
 > Other data sources that share a `migration_dir` do not get them, unlike SQL
 > migrations.
 
+### Applying to databases lined up side by side
+
+When several data sources are databases with the same tables (they share a
+`migration_dir`), the recommended way is **not to apply at startup, but from
+the CLI during deployment** (since 2.7.8).
+
+```conf
+db {
+	main   { main = true, ... }                                    # fine to apply at startup
+	shop_a { url = "...", migration_dir = "shop", migrate_on_startup = false }
+	shop_b { url = "...", migration_dir = "shop", migrate_on_startup = false }
+}
+```
+
+The deployment steps are:
+
+```bash
+# 1. Apply to the lined-up databases. Keep going past a failure and print a list at the end (non-zero exit if anything failed)
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate --migration-dir shop --parallel 4 --keep-going
+# 2. Check that they are all at the same version (writes nothing; non-zero exit if anything is off)
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrateCheck --migration-dir shop
+# 3. Start the application
+```
+
+| Option | Meaning |
+|---|---|
+| `--data-source <name>` | Only these data sources (repeatable) |
+| `--migration-dir <folder>` | Only the data sources that use this folder (repeatable). With `--data-source` too, those that match both |
+| `--parallel <n>` | How many to apply at once (default 1). Each data source uses two connections |
+| `--keep-going` | Keep going after a failure (`migrate` only). By default they run in name order and stop at the first failure |
+
+- When you narrow it down, **only the chosen data sources are connected to**
+  (a database that cannot be reached does not drag the rest down)
+- `migrateCheck` compares the SQL files in the folder with each database's
+  `migration` table and reports, per data source, **files not applied, extra
+  records (no file), and hash mismatches**
+- `db.<name>.migrate_on_startup` overrides `migration.on_startup` for that data
+  source only. A data source that says `true` is applied at startup even when
+  `migration.on_startup = false`
+- From Gradle, pass them as `./gradlew migrate -Pjimble.migrateArgs="--migration-dir shop --keep-going"` ([Gradle plugin](./gradle))
+
 ## Code generation
 
 ```bash
@@ -375,8 +416,12 @@ Where Gradle is not available (CI, production), the CLI does the same things.
 
 ```bash
 java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrateCheck
 java -cp app.jar io.jimble.db.cli.JimbleDbCli codegen src/main/java
 ```
+
+The options for `migrate` and `migrateCheck` are in
+[Applying to databases lined up side by side](#applying-to-databases-lined-up-side-by-side).
 
 Both the configuration and the SQL are looked up **from the classpath**.
 The Gradle tasks are listed in [the Gradle plugins](./gradle).

@@ -45,6 +45,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.TreeSet;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 public class DBUtil {
 
@@ -64,6 +66,54 @@ public class DBUtil {
 	public static List<DBSource> getDataSourceList () {
 
 		return new ArrayList<>(dataSources.values());
+
+	}
+
+	/**
+	 * 設定に書いてあるデータソースの設定を、つながずに読む
+	 *
+	 * <p>
+	 * CLI が「どのデータソースに当てるか」を決めるため（つながらない DB に引きずられないよう、
+	 * 選んだものだけを {@link #load} する）。{@code schema} が空ならデータソース名で補う（{@link #load} と同じ）。
+	 * 返す順は名前の順。
+	 * </p>
+	 *
+	 * @param conf	設定全体
+	 * @return	データソース名 → 設定
+	 * @throws IllegalStateException	知らないキーがある場合
+	 * @since 2.7.8
+	 */
+	public static SortedMap<String, DBConf> readDataSourceConfs (Config conf) {
+
+		SortedMap<String, DBConf> confs = new TreeMap<>();
+
+		if (!conf.hasPath("db")) {
+			return confs;
+		}
+
+		checkAllKeys(conf.getConfig("db"));
+
+		for (String dbName : conf.getConfig("db").root().keySet()) {
+
+			Config configDb;
+			try {
+				configDb = conf.getConfig("db").getConfig(dbName);
+			} catch (Exception ignore) {
+				// データソースでない値（remove_all_null_table_data など）
+				continue;
+			}
+
+			DBConf dbConf = new DBConf();
+			read(dbConf, configDb);
+			if (dbConf.schema() == null || dbConf.schema().isEmpty()) {
+				dbConf.schema(dbName);
+			}
+
+			confs.put(dbName, dbConf);
+
+		}
+
+		return confs;
 
 	}
 
@@ -983,6 +1033,9 @@ public class DBUtil {
 		if (has(config, "validate_on_borrow")) {
 			dbConf.validateOnBorrow(innerConf.getBoolean(spelling(config, "validate_on_borrow")));
 		}
+		if (has(config, "migrate_on_startup")) {
+			dbConf.migrateOnStartup(innerConf.getBoolean(spelling(config, "migrate_on_startup")));
+		}
 
 	}
 
@@ -1021,7 +1074,7 @@ public class DBUtil {
 		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
 		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
-		, "schema", "migration_dir", "product", "create_database_sql", "connection_pool_type"
+		, "schema", "migration_dir", "migrate_on_startup", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"
 		// 入れ子（値ではなく、中にまた db の設定が入るもの）
 		, "main", "read", "subs");

@@ -1,5 +1,7 @@
 package io.jimble.db.migration;
 
+import com.typesafe.config.Config;
+import io.jimble.util.conf.Conf;
 import io.jimble.util.internal.Docs;
 import io.jimble.db.FrameworkTables;
 import io.jimble.db.DB;
@@ -107,18 +109,65 @@ public final class Migration {
 				  詳しく: %s""".formatted(Docs.url("codegen")));
 		}
 
-		if (!MigrationConf.isOnStartup()) {
+		if (!anyOnStartup(Conf.conf().config())) {
 			Log.info("起動時マイグレーションは無効です（" + MigrationConf.KEY_ON_STARTUP + "）");
 			return false;
 		}
 
 		// データソースごとに SQL マイグレーションを適用する（要件 F-G-09）
-		DBUtil.addDataSourceTask((dbSource, db, appClass) -> migrate(dbSource, appClass));
+		DBUtil.addDataSourceTask((dbSource, db, appClass) -> migrateOnStartup(dbSource, appClass));
 
-		// 全データソースの初期化後にコードマイグレーションを実行する（要件 F-G-18）
-		DBUtil.addStartupTask(CodeMigration::execute);
+		// 全データソースの初期化後にコードマイグレーションを実行する（要件 F-G-18）。当たるのは主だけ
+		DBUtil.addStartupTask(() -> {
+			if (MigrationConf.isOnStartup(DBUtil.getMainDataSource().conf())) {
+				CodeMigration.execute();
+			}
+		});
 
 		return true;
+
+	}
+
+	/**
+	 * 起動時に当てるデータソースが1つでもあるか
+	 *
+	 * <p>
+	 * {@code migration.on_startup} が有効か、{@code db.<名前>.migrate_on_startup = true} のものがあれば true。
+	 * </p>
+	 *
+	 * @param config	設定全体
+	 * @return	ある場合 = true
+	 */
+	static boolean anyOnStartup (Config config) {
+
+		if (MigrationConf.isOnStartup()) {
+			return true;
+		}
+
+		return DBUtil.readDataSourceConfs(config).values().stream()
+			.anyMatch(conf -> Boolean.TRUE.equals(conf.migrateOnStartup()));
+
+	}
+
+	/**
+	 * 起動時の適用（データソースごと）
+	 *
+	 * <p>
+	 * {@code db.<名前>.migrate_on_startup = false} のデータソースには当てない
+	 * （並べた DB はデプロイの段で CLI から当てる、という使い方のため）。
+	 * </p>
+	 *
+	 * @param dbSource	データソース
+	 * @param appClass	アプリケーションクラス
+	 */
+	static void migrateOnStartup (DBSource dbSource, Class<?> appClass) {
+
+		if (!MigrationConf.isOnStartup(dbSource.conf())) {
+			Log.info("起動時マイグレーションを当てません（db.%s.migrate_on_startup）".formatted(dbSource.name()));
+			return;
+		}
+
+		migrate(dbSource, appClass);
 
 	}
 
@@ -140,6 +189,95 @@ public final class Migration {
 	}
 
 	/**
+	 * マイグレーションを適用し、当てたファイルの数を返す
+	 *
+	 * <p>CLI がデータソースごとの結果を出すために使う。動きは {@link #migrate(DBSource, Class)} と同じ。</p>
+	 *
+	 * @param dbSource	データソース
+	 * @param appClass	アプリケーションクラス（SQL ファイルの探索に使う）
+	 * @return	当てた（新しく当てた・当て直した）ファイルの数
+	 * @throws MigrationException	適用に失敗した場合
+	 * @since 2.7.8
+	 */
+	public static int migrateAndCount (DBSource dbSource, Class<?> appClass) {
+
+		return migrateAndCount(dbSource, list(dbSource, appClass));
+
+	}
+
+	/**
+	 * 当たっているかを確かめる（DB には書かない）
+	 *
+	 * <p>
+	 * フォルダの SQL ファイルと、そのデータソースの {@code migration} の表を突き合わせ、
+	 * 未適用・余分（ファイルが無いのに記録がある）・ハッシュ違いを返す。
+	 * 記録の表が無ければ、全部が未適用である。<b>表は作らない。</b>
+	 * </p>
+	 *
+	 * @param dbSource	データソース
+	 * @param appClass	アプリケーションクラス（SQL ファイルの探索に使う）
+	 * @return	結果
+	 * @since 2.7.8
+	 */
+	public static MigrationCheck check (DBSource dbSource, Class<?> appClass) {
+
+		return check(dbSource, list(dbSource, appClass));
+
+	}
+
+	/**
+	 * 当たっているかを確かめる（DB には書かない）
+	 *
+	 * @param dbSource	データソース
+	 * @param fileList	SQL ファイル一覧
+	 * @return	結果
+	 * @since 2.7.8
+	 */
+	public static MigrationCheck check (DBSource dbSource, List<MigrationInfo> fileList) {
+
+		List<MigrationInfo> all = sortByName(fileList);
+		List<MigrationInfo> sorted = forProduct(dbSource, all);
+
+		DB db = DBUtil.getDB(dbSource.name()).setUseWriteConnectionOnly();
+
+		List<Data> appliedList = hasMigrationTable(db) ? sortedApplied(db) : List.of();
+
+		List<String> notApplied = new ArrayList<>();
+		List<String> hashMismatch = new ArrayList<>();
+		for (MigrationInfo info : sorted) {
+			Data applied = findApplied(appliedList, info.sqlFileName());
+			if (applied == null || !"complete".equals(applied.getString("state"))) {
+				notApplied.add(info.sqlFileName());
+			} else if (!Hash.md5(hashText(readSqlText(info))).equals(applied.getString("hash"))) {
+				hashMismatch.add(info.sqlFileName());
+			}
+		}
+
+		List<String> extra = new ArrayList<>();
+		for (Data applied : appliedList) {
+			if (!containsFile(all, applied.getString("name"))) {
+				extra.add(applied.getString("name"));
+			}
+		}
+
+		return new MigrationCheck(dbSource.name(), notApplied, extra, hashMismatch);
+
+	}
+
+	/**
+	 * 記録の表があるか
+	 *
+	 * @param db	DB
+	 * @return	ある場合 = true
+	 */
+	private static boolean hasMigrationTable (DB db) {
+
+		return db.selectList(db.dialect().tableCommentsSql()).stream()
+			.anyMatch(row -> FrameworkTables.MIGRATION.equalsIgnoreCase(row.getString("table_name")));
+
+	}
+
+	/**
 	 * マイグレーションを適用する
 	 *
 	 * <p>
@@ -152,6 +290,21 @@ public final class Migration {
 	 * @throws MigrationException	適用に失敗した場合
 	 */
 	public static void migrate (DBSource dbSource, List<MigrationInfo> fileList) {
+
+		migrateAndCount(dbSource, fileList);
+
+	}
+
+	/**
+	 * マイグレーションを適用し、当てたファイルの数を返す
+	 *
+	 * @param dbSource	データソース
+	 * @param fileList	SQL ファイル一覧（名前順に並べ替えてから使う）
+	 * @return	当てた（新しく当てた・当て直した）ファイルの数
+	 * @throws MigrationException	適用に失敗した場合
+	 * @since 2.7.8
+	 */
+	public static int migrateAndCount (DBSource dbSource, List<MigrationInfo> fileList) {
 
 		/*
 		 * 「いまの製品で流すもの」と「置いてあるもの全部」の両方を持つ。
@@ -172,6 +325,7 @@ public final class Migration {
 		 * ロックは commit まで外れない（MigrationConcurrencyIntegrationTest）。
 		 */
 		DB lockDB = DBUtil.getDB(dbSource.name());
+		int applied;
 
 		try (lockDB) {
 
@@ -200,7 +354,7 @@ public final class Migration {
 					 */
 					createTables(dbSource);
 
-					apply(dbSource, sorted, all);
+					applied = apply(dbSource, sorted, all);
 
 				} finally {
 					// Tx の外では1文ごとに接続を返すので、戻すのは Tx の中で
@@ -220,6 +374,8 @@ public final class Migration {
 			throw new MigrationException("マイグレーションに失敗しました: " + dbSource.name(), ex);
 
 		}
+
+		return applied;
 
 	}
 
@@ -306,8 +462,9 @@ public final class Migration {
 	 * @param dbSource	データソース
 	 * @param fileList	SQL ファイル一覧（いまの製品で流すもの）
 	 * @param allFiles	SQL ファイル一覧（製品で絞る前の全部）
+	 * @return	当てたファイルの数
 	 */
-	private static void apply (DBSource dbSource, List<MigrationInfo> fileList, List<MigrationInfo> allFiles) {
+	private static int apply (DBSource dbSource, List<MigrationInfo> fileList, List<MigrationInfo> allFiles) {
 
 		/*
 		 * どれを当てたかは書き込みの接続から読む。
@@ -333,9 +490,14 @@ public final class Migration {
 		}
 
 		// 2. SQL ファイルを名前順に適用する
+		int count = 0;
 		for (MigrationInfo info : fileList) {
-			applyOne(db, info, findApplied(appliedList, info.sqlFileName()));
+			if (applyOne(db, info, findApplied(appliedList, info.sqlFileName()))) {
+				count++;
+			}
 		}
+
+		return count;
 
 	}
 
@@ -515,8 +677,9 @@ public final class Migration {
 	 * @param db		DB
 	 * @param info		SQL ファイル
 	 * @param applied	適用済みレコード（未適用なら null）
+	 * @return	当てた（新しく当てた・当て直した）場合 = true
 	 */
-	private static void applyOne (DB db, MigrationInfo info, Data applied) {
+	private static boolean applyOne (DB db, MigrationInfo info, Data applied) {
 
 		String name = info.sqlFileName();
 		String sqlText = readSqlText(info);
@@ -532,7 +695,7 @@ public final class Migration {
 
 		if (applied == null) {
 			applyNew(db, name, hash, up, down);
-			return;
+			return true;
 		}
 
 		String state = applied.getString("state");
@@ -545,7 +708,7 @@ public final class Migration {
 
 		if ("up_error".equals(state)) {
 			reapply(db, applied, name, hash, up, down);
-			return;
+			return true;
 		}
 
 		// complete
@@ -558,7 +721,10 @@ public final class Migration {
 				);
 			}
 			reapply(db, applied, name, hash, up, down);
+			return true;
 		}
+
+		return false;
 
 	}
 

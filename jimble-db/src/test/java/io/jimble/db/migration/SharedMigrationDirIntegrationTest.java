@@ -47,7 +47,9 @@ class SharedMigrationDirIntegrationTest {
 	static void load () {
 
 		Conf.reload();
+		// ほかのテストが Migration.install() を呼んでいても、load の中では当てない（このテストで当てる）
 		Conf.replace(ConfigFactory.parseString("""
+			migration.on_startup = false
 			migration.resource_dir = "migration_shared_test"
 			db.jimble_test.migration_dir = "shop"
 			db.jimble_test_sub.migration_dir = "shop"

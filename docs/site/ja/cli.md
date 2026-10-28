@@ -12,6 +12,7 @@ order: 1
 
   new <name>              プロジェクトの雛形を作る
   migrate                 未適用のマイグレーションを適用する
+  migrateCheck            当たっているかを確かめる（DB には書かない）
   codegen <ソースルート>   テーブル定義のコードを生成する（例: src/main/java）
   version                 版を表示する
 ```
@@ -160,6 +161,9 @@ $ curl http://localhost:9000/hello
 > ```bash
 > java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate
 > ```
+
+並べた DB に当てるオプション（`--data-source`・`--migration-dir`・`--parallel`・`--keep-going`）と、
+当たっているかを確かめる `migrateCheck` は [並べた DB に当てる](./codegen#並べた-db-に当てる) を見てください。
 
 ## 版を確認する
 

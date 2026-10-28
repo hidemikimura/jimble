@@ -13,6 +13,7 @@ import org.gradle.jvm.toolchain.JavaToolchainService;
 import org.gradle.language.jvm.tasks.ProcessResources;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -67,6 +68,9 @@ public class JimbleDbPlugin implements Plugin<Project> {
 	/** タスク名：マイグレーション */
 	public static final String TASK_MIGRATE = "migrate";
 
+	/** タスク名：マイグレーションが当たっているかの確認 */
+	public static final String TASK_MIGRATE_CHECK = "migrateCheck";
+
 	/** タスク名：コード生成 */
 	public static final String TASK_CODEGEN = "codegen";
 
@@ -78,6 +82,9 @@ public class JimbleDbPlugin implements Plugin<Project> {
 
 	/** Gradle プロパティ：環境名 */
 	public static final String PROPERTY_ENV = "jimble.env";
+
+	/** Gradle プロパティ：migrate・migrateCheck に渡すオプション（例 {@code --data-source shop_a --keep-going}） */
+	public static final String PROPERTY_MIGRATE_ARGS = "jimble.migrateArgs";
 
 	/**
 	 * {@inheritDoc}
@@ -96,6 +103,7 @@ public class JimbleDbPlugin implements Plugin<Project> {
 		extension.getAutoGenerate().convention(project.provider(() -> autoGenerate(project, extension)));
 
 		TaskProvider<JavaExec> migrate = registerMigrate(project, extension);
+		registerMigrateCheck(project, extension);
 		TaskProvider<JavaExec> codegen = registerCodegen(project, extension, migrate);
 		registerCodegenCheck(project, extension, migrate);
 
@@ -123,8 +131,52 @@ public class JimbleDbPlugin implements Plugin<Project> {
 			task.setGroup(GROUP);
 			task.setDescription("未適用のマイグレーションを適用する");
 			configureCli(project, extension, task);
-			task.args("migrate");
+			task.getArgumentProviders().add(() -> commandWithOptions(project, TASK_MIGRATE));
 		});
+
+	}
+
+	/**
+	 * {@code migrateCheck} を登録する
+	 *
+	 * <p>DB には書かない。ずれがあればタスクが失敗する（CLI が 0 以外で終わる）。</p>
+	 *
+	 * @param project	プロジェクト
+	 * @param extension	設定
+	 */
+	private void registerMigrateCheck (Project project, JimbleDbExtension extension) {
+
+		project.getTasks().register(TASK_MIGRATE_CHECK, JavaExec.class, task -> {
+			task.setGroup(GROUP);
+			task.setDescription("マイグレーションが当たっているかを確かめる（DB には書かない）");
+			configureCli(project, extension, task);
+			task.getArgumentProviders().add(() -> commandWithOptions(project, TASK_MIGRATE_CHECK));
+		});
+
+	}
+
+	/**
+	 * コマンドと、{@code jimble.migrateArgs} に書いたオプション
+	 *
+	 * <pre>
+	 * ./gradlew migrate -Pjimble.migrateArgs="--migration-dir shop --parallel 4 --keep-going"
+	 * </pre>
+	 *
+	 * @param project	プロジェクト
+	 * @param command	CLI のコマンド
+	 * @return	引数
+	 */
+	private static List<String> commandWithOptions (Project project, String command) {
+
+		List<String> args = new ArrayList<>();
+		args.add(command);
+
+		Object property = project.findProperty(PROPERTY_MIGRATE_ARGS);
+		if (property != null && !property.toString().isBlank()) {
+			args.addAll(List.of(property.toString().strip().split("\\s+")));
+		}
+
+		return args;
 
 	}
 
