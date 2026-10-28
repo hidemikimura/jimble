@@ -458,6 +458,12 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 | キャッシュ | <https://jimble.io/ja/cache.md> |
 | テスト（`@Tag("db")` と実 DB） | <https://jimble.io/ja/testing.md> |
 
+## 落ちても全体を止めないデータソース（2.7.8）
+
+店の DB のように、1 つ落ちても起動・死活監視を止めたくないデータソースは **`db.<名前>.required = false`**。
+つながらなくても起動を続け、DB が戻ればそのまま使える（HikariCP は数秒かかる）。起動時につながらなかったものには管理の表・マイグレーションを当てない（CLI の `migrate --data-source` で当てる）。
+`DBUtil.healthCheck()` は required のものだけ、データソースごとは `DBUtil.healthCheckAll()`。主は required = false にできない。
+
 ## db.<名前> の設定（要件 D-159）
 
 **snake_case で書く**（`maximum_pool_size` / `minimum_idle` / `idle_timeout` /

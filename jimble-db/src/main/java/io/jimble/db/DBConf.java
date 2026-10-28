@@ -95,6 +95,9 @@ public final class DBConf {
 	/** MQ のキューを置くか */
 	private boolean mq = true;
 
+	/** つながらなければ起動を止めるか（死活監視に入れるか） */
+	private boolean required = true;
+
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
 
@@ -659,6 +662,35 @@ public final class DBConf {
 	}
 
 	/**
+	 * つながらなければ起動を止めるか
+	 *
+	 * <p>
+	 * {@code db.<名前>.required}。既定は true。false のデータソースは、起動時につながらなくても起動を続け、
+	 * DB が戻れば使える（プールはつながるまで作り直し続ける）。{@link DBUtil#healthCheck()} も見ない。
+	 * 主のデータソースは false にできない。
+	 * </p>
+	 *
+	 * @return	止める場合 = true
+	 * @since 2.7.8
+	 */
+	public boolean required () {
+
+		return required;
+
+	}
+
+	/**
+	 * つながらなければ起動を止めるか を決める
+	 *
+	 * @param required	止める場合 = true
+	 */
+	void required (boolean required) {
+
+		this.required = required;
+
+	}
+
+	/**
 	 * 起動時にマイグレーションを当てるか を決める
 	 *
 	 * @param migrateOnStartup	当てる場合 = true（null なら migration.on_startup に従う）
@@ -779,6 +811,7 @@ public final class DBConf {
 		conf.codegenName = from.codegenName;
 		conf.codegen = from.codegen;
 		conf.mq = from.mq;
+		conf.required = from.required;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;

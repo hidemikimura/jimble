@@ -147,7 +147,13 @@ public class DBUtil {
 	/**
 	 * ヘルスチェック
 	 *
-	 * @return	DBが一つでも利用できない場合 = false
+	 * <p>
+	 * 見るのは {@code db.<名前>.required = true}（既定）のデータソースだけ（2.7.8）。
+	 * 店の DB が1つ落ちただけで、Web 全体がロードバランサーから外れないようにするため。
+	 * {@code required = false} のデータソースの状態は {@link #healthCheckAll()} で見る。
+	 * </p>
+	 *
+	 * @return	required のデータソースが一つでも利用できない場合 = false
 	 */
 	@CheckReturnValue
 	public static boolean healthCheck () {
@@ -157,24 +163,56 @@ public class DBUtil {
 		}
 
 		for (DBSource dbSource : dataSources.values()) {
-			try (
-				DB db = new DB(dbSource)
-			) {
-				// 読めなければ例外（下で false）
-				if (db.select("SELECT 1").isEmpty()) {
-					return false;
-				}
-			} catch (Throwable ex) {
-				/*
-				 * 1.4 までは、ここでログだけ出してループを続け、<b>最後に true（健康）を返していた</b>
-				 * （要件 D-190）。落ちた DB を「健康」と答える死活監視になっていた。
-				 */
-				Log.error("DB health check failed: " + dbSource.name(), ex);
+			/*
+			 * 1.4 までは、失敗してもログだけ出してループを続け、<b>最後に true（健康）を返していた</b>
+			 * （要件 D-190）。落ちた DB を「健康」と答える死活監視になっていた。
+			 */
+			if (dbSource.conf().required() && !isAlive(dbSource)) {
 				return false;
 			}
 		}
 
 		return true;
+
+	}
+
+	/**
+	 * データソースごとのヘルスチェック
+	 *
+	 * <p>{@code required = false} のものも含めて、全部を見る。メトリクスや管理画面に出すため。</p>
+	 *
+	 * @return	データソース名 → 利用できる場合 = true（名前の順）
+	 * @since 2.7.8
+	 */
+	public static SortedMap<String, Boolean> healthCheckAll () {
+
+		SortedMap<String, Boolean> results = new TreeMap<>();
+
+		for (DBSource dbSource : dataSources.values()) {
+			results.put(dbSource.name(), isAlive(dbSource));
+		}
+
+		return results;
+
+	}
+
+	/**
+	 * 読めるか
+	 *
+	 * @param dbSource	データソース
+	 * @return	読める場合 = true
+	 */
+	private static boolean isAlive (DBSource dbSource) {
+
+		try (
+			DB db = new DB(dbSource)
+		) {
+			// 読めなければ例外（下で false）
+			return db.select("SELECT 1").isPresent();
+		} catch (Throwable ex) {
+			Log.error("DB health check failed: " + dbSource.name(), ex);
+			return false;
+		}
 
 	}
 
@@ -349,77 +387,99 @@ public class DBUtil {
 			// write
 			DBConf writeDbConf = new DBConf();
 			boolean isCreated = false;
-			while (true) {
-				try {
-					start = System.currentTimeMillis();
-					read(writeDbConf, configDb);
-					dbSource.conf(writeDbConf);
-					if (dbSource.conf().schema() == null || dbSource.conf().schema().isEmpty()) {
-						dbSource.conf().schema(dbName);
-					}
-					dbSource.dataSource(createDataSource(writeDbConf));
-					end = System.currentTimeMillis();
 
-					{
-						/*
-						 * 移送元はここで new Exception("Unknown database") に潰していた。
-						 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
-						 * 作りにいって二度失敗する。元の例外をそのまま上げる。
-						 */
-						dbSource.dataSource().getConnection().close();
-					}
+			// 起動時につながったか（required = false のデータソースは、つながらなくても続ける。2.7.8）
+			boolean available = true;
 
-					String version = "unknown";
-					try (
-						Connection connection = dbSource.dataSource().getConnection();
-						PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
-						ResultSet resultSet = st.executeQuery()
-					) {
-						resultSet.next();
-						version = resultSet.getString("version");
+			try {
+				while (true) {
+					try {
+						start = System.currentTimeMillis();
+						read(writeDbConf, configDb);
+						dbSource.conf(writeDbConf);
+						if (dbSource.conf().schema() == null || dbSource.conf().schema().isEmpty()) {
+							dbSource.conf().schema(dbName);
+						}
+						dbSource.dataSource(createDataSource(writeDbConf));
+						end = System.currentTimeMillis();
+
+						{
+							/*
+							 * 移送元はここで new Exception("Unknown database") に潰していた。
+							 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
+							 * 作りにいって二度失敗する。元の例外をそのまま上げる。
+							 */
+							dbSource.dataSource().getConnection().close();
+						}
+
+						String version = "unknown";
+						try (
+							Connection connection = dbSource.dataSource().getConnection();
+							PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
+							ResultSet resultSet = st.executeQuery()
+						) {
+							resultSet.next();
+							version = resultSet.getString("version");
+						} catch (Exception ex) {
+							Log.error(ex);
+						}
+						Log.info("success create write datasource: " + dbName + ":" + version + " (" + (end - start) +"ms)");
+						break;
 					} catch (Exception ex) {
-						Log.error(ex);
-					}
-					Log.info("success create write datasource: " + dbName + ":" + version + " (" + (end - start) +"ms)");
-					break;
-				} catch (Exception ex) {
-					/*
-					 * 「そんなデータベースは無い」の文言は製品ごとに違う（要件 F-D-30）。
-					 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
-					 */
-					if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
-						if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
-							throw loadFailed("failed create write datasource", dbName, ex);
-						}
-						if (isCreated) {
-							throw loadFailed("failed create write datasource", dbName, ex);
-						}
-						isCreated = true;
-						String url = writeDbConf.url();
-						writeDbConf.url(dbSource.dialect().maintenanceUrl(url));
-						try {
-							DataSource dataSource = createDataSource(writeDbConf);
-							PreparedStatement st = null;
-							try (
-								Connection connection = dataSource.getConnection()
-							) {
-								st = connection.prepareStatement(writeDbConf.createDatabaseSql());
-								st.execute();
-							} catch (Exception ex3) {
+						/*
+						 * 「そんなデータベースは無い」の文言は製品ごとに違う（要件 F-D-30）。
+						 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
+						 */
+						if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
+							if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
 								throw loadFailed("failed create write datasource", dbName, ex);
-							} finally {
-								writeDbConf.url(url);
-								if (st != null) {
-									IOUtil.close(st);
-								}
 							}
-						} catch (Exception ex2) {
+							if (isCreated) {
+								throw loadFailed("failed create write datasource", dbName, ex);
+							}
+							isCreated = true;
+							String url = writeDbConf.url();
+							writeDbConf.url(dbSource.dialect().maintenanceUrl(url));
+							try {
+								DataSource dataSource = createDataSource(writeDbConf);
+								PreparedStatement st = null;
+								try (
+									Connection connection = dataSource.getConnection()
+								) {
+									st = connection.prepareStatement(writeDbConf.createDatabaseSql());
+									st.execute();
+								} catch (Exception ex3) {
+									throw loadFailed("failed create write datasource", dbName, ex);
+								} finally {
+									writeDbConf.url(url);
+									if (st != null) {
+										IOUtil.close(st);
+									}
+								}
+							} catch (Exception ex2) {
+								throw loadFailed("failed create write datasource", dbName, ex);
+							}
+						} else {
 							throw loadFailed("failed create write datasource", dbName, ex);
 						}
-					} else {
-						throw loadFailed("failed create write datasource", dbName, ex);
 					}
 				}
+			} catch (SqlExecuteException ex) {
+
+				if (writeDbConf.required()) {
+					throw ex;
+				}
+
+				available = false;
+
+				Log.warn(("データソース %s につながりませんでした。required = false なので起動を続けます"
+					+ "（DB が戻れば使えます。管理の表とマイグレーションは当てていません）: %s").formatted(dbName, ex.getMessage()));
+
+				// required = false のプールは作る時点ではつながないので、作れば残る
+				if (dbSource.dataSource() == null) {
+					dbSource.dataSource(createDataSource(writeDbConf));
+				}
+
 			}
 
 			// read
@@ -495,6 +555,11 @@ public class DBUtil {
 				io.jimble.db.dialect.Dialects.defaultDialect(dbSource.dialect());
 			}
 
+			if (!available) {
+				// つながってから起動し直すか、CLI の migrate で当てる
+				continue;
+			}
+
 			// DB version
 			DBVersion.load(getDB(dbName));
 
@@ -519,6 +584,14 @@ public class DBUtil {
 				task.run(dbSource, getDB(dbName), appCls);
 			}
 
+		}
+
+		/*
+		 * 主は required = false にできない（主が無いとスケジューラもセッションも動かない）。
+		 * main = true を書いていなければ最初に読んだものが主になり、あとで main = true が来れば替わるので、読み終えてから見る
+		 */
+		if (mainDataSource != null && !mainDataSource.conf().required()) {
+			throw new IllegalStateException("主のデータソースは required = false にできません: db.%s".formatted(mainDataSource.name()));
 		}
 
 		// 接続プールの使用率をメトリクスへ（要件 NF-O-04）
@@ -916,6 +989,14 @@ public class DBUtil {
 		if (dbConf.leakTimeout() > 0) {
 			hikariConfig.setLeakDetectionThreshold(dbConf.leakTimeout());
 		}
+		if (!dbConf.required()) {
+			/*
+			 * <b>作る時点ではつながない</b>（required = false。2.7.8）。HikariCP の既定（1）は、作るときに1本つないで、
+			 * つながらなければ例外にし、プールが残らない（あとで DB が戻っても使えない）。
+			 * 負にすると、作るときには試さず、借りるときにつなぎに行く
+			 */
+			hikariConfig.setInitializationFailTimeout(-1);
+		}
 
 		return new HikariDataSource(hikariConfig);
 
@@ -1043,6 +1124,9 @@ public class DBUtil {
 		if (has(config, "mq")) {
 			dbConf.mq(innerConf.getBoolean(spelling(config, "mq")));
 		}
+		if (has(config, "required")) {
+			dbConf.required(innerConf.getBoolean(spelling(config, "required")));
+		}
 
 	}
 
@@ -1081,7 +1165,7 @@ public class DBUtil {
 		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
 		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
-		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "mq", "product", "create_database_sql", "connection_pool_type"
+		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "mq", "required", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"
 		// 入れ子（値ではなく、中にまた db の設定が入るもの）
 		, "main", "read", "subs");

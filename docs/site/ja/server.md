@@ -237,6 +237,14 @@ get("/health_check", context ->
 	context.response().send(Shutdown.isStopping() ? 503 : 200));
 ```
 
+DB も見るなら `DBUtil.healthCheck()` を足します。見るのは `db.<名前>.required = true`（既定）のデータソースだけです（2.7.8 から）。
+店の DB のように、1 つ落ちても台ごと外したくないデータソースは `required = false` にします（[DB](./db#落ちても全体を止めないデータソース)）。
+
+```java
+get("/health_check", context ->
+	context.response().send(Shutdown.isStopping() || !DBUtil.healthCheck() ? 503 : 200));
+```
+
 > [!TIP]
 > ロードバランサがこの台を外すまでには時間がかかります。
 > その間に来たリクエストを 503 にすると、**外から見たらエラー**です。
