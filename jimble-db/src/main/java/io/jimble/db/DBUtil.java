@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.TreeSet;
 import java.util.Set;
@@ -582,6 +583,7 @@ public class DBUtil {
 							subDbSource.readSource(readDbSource);
 						}
 
+						subDbSource.cacheName(subCacheName(dbSource, writeDbConf, subDbName, subDbConf));
 						dbSource.putSubDBSource(subDbName, subDbSource);
 						end = System.currentTimeMillis();
 						Log.info("success create sub datasource: " + dbName + " (" + (end - start) +"ms)");
@@ -665,6 +667,36 @@ public class DBUtil {
 				task.run();
 			}
 		}
+
+	}
+
+	/**
+	 * サブの SQL 結果キャッシュの名前
+	 *
+	 * <p>
+	 * 親と同じ URL なら親の名前（同じ表なので、サブで書いたら親のキャッシュも消える）。
+	 * 別の DB なら「親.サブ」。先に読んだサブと同じ URL なら、そのサブと同じ名前（2.7.8）。
+	 * </p>
+	 *
+	 * @param parent		親
+	 * @param parentConf	親の設定
+	 * @param subName		サブの名前
+	 * @param subConf		サブの設定
+	 * @return	名前
+	 */
+	private static String subCacheName (DBSource parent, DBConf parentConf, String subName, DBConf subConf) {
+
+		if (Objects.equals(parentConf.url(), subConf.url())) {
+			return parent.name();
+		}
+
+		for (DBSource other : parent.subsDbSourceMap().values()) {
+			if (Objects.equals(other.conf().url(), subConf.url())) {
+				return other.cacheName();
+			}
+		}
+
+		return parent.name() + "." + subName;
 
 	}
 

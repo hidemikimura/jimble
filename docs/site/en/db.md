@@ -329,6 +329,10 @@ Get it with `db.newSubDB("archive_db")`.
 > **does not roll back with it** — one side stays. Assume it inherits the settings
 > from the parent and nothing more.
 
+> [!NOTE]
+> The SQL result cache keeps a `subs` entry that points at another database apart from its parent
+> (since 2.7.8). See [Cache](./cache).
+
 > [!TRAP]
 > **Migrations and codegen do not apply to `subs`.** Per-data-source work only runs
 > for the top-level `db { }` entries. So all you can put in a `subs` is a scratch
