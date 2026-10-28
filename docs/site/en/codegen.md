@@ -106,8 +106,10 @@ down → up.
 
 > [!WARN]
 > **DDL is not rolled back.** MariaDB / MySQL commit implicitly on
-> `CREATE TABLE` and friends.
-> Put several DDL statements in one file and it stops **with part of it applied.**
+> `CREATE TABLE` and friends. On PostgreSQL too, migration SQL runs one
+> statement at a time with each one committed (not inside a transaction).
+> On either, put several DDL statements in one file and it stops **with part of
+> it applied.**
 
 ### Do not rewrite SQL that has already been applied
 
@@ -203,9 +205,22 @@ The row in `db_lock` is taken with `FOR UPDATE` before anything is applied, so
 **only one machine runs.** The one that could not wait long enough fails to start
 (`migration.lock_timeout`, 60 seconds by default).
 
+The record tables (`migration` and the rest) are also created after the lock
+is taken, so several servers starting on an empty database for the first time
+do not fight over them (since 2.7.8).
+The lock is held in a transaction on its own connection, and the SQL runs on
+another connection. An implicit commit from DDL only affects the connection
+that ran it, so **running DDL does not release the lock.** That is why **the
+pool needs at least two connections** (with `maximum_pool_size = 1` it stops
+right away with an exception that says so). What has been applied is read
+from the write connection even when `read` is configured (since 2.7.8), so a
+lagging replica does not make it run the same file again.
+
 > [!NOTE]
-> The lock wait timeout is set **for that session only** (`SET SESSION`).
-> The server-wide setting is left alone.
+> The lock wait timeout is set **for that session only** (`SET SESSION` on
+> MySQL, `SET LOCAL` on PostgreSQL). The server-wide setting is left alone. On
+> MySQL the old value is put back before the connection returns to the pool
+> (since 2.7.8).
 
 ### Migrations written in Java
 

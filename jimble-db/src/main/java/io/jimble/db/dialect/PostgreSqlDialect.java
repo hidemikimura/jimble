@@ -792,6 +792,18 @@ public final class PostgreSqlDialect implements Dialect {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>{@code SET LOCAL} は Tx が終われば戻るので、読まない。</p>
+	 */
+	@Override
+	public String lockTimeoutSql () {
+
+		return null;
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>
 	 * <b>PostgreSQL は「どこにも繋がない」ができない。</b>
 	 * 必ずある {@code postgres} データベースに差し替える。

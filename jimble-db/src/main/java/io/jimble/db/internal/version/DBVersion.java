@@ -9,14 +9,20 @@ import io.jimble.db.dialect.MySqlDialect;
 import io.jimble.db.dialect.PostgreSqlDialect;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * DBバージョン
  */
 public class DBVersion {
 
-	/* DBテーブル情報一覧 */
-	private final static Map<String, Map<String, TableInfo>> dbTableInfoMap = new HashMap<>();
+	/*
+	 * DBテーブル情報一覧
+	 *
+	 * マイグレーションは何本かのスレッドから同時に呼ばれうる（ロックを待つ側も読む）ので、
+	 * 外も中も ConcurrentHashMap にしてある
+	 */
+	private final static Map<String, Map<String, TableInfo>> dbTableInfoMap = new ConcurrentHashMap<>();
 
 	/**
 	 * DBテーブル情報を読み込む
@@ -29,7 +35,37 @@ public class DBVersion {
 			return;
 		}
 
-		Map<String, TableInfo> tableInfoMap = new HashMap<>();
+		dbTableInfoMap.put(db.getDBName(), read(db));
+
+	}
+
+	/**
+	 * DBテーブル情報を読み直す
+	 *
+	 * <p>
+	 * {@link #load} は DB ごとに1回しか読まない。<b>ほかのプロセスが表を作ったあと</b>
+	 * （何台かが同時に起動して、ロックを待っていたあいだに先の台がマイグレーションの表を作ったなど）や、
+	 * テストで表を外から書き換えたあとに、これで読み直す。
+	 * 読み終えてから入れ替えるので、読んでいるあいだもほかのスレッドは前の一覧を見る。
+	 * </p>
+	 *
+	 * @param db	DB
+	 */
+	public static void reload (DB db) {
+
+		dbTableInfoMap.put(db.getDBName(), read(db));
+
+	}
+
+	/**
+	 * DB から表の一覧と版を読む
+	 *
+	 * @param db	DB
+	 * @return	表の名前（小文字） → 表の情報
+	 */
+	private static Map<String, TableInfo> read (DB db) {
+
+		Map<String, TableInfo> tableInfoMap = new ConcurrentHashMap<>();
 
 		/*
 		 * テーブル名とコメントの引き方は製品で違う（要件 F-D-30）。
@@ -55,21 +91,8 @@ public class DBVersion {
 			}
 			tableInfoMap.put(tableInfo.name.toLowerCase(), tableInfo);
 		}
-		dbTableInfoMap.put(db.getDBName(), tableInfoMap);
 
-	}
-
-	/**
-	 * DBテーブル情報を読み直す（テストで、表を外から書き換えたあと）
-	 *
-	 * <p>{@link #load} は DB ごとに1回しか読まないので、表のコメントを書き換えたあとはこれで読み直す。</p>
-	 *
-	 * @param db	DB
-	 */
-	public static void reload (DB db) {
-
-		dbTableInfoMap.remove(db.getDBName());
-		load(db);
+		return tableInfoMap;
 
 	}
 
