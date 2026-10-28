@@ -2,6 +2,8 @@ package io.jimble.mq;
 
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
+import io.jimble.db.DBSource;
+import io.jimble.db.DBUtil;
 import io.jimble.db.SqlExecuteException;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.mq.status.MqStatus;
@@ -123,6 +125,22 @@ public abstract class MqExecutor {
 
 	// endregion
 
+	/**
+	 * 主のデータソースだけに置くキューか
+	 *
+	 * <p>
+	 * true にすると、{@link #put} は主の DB にしか積めない（スケジューラのキューのため。{@link MqQueue#mainOnly(String)} と組で使う）。
+	 * </p>
+	 *
+	 * @return	主だけの場合 = true（既定 false）
+	 * @since 2.7.8
+	 */
+	public boolean mainOnly () {
+
+		return false;
+
+	}
+
 	// region 積む（要件 F-M-03）
 
 	/**
@@ -171,6 +189,8 @@ public abstract class MqExecutor {
 	 * @throws MqException	積めなかった場合
 	 */
 	public long put (DB db, Data data, Date scheduledAt) {
+
+		requireTarget(db);
 
 		/*
 		 * 積んだところを1区間として残す（要件 NF-O-05）。
@@ -297,6 +317,52 @@ public abstract class MqExecutor {
 
 		this.cancelOrderNotify = cancelOrderNotify;
 		this.currentRow = row;
+
+	}
+
+	/**
+	 * このキューを置いていないデータソースの DB に積もうとしたら止める
+	 *
+	 * <p>
+	 * 積んでも、取り出し役はそのデータソースを見に行かないので、<b>誰にも処理されないまま残る</b>
+	 * （表が無ければ、表が無いという SQL のエラーになる）。どの設定で外れたかが分かるように言う。
+	 * </p>
+	 *
+	 * @param db	積む DB
+	 * @throws MqException	置いていないデータソースの場合
+	 */
+	private void requireTarget (DB db) {
+
+		DBSource source = dataSource(db);
+
+		if (source == null) {
+			// DBUtil の外で作った DB（テストなど）。確かめようがないので、これまでどおり積む
+			return;
+		}
+
+		if (mainOnly()) {
+			if (source != DBUtil.getMainDataSource()) {
+				throw new MqException("キュー %s は主のデータソースにしか積めません（積もうとした先: %s）".formatted(queueName(), source.name()));
+			}
+			return;
+		}
+
+		if (!MqQueue.isTarget(queueName(), source)) {
+			throw new MqException(("データソース %s にはキュー %s を置いていません（db.%s.mq と mq.queues.%s.data_sources を見てください）")
+				.formatted(source.name(), queueName(), source.name(), queueName()));
+		}
+
+	}
+
+	private static DBSource dataSource (DB db) {
+
+		for (DBSource source : DBUtil.getDataSourceList()) {
+			if (source.name().equals(db.getDBName())) {
+				return source;
+			}
+		}
+
+		return null;
 
 	}
 

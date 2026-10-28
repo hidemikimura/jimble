@@ -33,11 +33,16 @@ public final class SchedulerQueue {
 	/**
 	 * キュー
 	 *
+	 * <p>
+	 * <b>主のデータソースだけに置く</b>（2.7.8）。スケジューラの管理（{@code batch_master} など）も、
+	 * 管理画面から積むのも主なので、ほかのデータソースに表を作って見に行っても、何も来ない。
+	 * </p>
+	 *
 	 * @return	キュー
 	 */
 	public static MqQueue queue () {
 
-		return new MqQueue(name());
+		return MqQueue.mainOnly(name());
 
 	}
 

@@ -103,6 +103,9 @@ public final class MqQueue {
 	/* テーブル名 */
 	private final String queueName;
 
+	/* 主のデータソースだけに置くか */
+	private final boolean mainOnly;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -110,7 +113,101 @@ public final class MqQueue {
 	 */
 	public MqQueue (String queueName) {
 
+		this(queueName, false);
+
+	}
+
+	private MqQueue (String queueName, boolean mainOnly) {
+
 		this.queueName = queueName;
+		this.mainOnly = mainOnly;
+
+	}
+
+	/**
+	 * 主のデータソースだけに置くキュー
+	 *
+	 * <p>
+	 * スケジューラのキューのように、<b>主の DB の表（batch_master など）と組で動くもの</b>に使う。
+	 * {@code db.<名前>.mq} や {@code mq.queues.<キュー名>.data_sources} にかかわらず、主だけに表を作り、主だけから取り出す。
+	 * </p>
+	 *
+	 * @param queueName	テーブル名
+	 * @return	キュー
+	 * @since 2.7.8
+	 */
+	public static MqQueue mainOnly (String queueName) {
+
+		return new MqQueue(queueName, true);
+
+	}
+
+	/**
+	 * 主のデータソースだけに置くキューか
+	 *
+	 * @return	主だけの場合 = true
+	 * @since 2.7.8
+	 */
+	public boolean isMainOnly () {
+
+		return mainOnly;
+
+	}
+
+	/**
+	 * このキューを置くデータソース（名前の順）
+	 *
+	 * <p>
+	 * 表を作る・取り出す・迷子を戻す・件数を数えるのは、どれもここで決めたデータソースだけ。
+	 * </p>
+	 *
+	 * <ul>
+	 * <li>{@link #mainOnly(String)} のキューは主だけ</li>
+	 * <li>それ以外は {@code db.<名前>.mq = true}（既定）のもののうち、{@code mq.queues.<キュー名>.data_sources} を書いていればその中のもの</li>
+	 * </ul>
+	 *
+	 * @return	データソース
+	 * @throws MqException	{@code data_sources} に知らない名前がある場合
+	 * @since 2.7.8
+	 */
+	public List<DBSource> dataSources () {
+
+		if (mainOnly) {
+			return List.of(DBUtil.getMainDataSource());
+		}
+
+		List<String> configured = MqConf.dataSources(queueName);
+		List<DBSource> all = DBUtil.getDataSourceList();
+
+		for (String name : configured) {
+			if (all.stream().noneMatch(source -> source.name().equals(name))) {
+				throw new MqException("mq.queues.%s.data_sources の %s は、データソースにありません（db.<名前>）".formatted(queueName, name));
+			}
+		}
+
+		return all.stream()
+			.filter(source -> isTarget(source, configured))
+			.sorted(Comparator.comparing(DBSource::name))
+			.toList();
+
+	}
+
+	/**
+	 * そのデータソースに、このキューの名前のキューを置くか（積むときの確かめ）
+	 *
+	 * @param queueName	キュー名
+	 * @param source	データソース
+	 * @return	置く場合 = true
+	 */
+	static boolean isTarget (String queueName, DBSource source) {
+
+		return isTarget(source, MqConf.dataSources(queueName));
+
+	}
+
+	private static boolean isTarget (DBSource source, List<String> configured) {
+
+		return source.conf().mq() && (configured.isEmpty() || configured.contains(source.name()));
 
 	}
 
@@ -130,7 +227,9 @@ public final class MqQueue {
 	 */
 	public void install () {
 
-		MqTables.install(queueName);
+		for (DBSource source : dataSources()) {
+			MqTables.install(DBUtil.getDB(source), queueName);
+		}
 
 	}
 
@@ -264,7 +363,9 @@ public final class MqQueue {
 
 		int total = 0;
 
-		for (DB db : DBUtil.getDBList()) {
+		for (DBSource source : dataSources()) {
+
+			DB db = DBUtil.getDB(source);
 
 			String table = db.dialect().identifier(queueName);
 			String stale = db.dialect().intervalFromNow("SECOND", true);
@@ -370,7 +471,9 @@ public final class MqQueue {
 
 		long total = 0;
 
-		for (DB db : DBUtil.getDBList()) {
+		for (DBSource source : dataSources()) {
+
+			DB db = DBUtil.getDB(source);
 
 			// 読めなければ例外（1.x はその DB を黙って 0 件と数えていた）
 			total += db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
@@ -458,11 +561,14 @@ public final class MqQueue {
 			boolean found = false;
 			boolean anyIdle = false;
 
+			// このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）
+			List<DBSource> sources = dataSources();
+
 			for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
 
 				Handoff handoff = entry.getValue();
 
-				for (DBSource source : DBUtil.getDataSourceList()) {
+				for (DBSource source : sources) {
 
 					// 待っているワーカーがいなければ、DB を見にいかない
 					int want = handoff.acquireIdle();

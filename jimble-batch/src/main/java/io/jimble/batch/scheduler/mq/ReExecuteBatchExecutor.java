@@ -31,6 +31,18 @@ public class ReExecuteBatchExecutor extends MqExecutor {
 	}
 
 	/**
+	 * 主の DB にしか積まない（スケジューラのキューは主だけに置く）
+	 *
+	 * @return	true
+	 */
+	@Override
+	public boolean mainOnly () {
+
+		return true;
+
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	@Override

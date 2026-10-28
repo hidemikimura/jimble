@@ -92,6 +92,9 @@ public final class DBConf {
 	/** 生成コードを作るか */
 	private boolean codegen = true;
 
+	/** MQ のキューを置くか */
+	private boolean mq = true;
+
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
 
@@ -628,6 +631,34 @@ public final class DBConf {
 	}
 
 	/**
+	 * MQ のキューを置くか
+	 *
+	 * <p>
+	 * {@code db.<名前>.mq}。既定は true。false のデータソースには、キューの表を作らず、取り出しにも行かない
+	 * （共通の DB など、キューを使わない DB のため）。主だけに置くキュー（スケジューラのキュー）は、これにかかわらず主に置く。
+	 * </p>
+	 *
+	 * @return	置く場合 = true
+	 * @since 2.7.8
+	 */
+	public boolean mq () {
+
+		return mq;
+
+	}
+
+	/**
+	 * MQ のキューを置くか を決める
+	 *
+	 * @param mq	置く場合 = true
+	 */
+	void mq (boolean mq) {
+
+		this.mq = mq;
+
+	}
+
+	/**
 	 * 起動時にマイグレーションを当てるか を決める
 	 *
 	 * @param migrateOnStartup	当てる場合 = true（null なら migration.on_startup に従う）
@@ -747,6 +778,7 @@ public final class DBConf {
 		conf.migrateOnStartup = from.migrateOnStartup;
 		conf.codegenName = from.codegenName;
 		conf.codegen = from.codegen;
+		conf.mq = from.mq;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;

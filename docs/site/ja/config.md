@@ -391,6 +391,7 @@ db {
 		# migrate_on_startup = false        # 起動時にマイグレーションを当てるか。書かなければ migration.on_startup に従う（2.7.8 から）
 		codegen_name = ""                  # 生成コードの名前（パッケージの末尾とクラス名）。空ならブロックの名前。同じ名前のデータソースは 1 組を共有（2.7.8 から）
 		codegen      = true                # 生成コードを作るか（2.7.8 から）
+		mq           = true                # MQ のキューを置くか（2.7.8 から）
 
 		maximum_pool_size     = 10         # プールの最大
 		minimum_idle          = 1          # 常に開けておく数
@@ -460,6 +461,11 @@ mq {
 	thread_count {
 		short_time = 2
 		long_time  = 8
+	}
+
+	# キューごとの設定（2.7.8 から）。data_sources はそのキューを置くデータソース（書かなければ db.<名前>.mq = true の全部）
+	queues {
+		mq_notice { data_sources = ["shop_a", "shop_b"] }
 	}
 }
 

@@ -1,6 +1,9 @@
 package io.jimble.mq;
 
 import java.time.Duration;
+import java.util.List;
+
+import com.typesafe.config.ConfigUtil;
 import io.jimble.mq.status.MqExecuteType;
 import io.jimble.util.conf.Conf;
 
@@ -40,6 +43,9 @@ public final class MqConf {
 
 	/** 設定キー：落ちたとみなす時間 */
 	public static final String KEY_STALE = "mq.stale";
+
+	/** キューごとの設定（{@code mq.queues.<キュー名>.data_sources} など） */
+	public static final String KEY_QUEUES = "mq.queues";
 
 	private MqConf () {}
 
@@ -135,6 +141,26 @@ public final class MqConf {
 		}
 
 		return wait.compareTo(max) < 0 ? wait : max;
+
+	}
+
+	/**
+	 * そのキューを置くデータソース（{@code mq.queues.<キュー名>.data_sources}）
+	 *
+	 * <p>
+	 * 書いていなければ空（{@code db.<名前>.mq = true} の全部に置く）。
+	 * 書けば、その中で {@code db.<名前>.mq = true} のものだけに置く。
+	 * </p>
+	 *
+	 * @param queueName	キュー名
+	 * @return	データソース名（書いていなければ空）
+	 * @since 2.7.8
+	 */
+	public static List<String> dataSources (String queueName) {
+
+		String key = ConfigUtil.joinPath("mq", "queues", queueName, "data_sources");
+
+		return Conf.conf().config().hasPath(key) ? List.copyOf(Conf.conf().config().getStringList(key)) : List.of();
 
 	}
 

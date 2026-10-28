@@ -90,3 +90,36 @@ However many servers run the queue, each message is taken by exactly one worker 
 `mq.thread_count.<type>` is **how many messages are processed in parallel**; raising it does not add connections
 borrowed while the queue is idle (up to 2.1.2 every worker polled the DB itself, so a slow DB filled one
 connection per worker at once).
+
+## Choosing the data sources a queue lives on
+
+With several data sources, a queue's table is created on **every data source**, and the poller visits them
+all in turn. A database that does not use queues (a shared one, say) can be left out (since 2.7.8).
+
+```conf
+db {
+	main   { main = true, ..., mq = false }   # no queues on this data source
+	shop_a { url = "..." }
+	shop_b { url = "..." }
+}
+
+mq.queues {
+	mq_notice { data_sources = ["shop_a", "shop_b"] }   # where this queue lives (unset means every data source with mq = true)
+}
+```
+
+- A data source that is left out gets **no table, and is not visited for claiming, for recovering stale
+  rows (`recoverStale`), or for counting (`pendingCount`)**
+- With both settings, the queue lives only on data sources that satisfy both. An unknown name in
+  `data_sources` stops startup
+- **`put` on a database of a data source that is left out throws `MqException`** (nobody would process it)
+- Keep the queue table in the same database as the business tables, so enqueueing and the business update
+  roll back together
+
+> [!NOTE]
+> **The scheduler's queue (`scheduler.queue_name`, `mq_scheduler` by default) lives on the main data source
+> only** (since 2.7.8). The scheduler's own tables (`batch_master` and the rest) and the admin screen's
+> enqueueing are on the main data source, so the queue is created there and claimed from there regardless of
+> `db.<name>.mq`. Rows put on other data sources are no longer claimed. To keep a queue of your own on the
+> main data source only, use `MqQueue.mainOnly("name")` and return true from `mainOnly()` in the
+> `MqExecutor` that puts to it.
