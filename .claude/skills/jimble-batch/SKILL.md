@@ -313,6 +313,7 @@ try {
 キューを使わない DB は `db.<名前>.mq = false`、キューごとには `mq.queues.<キュー名>.data_sources = [...]` で外す。
 外したデータソースには表を作らず、取り出し・`recoverStale`・`pendingCount` にも行かない。**外したデータソースの DB に `put` すると `MqException`**。
 **スケジューラのキュー（`mq_scheduler`）は主だけ**（`MqQueue.mainOnly`）。主の外に積んだ行は取り出されない。
+取り出し役は、直前に行を取ったデータソースの次から見る（1つの DB が溜まっても、ほかを待たせない）。
 
 ### 回すのはバッチ
 

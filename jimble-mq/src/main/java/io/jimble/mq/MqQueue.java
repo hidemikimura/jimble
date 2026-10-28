@@ -553,6 +553,9 @@ public final class MqQueue {
 
 		SleepManager sleepManager = new SleepManager(MqConf.pollMin().toMillis(), MqConf.pollMax().toMillis());
 
+		// 直前に行を取ったデータソース（次の周は、この次から見始める）
+		String lastClaimed = null;
+
 		while (!cancelOrderNotify.isCancelOrder()) {
 
 			// ここから先で手が空いた分だけ、次の起こしになる
@@ -561,8 +564,16 @@ public final class MqQueue {
 			boolean found = false;
 			boolean anyIdle = false;
 
-			// このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）
-			List<DBSource> sources = dataSources();
+			/*
+			 * このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）。
+			 *
+			 * <b>直前に行を取ったデータソースの次から見る</b>（2.7.8）。
+			 * かつては毎周同じ順に見て、手の空いたワーカーの数を使い切ったら抜けていたので、
+			 * 前のデータソースに行が溜まり続けると、<b>後ろのデータソースの行は、前が空になるまで取り出されなかった</b>。
+			 * 周の数でずらすのでは足りない。ワーカーが手を空けるたびに「取る周」と「全員が処理中の周」が交互に来るので、
+			 * 取る周がいつも同じデータソースから始まる。データソースが1つなら、これまでと同じ
+			 */
+			List<DBSource> sources = startAfter(dataSources(), lastClaimed);
 
 			for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
 
@@ -590,6 +601,7 @@ public final class MqQueue {
 					}
 
 					found = true;
+					lastClaimed = source.name();
 
 					/*
 					 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
@@ -744,6 +756,47 @@ public final class MqQueue {
 		if (interrupted) {
 			Thread.currentThread().interrupt();
 		}
+
+	}
+
+	/**
+	 * 直前に行を取ったデータソースの次から始める並び
+	 *
+	 * <p>
+	 * 1 回に 1 つのデータソースから取る数には上限を設けない。設けると、ほかが空のときに、
+	 * 行の溜まったデータソースから手の空いたワーカーの数だけ取れず、次の周まで待つ分だけ遅くなる。
+	 * 次から見始めれば、溜まったデータソースがあっても、ほかのデータソースは「データソースの数」回の取り出しの内に見られる。
+	 * </p>
+	 *
+	 * @param sources		データソース（名前の順）
+	 * @param lastClaimed	直前に行を取ったデータソースの名前（無ければ null）
+	 * @return	その次から始めて一回りする並び（見つからなければそのまま）
+	 */
+	static List<DBSource> startAfter (List<DBSource> sources, String lastClaimed) {
+
+		int size = sources.size();
+
+		if (size <= 1 || lastClaimed == null) {
+			return sources;
+		}
+
+		int start = 0;
+		for (int i = 0; i < size; i++) {
+			if (sources.get(i).name().equals(lastClaimed)) {
+				start = (i + 1) % size;
+				break;
+			}
+		}
+
+		if (start == 0) {
+			return sources;
+		}
+
+		List<DBSource> rotated = new ArrayList<>(size);
+		rotated.addAll(sources.subList(start, size));
+		rotated.addAll(sources.subList(0, start));
+
+		return rotated;
 
 	}
 
