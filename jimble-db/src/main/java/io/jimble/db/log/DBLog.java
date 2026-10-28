@@ -61,6 +61,8 @@ public class DBLog {
 			return;
 		}
 
+		DBUtil.requireFrameworkTable(db, FrameworkTables.DB_LOG);
+
 		/*
 		 * Throwable をそのまま入れない。これは JSON にして db_log.content に保存されるので、
 		 * 例外オブジェクトのままだと読めるものにならない（バッチ履歴で同じ穴を踏んでいる）。

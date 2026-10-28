@@ -393,6 +393,7 @@ db {
 		codegen      = true                # 生成コードを作るか（2.7.8 から）
 		mq           = true                # MQ のキューを置くか（2.7.8 から）
 		required     = true                # つながらなければ起動を止め、死活監視に入れるか。主は false にできない（2.7.8 から）
+		# framework_tables = ["db_lock"]   # 作る管理の表。書かなければ全部（db_log / db_value / db_lock / redis_lock / db_cache）。db_lock は外せない（2.7.8 から）
 
 		maximum_pool_size     = 10         # プールの最大
 		minimum_idle          = 1          # 常に開けておく数

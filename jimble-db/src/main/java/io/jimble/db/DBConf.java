@@ -1,5 +1,7 @@
 package io.jimble.db;
 
+import java.util.List;
+
 /**
  * DB の接続設定
  *
@@ -97,6 +99,9 @@ public final class DBConf {
 
 	/** つながらなければ起動を止めるか（死活監視に入れるか） */
 	private boolean required = true;
+
+	/** 作る管理の表 */
+	private List<String> frameworkTables = FrameworkTables.PER_DATA_SOURCE;
 
 	/** DB 製品（要件 F-D-30。mysql / postgresql） */
 	private String product;
@@ -691,6 +696,35 @@ public final class DBConf {
 	}
 
 	/**
+	 * 作る管理の表
+	 *
+	 * <p>
+	 * {@code db.<名前>.framework_tables}。既定は {@link FrameworkTables#PER_DATA_SOURCE} の全部。
+	 * 書けば、そのデータソースにはその表だけを作り、作らない表を使う API を呼ぶと例外にする。
+	 * {@code db_lock} はマイグレーションのロックに使うので外せない。
+	 * </p>
+	 *
+	 * @return	表の名前
+	 * @since 2.7.8
+	 */
+	public List<String> frameworkTables () {
+
+		return frameworkTables;
+
+	}
+
+	/**
+	 * 作る管理の表 を決める
+	 *
+	 * @param frameworkTables	表の名前
+	 */
+	void frameworkTables (List<String> frameworkTables) {
+
+		this.frameworkTables = List.copyOf(frameworkTables);
+
+	}
+
+	/**
 	 * 起動時にマイグレーションを当てるか を決める
 	 *
 	 * @param migrateOnStartup	当てる場合 = true（null なら migration.on_startup に従う）
@@ -812,6 +846,7 @@ public final class DBConf {
 		conf.codegen = from.codegen;
 		conf.mq = from.mq;
 		conf.required = from.required;
+		conf.frameworkTables = from.frameworkTables;
 		conf.product = from.product;
 		conf.createDatabaseSql = from.createDatabaseSql;
 		conf.connectionPoolType = from.connectionPoolType;

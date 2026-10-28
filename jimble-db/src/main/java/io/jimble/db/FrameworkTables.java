@@ -1,5 +1,6 @@
 package io.jimble.db;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -57,6 +58,13 @@ public final class FrameworkTables {
 
 	/** Redis ロック情報 */
 	public static final String REDIS_LOCK = "redis_lock";
+
+	/**
+	 * データソースごとに起動時に作る表（{@code db.<名前>.framework_tables} で絞れるもの）
+	 *
+	 * @since 2.7.8
+	 */
+	public static final List<String> PER_DATA_SOURCE = List.of(DB_LOG, DB_VALUE, DB_LOCK, REDIS_LOCK, DB_CACHE);
 
 	/** SQL 結果キャッシュ（{@code sql_cache.store = "db"} のとき） */
 	public static final String SQL_CACHE = "sql_cache";

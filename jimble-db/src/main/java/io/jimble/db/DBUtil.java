@@ -197,6 +197,53 @@ public class DBUtil {
 	}
 
 	/**
+	 * 作る管理の表の一覧を確かめる（{@code db.<名前>.framework_tables}）
+	 *
+	 * @param tables	書いてある表の名前
+	 * @return	表の名前
+	 * @throws IllegalStateException	知らない名前がある場合、db_lock が無い場合
+	 */
+	private static List<String> frameworkTables (List<String> tables) {
+
+		for (String table : tables) {
+			if (!FrameworkTables.PER_DATA_SOURCE.contains(table)) {
+				throw new IllegalStateException("framework_tables に書ける表は %s です: %s".formatted(FrameworkTables.PER_DATA_SOURCE, table));
+			}
+		}
+
+		if (!tables.contains(FrameworkTables.DB_LOCK)) {
+			throw new IllegalStateException("framework_tables から db_lock は外せません（マイグレーションのロックに使います）: " + tables);
+		}
+
+		return tables;
+
+	}
+
+	/**
+	 * そのデータソースに、その管理の表を作っているか確かめる
+	 *
+	 * <p>
+	 * {@code db.<名前>.framework_tables} で外した表を使う API（{@code DBValue}・{@code DBCache}・{@code RedisLock} の印・
+	 * {@code DBLog}）を呼んだとき、「表が無い」という SQL のエラーではなく、設定の名前を言うために使う。
+	 * </p>
+	 *
+	 * @param db	DB
+	 * @param table	表の名前
+	 * @throws IllegalStateException	作っていない場合
+	 * @since 2.7.8
+	 */
+	public static void requireFrameworkTable (DB db, String table) {
+
+		DBSource source = dataSources.get(db.getDBName());
+
+		if (source != null && !source.conf().frameworkTables().contains(table)) {
+			throw new IllegalStateException("データソース %s には %s を作っていません（db.%s.framework_tables）"
+				.formatted(source.name(), table, source.name()));
+		}
+
+	}
+
+	/**
 	 * 読めるか
 	 *
 	 * @param dbSource	データソース
@@ -563,20 +610,31 @@ public class DBUtil {
 			// DB version
 			DBVersion.load(getDB(dbName));
 
+			// 管理の表（db.<名前>.framework_tables で絞れる。2.7.8）
+			List<String> frameworkTables = dbSource.conf().frameworkTables();
+
 			// DB log
-			DBLog.init(getDB(dbName));
+			if (frameworkTables.contains(FrameworkTables.DB_LOG)) {
+				DBLog.init(getDB(dbName));
+			}
 
 			// DB value
-			DBValue.init(getDB(dbName));
+			if (frameworkTables.contains(FrameworkTables.DB_VALUE)) {
+				DBValue.init(getDB(dbName));
+			}
 
-			// DB lock
+			// DB lock（外せない）
 			DBLock.init(getDB(dbName));
 
 			// Redis Lock
-			RedisLock.init(getDB(dbName));
+			if (frameworkTables.contains(FrameworkTables.REDIS_LOCK)) {
+				RedisLock.init(getDB(dbName));
+			}
 
 			// DB cache
-			DBCache.init(getDB(dbName));
+			if (frameworkTables.contains(FrameworkTables.DB_CACHE)) {
+				DBCache.init(getDB(dbName));
+			}
 
 			// データソースごとの追加処理
 			// （マイグレーション・レートリミットなど、上位モジュールが登録する）
@@ -1127,6 +1185,9 @@ public class DBUtil {
 		if (has(config, "required")) {
 			dbConf.required(innerConf.getBoolean(spelling(config, "required")));
 		}
+		if (has(config, "framework_tables")) {
+			dbConf.frameworkTables(frameworkTables(config.getStringList("framework_tables")));
+		}
 
 	}
 
@@ -1165,7 +1226,7 @@ public class DBUtil {
 		, "idle_timeout", "max_lifetime", "connection_timeout", "keepalive_time", "leak_timeout"
 		, "validate_on_borrow"
 		, "connection_init_sql", "connection_test_query"
-		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "mq", "required", "product", "create_database_sql", "connection_pool_type"
+		, "schema", "migration_dir", "migrate_on_startup", "codegen_name", "codegen", "mq", "required", "framework_tables", "product", "create_database_sql", "connection_pool_type"
 		, "transaction_isolation", "long_connection_log", "long_connection_time"
 		// 入れ子（値ではなく、中にまた db の設定が入るもの）
 		, "main", "read", "subs");
@@ -1191,6 +1252,11 @@ public class DBUtil {
 			}
 
 			checkKeys(one);
+
+			// つなぐ前に、作る管理の表の書き間違いも落とす
+			if (one.hasPath("framework_tables")) {
+				frameworkTables(one.getStringList("framework_tables"));
+			}
 
 			if (one.hasPath("read")) {
 				checkKeys(one.getConfig("read"));

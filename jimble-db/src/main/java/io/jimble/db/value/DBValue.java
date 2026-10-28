@@ -5,6 +5,7 @@ import java.util.List;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
+import io.jimble.db.DBUtil;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.util.internal.convertor.Conversions;
 
@@ -45,6 +46,8 @@ public class DBValue {
 	 * @return レコード
 	 */
 	public static Data set (DB db, String key, Object value, long cacheSecond, String description) {
+
+		DBUtil.requireFrameworkTable(db, FrameworkTables.DB_VALUE);
 
 		db.insert(
 			"""
@@ -476,6 +479,8 @@ public class DBValue {
 	 * @return  結果
 	 */
 	private static Data get (DB db, String key, String defaultValue, long cacheSecond, String description) {
+
+		DBUtil.requireFrameworkTable(db, FrameworkTables.DB_VALUE);
 
 		Data cacheData = cache.get(key);
 		if (cacheData != null) {

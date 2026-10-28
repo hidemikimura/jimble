@@ -7,6 +7,7 @@ import io.jimble.db.cache.Cache;
 import io.jimble.db.cache.CacheData;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
+import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.internal.version.DBVersion;
 
@@ -29,6 +30,8 @@ public class DBCache extends AbstractCache {
 	 * @param db    DB
 	 */
 	public DBCache (DB db) {
+
+		DBUtil.requireFrameworkTable(db, FrameworkTables.DB_CACHE);
 
 		this.db = db;
 

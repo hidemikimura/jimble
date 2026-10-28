@@ -400,6 +400,7 @@ db {
 		codegen      = true                # generate code for this data source? (since 2.7.8)
 		mq           = true                # put MQ queues on this data source? (since 2.7.8)
 		required     = true                # stop startup if unreachable, and include in the health check? main cannot be false (since 2.7.8)
+		# framework_tables = ["db_lock"]   # framework tables to create. unset means all (db_log / db_value / db_lock / redis_lock / db_cache); db_lock cannot be left out (since 2.7.8)
 
 		maximum_pool_size     = 10         # largest the pool gets
 		minimum_idle          = 1          # connections always kept open

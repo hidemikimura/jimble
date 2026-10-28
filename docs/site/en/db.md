@@ -233,7 +233,7 @@ Everything listed at the top level is **treated as its own thing**:
 
 - migrations under `conf/migration/<data source name>/` are applied to it (`migration_dir` picks another folder; see below)
 - codegen generates `db/<data source name>/` for it (`codegen_name` shares one set with databases that have the same tables; see [code generation](./codegen#sharing-generated-code-across-databases-with-the-same-tables))
-- `migration` / `db_lock` / `db_value` / `db_cache` are created there too
+- `migration` / `db_lock` / `db_value` / `db_cache` are created there too (`framework_tables` narrows them; see below)
 
 jimble creates the tables it uses at startup when they are missing. When
 several servers start on an empty database for the first time, a table another
@@ -256,6 +256,32 @@ The SQL in `conf/migration/shop/` is applied once to `shop_a` and once to
 `migration_history`), so if only one of them has a file applied, it is applied
 to the other one only. Migrations written in Java (`CodeMigration`) run on the
 main data source only.
+
+### Choosing which framework tables are created
+
+jimble creates the following framework tables on each data source. If a database (one shop's, say)
+does not use some of them, `framework_tables` narrows what is created (since 2.7.8).
+
+| Table | Used by | Can be left out |
+|---|---|---|
+| `db_lock` | `DBLock` (locking in the same database as the business transaction), **the migration lock** | No |
+| `db_value` | `DBValue` (key/value storage) | Yes |
+| `db_cache` | `Cache.instance(db)` with `cache.type = db` (`DBCache`) | Yes |
+| `redis_lock` | `RedisLock.lock(db, ...)` / `tryLock(db, ...)` (the variants that take a DB; they leave a mark) | Yes |
+| `db_log` | `DBLog.save` (with `log.db = true`) | Yes |
+
+```conf
+db {
+	shop_a { url = "...", framework_tables = ["db_lock"] }
+}
+```
+
+- Without it, everything is created as before
+- **Calling an API that needs a table that was left out, on that data source, throws
+  `IllegalStateException`** (naming the setting, rather than an SQL "table not found" error)
+- An unknown name, or a list without `db_lock`, stops startup
+- `migration` and `migration_history` are created by migrations (not part of this list). MQ queue tables
+  are narrowed with `db.<name>.mq` ([MQ](./mq))
 
 ### Data sources that may be down
 
