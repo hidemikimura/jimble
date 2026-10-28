@@ -210,6 +210,9 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 - `execute()` は `final`。触るのは `reader()` / `process()` / `write()` の3つだけ
 - 途中で落ちたら**そのかたまりだけ戻して、バッチ全体を失敗にする**（黙って次へ進まない）
 
+- **店の DB ごとに回すなら `db(BatchArgs args)` を上書きする**（2.7.8。既定は主）。`DBUtil.getDB(args.cliArgs().getString("data_source"))` のように引数で選び、
+  **1 回の実行で1つのデータソース**（実行の記録・失敗・再開の位置がデータソースごとに分かれる）。実行の記録は主に書く
+
 > **`reader()` の `db` と `write()` の `db` は別のインスタンス。渡されたものを使う。**
 > 同じ `DB` で読んでいると、**最初のかたまりを確定した時点で読みかけが死ぬ**
 > （トランザクションを閉じるとコネクションがプールへ返るため）。

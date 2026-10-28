@@ -167,6 +167,38 @@ better that than spinning forever in silence.
 > **Do not `catch` the failure and carry on.** Committing that chunk is then refused with
 > `TransactionException` (`DB_004`) and everything in it is rolled back.
 
+### Running per data source
+
+When databases with the same tables are lined up, override `db(args)` to choose the database to read and
+write (since 2.7.8). The default is the main database. **Taking the data source as an argument** is the
+recommended shape.
+
+```java
+@Override
+protected DB db (BatchArgs args) {
+	return DBUtil.getDB(args.cliArgs().getString("data_source"));
+}
+```
+
+```bash
+# Run once per shop database
+java -cp app.jar ... class=com.example.ArchiveBatch data_source=shop_a
+java -cp app.jar ... class=com.example.ArchiveBatch data_source=shop_b
+```
+
+- **One run, one data source.** Each data source gets its own `batch_history` record, so you can see which
+  one failed and how far it got
+- One data source failing does not affect the other runs (re-run only the failed one)
+- The restart point is per data source too. Pass the starting key of `KeyPagingReader` as an argument to
+  continue from where it stopped
+- `db(args)` **must return a new `DB` on every call** (to keep the reading and writing DBs apart;
+  `DBUtil.getDB` does). Returning the same one throws
+- The run record, progress and cancel flag are still written to the main database
+
+> [!NOTE]
+> There is no built-in helper that walks every data source inside one run. Doing that would need a second
+> mechanism to decide, per data source, what to do after a failure (continue or stop) and how far each got.
+
 ## Double starts
 
 How many copies of the same batch may run at once is set by `allowConcurrentExecutionCount()`.

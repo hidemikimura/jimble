@@ -162,6 +162,34 @@ public class RequestArchiveBatch extends AbstractChunkBatch<Data> {
 > 1文ごとに結果を確かめる必要はありません。
 > **失敗を `catch` して続けないでください。**そのかたまりの確定が `TransactionException`（`DB_004`）で断られ、全部巻き戻ります。
 
+### データソースごとに回す
+
+同じ表の作りの DB を並べたとき、読み書きする DB は `db(args)` を上書きして選びます（2.7.8 から）。
+既定は主の DB です。**引数でデータソースを受け取る**形を勧めます。
+
+```java
+@Override
+protected DB db (BatchArgs args) {
+	return DBUtil.getDB(args.cliArgs().getString("data_source"));
+}
+```
+
+```bash
+# 店の DB ごとに1回ずつ走らせる
+java -cp app.jar ... class=com.example.ArchiveBatch data_source=shop_a
+java -cp app.jar ... class=com.example.ArchiveBatch data_source=shop_b
+```
+
+- **1 回の実行で1つのデータソース**にします。実行の記録（`batch_history`）がデータソースごとに残り、どれが失敗したか、どこまで確定したかが分かります
+- 1つのデータソースが失敗しても、ほかの実行には響きません（失敗したものだけ流し直します）
+- 再開の位置もデータソースごとです。`KeyPagingReader` の開始キーを引数で渡せば、落ちたところから続けられます
+- `db(args)` は**呼ぶたびに新しい `DB` を返してください**（読む DB と書く DB を分けるため。`DBUtil.getDB` はそうなっています）。同じものを返すと例外になります
+- 実行の記録・進み具合・中断の印は、これにかかわらず主の DB に書きます
+
+> [!NOTE]
+> 全データソースを1回の実行の中で順に回す部品は用意していません。1回の実行の中でまとめると、
+> 1つの失敗で残りをどうするか（続けるか止めるか）・どこまで確定したかを、データソースごとに持つ仕組みがもう1つ要るからです。
+
 ## 二重起動
 
 同じバッチが同時に走る本数は `allowConcurrentExecutionCount()` で決まります。

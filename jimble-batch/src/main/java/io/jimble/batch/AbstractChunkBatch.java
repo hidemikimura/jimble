@@ -111,6 +111,36 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 	// region 実装するもの
 
 	/**
+	 * 読み書きする DB
+	 *
+	 * <p>
+	 * 既定は主の DB。同じ表の作りの DB を並べたとき、店の DB ごとにチャンク処理を回すなら上書きする（2.7.8）。
+	 * 引数でデータソースを受け取って選ぶのがよい（{@code class=... data_source=shop_a}）。
+	 * </p>
+	 *
+	 * <pre>{@code
+	 * @Override
+	 * protected DB db (BatchArgs args) {
+	 *     return DBUtil.getDB(args.cliArgs().getString("data_source"));
+	 * }
+	 * }</pre>
+	 *
+	 * <p>
+	 * <b>呼ぶたびに新しい DB を返すこと</b>（読む DB と書く DB を分けるため。{@code DBUtil.getDB} はそうなっている）。
+	 * バッチの管理の表（実行の記録・進み具合・中断）は、これにかかわらず主の DB に書く。
+	 * </p>
+	 *
+	 * @param args	引数
+	 * @return	DB
+	 * @since 2.7.8
+	 */
+	protected DB db (BatchArgs args) {
+
+		return DBUtil.getMainDB();
+
+	}
+
+	/**
 	 * 1件ずつ読む
 	 *
 	 * <p>
@@ -241,10 +271,16 @@ public abstract class AbstractChunkBatch<T> extends AbstractBatch {
 
 		/*
 		 * 読む DB と書く DB を分ける。
-		 * DBUtil.getMainDB() は呼ぶたびに新しい DB を返すので、これで別々になる。
+		 * db(args) は呼ぶたびに新しい DB を返すので、これで別々になる。
+		 * チャンクの Tx は書く DB で張るので、差し替えた DB の中で確定する
 		 */
-		DB readDb = DBUtil.getMainDB();
-		DB writeDb = DBUtil.getMainDB();
+		DB readDb = db(args);
+		DB writeDb = db(args);
+
+		if (readDb == writeDb) {
+			throw new IllegalStateException(
+				"db(args) は呼ぶたびに新しい DB を返してください（読む DB と書く DB を分けるため）: %s".formatted(className()));
+		}
 
 		Iterator<T> reader = reader(args, readDb);
 
