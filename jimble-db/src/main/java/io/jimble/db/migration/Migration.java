@@ -164,7 +164,15 @@ public final class Migration {
 		List<MigrationInfo> all = sortByName(fileList);
 		List<MigrationInfo> sorted = forProduct(dbSource, all);
 
-		// 複数インスタンスが同時に起動しても一度しか適用しない（要件 F-G-15。D-1 ロックテーブル方式）
+		requireTwoConnections(dbSource);
+
+		/*
+		 * 複数インスタンスが同時に起動しても一度しか適用しない（要件 F-G-15。D-1 ロックテーブル方式）
+		 *
+		 * ロックはこの接続の Tx で持ち、SQL は apply の中の別の接続で流す。
+		 * MySQL・MariaDB の DDL は暗黙にコミットするが、それが効くのは流した接続だけなので、
+		 * ロックは commit まで外れない（MigrationConcurrencyIntegrationTest）。
+		 */
 		DB lockDB = DBUtil.getDB(dbSource.name());
 
 		try (lockDB) {
@@ -174,18 +182,25 @@ public final class Migration {
 			// 抜けたら巻き戻る（ロックも外れる）
 			try (Tx tx = lockDB.begin()) {
 
-				setLockTimeout(lockDB);
+				Integer previousTimeout = setLockTimeout(lockDB);
 
 				try {
-					DBLock.lock(lockDB, LOCK_KEY);
-				} catch (SqlExecuteException ex) {
-					throw new MigrationException(
-						"マイグレーションのロックを取得できませんでした（%d 秒待機）。他のインスタンスが適用中の可能性があります。"
-							.formatted(MigrationConf.lockTimeout().toSeconds()), ex
-					);
-				}
 
-				apply(dbSource, sorted, all);
+					try {
+						DBLock.lock(lockDB, LOCK_KEY);
+					} catch (SqlExecuteException ex) {
+						throw new MigrationException(
+							"マイグレーションのロックを取得できませんでした（%d 秒待機）。他のインスタンスが適用中の可能性があります。"
+								.formatted(MigrationConf.lockTimeout().toSeconds()), ex
+						);
+					}
+
+					apply(dbSource, sorted, all);
+
+				} finally {
+					// Tx の外では1文ごとに接続を返すので、戻すのは Tx の中で
+					restoreLockTimeout(lockDB, previousTimeout);
+				}
 
 				tx.commit();
 
@@ -204,6 +219,31 @@ public final class Migration {
 	}
 
 	/**
+	 * ロックを持つ接続と、SQL を流す接続の 2 本が取れるか
+	 *
+	 * <p>
+	 * プールが 1 本だと、ロックを持ったまま 2 本目を待ち、{@code connection_timeout} まで止まってから
+	 * 「接続が取れない」で落ちる。原因が分からないので、先に分かる例外にする。
+	 * </p>
+	 *
+	 * @param dbSource	データソース
+	 * @throws MigrationException	2 本取れない場合
+	 * @since 2.7.8
+	 */
+	public static void requireTwoConnections (DBSource dbSource) {
+
+		int size = dbSource.conf().maximumPoolSize();
+
+		if (size < 2) {
+			throw new MigrationException(
+				"マイグレーションには接続が 2 本要ります（ロックを持つ接続と、SQL を流す接続）。"
+					+ "db.%s.maximum_pool_size を 2 以上にしてください（いまは %d）。".formatted(dbSource.name(), size)
+			);
+		}
+
+	}
+
+	/**
 	 * ロック待ちの上限を設定する
 	 *
 	 * <p>
@@ -211,11 +251,47 @@ public final class Migration {
 	 * {@link DBLock#lock} が例外になり、起動に失敗する（要件 F-G-19）。
 	 * </p>
 	 *
-	 * @param db	DB
+	 * @param db	DB（Tx の中）
+	 * @return	元の値（秒）。Tx が終われば戻る製品なら null
 	 */
-	private static void setLockTimeout (DB db) {
+	private static Integer setLockTimeout (DB db) {
+
+		Integer previous = null;
+
+		String readSql = db.dialect().lockTimeoutSql();
+		if (readSql != null) {
+			previous = db.select(readSql).orElseThrow().getInt("v");
+		}
 
 		db.execute(db.dialect().setLockTimeoutSql((int) MigrationConf.lockTimeout().toSeconds()));
+
+		return previous;
+
+	}
+
+	/**
+	 * ロック待ちの上限を元に戻す
+	 *
+	 * <p>
+	 * MySQL・MariaDB の {@code SET SESSION} は<b>接続に残る</b>。戻さないと、プールに返した接続を
+	 * 次に借りた業務の処理まで、マイグレーションの待ちの上限で動く。
+	 * 戻せなくても、元の失敗を隠さないよう、ログだけにする。
+	 * </p>
+	 *
+	 * @param db		DB（Tx の中）
+	 * @param previous	元の値（秒。null なら何もしない）
+	 */
+	private static void restoreLockTimeout (DB db, Integer previous) {
+
+		if (previous == null) {
+			return;
+		}
+
+		try {
+			db.execute(db.dialect().setLockTimeoutSql(previous));
+		} catch (RuntimeException ex) {
+			Log.warn("マイグレーションのロック待ちの上限を元に戻せませんでした: " + ex.getMessage());
+		}
 
 	}
 
@@ -228,7 +304,11 @@ public final class Migration {
 	 */
 	private static void apply (DBSource dbSource, List<MigrationInfo> fileList, List<MigrationInfo> allFiles) {
 
-		DB db = DBUtil.getDB(dbSource.name());
+		/*
+		 * どれを当てたかは書き込みの接続から読む。
+		 * 読み取りの接続（レプリカ）が遅れていると、先に当てた台の記録が見えず、同じファイルをもう一度流す
+		 */
+		DB db = DBUtil.getDB(dbSource.name()).setUseWriteConnectionOnly();
 
 		List<Data> appliedList = sortedApplied(db);
 

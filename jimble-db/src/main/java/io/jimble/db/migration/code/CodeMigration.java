@@ -115,6 +115,9 @@ public final class CodeMigration {
 
 		init();
 
+		// ロックを持つ接続と、移行を流す接続の 2 本が要る
+		Migration.requireTwoConnections(DBUtil.getMainDataSource());
+
 		DB lockDB = DBUtil.getMainDB();
 
 		try (lockDB) {

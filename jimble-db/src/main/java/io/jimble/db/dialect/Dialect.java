@@ -568,6 +568,19 @@ public sealed interface Dialect permits MySqlDialect, PostgreSqlDialect {
 	String setLockTimeoutSql (int seconds);
 
 	/**
+	 * いまのセッションのロック待ちの上限（秒）を読む SQL
+	 *
+	 * <p>
+	 * {@link #setLockTimeoutSql(int)} が<b>接続に残る</b>製品（MySQL）だけ返す。
+	 * 結果の列名は {@code v}。Tx が終われば戻る製品（PostgreSQL の {@code SET LOCAL}）は null。
+	 * </p>
+	 *
+	 * @return	SQL（戻さなくてよい製品なら null）
+	 * @since 2.7.8
+	 */
+	String lockTimeoutSql ();
+
+	/**
 	 * データベースを作るときに繋ぎ先にする URL（要件 F-D-30）
 	 *
 	 * <p>

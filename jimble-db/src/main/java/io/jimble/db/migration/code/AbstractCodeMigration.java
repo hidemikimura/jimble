@@ -142,7 +142,8 @@ public abstract class AbstractCodeMigration {
 	 */
 	private boolean isDoMigration () {
 
-		DB db = DBUtil.getMainDB();
+		// 書き込みの接続から読む（レプリカが遅れていると、ほかの台が済ませた移行をもう一度走らせる）
+		DB db = DBUtil.getMainDB().setUseWriteConnectionOnly();
 
 		// 移送元は version しか取っていなかったため state の判定が常に外れていた
 		Data row;

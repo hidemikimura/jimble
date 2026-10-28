@@ -560,6 +560,18 @@ public final class MySqlDialect implements Dialect {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>{@code SET SESSION} は接続に残るので、元の値を読んで戻す。</p>
+	 */
+	@Override
+	public String lockTimeoutSql () {
+
+		return "SELECT @@SESSION.innodb_lock_wait_timeout AS v";
+
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>スキーマ名を落とす（{@code ?} 以降のパラメータは残す）。</p>
 	 */
 	@Override
