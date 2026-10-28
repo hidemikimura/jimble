@@ -126,3 +126,46 @@ mq.queues {
 > `db.<name>.mq`. Rows put on other data sources are no longer claimed. To keep a queue of your own on the
 > main data source only, use `MqQueue.mainOnly("name")` and return true from `mainOnly()` in the
 > `MqExecutor` that puts to it.
+
+## Visiting only the databases that have work
+
+With dozens of data sources, the poller visits **even the empty ones on every round**. Whether the
+system is idle or only one database has work, SELECTs grow with the number of data sources.
+Set `mq.hint` and **putting a message leaves a "this data source has work" hint**; the poller then visits
+only the data sources with a hint (since 2.7.8).
+
+```conf
+mq {
+	hint           = redis   # off (default: visit everything every round) | memory | redis
+	sweep_interval = 10s     # how often every data source is visited (rows without a hint are picked up within this)
+}
+```
+
+| `mq.hint` | Where hints live | When it fits |
+|---|---|---|
+| `off` (default) | Nowhere; every round visits everything (as before) | Few data sources |
+| `memory` | Inside the same process only | Putting and claiming happen in the same process |
+| `redis` | Inside the process and in a Redis set | Put from the web, claim in a batch process (different processes) |
+
+With hints, the poller visits only:
+
+- data sources with a hint (kept for 5 seconds after the hint is seen, so a putting transaction that has
+  not committed yet is not missed)
+- data sources that last returned as many rows as were wanted (there may be more)
+- every data source, once per `sweep_interval`
+
+**A hint only makes the poller look sooner; nothing is lost without it.** If Redis is down, neither putting
+nor claiming fails (a log line is written) and the rows are picked up by the full round.
+
+> [!WARN]
+> **A row without a hint can wait up to `sweep_interval`.** Rows get no hint when another process put them
+> with a time (`scheduled_at`), when another process put them under `memory`, or while Redis was down.
+> Retries are not delayed: the poller's own process keeps a hint for the retry time.
+
+Claiming SELECTs measured on a local MySQL with one queue, two workers, `poll_max = 1s` and
+`sweep_interval = 10s`:
+
+| Data sources | Idle (`off` → `redis`) | To the other databases while one gets 10 messages a second (`off` → `redis`) |
+|---|---|---|
+| 10 | 20/s → 2/s | 837/s → 1.8/s |
+| 30 | 54/s → 6/s | 1,701/s → 5.8/s |

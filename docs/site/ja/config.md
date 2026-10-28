@@ -463,6 +463,9 @@ mq {
 		long_time  = 8
 	}
 
+	hint           = off   # 仕事のある印。off | memory | redis（2.7.8 から。データソースを並べたら redis を勧める）
+	sweep_interval = 10s   # 印を使うとき、全部のデータソースを回る間隔。印の無い行は遅くともこれで拾う（2.7.8 から）
+
 	# キューごとの設定（2.7.8 から）。data_sources はそのキューを置くデータソース（書かなければ db.<名前>.mq = true の全部）
 	queues {
 		mq_notice { data_sources = ["shop_a", "shop_b"] }

@@ -44,6 +44,12 @@ public final class MqConf {
 	/** 設定キー：落ちたとみなす時間 */
 	public static final String KEY_STALE = "mq.stale";
 
+	/** 仕事のある印（off / memory / redis） */
+	public static final String KEY_HINT = "mq.hint";
+
+	/** 印を使うとき、全部のデータソースを回る間隔 */
+	public static final String KEY_SWEEP_INTERVAL = "mq.sweep_interval";
+
 	/** キューごとの設定（{@code mq.queues.<キュー名>.data_sources} など） */
 	public static final String KEY_QUEUES = "mq.queues";
 
@@ -161,6 +167,59 @@ public final class MqConf {
 		String key = ConfigUtil.joinPath("mq", "queues", queueName, "data_sources");
 
 		return Conf.conf().config().hasPath(key) ? List.copyOf(Conf.conf().config().getStringList(key)) : List.of();
+
+	}
+
+	/**
+	 * 「仕事がある」という印の置き場（{@code mq.hint}。2.7.8）
+	 */
+	public enum Hint {
+
+		/** 使わない（毎周すべてのデータソースを見る。これまでどおり） */
+		off,
+
+		/** 同じプロセスの中だけ */
+		memory,
+
+		/** 同じプロセスの中と Redis */
+		redis
+
+	}
+
+	/**
+	 * 「仕事がある」という印の置き場
+	 *
+	 * <p>既定は {@link Hint#off}（これまでどおり、毎周すべてのデータソースを見る）。</p>
+	 *
+	 * @return	置き場
+	 * @throws MqException	知らない値の場合
+	 * @since 2.7.8
+	 */
+	public static Hint hint () {
+
+		String value = Conf.conf().getString(KEY_HINT, Hint.off.name());
+
+		try {
+			return Hint.valueOf(value);
+		} catch (IllegalArgumentException ex) {
+			throw new MqException("%s は off / memory / redis のどれかで書いてください: %s".formatted(KEY_HINT, value), ex);
+		}
+
+	}
+
+	/**
+	 * 印を使うとき、全部のデータソースを回る間隔
+	 *
+	 * <p>
+	 * 印の無い行（別のプロセスが時刻を付けて積んだもの・印が落ちたもの）は、遅くともこの間隔で拾う。既定は 10 秒。
+	 * </p>
+	 *
+	 * @return	間隔
+	 * @since 2.7.8
+	 */
+	public static Duration sweepInterval () {
+
+		return Conf.conf().getDuration(KEY_SWEEP_INTERVAL, Duration.ofSeconds(10));
 
 	}
 

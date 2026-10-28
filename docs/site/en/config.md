@@ -470,6 +470,9 @@ mq {
 		long_time  = 8
 	}
 
+	hint           = off   # work hints: off | memory | redis (since 2.7.8; redis is recommended with many data sources)
+	sweep_interval = 10s   # with hints, how often every data source is visited; rows without a hint wait at most this long (since 2.7.8)
+
 	# per-queue settings (since 2.7.8). data_sources is where the queue lives (unset means every data source with db.<name>.mq = true)
 	queues {
 		mq_notice { data_sources = ["shop_a", "shop_b"] }
