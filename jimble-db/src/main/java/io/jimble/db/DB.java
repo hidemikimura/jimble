@@ -733,8 +733,8 @@ public class DB implements Closeable, AutoCloseable {
 		String sql = builder.sql(dialect());
 		List<Object> params = builder.params();
 
-		// データソースごとに分ける（D-222）
-		String key = SqlCache.key(getDBName(), sql, params);
+		// データソースごとに分ける（D-222）。サブは「親.サブ」（2.7.8）
+		String key = SqlCache.key(dbSource.cacheName(), sql, params);
 
 		List<Data> cached = SqlCache.get(key);
 
@@ -745,7 +745,7 @@ public class DB implements Closeable, AutoCloseable {
 		// 読めなければここで投げる。失敗はキャッシュに入らない
 		List<Data> rows = selectList(sql, params);
 
-		SqlCache.put(key, SqlCacheTags.of(getDBName(), builder, rows), rows);
+		SqlCache.put(key, SqlCacheTags.of(dbSource.cacheName(), builder, rows), rows);
 
 		return rows;
 
@@ -1414,7 +1414,7 @@ public class DB implements Closeable, AutoCloseable {
 		List<Object> params = builder.params();
 
 		if (isSqlCacheEnabled()) {
-			plan(SqlCacheTags.of(getDBName(), builder));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builder));
 		}
 
 		return executeUpdate("INSERT", sql, params);
@@ -1457,7 +1457,7 @@ public class DB implements Closeable, AutoCloseable {
 			 * タグを作るには WHERE を読んでテーブルのキーを引く必要があり、
 			 * 使っていないアプリがすべての更新でそれを払うことになる（D-95）。
 			 */
-			plan(SqlCacheTags.of(getDBName(), builder));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builder));
 		}
 
 		return insertRaw(sql, params);
@@ -1564,7 +1564,7 @@ public class DB implements Closeable, AutoCloseable {
 			 * タグを作るには WHERE を読んでテーブルのキーを引く必要があり、
 			 * 使っていないアプリがすべての更新でそれを払うことになる（D-95）。
 			 */
-			plan(SqlCacheTags.of(getDBName(), builder));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builder));
 		}
 
 		return update(sql, params);
@@ -1613,7 +1613,7 @@ public class DB implements Closeable, AutoCloseable {
 			 * タグを作るには WHERE を読んでテーブルのキーを引く必要があり、
 			 * 使っていないアプリがすべての更新でそれを払うことになる（D-95）。
 			 */
-			plan(SqlCacheTags.of(getDBName(), builder));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builder));
 		}
 
 		return delete(sql, params);
@@ -1806,7 +1806,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		// SQL結果キャッシュを消す（要件 F-D-28）。SQL が同じなので、消す先も同じ
 		if (isSqlCacheEnabled()) {
-			plan(SqlCacheTags.of(getDBName(), builderList));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builderList));
 		}
 
 		return executeBatch(sql, paramsList);
@@ -1934,7 +1934,7 @@ public class DB implements Closeable, AutoCloseable {
 
 		// SQL結果キャッシュを消す（要件 F-D-28）
 		if (isSqlCacheEnabled()) {
-			plan(SqlCacheTags.of(getDBName(), builderList));
+			plan(SqlCacheTags.of(dbSource.cacheName(), builderList));
 		}
 
 		return insertBatch(sql, paramsList);

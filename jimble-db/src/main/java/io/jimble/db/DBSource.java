@@ -24,6 +24,9 @@ public final class DBSource {
 	/** DB ソース名 */
 	private String name;
 
+	/* SQL 結果キャッシュで使う名前（別の DB を指すサブなら「親.サブ」。null なら name） */
+	private String cacheName;
+
 	/** 親 DB ソース（サブのときだけ入る） */
 	private DBSource parent = null;
 
@@ -50,6 +53,42 @@ public final class DBSource {
 	public String name () {
 
 		return name;
+
+	}
+
+	/**
+	 * SQL 結果キャッシュで使う名前
+	 *
+	 * <p>
+	 * トップレベルのデータソースは {@link #name()} と同じ。<b>サブは、指している DB で決める</b>（2.7.8）。
+	 * 親と同じ URL なら親と同じ名前、別の DB なら「親.サブ」（同じ DB を指すサブ同士は同じ名前）。
+	 * </p>
+	 *
+	 * <p>
+	 * サブの {@link #name()} は親と同じなので、かつてはサブを別の DB に向けると、同じ SQL・同じ値のキャッシュが
+	 * 親やほかのサブと混ざり、別の DB の結果が返っていた。一方、プールを分けるために親と同じ DB を指すサブは、
+	 * 書いたら親のキャッシュも消えなければならない（同じ表）ので、名前を分けない。
+	 * {@link #name()} の意味（マイグレーション・{@code DBVersion}・{@code DBUtil.getDataSource} の引き先）は変えず、
+	 * キャッシュにだけ別の名前を使う。
+	 * </p>
+	 *
+	 * @return	名前
+	 * @since 2.7.8
+	 */
+	public String cacheName () {
+
+		return cacheName == null ? name : cacheName;
+
+	}
+
+	/**
+	 * SQL 結果キャッシュで使う名前 を決める
+	 *
+	 * @param cacheName	名前
+	 */
+	void cacheName (String cacheName) {
+
+		this.cacheName = cacheName;
 
 	}
 

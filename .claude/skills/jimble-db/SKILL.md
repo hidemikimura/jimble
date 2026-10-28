@@ -464,6 +464,11 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 つながらなくても起動を続け、DB が戻ればそのまま使える（HikariCP は数秒かかる）。起動時につながらなかったものには管理の表・マイグレーションを当てない（CLI の `migrate --data-source` で当てる）。
 `DBUtil.healthCheck()` は required のものだけ、データソースごとは `DBUtil.healthCheckAll()`。主は required = false にできない。
 
+## SQL 結果キャッシュとサブ DB（2.7.8）
+
+キャッシュのキーとタグはデータソースごと（`DBSource.cacheName()`）。`subs` は親と同じ URL なら親と同じ名前（サブで書けば親のも消える）、
+別の DB を指すなら「親.サブ」。2.7.7 までは別の DB を指すサブでも親と混ざっていた。URL が同じ文字列のときだけ同じ DB とみなす。
+
 ## 管理の表を絞る（2.7.8）
 
 データソースごとに `db_lock` / `db_value` / `db_cache` / `redis_lock` / `db_log` を作る。使わない DB は

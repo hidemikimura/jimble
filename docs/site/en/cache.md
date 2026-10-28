@@ -170,6 +170,12 @@ evicted.
 | The DB written directly by another process | Cannot be followed. `sql_cache.ttl` (5 minutes by default) is your safety net |
 | `sql_cache.store = "memory"` | **That machine only.** With more than one machine, use `redis` or `db` |
 
+The cache is **kept apart per data source** (the data source name goes into keys and tags). A `subs` entry
+with the same URL as its parent uses the parent's name (writing through the sub evicts the parent's
+entries), and one pointing at another database uses "parent.sub" (since 2.7.8; before that, a sub pointing
+at another database shared the parent's entries and could return the other database's results). Only an
+identical URL string counts as "the same database".
+
 ### Configuration
 
 ```conf
