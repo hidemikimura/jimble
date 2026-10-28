@@ -110,6 +110,9 @@ mq.queues {
 
 - A data source that is left out gets **no table, and is not visited for claiming, for recovering stale
   rows (`recoverStale`), or for counting (`pendingCount`)**
+- The poller orders the data sources by name and **starts right after the one it last claimed from**
+  (since 2.7.8). One data source with a long backlog does not hold back the others (they are visited
+  within "number of data sources" claims)
 - With both settings, the queue lives only on data sources that satisfy both. An unknown name in
   `data_sources` stops startup
 - **`put` on a database of a data source that is left out throws `MqException`** (nobody would process it)
