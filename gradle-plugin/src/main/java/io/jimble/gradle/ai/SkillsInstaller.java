@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 
 /**
  * アプリの {@code .claude/skills/} を、使っている jimble の版の skill に揃える（要件 D-187）
@@ -32,6 +33,14 @@ import java.util.TreeSet;
  * いまのファイルが控えと同じなら「jimble が置いたまま」なので入れ替えてよい。違えば<b>誰かが直した</b>ので触らない。
  * 控えの無いファイル（控えを書くようになる前の {@code jimble new} で置いたもの）も、
  * 直したかどうか分からないので触らない——{@code overwrite} を付けたときだけ入れ替える。
+ * </p>
+ *
+ * <h2>この版で無くなった skill は片付ける</h2>
+ * <p>
+ * skill を分けたり名前を変えたりすると、前の版で置いた skill がこの版には無くなる。残しておくと、
+ * <b>アプリの AI は古い説明と新しい説明の両方を読む</b>。控えにあってこの版に無い skill は、
+ * 控えと同じ（jimble が置いたまま）なら消し、直してあれば消さずに知らせ続ける（控えにも残す）。
+ * {@code overwrite} を付ければ、直してあっても消す。控えに無いファイル（アプリが自分で置いた skill）は見ない。
  * </p>
  *
  * <p>
@@ -93,9 +102,11 @@ public final class SkillsInstaller {
 	 * @param previousVersion	前に揃えた版。控えが無ければ空文字
 	 * @param entries			skill ごとの結果
 	 * @param created			無かったので置いた案内（{@code AGENTS.md} など）
-	 * @param gone				控えにあるが、この版には無い skill（消さない）
+	 * @param removed			この版には無いので消した skill（jimble が置いたままだったもの）
+	 * @param gone				この版には無いが、手で直してあるので消さなかった skill
 	 */
-	public record Report(String version, String previousVersion, List<Entry> entries, List<String> created, List<String> gone) {
+	public record Report(String version, String previousVersion, List<Entry> entries, List<String> created
+		, List<String> removed, List<String> gone) {
 
 		/**
 		 * 触らなかったものがあるか
@@ -104,7 +115,7 @@ public final class SkillsInstaller {
 		 */
 		public boolean hasKept () {
 
-			return entries.stream().anyMatch(entry ->
+			return !gone.isEmpty() || entries.stream().anyMatch(entry ->
 				entry.result() == Result.KEPT_EDITED || entry.result() == Result.KEPT_UNKNOWN);
 
 		}
@@ -187,12 +198,30 @@ public final class SkillsInstaller {
 
 			}
 
+			List<String> removed = new ArrayList<>();
 			List<String> gone = new ArrayList<>();
 
 			for (String key : new TreeSet<>(before.stringPropertyNames())) {
-				if (key.startsWith(KEY_SKILL_PREFIX) && !skills.containsKey(key.substring(KEY_SKILL_PREFIX.length()))) {
-					gone.add(key.substring(KEY_SKILL_PREFIX.length()));
+
+				if (!key.startsWith(KEY_SKILL_PREFIX) || skills.containsKey(key.substring(KEY_SKILL_PREFIX.length()))) {
+					continue;
 				}
+
+				String path = key.substring(KEY_SKILL_PREFIX.length());
+				Path target = skillsDir.resolve(path).normalize();
+
+				if (!target.startsWith(skillsDir.normalize()) || !Files.isRegularFile(target)) {
+					continue;                                   // もう消してある（か .claude/skills/ の外を指す）。控えからも外す
+				}
+
+				if (overwrite || sha256(Files.readAllBytes(target)).equals(before.getProperty(key))) {
+					delete(target, skillsDir);
+					removed.add(path);
+				} else {
+					after.setProperty(key, before.getProperty(key));   // 直してある。次も知らせるため控えに残す
+					gone.add(path);
+				}
+
 			}
 
 			List<String> created = new ArrayList<>();
@@ -207,7 +236,8 @@ public final class SkillsInstaller {
 
 			writeRecord(recordFile, after);
 
-			return new Report(version, before.getProperty(KEY_VERSION, ""), List.copyOf(entries), List.copyOf(created), List.copyOf(gone));
+			return new Report(version, before.getProperty(KEY_VERSION, ""), List.copyOf(entries), List.copyOf(created)
+				, List.copyOf(removed), List.copyOf(gone));
 
 		} catch (IOException ex) {
 
@@ -302,6 +332,31 @@ public final class SkillsInstaller {
 
 		Files.createDirectories(file.getParent());
 		Files.write(file, bytes);
+
+	}
+
+	/**
+	 * skill を消し、空になったフォルダも消す（{@code skills/} の手前まで）
+	 *
+	 * @param file			消すファイル
+	 * @param skillsDir		{@code .claude/skills/}
+	 * @throws IOException	消せなかった場合
+	 */
+	private static void delete (Path file, Path skillsDir) throws IOException {
+
+		Files.delete(file);
+
+		for (Path dir = file.getParent(); dir != null && !dir.equals(skillsDir) && dir.startsWith(skillsDir); dir = dir.getParent()) {
+
+			try (Stream<Path> children = Files.list(dir)) {
+				if (children.findAny().isPresent()) {
+					return;
+				}
+			}
+
+			Files.delete(dir);
+
+		}
 
 	}
 

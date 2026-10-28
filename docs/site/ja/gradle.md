@@ -301,14 +301,18 @@ jimbleRun {
 
 ```bash
 ./gradlew jimbleSkills
-./gradlew jimbleSkills --overwrite   # 手で直したもの・控えの無いものも入れ替える
+./gradlew jimbleSkills --overwrite   # 手で直したもの・控えの無いものも入れ替える（この版に無いものは消す）
 ```
 
 - **手で直した skill は上書きしません。**置いたときの中身のハッシュを `.claude/jimble-skills.properties` に控えていて、
   控えと同じ（jimble が置いたまま）なら入れ替え、違えば触りません
 - **控えの無い skill**（控えを書くようになる前の `jimble new` で置いたもの）も、直したかどうか分からないので触りません。
   直していなければ `--overwrite` で入れ替えてください
+- **この版で増えた skill は足し、この版で無くなった skill は消します**（2.7.8）。skill を分けたり名前を変えたりした版でも、
+  流すだけで揃います。消すのは控えと同じ（jimble が置いたまま）ものだけで、手で直してあれば消さずに「古い」と知らせ続けます
+  （`--overwrite` なら消します）。控えに無い skill（アプリが自分で置いたもの）は見ません
 - **アプリ固有の決まりは skill ではなく `AGENTS.md` に書きます。**skill を直すと、次の版に揃えられなくなります
+- 揃えたら `.claude/skills/` と `.claude/jimble-skills.properties` をコミットしてください
 - `AGENTS.md` / `CLAUDE.md` は**無ければ置き、あれば触りません**（`CLAUDE.md` は `@AGENTS.md` と書いて読み込むだけ）
 
 ### jimbleCheck

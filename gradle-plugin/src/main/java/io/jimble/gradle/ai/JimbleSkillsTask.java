@@ -14,7 +14,7 @@ import org.gradle.api.tasks.options.Option;
  *
  * <pre>
  * ./gradlew jimbleSkills
- * ./gradlew jimbleSkills --overwrite    # 手で直したもの・控えの無いものも入れ替える
+ * ./gradlew jimbleSkills --overwrite    # 手で直したもの・控えの無いものも入れ替える（この版に無いものは消す）
  * </pre>
  *
  * <p>
@@ -53,7 +53,7 @@ public abstract class JimbleSkillsTask extends DefaultTask {
 	 *
 	 * @param overwrite	入れ替えるか
 	 */
-	@Option(option = "overwrite", description = "手で直した skill・控えの無い skill も、この版のものに入れ替える")
+	@Option(option = "overwrite", description = "手で直した skill・控えの無い skill も、この版のものに入れ替える（この版に無い skill は消す）")
 	public void setOverwriteOption (boolean overwrite) {
 
 		getOverwrite().set(overwrite);
@@ -86,15 +86,21 @@ public abstract class JimbleSkillsTask extends DefaultTask {
 			getLogger().lifecycle("  %-10s %s".formatted("置いた", created));
 		}
 
+		for (String removed : report.removed()) {
+			getLogger().lifecycle("  %-10s .claude/skills/%s（この版には無い）".formatted("消した", removed));
+		}
+
 		for (String gone : report.gone()) {
-			getLogger().lifecycle("  %-10s .claude/skills/%s（この版には無い。要らなければ消す）".formatted("古い", gone));
+			getLogger().lifecycle("  %-10s .claude/skills/%s（この版には無いが、手で直してあるので消さない）".formatted("古い", gone));
 		}
 
 		if (report.hasKept()) {
 			getLogger().warn("""
 				触らなかった skill があります。
 				  手で直してある / 直したかどうか分からない（控えを書くようになる前に置いたもの）ためです。
-				  アプリ固有のことは skill ではなく AGENTS.md に書き、この版の skill に入れ替えてください：
+				  この版の skill と古い skill の両方を AI が読むことになります。
+				  アプリ固有のことは skill ではなく AGENTS.md に書き、この版の skill に入れ替えてください
+				  （この版に無い skill は消えます）：
 				    ./gradlew jimbleSkills --overwrite""");
 		}
 

@@ -38,7 +38,7 @@ public final class JimbleAiSupport {
 
 		project.getTasks().register(SKILLS_TASK, JimbleSkillsTask.class, task -> {
 			task.setGroup(GROUP);
-			task.setDescription("AI 向けの skill（.claude/skills/）を、使っている jimble の版に揃える。手で直したものは上書きしない");
+			task.setDescription("AI 向けの skill（.claude/skills/）を、使っている jimble の版に揃える（足す・入れ替える・この版に無いものは消す）。手で直したものは触らない");
 			task.getRootDir().set(project.getRootProject().getLayout().getProjectDirectory());
 			task.getOverwrite().convention(false);
 		});

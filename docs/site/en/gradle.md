@@ -316,7 +316,7 @@ application's AI keeps reading the old version's explanations. **Run it after yo
 
 ```bash
 ./gradlew jimbleSkills
-./gradlew jimbleSkills --overwrite   # also replace hand-edited skills and ones with no record
+./gradlew jimbleSkills --overwrite   # also replace hand-edited skills and ones with no record (and delete ones this version dropped)
 ```
 
 - **Hand-edited skills are never overwritten.** The hash of what was placed is recorded in
@@ -324,7 +324,12 @@ application's AI keeps reading the old version's explanations. **Run it after yo
   anything else is left alone
 - **Skills with no record** (placed by a `jimble new` from before the record existed) are left alone too, since there is
   no telling whether they were edited. If you did not edit them, use `--overwrite`
+- **Skills new in this version are added, and skills this version no longer ships are deleted** (2.7.8). A version that splits
+  or renames skills is brought in line just by running the task. Only files that still match the record (untouched since jimble
+  placed them) are deleted; an edited one is kept and reported as "old" every time (`--overwrite` deletes it).
+  Skills that are not in the record (your application's own) are never looked at
 - **Put your application's own rules in `AGENTS.md`, not in the skills.** An edited skill can no longer be brought up to date
+- Commit `.claude/skills/` and `.claude/jimble-skills.properties` afterwards
 - `AGENTS.md` / `CLAUDE.md` are **placed only if missing, never touched otherwise** (`CLAUDE.md` just says `@AGENTS.md`)
 
 ### jimbleCheck

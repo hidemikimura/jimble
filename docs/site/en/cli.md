@@ -106,10 +106,8 @@ my-blog/
 	conf/migration/my_blog/001_create_note.sql.example
 	AGENTS.md
 	CLAUDE.md
-	.claude/skills/jimble/SKILL.md
-	.claude/skills/jimble-db/SKILL.md
-	.claude/skills/jimble-web/SKILL.md
-	.claude/skills/jimble-batch/SKILL.md
+	.claude/skills/jimble/SKILL.md          (the entry point; points to the others)
+	.claude/skills/jimble-*/SKILL.md        (one per area: web, DB, batch, MQ, config, ...)
 	.claude/jimble-skills.properties
 ```
 

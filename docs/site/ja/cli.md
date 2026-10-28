@@ -94,10 +94,8 @@ my-blog/
 	conf/migration/my_blog/001_create_note.sql.example
 	AGENTS.md
 	CLAUDE.md
-	.claude/skills/jimble/SKILL.md
-	.claude/skills/jimble-db/SKILL.md
-	.claude/skills/jimble-web/SKILL.md
-	.claude/skills/jimble-batch/SKILL.md
+	.claude/skills/jimble/SKILL.md          （入口。ほかの skill への案内）
+	.claude/skills/jimble-*/SKILL.md        （Web・DB・バッチ・MQ・設定などの分野ごと）
 	.claude/jimble-skills.properties
 ```
 
