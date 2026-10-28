@@ -288,9 +288,14 @@ class MqDataSourcesIntegrationTest {
 		String url = main.getString("url").replaceFirst("/" + MAIN + "(\\?|$)", "/" + OTHER + "$1");
 
 		Config other = main
-			.withoutPath("create_database_sql")
 			.withValue("main", ConfigValueFactory.fromAnyRef(false))
 			.withValue("url", ConfigValueFactory.fromAnyRef(url));
+
+		// 無ければ作る（CI では、このモジュールのテストが jimble-db のテストより先に走り、まだ無いことがある）
+		if (main.hasPath("create_database_sql")) {
+			other = other.withValue("create_database_sql", ConfigValueFactory.fromAnyRef(
+				main.getString("create_database_sql").replace(MAIN, OTHER)));
+		}
 
 		return base.withValue("db." + OTHER, other.root());
 
