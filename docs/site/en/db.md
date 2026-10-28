@@ -219,6 +219,10 @@ To shut down, call `DBUtil.stop()` (the web server does it as part of
 
 ## When there is more than one data source
 
+> [!TIP]
+> Lining up many databases with the same tables and choosing the client's database per request is
+> summarised on one page: [Lining up databases with the same tables](./multi-db).
+
 ```conf
 db {
 	main_db { main = true, ... }

@@ -212,6 +212,9 @@ public static void main (String[] args) {
 
 ## データソースが複数あるとき
 
+> [!TIP]
+> 同じ作りの DB を何本も並べ、要求ごとにクライアントの DB を選ぶ使い方は、[同じ作りの DB を並べる](./multi-db) に 1 ページでまとめてあります。
+
 ```conf
 db {
 	main_db { main = true, ... }
