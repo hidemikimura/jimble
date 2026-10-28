@@ -226,7 +226,7 @@ db {
 
 - `conf/migration/<データソース名>/` のマイグレーションが当たります（`migration_dir` で別のフォルダにできます。下を参照）
 - codegen が `db/<データソース名>/` を作ります（`codegen_name` で同じ作りの DB と 1 組を共有できます。[コード生成](./codegen#同じ作りの-db-で生成コードを共有する)）
-- `migration` / `db_lock` / `db_value` / `db_cache` もそちらに作られます
+- `migration` / `db_lock` / `db_value` / `db_cache` もそちらに作られます（`framework_tables` で絞れます。下を参照）
 
 jimble が使う表は、無ければ起動時に作ります。空の DB に何台かが同時に初めて起動しても、
 ほかの台が先に作った表はそのまま使います（2.7.8 から。表のコメント「説明:版」で見分けます）。
@@ -245,6 +245,30 @@ db {
 当たったかどうかの記録（`migration`・`migration_history`）はそれぞれの DB に残るので、
 片方だけ当たっていれば、もう片方にだけ当たります。
 Java で書くマイグレーション（`CodeMigration`）は主にしか当たりません。
+
+### 管理の表を絞る
+
+jimble は、データソースごとに次の管理の表を作ります。店の DB のように使わない表があるなら、
+`framework_tables` で作る表を絞れます（2.7.8 から）。
+
+| 表 | 何が使うか | 外せるか |
+|---|---|---|
+| `db_lock` | `DBLock`（業務の Tx と同じ DB でロックする）、**マイグレーションのロック** | 外せません |
+| `db_value` | `DBValue`（キーと値を置く） | 外せます |
+| `db_cache` | `Cache.instance(db)` で `cache.type = db` のとき（`DBCache`） | 外せます |
+| `redis_lock` | `RedisLock.lock(db, ...)` / `tryLock(db, ...)`（DB を渡すほう。印を付ける） | 外せます |
+| `db_log` | `DBLog.save`（`log.db = true` のとき） | 外せます |
+
+```conf
+db {
+	shop_a { url = "...", framework_tables = ["db_lock"] }
+}
+```
+
+- 書かなければ、これまでどおり全部を作ります
+- **外した表を使う API をそのデータソースで呼ぶと、`IllegalStateException`** になります（「表が無い」という SQL のエラーではなく、設定の名前を言います）
+- 知らない名前や、`db_lock` の無い一覧は、起動で止まります
+- `migration`・`migration_history` はマイグレーションが作ります（この一覧には入りません）。MQ のキューの表は `db.<名前>.mq` で絞ります（[MQ](./mq)）
 
 ### 落ちても全体を止めないデータソース
 

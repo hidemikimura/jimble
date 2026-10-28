@@ -5,6 +5,7 @@ import io.jimble.util.annotation.CheckReturnValue;
 import io.jimble.db.FrameworkTables;
 import io.jimble.util.hash.Hash;
 import io.jimble.db.DB;
+import io.jimble.db.DBUtil;
 import io.jimble.db.dialect.Sqls;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.db.redis.RedisClient;
@@ -70,6 +71,8 @@ public class RedisLock {
 	@CheckReturnValue
 	public static RedisLockResult lock (DB db, String lockKey) {
 
+		DBUtil.requireFrameworkTable(db, FrameworkTables.REDIS_LOCK);
+
 		RLock lock = RedisClient.client().getLock(lockKey);
 		try {
 			lock.lock();
@@ -116,6 +119,8 @@ public class RedisLock {
 	 */
 	@CheckReturnValue
 	public static Optional<RedisLockResult> tryLock (DB db, String lockKey, int waitTimeMs, int maintainMs) {
+
+		DBUtil.requireFrameworkTable(db, FrameworkTables.REDIS_LOCK);
 
 		RLock lock = RedisClient.client().getLock(lockKey);
 		try {

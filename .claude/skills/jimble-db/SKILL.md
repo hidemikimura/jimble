@@ -464,6 +464,12 @@ import db.shop_example.table.orders.Orders;      // テーブルクラス
 つながらなくても起動を続け、DB が戻ればそのまま使える（HikariCP は数秒かかる）。起動時につながらなかったものには管理の表・マイグレーションを当てない（CLI の `migrate --data-source` で当てる）。
 `DBUtil.healthCheck()` は required のものだけ、データソースごとは `DBUtil.healthCheckAll()`。主は required = false にできない。
 
+## 管理の表を絞る（2.7.8）
+
+データソースごとに `db_lock` / `db_value` / `db_cache` / `redis_lock` / `db_log` を作る。使わない DB は
+`db.<名前>.framework_tables = ["db_lock"]` で絞る（**`db_lock` は外せない**。マイグレーションのロックに使う）。
+外した表を使う API（`DBValue`・`DBCache`・`RedisLock.lock(db, ...)`・`DBLog.save`）をそのデータソースで呼ぶと `IllegalStateException`。
+
 ## db.<名前> の設定（要件 D-159）
 
 **snake_case で書く**（`maximum_pool_size` / `minimum_idle` / `idle_timeout` /
