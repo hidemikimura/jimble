@@ -22,6 +22,7 @@
 | **MQ のキューを置くデータソースを絞る（`db.<名前>.mq`・`mq.queues.<キュー名>.data_sources`）** | 外したデータソースには、キューの表を作らず、取り出し・迷子の戻し（`recoverStale`）・件数（`pendingCount`）にも行きません。外したデータソースの DB に `put` すると `MqException` になります（積んでも誰も処理しないため）。`data_sources` に知らない名前があると起動で止まります。書かなければ、これまでどおり全部のデータソースに置きます。主だけに置くキューを作る `MqQueue.mainOnly(...)` と `MqExecutor.mainOnly()` も足しました |
 | **`db.<名前>.codegen_name`・`codegen`（生成コードを 1 組で共有する）** | 同じ `codegen_name` のデータソースは、代表（主があれば主、無ければ名前の順で最初）の DB から 1 組だけ生成します。`codegenCheck` もその 1 組を突き合わせます。ほかの DB の表の作りが代表と違えば、生成のときに警告します。テーブルクラスは SQL に表の名前しか入れないので、要求ごとに選んだ DB に渡せばその DB で動きます。`codegen = false` のデータソースは生成しません。書かなければ、生成物は 1 文字も変わりません |
 | **`db.<名前>.migration_dir`（マイグレーションのフォルダ名）** | `conf/migration/` の下のどのフォルダの SQL を当てるかを、データソースごとに書けます。書けば `schema` より優先し、書かなければこれまでどおり `schema`（それも無ければデータソース名）です。当たった記録（`migration`・`migration_history`）はそれぞれの DB に残るので、片方だけ当たっていれば、もう片方にだけ当たります。Java で書くマイグレーション（`CodeMigration`）は、これまでどおり主にしか当たりません |
+| **jimbleSkills：この版で無くなった skill を片付ける** | 控え（`.claude/jimble-skills.properties`）にあってこの版に無い skill は、jimble が置いたまま（控えと同じ中身）なら消し、空になったフォルダも消します。手で直してあれば消さずに「古い」と出し続け（控えにも残します）、`--overwrite` を付ければ消します。控えに無い skill（アプリが自分で置いたもの）は見ません。これまでは「この版には無い」と出すだけで残していたので、skill の名前が変わると古い説明が読まれ続けました |
 
 ### 上げる前に見るところ
 
@@ -31,6 +32,7 @@
 | **MQ：処理中のまま残った行を、回している間も 1 分ごとに戻すようになりました（`mq.recover_interval`）** | これまでは、キューを起動するときだけ戻していました。`mq.stale`（既定 10 分）より長くかかる処理があると、まだ動いているのに戻され、二重に動きます（これまでも、起動し直したときには起きていました）。そのときは古い処理の結果を書かず、ログに出します。`mq.stale` を一番長い処理より長くしてください。これまでどおり起動のときだけにするなら `mq.recover_interval = 0s` です |
 | **スケジューラのキュー（`scheduler.queue_name`、既定 `mq_scheduler`）は、主のデータソースだけに置くようになりました** | これまでは全部のデータソースに表を作り、全部から取り出していました。スケジューラの管理（`batch_master` など）も、管理画面から積むのも主なので、主のほかの表には何も来ないまま、毎周見に行っていました。いまは主だけに作り、主だけから取り出します。`ExecuteBatchExecutor` / `ReExecuteBatchExecutor` の `request` に主のほかの DB を渡すと `MqException` になります。jimble の中で主のほかに積むところはありません。アプリが主のほかの DB を渡して積んでいたら、主の DB に積むように直してください（主のほかに残っている行は、もう取り出されません） |
 | **`maximum_pool_size = 1` のデータソースでは、マイグレーションが例外で止まります** | マイグレーションはロックを持つ接続と SQL を流す接続の 2 本を使います。これまでも 1 本では 2 本目を `connection_timeout` まで待ってから「接続が取れない」で落ちていました。いまは待たずに、`maximum_pool_size` を 2 以上にするよう書いた例外で止まります。コードマイグレーション（`CodeMigration`）も同じです |
+| **AI 向けの skill を分野ごとに分けました（1 つ 8 KB まで）** | 4 本（`jimble` 18 KB・`jimble-web` 40 KB・`jimble-db` 33 KB・`jimble-batch` 23 KB）を 24 本に分けました。大きいと AI が読むのに手間がかかり、要るところが埋もれるためです。`jimble`・`jimble-web`・`jimble-db`・`jimble-batch` は、全体の決まりと分けた skill への案内だけになりました。分けたもの：`jimble-config`・`jimble-json`・`jimble-upgrade`／`jimble-web-input`・`-response`・`-session`・`-auth`・`-auth-methods`・`-api-token`・`-server`／`jimble-db-select`・`-data`・`-write`・`-tx`・`-migration`・`-config`／`jimble-batch-write`・`-run`・`jimble-mq`・`jimble-mq-worker`。「落とし穴（実際に踏んだもの）」は関係する分野の skill に振り分け、書いてあった決まりは消していません。**上げたら `./gradlew jimbleSkills` を流し、`.claude/skills/` と `.claude/jimble-skills.properties` をコミットしてください。**分けた skill が足され、jimble が置いたままの 4 本は案内だけのものに入れ替わります。**手で直した skill は入れ替わりません**（「触らない（手で直してある）」と出ます）。そのままだと古い大きな説明と分けた skill の両方を AI が読むので、書き足したことを `AGENTS.md` に移してから `./gradlew jimbleSkills --overwrite` で揃えてください。`jimble new` で作るプロジェクトには、はじめから分けた skill が入ります |
 
 ### 直したこと
 

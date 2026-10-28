@@ -739,11 +739,15 @@ https://jimble.io/ja/<名前>.md          個別
 ### 2. skill を同梱する
 
 ```
-.claude/skills/jimble/SKILL.md          入口。原則・注釈もDIも無いこと・Spring の癖の対応表
-.claude/skills/jimble-db/SKILL.md       SQL ビルダー・Data のネスト・トランザクション・codegen
-.claude/skills/jimble-web/SKILL.md      ルーティング・入力と出力・セッション/CSRF・認証
-.claude/skills/jimble-batch/SKILL.md    バッチと MQ
+.claude/skills/jimble/SKILL.md          入口。原則・注釈もDIも無いこと・Spring の癖の対応表・skill の案内
+.claude/skills/jimble-db/SKILL.md       DB の入口（→ jimble-db-select / -data / -write / -tx / -migration / -config）
+.claude/skills/jimble-web/SKILL.md      Web の入口・ルーティング（→ jimble-web-input / -response / -session / -auth / …）
+.claude/skills/jimble-batch/SKILL.md    バッチと MQ の入口（→ jimble-batch-write / -run・jimble-mq / -mq-worker）
+.claude/skills/jimble-config/SKILL.md   設定・jimble-json（JSON と型変換）・jimble-upgrade（版を上げる）
 ```
+
+**1つの skill は 8 KB まで**（`SkillsInstallerTest` が見る）。大きいと AI が読むのに手間がかかり、要るところが埋もれる。
+入口の skill には全体の決まりと案内だけを置き、細かい決まりと落とし穴は分野ごとの skill に書く。
 
 **ドキュメントだけでは足りない。**AI に jimble を書かせたときの失敗は
 「API が分からない」ではなく<b>Spring のつもりで書く</b>ことで、

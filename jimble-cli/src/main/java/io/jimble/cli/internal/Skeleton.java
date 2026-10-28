@@ -59,11 +59,32 @@ final class Skeleton {
 		 * 注釈も DI も無いことを、書き始める前に知っている必要がある。
 		 * 中身は jimble 自身の .claude/skills/ から<b>ビルドで写している</b>ので、
 		 * ここに写しは無い（写し忘れは JimbleNewSkillsTest が落とす）。
+		 * 分野ごとに分けてある（1つ 8 KB まで）。入口の jimble / jimble-web / jimble-db / jimble-batch が案内する。
 		 */
 		, new Entry("skills/jimble/SKILL.md", ".claude/skills/jimble/SKILL.md")
-		, new Entry("skills/jimble-db/SKILL.md", ".claude/skills/jimble-db/SKILL.md")
-		, new Entry("skills/jimble-web/SKILL.md", ".claude/skills/jimble-web/SKILL.md")
 		, new Entry("skills/jimble-batch/SKILL.md", ".claude/skills/jimble-batch/SKILL.md")
+		, new Entry("skills/jimble-batch-run/SKILL.md", ".claude/skills/jimble-batch-run/SKILL.md")
+		, new Entry("skills/jimble-batch-write/SKILL.md", ".claude/skills/jimble-batch-write/SKILL.md")
+		, new Entry("skills/jimble-config/SKILL.md", ".claude/skills/jimble-config/SKILL.md")
+		, new Entry("skills/jimble-db/SKILL.md", ".claude/skills/jimble-db/SKILL.md")
+		, new Entry("skills/jimble-db-config/SKILL.md", ".claude/skills/jimble-db-config/SKILL.md")
+		, new Entry("skills/jimble-db-data/SKILL.md", ".claude/skills/jimble-db-data/SKILL.md")
+		, new Entry("skills/jimble-db-migration/SKILL.md", ".claude/skills/jimble-db-migration/SKILL.md")
+		, new Entry("skills/jimble-db-select/SKILL.md", ".claude/skills/jimble-db-select/SKILL.md")
+		, new Entry("skills/jimble-db-tx/SKILL.md", ".claude/skills/jimble-db-tx/SKILL.md")
+		, new Entry("skills/jimble-db-write/SKILL.md", ".claude/skills/jimble-db-write/SKILL.md")
+		, new Entry("skills/jimble-json/SKILL.md", ".claude/skills/jimble-json/SKILL.md")
+		, new Entry("skills/jimble-mq/SKILL.md", ".claude/skills/jimble-mq/SKILL.md")
+		, new Entry("skills/jimble-mq-worker/SKILL.md", ".claude/skills/jimble-mq-worker/SKILL.md")
+		, new Entry("skills/jimble-upgrade/SKILL.md", ".claude/skills/jimble-upgrade/SKILL.md")
+		, new Entry("skills/jimble-web/SKILL.md", ".claude/skills/jimble-web/SKILL.md")
+		, new Entry("skills/jimble-web-api-token/SKILL.md", ".claude/skills/jimble-web-api-token/SKILL.md")
+		, new Entry("skills/jimble-web-auth/SKILL.md", ".claude/skills/jimble-web-auth/SKILL.md")
+		, new Entry("skills/jimble-web-auth-methods/SKILL.md", ".claude/skills/jimble-web-auth-methods/SKILL.md")
+		, new Entry("skills/jimble-web-input/SKILL.md", ".claude/skills/jimble-web-input/SKILL.md")
+		, new Entry("skills/jimble-web-response/SKILL.md", ".claude/skills/jimble-web-response/SKILL.md")
+		, new Entry("skills/jimble-web-server/SKILL.md", ".claude/skills/jimble-web-server/SKILL.md")
+		, new Entry("skills/jimble-web-session/SKILL.md", ".claude/skills/jimble-web-session/SKILL.md")
 		/*
 		 * AI への案内（要件 D-187）。AGENTS.md はツールをまたいで読まれる決まりのファイルで、
 		 * CLAUDE.md は Claude Code 向けにそれを読み込むだけ（@AGENTS.md）。

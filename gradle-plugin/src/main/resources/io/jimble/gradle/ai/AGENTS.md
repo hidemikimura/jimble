@@ -5,7 +5,8 @@
 
 ## 書く前に
 
-- **`.claude/skills/jimble/SKILL.md` を読む。**DB は `jimble-db`、Web は `jimble-web`、バッチと MQ は `jimble-batch` の skill
+- **`.claude/skills/jimble/SKILL.md` を読む。**DB は `jimble-db`、Web は `jimble-web`、バッチと MQ は `jimble-batch` の skill から、
+  案内に従って分野ごとの skill（`jimble-db-tx` など）を読む
 - **推測で書かない。**全ページが Markdown で取れる：目次 <https://jimble.io/ja/llms.txt>、個別は `https://jimble.io/ja/<名前>.md`
 - 使っている jimble の版は `build.gradle.kts` の `io.jimble` の版。版で挙動が変わることがあるので、
   変更は <https://github.com/hidemikimura/jimble/blob/main/CHANGELOG.md> を見る

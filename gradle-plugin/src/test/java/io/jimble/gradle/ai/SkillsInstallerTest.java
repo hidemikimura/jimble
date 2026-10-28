@@ -12,7 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,6 +35,17 @@ class SkillsInstallerTest {
 
 	private static final byte[] AGENTS = "# agents\n".getBytes(StandardCharsets.UTF_8);
 	private static final byte[] CLAUDE = "@AGENTS.md\n".getBytes(StandardCharsets.UTF_8);
+
+	/** 1つの skill の大きさの上限（読むのに手間がかからず、要るところが埋もれない大きさ） */
+	private static final int MAX_SKILL_BYTES = 8 * 1024;
+
+	private static Map<String, byte[]> without (Map<String, byte[]> skills, String path) {
+
+		Map<String, byte[]> fewer = new LinkedHashMap<>(skills);
+		fewer.remove(path);
+		return fewer;
+
+	}
 
 	private static Map<String, byte[]> skills (String body) {
 
@@ -69,7 +82,7 @@ class SkillsInstallerTest {
 
 		assertEquals(Result.ADDED, result(report, "jimble/SKILL.md"));
 		assertEquals("jimble v1", read(root, "jimble/SKILL.md"));
-		assertEquals(java.util.List.of("AGENTS.md", "CLAUDE.md"), report.created());
+		assertEquals(List.of("AGENTS.md", "CLAUDE.md"), report.created());
 		assertEquals("1.5.0", SkillsInstaller.recordedVersion(root));
 		assertEquals("", report.previousVersion());
 
@@ -155,24 +168,126 @@ class SkillsInstallerTest {
 
 		SkillsInstaller.Report report = install(root, skills("v1"), "1.5.0", false);
 
-		assertEquals(java.util.List.of("CLAUDE.md"), report.created());
+		assertEquals(List.of("CLAUDE.md"), report.created());
 		assertEquals("アプリの決まり", Files.readString(root.resolve("AGENTS.md")));
 
 	}
 
 	@Test
-	@DisplayName("この版で無くなった skill は、消さずに知らせる")
-	void goneIsReported (@TempDir Path root) {
+	@DisplayName("この版で無くなった skill は、jimble が置いたままなら消し、控えからも外す")
+	void goneUntouchedIsRemoved (@TempDir Path root) {
 
 		install(root, skills("v1"), "1.5.0", false);
 
-		Map<String, byte[]> fewer = new LinkedHashMap<>(skills("v2"));
-		fewer.remove("jimble-db/SKILL.md");
+		SkillsInstaller.Report report = install(root, without(skills("v2"), "jimble-db/SKILL.md"), "1.6.0", false);
 
-		SkillsInstaller.Report report = install(root, fewer, "1.6.0", false);
+		assertEquals(List.of("jimble-db/SKILL.md"), report.removed());
+		assertTrue(report.gone().isEmpty());
+		assertFalse(Files.exists(root.resolve(".claude/skills/jimble-db")), "空になったフォルダも消す");
+		assertFalse(report.hasKept());
 
-		assertEquals(java.util.List.of("jimble-db/SKILL.md"), report.gone());
-		assertTrue(Files.exists(root.resolve(".claude/skills/jimble-db/SKILL.md")));
+		// 控えから外したので、次は何も言わない
+		SkillsInstaller.Report next = install(root, without(skills("v2"), "jimble-db/SKILL.md"), "1.6.0", false);
+		assertTrue(next.removed().isEmpty());
+		assertTrue(next.gone().isEmpty());
+
+	}
+
+	@Test
+	@DisplayName("この版で無くなった skill でも、手で直してあれば消さずに知らせ続ける。--overwrite なら消す")
+	void goneEditedIsKeptUntilOverwrite (@TempDir Path root) throws IOException {
+
+		install(root, skills("v1"), "1.5.0", false);
+		Files.writeString(root.resolve(".claude/skills/jimble-db/SKILL.md"), "db v1 + アプリの書き足し");
+
+		SkillsInstaller.Report report = install(root, without(skills("v2"), "jimble-db/SKILL.md"), "1.6.0", false);
+
+		assertEquals(List.of("jimble-db/SKILL.md"), report.gone());
+		assertTrue(report.removed().isEmpty());
+		assertEquals("db v1 + アプリの書き足し", read(root, "jimble-db/SKILL.md"));
+		assertTrue(report.hasKept());
+
+		// 控えに残すので、次に揃えたときも知らせる（黙って「アプリの skill」にならない）
+		SkillsInstaller.Report next = install(root, without(skills("v3"), "jimble-db/SKILL.md"), "1.7.0", false);
+		assertEquals(List.of("jimble-db/SKILL.md"), next.gone());
+
+		SkillsInstaller.Report forced = install(root, without(skills("v3"), "jimble-db/SKILL.md"), "1.7.0", true);
+		assertEquals(List.of("jimble-db/SKILL.md"), forced.removed());
+		assertFalse(Files.exists(root.resolve(".claude/skills/jimble-db/SKILL.md")));
+
+	}
+
+	@Test
+	@DisplayName("この版で無くなった skill を、もう手で消してあれば控えから外すだけ")
+	void goneAlreadyDeletedIsForgotten (@TempDir Path root) throws IOException {
+
+		install(root, skills("v1"), "1.5.0", false);
+		Files.delete(root.resolve(".claude/skills/jimble-db/SKILL.md"));
+
+		SkillsInstaller.Report report = install(root, without(skills("v2"), "jimble-db/SKILL.md"), "1.6.0", false);
+
+		assertTrue(report.removed().isEmpty());
+		assertTrue(report.gone().isEmpty());
+		assertFalse(Files.readString(root.resolve(".claude/jimble-skills.properties")).contains("jimble-db"));
+
+	}
+
+	@Test
+	@DisplayName("控えが .claude/skills/ の外を指していても、そこは消さない")
+	void recordOutsideSkillsIsIgnored (@TempDir Path root) throws IOException {
+
+		install(root, skills("v1"), "1.5.0", false);
+
+		Path outside = root.resolve("build.gradle.kts");
+		Files.writeString(outside, "plugins {}");
+		Path record = root.resolve(".claude/jimble-skills.properties");
+		Files.writeString(record, Files.readString(record) + "skills/../../build.gradle.kts=" + SkillsInstaller.sha256("plugins {}".getBytes(StandardCharsets.UTF_8)) + "\n");
+
+		SkillsInstaller.Report report = install(root, skills("v1"), "1.5.0", true);
+
+		assertTrue(report.removed().isEmpty());
+		assertTrue(Files.exists(outside));
+
+	}
+
+	@Test
+	@DisplayName("skill を分けた版に上げると、分けた skill が足され、元の skill は案内だけに入れ替わる")
+	void splitSkillsAreAddedAndOriginalIsReplaced (@TempDir Path root) throws IOException {
+
+		install(root, skills("v1"), "2.7.6", false);
+
+		Map<String, byte[]> split = new LinkedHashMap<>(skills("案内だけ"));
+		split.put("jimble-db-select/SKILL.md", "引く".getBytes(StandardCharsets.UTF_8));
+		split.put("jimble-db-tx/SKILL.md", "トランザクション".getBytes(StandardCharsets.UTF_8));
+
+		SkillsInstaller.Report report = install(root, split, "2.7.8", false);
+
+		assertEquals(Result.UPDATED, result(report, "jimble-db/SKILL.md"));
+		assertEquals("db 案内だけ", read(root, "jimble-db/SKILL.md"));
+		assertEquals(Result.ADDED, result(report, "jimble-db-select/SKILL.md"));
+		assertEquals(Result.ADDED, result(report, "jimble-db-tx/SKILL.md"));
+		assertFalse(report.hasKept());
+
+		// 足した skill も控えに載り、次の版で入れ替わる
+		Map<String, byte[]> next = new LinkedHashMap<>(split);
+		next.put("jimble-db-tx/SKILL.md", "トランザクション v2".getBytes(StandardCharsets.UTF_8));
+		assertEquals(Result.UPDATED, result(install(root, next, "2.7.9", false), "jimble-db-tx/SKILL.md"));
+
+	}
+
+	@Test
+	@DisplayName("アプリが自分で置いた skill（控えに無いもの）は、名前が jimble で始まっていても触らない")
+	void appOwnSkillIsNotTouched (@TempDir Path root) throws IOException {
+
+		Path own = root.resolve(".claude/skills/jimble-shop/SKILL.md");
+		Files.createDirectories(own.getParent());
+		Files.writeString(own, "アプリの skill");
+
+		SkillsInstaller.Report report = install(root, skills("v1"), "2.7.8", false);
+
+		assertTrue(report.removed().isEmpty());
+		assertTrue(report.gone().isEmpty());
+		assertEquals("アプリの skill", Files.readString(own));
 
 	}
 
@@ -182,9 +297,11 @@ class SkillsInstallerTest {
 
 		Map<String, byte[]> bundled = AiResources.skills();
 
-		assertEquals(4, bundled.size(), bundled.keySet().toString());
-
 		Path repository = Path.of("..").resolve(".claude/skills");
+
+		try (Stream<Path> dirs = Files.list(repository)) {
+			assertEquals(dirs.filter(dir -> Files.exists(dir.resolve("SKILL.md"))).count(), bundled.size(), bundled.keySet().toString());
+		}
 
 		for (Map.Entry<String, byte[]> skill : bundled.entrySet()) {
 			assertArrayEquals(Files.readAllBytes(repository.resolve(skill.getKey())), skill.getValue(), skill.getKey());
@@ -193,6 +310,24 @@ class SkillsInstallerTest {
 		assertFalse(AiResources.version().isEmpty());
 		assertTrue(new String(AiResources.agents(), StandardCharsets.UTF_8).contains("jimbleSkills"));
 		assertEquals("@AGENTS.md", new String(AiResources.claude(), StandardCharsets.UTF_8).trim());
+
+	}
+
+	@Test
+	@DisplayName("配る skill は1つ 8 KB まで。name はフォルダ名と同じで、description（いつ読むか）がある")
+	void bundledSkillsAreSmall () {
+
+		for (Map.Entry<String, byte[]> skill : AiResources.skills().entrySet()) {
+
+			String name = skill.getKey().substring(0, skill.getKey().indexOf('/'));
+			String text = new String(skill.getValue(), StandardCharsets.UTF_8);
+
+			assertTrue(skill.getValue().length <= MAX_SKILL_BYTES
+				, "%s が %,d バイトあります（%,d まで）。分野ごとの skill に分けてください".formatted(skill.getKey(), skill.getValue().length, MAX_SKILL_BYTES));
+			assertTrue(text.startsWith("---\nname: " + name + "\n"), name + " の name がフォルダ名と違います");
+			assertTrue(text.contains("\ndescription: ") && text.indexOf("\n---\n", 4) > 0, name + " に description がありません");
+
+		}
 
 	}
 
