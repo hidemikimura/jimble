@@ -12,6 +12,7 @@ order: 1
 
   new <name>              プロジェクトの雛形を作る
   migrate                 未適用のマイグレーションを適用する
+  migrateCheck            当たっているかを確かめる（DB には書かない）
   codegen <source root>   テーブル定義のコードを生成する（例: src/main/java）
   version                 版を表示する
 ```
@@ -22,6 +23,7 @@ The help text prints in Japanese. What each command does:
 |---|---|
 | `new <name>` | Write a project skeleton |
 | `migrate` | Apply the migrations that have not been applied yet |
+| `migrateCheck` | Check that the migrations have been applied (writes nothing) |
 | `codegen <source root>` | Generate the table definition code (`src/main/java`, say) |
 | `version` | Print the version |
 
@@ -173,6 +175,10 @@ their settings are in [the Gradle plugins](./gradle).
 > ```bash
 > java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate
 > ```
+
+For the options that apply to databases lined up side by side (`--data-source`,
+`--migration-dir`, `--parallel`, `--keep-going`) and for `migrateCheck`, see
+[Applying to databases lined up side by side](./codegen#applying-to-databases-lined-up-side-by-side).
 
 ## Checking the version
 

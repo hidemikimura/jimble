@@ -3,10 +3,12 @@ package io.jimble.gradle;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.tasks.JavaExec;
 import org.gradle.testfixtures.ProjectBuilder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,6 +37,48 @@ class JimbleDbPluginTest {
 		assertNotNull(project.getTasks().findByName(JimbleDbPlugin.TASK_MIGRATE));
 		assertNotNull(project.getTasks().findByName(JimbleDbPlugin.TASK_CODEGEN));
 		assertNotNull(project.getTasks().findByName(JimbleDbPlugin.TASK_CODEGEN_CHECK));
+		assertNotNull(project.getTasks().findByName(JimbleDbPlugin.TASK_MIGRATE_CHECK));
+
+	}
+
+	@Test
+	@DisplayName("jimble.migrateArgs を書かなければ、migrate はこれまでどおりコマンドだけを渡す")
+	void migrateWithoutOptions () {
+
+		Project project = project();
+
+		assertEquals(List.of("migrate"), arguments(project, JimbleDbPlugin.TASK_MIGRATE));
+		assertEquals(List.of("migrateCheck"), arguments(project, JimbleDbPlugin.TASK_MIGRATE_CHECK));
+
+	}
+
+	@Test
+	@DisplayName("jimble.migrateArgs に書いたオプションを、migrate と migrateCheck のコマンドの後ろに渡す")
+	void migrateWithOptions () {
+
+		Project project = project();
+		project.getExtensions().getExtraProperties().set(JimbleDbPlugin.PROPERTY_MIGRATE_ARGS, "  --migration-dir shop   --parallel 4 ");
+
+		assertEquals(List.of("migrate", "--migration-dir", "shop", "--parallel", "4"), arguments(project, JimbleDbPlugin.TASK_MIGRATE));
+		assertEquals(List.of("migrateCheck", "--migration-dir", "shop", "--parallel", "4"), arguments(project, JimbleDbPlugin.TASK_MIGRATE_CHECK));
+
+	}
+
+	/**
+	 * タスクが CLI に渡す引数
+	 *
+	 * @param project	プロジェクト
+	 * @param name		タスク名
+	 * @return	引数
+	 */
+	private static List<String> arguments (Project project, String name) {
+
+		JavaExec task = (JavaExec) project.getTasks().getByName(name);
+
+		List<String> args = new ArrayList<>(task.getArgs());
+		task.getArgumentProviders().forEach(provider -> provider.asArguments().forEach(args::add));
+
+		return args;
 
 	}
 

@@ -395,6 +395,7 @@ db {
 		product  = "mysql"                 # mysql | mariadb | postgresql | postgres | pgsql
 		schema   = ""                      # migration folder name. empty means the block's name. spelled scheme before
 		migration_dir = ""                 # migration folder name. wins over schema when set (since 2.7.8). give same-shaped DBs the same name
+		# migrate_on_startup = false        # apply migrations at startup? unset means follow migration.on_startup (since 2.7.8)
 
 		maximum_pool_size     = 10         # largest the pool gets
 		minimum_idle          = 1          # connections always kept open

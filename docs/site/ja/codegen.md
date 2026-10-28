@@ -205,6 +205,43 @@ Migration.install();
 > **コードマイグレーションが当たるのは主のデータソース（`main = true`）だけです。**
 > 同じ `migration_dir` を書いて並べたほかのデータソースには当たりません。SQL のマイグレーションとは違います。
 
+### 並べた DB に当てる
+
+同じ表の作りの DB を何本もデータソースにする（同じ `migration_dir` を付ける）ときは、
+**起動では当てず、デプロイの段で CLI から当てる**のがおすすめです（2.7.8 から）。
+
+```conf
+db {
+	main   { main = true, ... }                                    # 主は起動時に当ててよい
+	shop_a { url = "...", migration_dir = "shop", migrate_on_startup = false }
+	shop_b { url = "...", migration_dir = "shop", migrate_on_startup = false }
+}
+```
+
+デプロイの手順は次のとおりです。
+
+```bash
+# 1. 並べた DB に当てる。1 つ失敗してもほかを続け、最後に一覧を出す（失敗があれば 0 以外で終わる）
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate --migration-dir shop --parallel 4 --keep-going
+# 2. 版がそろったかを確かめる（DB には書かない。ずれがあれば 0 以外で終わる）
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrateCheck --migration-dir shop
+# 3. アプリを起動する
+```
+
+| オプション | 意味 |
+|---|---|
+| `--data-source <名前>` | 当てる先を絞る（くり返し可） |
+| `--migration-dir <フォルダ>` | そのフォルダを使うデータソースに絞る（くり返し可）。`--data-source` と両方なら、両方を満たすもの |
+| `--parallel <数>` | 並べて当てる数（既定 1）。1 つのデータソースにつき、接続を 2 本使います |
+| `--keep-going` | 1 つ失敗してもほかを続ける（`migrate` だけ）。既定は名前の順に当て、最初の失敗で止めます |
+
+- 絞ったときは、**選んだデータソースにしかつなぎません**（つながらない別の DB に引きずられません）
+- `migrateCheck` は、フォルダの SQL ファイルとそれぞれの DB の `migration` を突き合わせ、
+  **未適用・余分（ファイルが無いのに記録がある）・ハッシュ違い**をデータソースごとに出します
+- `db.<名前>.migrate_on_startup` を書けば、そのデータソースだけ `migration.on_startup` より優先します。
+  `migration.on_startup = false` でも、`true` と書いたデータソースには起動時に当てます
+- Gradle からは `./gradlew migrate -Pjimble.migrateArgs="--migration-dir shop --keep-going"` のように渡します（[Gradle プラグイン](./gradle)）
+
 ## コード生成
 
 ```bash
@@ -327,8 +364,11 @@ Gradle が使えないところ（CI・本番）では CLI で同じことがで
 
 ```bash
 java -cp app.jar io.jimble.db.cli.JimbleDbCli migrate
+java -cp app.jar io.jimble.db.cli.JimbleDbCli migrateCheck
 java -cp app.jar io.jimble.db.cli.JimbleDbCli codegen src/main/java
 ```
+
+`migrate`・`migrateCheck` に付けられるオプションは [並べた DB に当てる](#並べた-db-に当てる) を見てください。
 
 設定も SQL も**クラスパスから**探します。
 Gradle のタスクは [Gradle プラグイン](./gradle) にまとめてあります。

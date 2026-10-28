@@ -1,6 +1,7 @@
 package io.jimble.db.migration;
 
 import java.time.Duration;
+import io.jimble.db.DBConf;
 import io.jimble.util.conf.Conf;
 
 /**
@@ -73,6 +74,25 @@ public final class MigrationConf {
 
 		// auto
 		return !Conf.conf().isLocal();
+
+	}
+
+	/**
+	 * そのデータソースに起動時に適用するか
+	 *
+	 * <p>
+	 * {@code db.<名前>.migrate_on_startup} を書いていればそれ、無ければ {@link #isOnStartup()}。
+	 * </p>
+	 *
+	 * @param dbConf	データソースの設定
+	 * @return	適用する場合 = true
+	 * @since 2.7.8
+	 */
+	public static boolean isOnStartup (DBConf dbConf) {
+
+		Boolean own = dbConf.migrateOnStartup();
+
+		return own != null ? own : isOnStartup();
 
 	}
 

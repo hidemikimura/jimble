@@ -11,7 +11,7 @@ order: 2
 
 | ID | 何をするか | 主なタスク |
 | --- | --- | --- |
-| `io.jimble.db` | マイグレーションとコード生成を `compileJava` の前に流す | `migrate` / `codegen` / `codegenCheck` |
+| `io.jimble.db` | マイグレーションとコード生成を `compileJava` の前に流す | `migrate` / `codegen` / `codegenCheck` / `migrateCheck` |
 | `io.jimble.jte` | `src/main/jte` を `compileJava` の前に Java に変換する | `generateJte` |
 | `io.jimble.run` | 開発用のホットリロード | `jimbleRun` |
 
@@ -140,7 +140,16 @@ jimbleRun {
 ./gradlew migrate       # 未適用の SQL を当てる
 ./gradlew codegen       # テーブル定義のクラスを作る（migrate のあと）
 ./gradlew codegenCheck  # コミットされている生成物がスキーマと合うか見る
+./gradlew migrateCheck  # マイグレーションが当たっているかを見る（DB には書かない。2.7.8 から）
 ```
+
+`migrate`・`migrateCheck` にオプションを渡すときは `jimble.migrateArgs` に書きます（2.7.8 から）。
+
+```bash
+./gradlew migrate -Pjimble.migrateArgs="--migration-dir shop --parallel 4 --keep-going"
+```
+
+オプションの意味は [並べた DB に当てる](./codegen#並べた-db-に当てる) を見てください。
 
 中身は [マイグレーションとコード生成](./codegen) を見てください。
 

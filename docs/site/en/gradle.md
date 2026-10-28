@@ -11,7 +11,7 @@ There are three. **Add only the ones you need.**
 
 | ID | What it does | Main tasks |
 | --- | --- | --- |
-| `io.jimble.db` | Runs migrations and code generation in front of `compileJava` | `migrate` / `codegen` / `codegenCheck` |
+| `io.jimble.db` | Runs migrations and code generation in front of `compileJava` | `migrate` / `codegen` / `codegenCheck` / `migrateCheck` |
 | `io.jimble.jte` | Turns `src/main/jte` into Java in front of `compileJava` | `generateJte` |
 | `io.jimble.run` | Hot reload for development | `jimbleRun` |
 
@@ -142,7 +142,18 @@ jimbleRun {
 ./gradlew migrate       # apply the SQL that has not been applied
 ./gradlew codegen       # build the table definition classes (after migrate)
 ./gradlew codegenCheck  # check the committed generated code against the schema
+./gradlew migrateCheck  # check that the migrations have been applied (writes nothing; since 2.7.8)
 ```
+
+Pass options to `migrate` and `migrateCheck` through `jimble.migrateArgs`
+(since 2.7.8).
+
+```bash
+./gradlew migrate -Pjimble.migrateArgs="--migration-dir shop --parallel 4 --keep-going"
+```
+
+What the options mean is in
+[Applying to databases lined up side by side](./codegen#applying-to-databases-lined-up-side-by-side).
 
 What they do is in [Migrations and code generation](./codegen).
 

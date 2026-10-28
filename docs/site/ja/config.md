@@ -388,6 +388,7 @@ db {
 		product  = "mysql"                 # mysql | mariadb | postgresql | postgres | pgsql
 		schema   = ""                      # マイグレーションのフォルダ名。空ならブロックの名前。以前は scheme という綴りだった
 		migration_dir = ""                 # マイグレーションのフォルダ名。書けば schema より優先（2.7.8 から）。同じ作りの DB には同じ名前を書く
+		# migrate_on_startup = false        # 起動時にマイグレーションを当てるか。書かなければ migration.on_startup に従う（2.7.8 から）
 
 		maximum_pool_size     = 10         # プールの最大
 		minimum_idle          = 1          # 常に開けておく数

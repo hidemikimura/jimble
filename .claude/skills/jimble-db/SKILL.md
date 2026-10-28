@@ -381,6 +381,9 @@ conf/migration/<フォルダ名>/001_xxx.sql      # --- !Ups / # --- !Downs
 - `<フォルダ名>` は `db.<名前>.migration_dir`。無ければ `schema`、それも無ければデータソース名（2.7.8 から）。
   **同じ表の作りの DB を並べるときは、どれにも同じ `migration_dir` を書く**。同じ SQL がそれぞれの DB に1回ずつ当たり、記録もそれぞれの DB に残る
 - **`CodeMigration`（Java で書くマイグレーション）は主にしか当たらない**
+- 並べた DB は**起動では当てず、デプロイの段で CLI から当てる**（2.7.8 から）。`db.<名前>.migrate_on_startup = false` を付け、
+  `JimbleDbCli migrate --migration-dir shop --parallel 4 --keep-going` → `JimbleDbCli migrateCheck --migration-dir shop` → 起動。
+  Gradle は `-Pjimble.migrateArgs="..."`。`migrateCheck` は DB に書かず、未適用・余分・ハッシュ違いがあれば 0 以外で終わる
 - 何台が同時に起動しても1台だけが当てる（`db_lock` の行ロック。DDL を流す接続とは別の接続で持つので、DDL の暗黙コミットで外れない）。
   そのため**マイグレーションを当てるデータソースは `maximum_pool_size` を 2 以上にする**（1 だと例外で止まる）
 

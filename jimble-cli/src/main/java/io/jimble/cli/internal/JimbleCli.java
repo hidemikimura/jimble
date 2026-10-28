@@ -10,6 +10,7 @@ import java.nio.file.Path;
  * <pre>
  * jimble new &lt;name&gt;              プロジェクトの雛形を作る
  * jimble migrate                 未適用のマイグレーションを適用する
+ * jimble migrateCheck            当たっているかを確かめる（DB には書かない）
  * jimble codegen &lt;ソースルート&gt;   テーブル定義のコードを生成する
  * jimble version                 版を表示する
  * </pre>
@@ -57,7 +58,7 @@ public final class JimbleCli {
 			/*
 			 * 委譲する。JimbleDbCli は自分で System.exit する。
 			 */
-			case "migrate", "codegen" -> JimbleDbCli.main(args);
+			case "migrate", "migrateCheck", "codegen" -> JimbleDbCli.main(args);
 
 			default -> {
 				System.err.println("知らないコマンドです: " + args[0]);
@@ -123,8 +124,12 @@ public final class JimbleCli {
 
 			  new <name>              プロジェクトの雛形を作る
 			  migrate                 未適用のマイグレーションを適用する
+			  migrateCheck            当たっているかを確かめる（DB には書かない）
 			  codegen <ソースルート>   テーブル定義のコードを生成する（例: src/main/java）
 			  version                 版を表示する
+
+			migrate・migrateCheck には --data-source <名前> / --migration-dir <フォルダ> /
+			--parallel <数> / --keep-going を付けられる（詳しくは migrate のページ）。
 
 			migrate と codegen はアプリの設定（application.conf）とマイグレーションの
 			SQL をクラスパスから探す。プロジェクトの中から ./gradlew migrate を使うか、
