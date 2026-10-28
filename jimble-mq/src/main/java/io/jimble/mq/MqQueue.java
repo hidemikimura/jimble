@@ -302,9 +302,69 @@ public final class MqQueue {
 			poller(handoffs, wake, cancelOrderNotify);
 		});
 
+		Duration recoverInterval = MqConf.recoverInterval();
+
+		if (!recoverInterval.isZero() && !recoverInterval.isNegative()) {
+			manager.execute(() -> {
+				Thread.currentThread().setName("jimble-mq-recover-" + queueName);
+				recoverer(recoverInterval, cancelOrderNotify);
+			});
+		}
+
 		return manager;
 
 	}
+
+	/**
+	 * 処理中のまま残った行を、回している間も周期的に戻す（{@code mq.recover_interval}。2.7.8）
+	 *
+	 * <p>
+	 * かつて {@link #recoverStale()} を呼ぶのは、キューを起動するときの1回だけだった。
+	 * プロセスが落ちて {@code mq.stale} より早く立ち上がり直すと、そのときの行はまだ古くなっておらず戻らない。
+	 * 何台かで回していれば、ほかの台はもう起動済みなので戻さない。<b>次にキューを起動し直すまで、誰も処理しなかった。</b>
+	 * </p>
+	 *
+	 * <p>
+	 * 何台かが同時に呼んでも、1行ずつ拾ったときと同じ状態のときだけ書き換えるので、二重には数えない。
+	 * 戻せなかったときはログを出して続ける（次の周でまた試す）。
+	 * </p>
+	 *
+	 * @param interval			間隔
+	 * @param cancelOrderNotify	中断通知
+	 */
+	private void recoverer (Duration interval, CancelOrderNotify cancelOrderNotify) {
+
+		long next = System.currentTimeMillis() + interval.toMillis();
+
+		while (!cancelOrderNotify.isCancelOrder()) {
+
+			long wait = next - System.currentTimeMillis();
+
+			if (wait > 0) {
+				// 止められたらすぐ抜けられるよう、短く刻んで眠る
+				try {
+					Thread.sleep(Math.min(wait, RECOVER_CHECK.toMillis()));
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return;
+				}
+				continue;
+			}
+
+			next = System.currentTimeMillis() + interval.toMillis();
+
+			try {
+				recoverStale();
+			} catch (RuntimeException ex) {
+				Log.error(ex, "MQ の迷子を戻せませんでした（次の周でまた試します）: %s".formatted(queueName));
+			}
+
+		}
+
+	}
+
+	/** 戻す処理が、止められたかを確かめる間隔 */
+	private static final Duration RECOVER_CHECK = Duration.ofMillis(200);
 
 	/**
 	 * 取り出し役のスレッドの名前
@@ -1030,7 +1090,7 @@ public final class MqQueue {
 			 */
 			Log.error("MQ のキーが登録されていません: %s / %s / id=%d".formatted(queueName, key, id));
 
-			updateStatus(db, id, MqStatus.dead
+			updateStatus(db, row, MqStatus.dead
 				, new Data().putData("reason", "MQ のキーが登録されていません: " + key));
 
 			return;
@@ -1124,7 +1184,9 @@ public final class MqQueue {
 		Metrics.count("mq.%s.%s".formatted(queueName, status.name()));
 
 		if (status == MqStatus.completed) {
-			db.delete("DELETE FROM %s WHERE id = ?".formatted(db.dialect().identifier(queueName)), id);
+			int deleted = db.delete("DELETE FROM %s WHERE id = ? AND status = ? AND retry_count = ?".formatted(db.dialect().identifier(queueName))
+				, id, MqStatus.running.name(), row.getInt("retry_count"));
+			warnIfReclaimed(deleted, id);
 			return;
 		}
 
@@ -1133,7 +1195,7 @@ public final class MqQueue {
 			return;
 		}
 
-		updateStatus(db, id, status, null);
+		updateStatus(db, row, status, null);
 
 	}
 
@@ -1172,7 +1234,7 @@ public final class MqQueue {
 
 			Log.error("MQ をあきらめました: %s / id=%d / %d 回目".formatted(queueName, id, retryCount + 1));
 
-			updateStatus(db, id, MqStatus.dead, logInfo);
+			updateStatus(db, row, MqStatus.dead, logInfo);
 
 			return;
 
@@ -1186,7 +1248,7 @@ public final class MqQueue {
 			.formatted(queueName, id, nextRetry, waitSeconds));
 
 		// 次にやる時刻も JVM の時刻で書く（取り出しと同じ時計で比べる。D-281）
-		db.update("""
+		int updated = db.update("""
 				UPDATE %s SET
 					status = ?
 					, retry_count = ?
@@ -1195,12 +1257,20 @@ public final class MqQueue {
 					, updated_at = NOW()
 				WHERE
 					id = ?
+					AND status = ?
+					AND retry_count = ?
 			""".formatted(db.dialect().identifier(queueName))
 			, MqStatus.waiting.name()
 			, nextRetry
 			, retryAt(System.currentTimeMillis(), wait)
 			, logInfo
-			, id);
+			, id
+			, MqStatus.running.name()
+			, retryCount);
+
+		if (warnIfReclaimed(updated, id)) {
+			return;
+		}
 
 		// やり直す時刻に、このデータソースを見に来るように（このプロセスの中の印）
 		MqHints.markAt(queueName, db.getDBName(), System.currentTimeMillis() + wait.toMillis());
@@ -1229,26 +1299,52 @@ public final class MqQueue {
 	}
 
 	/**
-	 * ステータスを書き換える
+	 * 状態を書き換える（取ったときのまま running の行だけ）
+	 *
+	 * <p>
+	 * <b>取ったときの状態（{@code running} と {@code retry_count}）を条件にする</b>（2.7.8）。
+	 * かつては {@code WHERE id = ?} だけだったので、{@code mq.stale} より長くかかった処理が戻されて別のワーカーに取り直されると、
+	 * <b>あとから終わった古い処理が、新しい処理の状態を上書きしていた</b>。
+	 * </p>
 	 *
 	 * @param db		DB
-	 * @param id		ID
+	 * @param row		取った行
 	 * @param status	ステータス
 	 * @param logInfo	ログ情報（無ければ null）
 	 */
-	private void updateStatus (DB db, long id, MqStatus status, Data logInfo) {
+	private void updateStatus (DB db, Data row, MqStatus status, Data logInfo) {
 
-		if (logInfo == null) {
+		long id = row.getLong("id");
+		int retryCount = row.getInt("retry_count");
+		String table = db.dialect().identifier(queueName);
 
-			db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
-				, status.name(), id);
+		int updated = logInfo == null
+			? db.update("UPDATE %s SET status = ?, updated_at = NOW() WHERE id = ? AND status = ? AND retry_count = ?".formatted(table)
+				, status.name(), id, MqStatus.running.name(), retryCount)
+			: db.update("UPDATE %s SET status = ?, log_info = ?, updated_at = NOW() WHERE id = ? AND status = ? AND retry_count = ?".formatted(table)
+				, status.name(), logInfo, id, MqStatus.running.name(), retryCount);
 
-			return;
+		warnIfReclaimed(updated, id);
 
+	}
+
+	/**
+	 * 書き換えられなかったら、取り直されていたと言う
+	 *
+	 * @param updated	書き換えた行の数
+	 * @param id		ID
+	 * @return	取り直されていた場合 = true
+	 */
+	private boolean warnIfReclaimed (int updated, long id) {
+
+		if (updated > 0) {
+			return false;
 		}
 
-		db.update("UPDATE %s SET status = ?, log_info = ?, updated_at = NOW() WHERE id = ?".formatted(db.dialect().identifier(queueName))
-			, status.name(), logInfo, id);
+		Log.warn(("MQ の行が、処理している間に取り直されていたので、結果を書きません: %s / id=%d"
+			+ "（処理が mq.stale より長くかかっています。mq.stale を一番長い処理より長くしてください）").formatted(queueName, id));
+
+		return true;
 
 	}
 

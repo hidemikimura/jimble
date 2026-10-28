@@ -460,6 +460,7 @@ mq {
 	retry_backoff     = 10s    # interval between retries (doubles each time)
 	retry_backoff_max = 10m
 	stale             = 10m    # this long as running counts as dead (sent back to waiting, counted as one retry)
+	recover_interval  = 1m     # how often rows left running are put back; 0s means only at startup (since 2.7.8)
 
 	# Workers per execution type (how many run in parallel). Left out, each type's own default is used.
 	# One poller per queue reads the DB, so more workers do not add connections while idle.

@@ -71,6 +71,28 @@ So **write it so that running it again lands in the same place**.
 
 "Exactly once" is not something a distributed system can give you. jimble does not pretend it can.
 
+### Rows left running
+
+If a process dies partway through, the row stays `running`.
+**`running` rows older than `mq.stale` (10 minutes by default) are put back to `waiting` every
+`mq.recover_interval` (1 minute by default)** (since 2.7.8; before that only when the queue started).
+Putting a row back counts as one retry, and a row that has used up `maxRetry()` becomes `dead`. Several
+servers doing this at once do not count twice.
+
+> [!WARN]
+> **Make `mq.stale` longer than your longest job.**
+> A job that runs longer than `mq.stale` is put back while it is still running, and another worker runs it
+> again (it runs twice). When that happens, the old job that finishes later **does not write its result**
+> (only a row still in the state it was claimed in is updated; since 2.7.8). If the log says the row "was
+> claimed again while it was being processed", raise `mq.stale`.
+
+```conf
+mq {
+	stale            = 10m   # running rows older than this are treated as left behind by a dead process
+	recover_interval = 1m    # how often to put them back; 0s means only when the queue starts
+}
+```
+
 ## Registering it and running it
 
 ```java
