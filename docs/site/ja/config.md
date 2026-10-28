@@ -16,7 +16,7 @@ order: 5
 ```
 conf/application.conf          設定
 conf/application.local.conf    環境別
-conf/migration/<スキーマ名>/   マイグレーション
+conf/migration/<フォルダ名>/   マイグレーション
 ```
 
 `build.gradle.kts` で `conf` をリソースに足します。
@@ -386,7 +386,8 @@ db {
 		username = ${?DB_USER}
 		password = ${?DB_PASSWORD}
 		product  = "mysql"                 # mysql | mariadb | postgresql | postgres | pgsql
-		schema   = ""                      # 空ならブロックの名前。以前は scheme という綴りだった
+		schema   = ""                      # マイグレーションのフォルダ名。空ならブロックの名前。以前は scheme という綴りだった
+		migration_dir = ""                 # マイグレーションのフォルダ名。書けば schema より優先（2.7.8 から）。同じ作りの DB には同じ名前を書く
 
 		maximum_pool_size     = 10         # プールの最大
 		minimum_idle          = 1          # 常に開けておく数

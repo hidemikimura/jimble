@@ -22,7 +22,7 @@ table definition classes are built from that.
 
 ## Migrations
 
-Put your SQL in `conf/migration/<schema name>/`.
+Put your SQL in `conf/migration/<folder name>/`.
 
 ```sql
 # --- !Ups
@@ -51,8 +51,12 @@ DROP TABLE `note`;
 
 - File names are up to you. They are applied in **the natural order of the names**
   (a `001_` prefix makes it obvious)
-- `<schema name>` is `scheme` from the configuration (or the data source name if
-  that is missing)
+- `<folder name>` is `db.<name>.migration_dir`. Without it, `schema`; without
+  that, the data source name (changing `migration.resource_dir` changes the
+  `conf/migration` part too)
+- When several data sources are databases with the same tables, give them all
+  the same `migration_dir`. The same SQL is applied once to each database, and
+  each database keeps its own record (`migration` and `migration_history`)
 - **They are looked up from the classpath.** Add `conf/` to your resources
   ([Configuration](./config))
 
@@ -221,6 +225,11 @@ They run once each, in `versionYyyyMmDd()` order, and the result is kept in
 > **The CLI's `migrate` does not run code migrations.**
 > The registration lives in your application code, so they only run **when the
 > application starts.**
+
+> [!NOTE]
+> **Code migrations run only on the main data source (`main = true`).**
+> Other data sources that share a `migration_dir` do not get them, unlike SQL
+> migrations.
 
 ## Code generation
 

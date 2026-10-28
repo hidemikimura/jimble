@@ -668,7 +668,7 @@ public final class Migration {
 	 */
 	private static List<MigrationInfo> list (DBSource dbSource, Class<?> appClass) {
 
-		String dir = MigrationConf.resourceDir() + "/" + dbSource.conf().schema();
+		String dir = MigrationConf.resourceDir() + "/" + dbSource.conf().migrationDir();
 
 		URL url = appClass.getClassLoader().getResource(dir);
 		if (url == null) {

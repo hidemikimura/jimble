@@ -224,9 +224,23 @@ db {
 
 トップレベルに並べたものは、**1本ごとに独立した扱い**を受けます。
 
-- `conf/migration/<データソース名>/` のマイグレーションが当たります
+- `conf/migration/<データソース名>/` のマイグレーションが当たります（`migration_dir` で別のフォルダにできます。下を参照）
 - codegen が `db/<データソース名>/` を作ります
 - `migration` / `db_lock` / `db_value` / `db_cache` もそちらに作られます
+
+同じ表の作りの DB を何本も並べるときは、マイグレーションのフォルダを1つにできます（2.7.8 から）。
+
+```conf
+db {
+	shop_a { url = "...", migration_dir = "shop" }
+	shop_b { url = "...", migration_dir = "shop" }
+}
+```
+
+`conf/migration/shop/` の SQL が、`shop_a` と `shop_b` のそれぞれに1回ずつ当たります。
+当たったかどうかの記録（`migration`・`migration_history`）はそれぞれの DB に残るので、
+片方だけ当たっていれば、もう片方にだけ当たります。
+Java で書くマイグレーション（`CodeMigration`）は主にしか当たりません。
 
 **設定を書き写さずにもう1本ぶら下げたい**だけなら、`subs` を使います。
 
@@ -425,7 +439,7 @@ int count = db.execute("INSERT INTO archive SELECT * FROM post WHERE ...");  // 
 
 ## マイグレーション
 
-`conf/migration/<スキーマ名>/001_xxx.sql` に置きます。
+`conf/migration/<フォルダ名>/001_xxx.sql` に置きます（フォルダ名は `migration_dir`、無ければ `schema`、それも無ければデータソース名）。
 
 ```sql
 # --- !Ups
