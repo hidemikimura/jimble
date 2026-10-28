@@ -378,6 +378,9 @@ db {
 	# データソースの名前ではないので、この位置に書く
 	remove_all_null_table_data = false
 
+	# 起動時の確かめ（つなぐ・管理の表・マイグレーション）を並べる数。既定 1（2.7.8 から）
+	startup_parallelism = 1
+
 	# データソースごとに1ブロック。名前（blog）が DB クラスの名前になる
 	blog {
 		main     = true                    # 主データソースにするか

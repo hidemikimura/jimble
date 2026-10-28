@@ -25,6 +25,12 @@ description: jimble の DB と Redis の設定を書くときに使う。db.<名
 **`connection_pool_type = "agroal"` でも、DB が再起動すれば切れた接続は捨てる**（`product` に合った見分け方を渡す。2.2.1）。
 `validate_on_borrow = true` は取り出すたびに確かめるので**速さが半分ほど**になる。再起動に備えるだけなら要らない。
 
+## 同じ作りの DB を数十並べる（2.7.8）
+
+- **ひな形は HOCON の `${}`**：`db { }` の外に `db_templates.tenant { ... }` を置き、`shop_a = ${db_templates.tenant} { url = "..." }`（専用のキーは無い。サブの組も写る）
+- **`db.startup_parallelism = 8`** で起動時の確かめを並べる（既定 1。主を先に読み、残りを並べる。失敗すれば止まる）
+- 接続の数：常に開く本数は全プールの `minimum_idle` の合計、多いときは `maximum_pool_size` の合計（プールはデータソース × read × 親とサブ）。**並べた店の DB は `minimum_idle = 0`**
+
 ## 落ちても全体を止めないデータソース（2.7.8）
 
 店の DB のように、1 つ落ちても起動・死活監視を止めたくないデータソースは **`db.<名前>.required = false`**。

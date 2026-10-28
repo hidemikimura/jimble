@@ -44,6 +44,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutionException;
 import java.util.TreeSet;
 import java.util.Set;
 import java.util.SortedMap;
@@ -54,7 +59,7 @@ public class DBUtil {
 	// region データソース
 
 	/* データソース */
-	private static final Map<String, DBSource> dataSources = new HashMap<>();
+	private static final Map<String, DBSource> dataSources = new ConcurrentHashMap<>();
 
 	/* メインデータソース */
 	private static DBSource mainDataSource = null;
@@ -415,234 +420,28 @@ public class DBUtil {
 		// 「全部止める」に預ける（要件 D-77）。プールは最後に閉じたい
 		Shutdown.add("DB", DBUtil::stop);
 
-		for (String dbName : conf.getConfig("db").root().keySet()) {
+		List<String> dbNames = new ArrayList<>(conf.getConfig("db").root().keySet());
+		int parallelism = startupParallelism(conf);
 
-			Log.info("load DB: " + dbName);
+		if (parallelism <= 1) {
 
-			DBSource dbSource = new DBSource();
-			dbSource.name(dbName);
-
-			Config configDb;
-			try {
-				configDb = conf.getConfig("db").getConfig(dbName);
-			} catch (Exception ignore) {
-				continue;
+			for (String dbName : dbNames) {
+				loadDataSource(conf, dbName, appCls);
 			}
 
-			long start = 0;
-			long end = 0;
+		} else {
 
-			// write
-			DBConf writeDbConf = new DBConf();
-			boolean isCreated = false;
+			/*
+			 * <b>主を先に1つで読み、残りを並べて読む</b>（db.startup_parallelism。2.7.8）。
+			 * データソースごとの処理（マイグレーションなど）が主を当てにしても、主はもう読み込んである
+			 */
+			String main = mainCandidate(conf, dbNames);
+			loadDataSource(conf, main, appCls);
 
-			// 起動時につながったか（required = false のデータソースは、つながらなくても続ける。2.7.8）
-			boolean available = true;
+			List<String> rest = new ArrayList<>(dbNames);
+			rest.remove(main);
 
-			try {
-				while (true) {
-					try {
-						start = System.currentTimeMillis();
-						read(writeDbConf, configDb);
-						dbSource.conf(writeDbConf);
-						if (dbSource.conf().schema() == null || dbSource.conf().schema().isEmpty()) {
-							dbSource.conf().schema(dbName);
-						}
-						dbSource.dataSource(createDataSource(writeDbConf));
-						end = System.currentTimeMillis();
-
-						{
-							/*
-							 * 移送元はここで new Exception("Unknown database") に潰していた。
-							 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
-							 * 作りにいって二度失敗する。元の例外をそのまま上げる。
-							 */
-							dbSource.dataSource().getConnection().close();
-						}
-
-						String version = "unknown";
-						try (
-							Connection connection = dbSource.dataSource().getConnection();
-							PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
-							ResultSet resultSet = st.executeQuery()
-						) {
-							resultSet.next();
-							version = resultSet.getString("version");
-						} catch (Exception ex) {
-							Log.error(ex);
-						}
-						Log.info("success create write datasource: " + dbName + ":" + version + " (" + (end - start) +"ms)");
-						break;
-					} catch (Exception ex) {
-						/*
-						 * 「そんなデータベースは無い」の文言は製品ごとに違う（要件 F-D-30）。
-						 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
-						 */
-						if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
-							if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
-								throw loadFailed("failed create write datasource", dbName, ex);
-							}
-							if (isCreated) {
-								throw loadFailed("failed create write datasource", dbName, ex);
-							}
-							isCreated = true;
-							String url = writeDbConf.url();
-							writeDbConf.url(dbSource.dialect().maintenanceUrl(url));
-							try {
-								DataSource dataSource = createDataSource(writeDbConf);
-								PreparedStatement st = null;
-								try (
-									Connection connection = dataSource.getConnection()
-								) {
-									st = connection.prepareStatement(writeDbConf.createDatabaseSql());
-									st.execute();
-								} catch (Exception ex3) {
-									throw loadFailed("failed create write datasource", dbName, ex);
-								} finally {
-									writeDbConf.url(url);
-									if (st != null) {
-										IOUtil.close(st);
-									}
-								}
-							} catch (Exception ex2) {
-								throw loadFailed("failed create write datasource", dbName, ex);
-							}
-						} else {
-							throw loadFailed("failed create write datasource", dbName, ex);
-						}
-					}
-				}
-			} catch (SqlExecuteException ex) {
-
-				if (writeDbConf.required()) {
-					throw ex;
-				}
-
-				available = false;
-
-				Log.warn(("データソース %s につながりませんでした。required = false なので起動を続けます"
-					+ "（DB が戻れば使えます。管理の表とマイグレーションは当てていません）: %s").formatted(dbName, ex.getMessage()));
-
-				// required = false のプールは作る時点ではつながないので、作れば残る
-				if (dbSource.dataSource() == null) {
-					dbSource.dataSource(createDataSource(writeDbConf));
-				}
-
-			}
-
-			// read
-			if (configDb.hasPath("read")) {
-				try {
-					start = System.currentTimeMillis();
-					DBSource readDbSource = new DBSource();
-					readDbSource.name(dbName);
-					DBConf readDbConf = DBConf.from(writeDbConf);
-					read(readDbConf, configDb.getConfig("read"));
-					readDbSource.conf(readDbConf);
-					if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
-						readDbSource.conf().schema(dbName);
-					}
-					readDbSource.dataSource(createDataSource(readDbConf));
-					dbSource.readSource(readDbSource);
-					useRead = true;
-					end = System.currentTimeMillis();
-					Log.info("success create read datasource: " + dbName + " (" + (end - start) +"ms)");
-				} catch (Exception ex) {
-					throw loadFailed("failed create read datasource", dbName, ex);
-				}
-			}
-
-			// subs
-			if (configDb.hasPath("subs")) {
-				for (String subDbName : configDb.getConfig("subs").root().keySet()) {
-					Config subConfig = configDb.getConfig("subs").getConfig(subDbName);
-
-					try {
-						start = System.currentTimeMillis();
-						DBSource subDbSource = new DBSource();
-						subDbSource.parent(dbSource);
-						subDbSource.name(dbName);
-						DBConf subDbConf = DBConf.from(writeDbConf);
-						read(subDbConf, subConfig);
-						subDbSource.conf(subDbConf);
-						if (subDbSource.conf().schema() == null || subDbSource.conf().schema().isEmpty()) {
-							subDbSource.conf().schema(dbName);
-						}
-						subDbSource.dataSource(createDataSource(subDbConf));
-
-						if (subConfig.hasPath("read")) {
-							DBSource readDbSource = new DBSource();
-							readDbSource.name(dbName);
-							DBConf readDbConf = DBConf.from(subDbConf);
-							read(readDbConf, subConfig.getConfig("read"));
-							readDbSource.conf(readDbConf);
-							if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
-								readDbSource.conf().schema(dbName);
-							}
-							readDbSource.dataSource(createDataSource(readDbConf));
-							subDbSource.readSource(readDbSource);
-						}
-
-						subDbSource.cacheName(subCacheName(dbSource, writeDbConf, subDbName, subDbConf));
-						dbSource.putSubDBSource(subDbName, subDbSource);
-						end = System.currentTimeMillis();
-						Log.info("success create sub datasource: " + dbName + " (" + (end - start) +"ms)");
-					} catch (Exception ex) {
-						throw loadFailed("failed create subs datasource", dbName, ex);
-					}
-				}
-			}
-
-			dataSources.put(dbName, dbSource);
-			if (mainDataSource == null || (configDb.hasPath("main") && configDb.getBoolean("main"))) {
-				mainDataSource = dbSource;
-
-				/*
-				 * データソースが分からないところで使う既定の方言（要件 F-D-30）。
-				 * builder.sql() を引数なしで呼んだとき、主データソースの製品になる。
-				 */
-				io.jimble.db.dialect.Dialects.defaultDialect(dbSource.dialect());
-			}
-
-			if (!available) {
-				// つながってから起動し直すか、CLI の migrate で当てる
-				continue;
-			}
-
-			// DB version
-			DBVersion.load(getDB(dbName));
-
-			// 管理の表（db.<名前>.framework_tables で絞れる。2.7.8）
-			List<String> frameworkTables = dbSource.conf().frameworkTables();
-
-			// DB log
-			if (frameworkTables.contains(FrameworkTables.DB_LOG)) {
-				DBLog.init(getDB(dbName));
-			}
-
-			// DB value
-			if (frameworkTables.contains(FrameworkTables.DB_VALUE)) {
-				DBValue.init(getDB(dbName));
-			}
-
-			// DB lock（外せない）
-			DBLock.init(getDB(dbName));
-
-			// Redis Lock
-			if (frameworkTables.contains(FrameworkTables.REDIS_LOCK)) {
-				RedisLock.init(getDB(dbName));
-			}
-
-			// DB cache
-			if (frameworkTables.contains(FrameworkTables.DB_CACHE)) {
-				DBCache.init(getDB(dbName));
-			}
-
-			// データソースごとの追加処理
-			// （マイグレーション・レートリミットなど、上位モジュールが登録する）
-			for (DataSourceTask task : DATA_SOURCE_TASKS) {
-				task.run(dbSource, getDB(dbName), appCls);
-			}
+			loadInParallel(conf, rest, appCls, parallelism);
 
 		}
 
@@ -666,6 +465,362 @@ public class DBUtil {
 			for (Runnable task : STARTUP_TASKS) {
 				task.run();
 			}
+		}
+
+	}
+
+	/**
+	 * データソースを1つ読み込む
+	 *
+	 * @param conf		設定全体
+	 * @param dbName	データソース名（データソースでない値なら何もしない）
+	 * @param appCls	クラスパスの起点
+	 */
+	private static void loadDataSource (Config conf, String dbName, Class<?> appCls) {
+
+
+		Log.info("load DB: " + dbName);
+
+		DBSource dbSource = new DBSource();
+		dbSource.name(dbName);
+
+		Config configDb;
+		try {
+			configDb = conf.getConfig("db").getConfig(dbName);
+		} catch (Exception ignore) {
+			// データソースでない値（remove_all_null_table_data・startup_parallelism など）
+			return;
+		}
+
+		long start = 0;
+		long end = 0;
+
+		// write
+		DBConf writeDbConf = new DBConf();
+		boolean isCreated = false;
+
+		// 起動時につながったか（required = false のデータソースは、つながらなくても続ける。2.7.8）
+		boolean available = true;
+
+		try {
+			while (true) {
+				try {
+					start = System.currentTimeMillis();
+					read(writeDbConf, configDb);
+					dbSource.conf(writeDbConf);
+					if (dbSource.conf().schema() == null || dbSource.conf().schema().isEmpty()) {
+						dbSource.conf().schema(dbName);
+					}
+					dbSource.dataSource(createDataSource(writeDbConf));
+					end = System.currentTimeMillis();
+
+					{
+						/*
+						 * 移送元はここで new Exception("Unknown database") に潰していた。
+						 * <b>パスワード違いも「データベースが無い」に見えてしまい、</b>
+						 * 作りにいって二度失敗する。元の例外をそのまま上げる。
+						 */
+						dbSource.dataSource().getConnection().close();
+					}
+
+					String version = "unknown";
+					try (
+						Connection connection = dbSource.dataSource().getConnection();
+						PreparedStatement st = connection.prepareStatement(dbSource.dialect().versionSql());
+						ResultSet resultSet = st.executeQuery()
+					) {
+						resultSet.next();
+						version = resultSet.getString("version");
+					} catch (Exception ex) {
+						Log.error(ex);
+					}
+					Log.info("success create write datasource: " + dbName + ":" + version + " (" + (end - start) +"ms)");
+					break;
+				} catch (Exception ex) {
+					/*
+					 * 「そんなデータベースは無い」の文言は製品ごとに違う（要件 F-D-30）。
+					 * MySQL は Unknown database、PostgreSQL は database "x" does not exist。
+					 */
+					if (dbSource.dialect().isUnknownDatabase(ex.getMessage())) {
+						if (writeDbConf.createDatabaseSql() == null || writeDbConf.createDatabaseSql().isEmpty()) {
+							throw loadFailed("failed create write datasource", dbName, ex);
+						}
+						if (isCreated) {
+							throw loadFailed("failed create write datasource", dbName, ex);
+						}
+						isCreated = true;
+						String url = writeDbConf.url();
+						writeDbConf.url(dbSource.dialect().maintenanceUrl(url));
+						try {
+							DataSource dataSource = createDataSource(writeDbConf);
+							PreparedStatement st = null;
+							try (
+								Connection connection = dataSource.getConnection()
+							) {
+								st = connection.prepareStatement(writeDbConf.createDatabaseSql());
+								st.execute();
+							} catch (Exception ex3) {
+								throw loadFailed("failed create write datasource", dbName, ex);
+							} finally {
+								writeDbConf.url(url);
+								if (st != null) {
+									IOUtil.close(st);
+								}
+							}
+						} catch (Exception ex2) {
+							throw loadFailed("failed create write datasource", dbName, ex);
+						}
+					} else {
+						throw loadFailed("failed create write datasource", dbName, ex);
+					}
+				}
+			}
+		} catch (SqlExecuteException ex) {
+
+			if (writeDbConf.required()) {
+				throw ex;
+			}
+
+			available = false;
+
+			Log.warn(("データソース %s につながりませんでした。required = false なので起動を続けます"
+				+ "（DB が戻れば使えます。管理の表とマイグレーションは当てていません）: %s").formatted(dbName, ex.getMessage()));
+
+			// required = false のプールは作る時点ではつながないので、作れば残る
+			if (dbSource.dataSource() == null) {
+				dbSource.dataSource(createDataSource(writeDbConf));
+			}
+
+		}
+
+		// read
+		if (configDb.hasPath("read")) {
+			try {
+				start = System.currentTimeMillis();
+				DBSource readDbSource = new DBSource();
+				readDbSource.name(dbName);
+				DBConf readDbConf = DBConf.from(writeDbConf);
+				read(readDbConf, configDb.getConfig("read"));
+				readDbSource.conf(readDbConf);
+				if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
+					readDbSource.conf().schema(dbName);
+				}
+				readDbSource.dataSource(createDataSource(readDbConf));
+				dbSource.readSource(readDbSource);
+				useRead = true;
+				end = System.currentTimeMillis();
+				Log.info("success create read datasource: " + dbName + " (" + (end - start) +"ms)");
+			} catch (Exception ex) {
+				throw loadFailed("failed create read datasource", dbName, ex);
+			}
+		}
+
+		// subs
+		if (configDb.hasPath("subs")) {
+			for (String subDbName : configDb.getConfig("subs").root().keySet()) {
+				Config subConfig = configDb.getConfig("subs").getConfig(subDbName);
+
+				try {
+					start = System.currentTimeMillis();
+					DBSource subDbSource = new DBSource();
+					subDbSource.parent(dbSource);
+					subDbSource.name(dbName);
+					DBConf subDbConf = DBConf.from(writeDbConf);
+					read(subDbConf, subConfig);
+					subDbSource.conf(subDbConf);
+					if (subDbSource.conf().schema() == null || subDbSource.conf().schema().isEmpty()) {
+						subDbSource.conf().schema(dbName);
+					}
+					subDbSource.dataSource(createDataSource(subDbConf));
+
+					if (subConfig.hasPath("read")) {
+						DBSource readDbSource = new DBSource();
+						readDbSource.name(dbName);
+						DBConf readDbConf = DBConf.from(subDbConf);
+						read(readDbConf, subConfig.getConfig("read"));
+						readDbSource.conf(readDbConf);
+						if (readDbSource.conf().schema() == null || readDbSource.conf().schema().isEmpty()) {
+							readDbSource.conf().schema(dbName);
+						}
+						readDbSource.dataSource(createDataSource(readDbConf));
+						subDbSource.readSource(readDbSource);
+					}
+
+					subDbSource.cacheName(subCacheName(dbSource, writeDbConf, subDbName, subDbConf));
+					dbSource.putSubDBSource(subDbName, subDbSource);
+					end = System.currentTimeMillis();
+					Log.info("success create sub datasource: " + dbName + " (" + (end - start) +"ms)");
+				} catch (Exception ex) {
+					throw loadFailed("failed create subs datasource", dbName, ex);
+				}
+			}
+		}
+
+		dataSources.put(dbName, dbSource);
+
+		// 並べて読むときは主を先に1つで読むが、念のため取り合わないようにする
+		synchronized (DBUtil.class) {
+			if (mainDataSource == null || (configDb.hasPath("main") && configDb.getBoolean("main"))) {
+				mainDataSource = dbSource;
+
+				/*
+				 * データソースが分からないところで使う既定の方言（要件 F-D-30）。
+				 * builder.sql() を引数なしで呼んだとき、主データソースの製品になる。
+				 */
+				io.jimble.db.dialect.Dialects.defaultDialect(dbSource.dialect());
+			}
+		}
+
+		if (!available) {
+			// つながってから起動し直すか、CLI の migrate で当てる
+			return;
+		}
+
+		// DB version
+		DBVersion.load(getDB(dbName));
+
+		// 管理の表（db.<名前>.framework_tables で絞れる。2.7.8）
+		List<String> frameworkTables = dbSource.conf().frameworkTables();
+
+		// DB log
+		if (frameworkTables.contains(FrameworkTables.DB_LOG)) {
+			DBLog.init(getDB(dbName));
+		}
+
+		// DB value
+		if (frameworkTables.contains(FrameworkTables.DB_VALUE)) {
+			DBValue.init(getDB(dbName));
+		}
+
+		// DB lock（外せない）
+		DBLock.init(getDB(dbName));
+
+		// Redis Lock
+		if (frameworkTables.contains(FrameworkTables.REDIS_LOCK)) {
+			RedisLock.init(getDB(dbName));
+		}
+
+		// DB cache
+		if (frameworkTables.contains(FrameworkTables.DB_CACHE)) {
+			DBCache.init(getDB(dbName));
+		}
+
+		// データソースごとの追加処理
+		// （マイグレーション・レートリミットなど、上位モジュールが登録する）
+		for (DataSourceTask task : DATA_SOURCE_TASKS) {
+			task.run(dbSource, getDB(dbName), appCls);
+		}
+
+	}
+
+	/**
+	 * 起動時の確かめを並べる数（{@code db.startup_parallelism}。既定 1 で、これまでどおり1つずつ）
+	 *
+	 * @param conf	設定全体
+	 * @return	並べる数
+	 * @throws IllegalStateException	1 より小さい場合
+	 */
+	private static int startupParallelism (Config conf) {
+
+		if (!conf.hasPath(KEY_STARTUP_PARALLELISM)) {
+			return 1;
+		}
+
+		int parallelism = conf.getInt(KEY_STARTUP_PARALLELISM);
+
+		if (parallelism < 1) {
+			throw new IllegalStateException("%s は 1 以上にしてください: %d".formatted(KEY_STARTUP_PARALLELISM, parallelism));
+		}
+
+		return parallelism;
+
+	}
+
+	/** 起動時の確かめを並べる数 */
+	public static final String KEY_STARTUP_PARALLELISM = "db.startup_parallelism";
+
+	/**
+	 * 主になるデータソースの名前（main = true のもの。無ければ最初に書いたもの。1つずつ読むときと同じ）
+	 *
+	 * @param conf		設定全体
+	 * @param dbNames	db の中の名前（書いた順）
+	 * @return	名前
+	 */
+	private static String mainCandidate (Config conf, List<String> dbNames) {
+
+		String first = null;
+		String main = null;
+
+		for (String dbName : dbNames) {
+			Config configDb;
+			try {
+				configDb = conf.getConfig("db").getConfig(dbName);
+			} catch (Exception ignore) {
+				continue;
+			}
+			if (first == null) {
+				first = dbName;
+			}
+			if (configDb.hasPath("main") && configDb.getBoolean("main")) {
+				main = dbName;
+			}
+		}
+
+		return main != null ? main : first;
+
+	}
+
+	/**
+	 * データソースを並べて読み込む
+	 *
+	 * <p>
+	 * 1つでも失敗したら、全部が終わるのを待ってから、最初の失敗を投げる（1つずつ読むときと同じく、起動は止まる）。
+	 * ログはデータソースの名前を付けて出しているので、並べても、どのデータソースの話かは分かる。
+	 * </p>
+	 *
+	 * @param conf			設定全体
+	 * @param dbNames		データソース名
+	 * @param appCls		クラスパスの起点
+	 * @param parallelism	並べる数
+	 */
+	private static void loadInParallel (Config conf, List<String> dbNames, Class<?> appCls, int parallelism) {
+
+		AtomicInteger threads = new AtomicInteger();
+		ExecutorService executor = Executors.newFixedThreadPool(Math.min(parallelism, Math.max(1, dbNames.size())), runnable -> {
+			Thread thread = new Thread(runnable, "jimble-db-load-" + threads.incrementAndGet());
+			thread.setDaemon(true);
+			return thread;
+		});
+
+		try {
+
+			List<Future<?>> futures = new ArrayList<>();
+			for (String dbName : dbNames) {
+				futures.add(executor.submit(() -> loadDataSource(conf, dbName, appCls)));
+			}
+
+			RuntimeException first = null;
+
+			for (Future<?> future : futures) {
+				try {
+					future.get();
+				} catch (ExecutionException ex) {
+					Throwable cause = ex.getCause();
+					if (first == null) {
+						first = cause instanceof RuntimeException runtime ? runtime : new IllegalStateException(cause.getMessage(), cause);
+					}
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					throw new IllegalStateException("データソースの読み込みを待っているあいだに割り込まれました", ex);
+				}
+			}
+
+			if (first != null) {
+				throw first;
+			}
+
+		} finally {
+			executor.shutdownNow();
 		}
 
 	}

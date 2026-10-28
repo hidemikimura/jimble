@@ -257,6 +257,77 @@ The SQL in `conf/migration/shop/` is applied once to `shop_a` and once to
 to the other one only. Migrations written in Java (`CodeMigration`) run on the
 main data source only.
 
+### Writing same-shaped databases from a template
+
+When you line up dozens of databases with the same tables, there is no need to copy the pool sizes and
+the set of subs into each one. **Put a template outside `db { }` and copy it with HOCON's `${}`, then
+override** (jimble has no dedicated key for this).
+
+```conf
+db_templates {
+	tenant {
+		maximum_pool_size = 6
+		minimum_idle      = 0           # recommended for lined-up databases (see below)
+		migration_dir     = "shop"
+		codegen_name      = "shop"
+		required          = false
+		subs {
+			shop  { maximum_pool_size = 4 }
+			admin { maximum_pool_size = 2 }
+		}
+	}
+}
+
+db {
+	main   { main = true, url = "..." }
+	shop_a = ${db_templates.tenant} { url = "jdbc:mysql://db1/shop_a" }
+	shop_b = ${db_templates.tenant} { url = "jdbc:mysql://db1/shop_b", maximum_pool_size = 8 }
+}
+```
+
+- `${db_templates.tenant} { ... }` copies the template and then applies what is inside `{ }` (the subs are
+  copied too)
+- Keep the template outside `db { }`; inside, it would be read as a data source
+
+### Running the startup checks in parallel
+
+The startup checks (connect, read the version, create framework tables, migrations) run one data source at
+a time. With many data sources, startup grows accordingly. `db.startup_parallelism` runs them in parallel
+(since 2.7.8).
+
+```conf
+db {
+	startup_parallelism = 8   # default 1 (one at a time)
+	...
+}
+```
+
+- The main data source is loaded first on its own, then the rest in parallel (per-data-source tasks can
+  rely on the main data source)
+- If any of them fails, startup waits for the rest and then stops, as before
+- Log lines carry the data source name, so they stay readable in parallel
+
+`DBUtil.load` time on a local MySQL, starting on empty databases (including creating the databases and
+framework tables):
+
+| Data sources | One at a time | 5 in parallel | 10 in parallel |
+|---|---|---|---|
+| 10 | 11.3 s | 2.6 s | 1.5 s |
+| 30 | 33.7 s | 7.5 s | 4.2 s |
+
+### Counting connections
+
+There is one pool per data source × write/read (`read`) × parent and each sub.
+
+- **Connections a process always keeps open** = the sum of `minimum_idle` over those pools
+- **Connections at peak** = the sum of `maximum_pool_size` over those pools
+
+For example, 30 shop databases with `minimum_idle = 1` and `maximum_pool_size = 6`, each with two subs (1/4
+and 1/2), keep 30 × (1 + 1 + 1) = 90 open and reach 30 × (6 + 4 + 2) = 360 at peak.
+**`minimum_idle = 0` is recommended for lined-up shop databases**, so idle databases hold no connections
+(the first use opens one, which is slightly slower). Set the database server's `max_connections` above the
+number of processes × the peak.
+
 ### Choosing which framework tables are created
 
 jimble creates the following framework tables on each data source. If a database (one shop's, say)

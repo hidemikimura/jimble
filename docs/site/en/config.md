@@ -385,6 +385,9 @@ db {
 	# Not a data source name, so it goes at this level
 	remove_all_null_table_data = false
 
+	# how many data sources to run the startup checks for in parallel (connect, framework tables, migrations). default 1 (since 2.7.8)
+	startup_parallelism = 1
+
 	# One block per data source. The name (blog) becomes the name of the DB class
 	blog {
 		main     = true                    # use as the main data source
