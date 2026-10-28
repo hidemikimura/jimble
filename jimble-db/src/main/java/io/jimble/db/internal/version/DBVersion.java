@@ -3,11 +3,15 @@ package io.jimble.db.internal.version;
 import io.jimble.util.parse.Parse;
 import io.jimble.util.data.Data;
 import io.jimble.db.DB;
+import io.jimble.db.SqlExecuteException;
+import io.jimble.util.log.Log;
 import io.jimble.db.internal.generator.info.TableInfo;
 import io.jimble.db.dialect.DialectException;
 import io.jimble.db.dialect.MySqlDialect;
 import io.jimble.db.dialect.PostgreSqlDialect;
 
+import java.sql.SQLException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -228,8 +232,15 @@ public class DBVersion {
 
 			String comment = tableComment + ":" + version.version;
 			for (String sql : version.sqlList(product, tableName)) {
-				// 失敗は例外（起動が止まる。2.0。要件 D-193）
-				db.execute(sql.replace(PLACEHOLDER, comment));
+				try {
+					db.execute(sql.replace(PLACEHOLDER, comment));
+				} catch (SqlExecuteException ex) {
+					// 失敗は例外（起動が止まる。2.0。要件 D-193）。ほかの台が先に作っていたときだけ続ける
+					if (!createdByAnother(db, ex)) {
+						throw ex;
+					}
+					Log.info("%s はほかのプロセスが先に作っていたので、そのまま使います（%s）".formatted(tableName, ex.getMessage()));
+				}
 			}
 
 			recordedVersion = record(db, version.version, recordedVersion);
@@ -252,6 +263,122 @@ public class DBVersion {
 		applied.version = recordedVersion;
 
 		return true;
+
+	}
+
+	/**
+	 * 「もうある」で失敗したのは、ほかのプロセスが先に作っていたからか
+	 *
+	 * <p>
+	 * 表の一覧は起動時に1回だけ読む。<b>空の DB に何台かが同時に初めて起動すると、どの台も「無い」と読んである</b>ので、
+	 * 2 台目からの {@code CREATE TABLE} が「もうある」で失敗し、起動しなかった。
+	 * </p>
+	 *
+	 * <p>
+	 * 先に作った台は、版を当てるたびに表のコメントを「説明:版」にする。<b>DB からコメントを読み直して、
+	 * この表のものなら</b>、ほかの台が作ったとみなす。アプリが同じ名前の表を持っている
+	 * （コメントが違う・無い）ときは、これまでどおり止める。
+	 * PostgreSQL は表を作る文とコメントを付ける文が別なので、コメントが付くまで少し待つ。
+	 * </p>
+	 *
+	 * @param db	DB
+	 * @param ex	失敗
+	 * @return	ほかのプロセスが作っていた場合 = true
+	 */
+	private boolean createdByAnother (DB db, SqlExecuteException ex) {
+
+		if (!isAlreadyExists(ex)) {
+			return false;
+		}
+
+		long deadline = System.nanoTime() + COMMENT_WAIT.toNanos();
+
+		while (true) {
+
+			String comment;
+			try {
+				comment = readComment(db);
+			} catch (RuntimeException readFailed) {
+				// 読み直せなければ見分けられない。元の失敗を出す
+				return false;
+			}
+			if (comment != null && comment.startsWith(tableComment + ":")) {
+				return true;
+			}
+
+			if (System.nanoTime() >= deadline) {
+				return false;
+			}
+
+			try {
+				Thread.sleep(COMMENT_POLL.toMillis());
+			} catch (InterruptedException interrupted) {
+				Thread.currentThread().interrupt();
+				return false;
+			}
+
+		}
+
+	}
+
+	/* ほかの台がコメントを付けるのを待つ上限 */
+	private static final Duration COMMENT_WAIT = Duration.ofSeconds(2);
+
+	/* その間に読み直す間隔 */
+	private static final Duration COMMENT_POLL = Duration.ofMillis(100);
+
+	/**
+	 * 「もうある」の失敗か
+	 *
+	 * <p>
+	 * MySQL・MariaDB は 1050（表）・1060（列）・1061（索引）・1826（外部キー）。
+	 * PostgreSQL は SQLSTATE 42P07（表）・42701（列）・42710（そのほかの物）と、同時に作ったときにカタログの
+	 * 一意制約に当たる 23505。
+	 * </p>
+	 *
+	 * @param ex	失敗
+	 * @return	「もうある」なら true
+	 */
+	static boolean isAlreadyExists (SqlExecuteException ex) {
+
+		for (Throwable t = ex; t != null; t = t.getCause()) {
+			if (t instanceof SQLException sql) {
+				for (SQLException e = sql; e != null; e = e.getNextException()) {
+					if (ALREADY_EXISTS_STATES.contains(e.getSQLState()) || ALREADY_EXISTS_CODES.contains(e.getErrorCode())) {
+						return true;
+					}
+				}
+			}
+			if (t.getCause() == t) {
+				break;
+			}
+		}
+
+		return false;
+
+	}
+
+	/* 「もうある」の SQLSTATE（PostgreSQL） */
+	private static final Set<String> ALREADY_EXISTS_STATES = Set.of("42P07", "42701", "42710", "23505");
+
+	/* 「もうある」のエラーコード（MySQL・MariaDB） */
+	private static final Set<Integer> ALREADY_EXISTS_CODES = Set.of(1050, 1060, 1061, 1826);
+
+	/**
+	 * この表のいまのコメントを DB から読む
+	 *
+	 * @param db	DB
+	 * @return	コメント（表が無ければ null）
+	 */
+	private String readComment (DB db) {
+
+		for (Data table : db.selectList(db.dialect().tableCommentsSql())) {
+			if (tableName.equalsIgnoreCase(table.getString("table_name"))) {
+				return table.getStringOptional("table_comment");
+			}
+		}
+
+		return null;
 
 	}
 

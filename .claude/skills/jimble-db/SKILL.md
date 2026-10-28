@@ -399,6 +399,9 @@ DBUtil.load(Conf.conf().config(), App.class);         // 流れるのはこの�
 - **`DBUtil.load(...)` は `void`。**繋がらなければ `SqlExecuteException`（`DB_007`）、流すのに失敗しても例外で落ちる。
   `if` で囲まず、捕まえずに起動を止める
 
+jimble が使う表は、無ければ起動時に作る。空の DB に何台かが同時に初めて起動しても、ほかの台が先に作った表（コメントが「説明:版」）はそのまま使う（2.7.8 から）。
+**アプリが jimble と同じ名前の表を持っていると起動で止まる**（コメントで見分けるので、黙って使わない）。
+
 **jimble が自分で作るテーブル**（`migration` / `session` / `db_cache` / `batch_*` / `auth_*` など）は
 codegen が自動で外す。**MQ のキュー表は外れない**——名前をアプリが決めるので、jimble の管理テーブルに入っていない。
 `DbScheduler` が使う **`mq_scheduler`**（`scheduler.queue_name` の既定）も同じ。
