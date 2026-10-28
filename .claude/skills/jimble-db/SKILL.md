@@ -70,6 +70,7 @@ int updated = db.update(...);          // 0件は 0
 | --- | --- |
 | SQL ビルダー全般・関数・ウィンドウ関数 | <https://jimble.io/ja/sql.md> |
 | 設定・複数データソース・エラー・製品選び | <https://jimble.io/ja/db.md> |
+| 同じ作りの DB を並べる（クライアントごとに DB を分ける・要求ごとに選ぶ） | <https://jimble.io/ja/multi-db.md> |
 | トランザクション | <https://jimble.io/ja/transaction.md> |
 | マイグレーションとコード生成・型の対応 | <https://jimble.io/ja/codegen.md> |
 | キャッシュ | <https://jimble.io/ja/cache.md> |
