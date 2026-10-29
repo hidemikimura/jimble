@@ -65,8 +65,8 @@ Read [Principles](./principles) for the details.
 It is published only when a release is cut, so what you read here
 **works on the version you can download**.
 
-The releases are on
-[Maven Central](https://repo.maven.apache.org/maven2/io/jimble/).
+The releases are in jimble's own repository, `https://repo.jimble.io`
+(the version list is [jimble-web's maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml); versions up to 2.7.10 are also on Maven Central).
 The dependency coordinates and a build file that works as it stands are on the
 [Gradle plugins](./gradle) page; the source is on
 [GitHub](https://github.com/hidemikimura/jimble).

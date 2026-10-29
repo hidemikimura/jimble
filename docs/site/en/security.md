@@ -41,7 +41,7 @@ This is still 0.x, so upgrading is the fastest path.
 
 ## Scope
 
-**In scope** — the `io.jimble` libraries and Gradle plugins published to Maven Central.
+**In scope** — the `io.jimble` libraries and Gradle plugins published to `https://repo.jimble.io` (Maven Central up to 2.7.10).
 
 **Out of scope:**
 

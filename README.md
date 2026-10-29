@@ -8,7 +8,7 @@ Java 製の Web アプリケーションフレームワーク。
 - **アノテーションと DI を使わない。**コードを上から辿れば処理が分かることを最優先にする
 - Web / バッチ / MQ を同じ `Context` で扱う
 
-**2.7.10 を Maven Central に公開している。ドキュメントは <https://jimble.io>。**
+**2.7.10 を公開している。置き場は `https://repo.jimble.io`（以前の版は Maven Central）。ドキュメントは <https://jimble.io>。**
 
 ```kotlin
 plugins {
@@ -24,12 +24,20 @@ dependencies {
 }
 ```
 
-Gradle プラグインは **Plugin Portal ではなく Maven Central** から取る。
-`settings.gradle.kts` に1ブロック要る。
+ライブラリも Gradle プラグインも **jimble の置き場（`https://repo.jimble.io`）** から取る（Plugin Portal には出さない。
+以前の版は Maven Central にある）。`settings.gradle.kts` に置き場を書く。
 
 ```kotlin
 pluginManagement {
 	repositories {
+		maven("https://repo.jimble.io")
+		mavenCentral()
+	}
+}
+
+dependencyResolutionManagement {
+	repositories {
+		maven("https://repo.jimble.io")
 		mavenCentral()
 	}
 }
@@ -74,7 +82,8 @@ pluginManagement {
 | `docs/design-m8.md` | M8 設計・作業メモ（棚卸し / CLI / Phase 1 の締め） |
 | `docs/design-m9.md` | M9 設計・作業メモ（SSE / MCP / WebSocket / ドキュメント / Maven Central / jimble.io） |
 | `docs/design-m10.md` | M10 設計・作業メモ（AsyncData の先読み） |
-| `docs/publishing.md` | **Maven Central への公開手順** |
+| `docs/publishing-repo.md` | **公開手順（repo.jimble.io）** |
+| `docs/publishing.md` | Maven Central への公開手順と記録（移す前） |
 | `docs/design-protocols.md` | WebSocket / SSE / MCP / gRPC の検討書 |
 | `docs/site/` | **ドキュメントサイトの原稿**（`./gradlew :jimble-docs:site`） |
 | `docs/probe-helidon.md` | Helidon 4.5.4 + Java 25 疎通確認 |
@@ -762,34 +771,30 @@ https://jimble.io/ja/<名前>.md          個別
 
 ---
 
-## Maven Central へ公開する
+## 公開する（repo.jimble.io）
+
+**Maven Central ではなく自前の置き場 `https://repo.jimble.io`（Cloudflare R2）へ出す。**
+Central に月ごとの上限（ファイル数・大きさ・リリース数）が入り、jimble の1版（16 成果物・約 400 ファイル・約 60MB）で
+ほぼ届くため。座標（`io.jimble:*`）もプラグイン ID も変わらない。
 
 ```bash
 export JIMBLE_SIGNING_KEY="$(gpg --armor --export-secret-keys <鍵ID>)"
 export JIMBLE_SIGNING_PASSWORD='...'
-export JIMBLE_CENTRAL_USERNAME='...'
-export JIMBLE_CENTRAL_PASSWORD='...'
+export JIMBLE_R2_ACCOUNT_ID='...'
+export JIMBLE_R2_ACCESS_KEY_ID='...'
+export JIMBLE_R2_SECRET_ACCESS_KEY='...'
 
-./gradlew centralBundle  -Pjimble.version=0.3.0   # 署名つきの zip を作る
-./gradlew centralUpload  -Pjimble.version=0.3.0   # Portal へ送る（公開はまだ）
-./gradlew centralStatus                           # 検証の結果を見る
-./gradlew centralRelease                          # 公開する（取り消せない）。続けて v0.3.0 のタグを打って push する
-./gradlew centralTag                              # タグだけ打ち直す（push に失敗したときなど）
-./gradlew centralDrop                             # やめる
+./gradlew repoPublish -Pjimble.version=<版> -Prepo.dryRun=true   # 上げるものを並べるだけ
+./gradlew repoPublish -Pjimble.version=<版>                      # 上げて、v<版> のタグを打って push する
 ```
 
-- **コミットして push した木からしか送れない**（`centralUpload` が止まる。要件 D-142）。
-  タグは**送ったときのコミット**に打つ（要件 D-186）
+- **コミットして push した木からしか上げられない**（要件 D-142）。タグは上げた木に打つ（要件 D-186）
+- **上げた版は上書きしない**（同じ版の pom が置き場にあれば止まる）
+- 署名（`.asc`）は今までどおり付ける。無いと止まる
+- S3 の API を JDK の HttpClient で直に叩く（AWS の SDK は入れない。署名は AWS の例と突き合わせてテストしている）
 
-- 公開先は **Central Portal**。Sonatype に公式の Gradle プラグインが無いので、
-  **REST API を直に叩いている**（外部プラグインを足さない。要件 D-60）
-- **鍵もトークンも環境変数だけ。**無い環境では署名を飛ばしてビルドが通る
-- `-Pjimble.version` を渡さないと `2.7.11-SNAPSHOT`（次の版のスナップショット）になり、`centralUpload` は止まる
-  （Central は `-SNAPSHOT` を受け付けず、公開したものは消せない）
-- Gradle プラグインは **Maven Central のマーカー**で配る。Plugin Portal には出さない（D-22）
-
-手順の全体（アカウント / `io.jimble` の名前空間 / **jimble.io の DNS TXT** / GPG 鍵 /
-トークン）は `docs/publishing.md`。
+手順の全体（バケット / repo.jimble.io / API トークン）は `docs/publishing-repo.md`。
+以前の Maven Central の手順と記録は `docs/publishing.md`（`central*` のタスクも残してある）。
 
 ---
 

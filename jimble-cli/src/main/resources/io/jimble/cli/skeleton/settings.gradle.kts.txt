@@ -2,8 +2,9 @@ pluginManagement {
 	repositories {
 		/*
 		 * jimble の Gradle プラグイン（io.jimble.db / io.jimble.jte / io.jimble.run）は
-		 * Plugin Portal ではなく Maven Central から取る（要件 D-22）。
+		 * Plugin Portal ではなく jimble の置き場（repo.jimble.io）から取る（要件 D-22）。
 		 * java-gradle-plugin が出すプラグインマーカーで解決される。
+		 * 以前の版は Maven Central にあるので、mavenCentral() も残す。
 		 *
 		 * mavenLocal() は「手元でビルドした jimble を試す」ためのもの。
 		 * 要らなければ消してよい。
@@ -12,6 +13,10 @@ pluginManagement {
 		 * <b>jimble のもの（io.jimble…）だけ</b>をここから取る。ほかのライブラリは Maven Central から取る
 		 */
 		mavenLocal {
+			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
+		}
+		// jimble の置き場。jimble のもの（io.jimble…）だけをここから取る
+		maven("https://repo.jimble.io") {
 			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
 		}
 		mavenCentral()
@@ -23,6 +28,9 @@ dependencyResolutionManagement {
 	repositories {
 		// jimble を publishToMavenLocal したものを先に見る（jimble のものだけ）
 		mavenLocal {
+			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
+		}
+		maven("https://repo.jimble.io") {
 			content { includeGroupByRegex("io\\.jimble(\\..*)?") }
 		}
 		mavenCentral()

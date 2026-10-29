@@ -24,12 +24,15 @@ plugins {
 }
 ```
 
-**They are not on the Plugin Portal.** They come from Maven Central, so write the
-repository into `settings.gradle.kts` (the `jimble new` skeleton already has it).
+**They are on neither the Plugin Portal nor Maven Central.** They come from jimble's own
+repository (`https://repo.jimble.io`), so write it into `settings.gradle.kts` (the `jimble new`
+skeleton already has it). jimble used to be published to Maven Central, and those older versions
+stay there.
 
 ```kotlin
 pluginManagement {
 	repositories {
+		maven("https://repo.jimble.io")
 		mavenCentral()
 		gradlePluginPortal()
 	}
@@ -51,6 +54,7 @@ If you are not using `jimble new`, these two files are enough.
 // settings.gradle.kts
 pluginManagement {
 	repositories {
+		maven("https://repo.jimble.io")
 		mavenCentral()
 		gradlePluginPortal()
 	}
@@ -69,6 +73,7 @@ plugins {
 }
 
 repositories {
+	maven("https://repo.jimble.io")
 	mavenCentral()
 }
 

@@ -24,12 +24,14 @@ plugins {
 }
 ```
 
-**Plugin Portal には出していません。**Maven Central から取るので、
+**Plugin Portal にも Maven Central にも出していません。**jimble の置き場（`https://repo.jimble.io`）から取るので、
 `settings.gradle.kts` に置き場所を書いてください（`jimble new` の雛形には入っています）。
+以前は Maven Central に出していました。そのころの版はそちらにも残っています。
 
 ```kotlin
 pluginManagement {
 	repositories {
+		maven("https://repo.jimble.io")
 		mavenCentral()
 		gradlePluginPortal()
 	}
@@ -50,6 +52,7 @@ pluginManagement {
 // settings.gradle.kts
 pluginManagement {
 	repositories {
+		maven("https://repo.jimble.io")
 		mavenCentral()
 		gradlePluginPortal()
 	}
@@ -68,6 +71,7 @@ plugins {
 }
 
 repositories {
+	maven("https://repo.jimble.io")
 	mavenCentral()
 }
 

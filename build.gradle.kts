@@ -15,6 +15,15 @@
  * 規約プラグインへ散らさずに1ファイルに置いてある。
  */
 
+plugins {
+	/*
+	 * repo.jimble.io（Cloudflare R2）へ上げる repoPublish（2.7.11 から）。
+	 * 上げる部分は build-logic にあり、テストがある（署名と maven-metadata.xml）。
+	 * 材料・木の確かめ・タグは、Central と同じものをこのファイルで足す（下の repoPublish）。
+	 */
+	id("jimble.repo-publish")
+}
+
 /*
  * 版（-Pjimble.version で上書きできる）。
  *
@@ -594,6 +603,46 @@ tasks.register("centralDrop") {
 		centralDeploymentIdFile.get().asFile.delete()
 		centralReleaseFile.get().asFile.delete()
 
+	}
+
+}
+
+/*
+ * repo.jimble.io へ上げる（2.7.11 から。Maven Central の月ごとの上限のため）。
+ *
+ *   ./gradlew repoPublish -Pjimble.version=2.7.11 -Prepo.dryRun=true   上げるものを並べるだけ
+ *   ./gradlew repoPublish -Pjimble.version=2.7.11                      上げて、タグを打って push する
+ *
+ * Central と違い「送る」と「公開する」の2段は無い（置いた時点で取れる）。
+ * そのぶん、<b>木がきれいで push 済みかは上げる前に見る</b>（D-142 / D-186。centralUpload と同じ）。
+ * 手順の全体は docs/publishing-repo.md にある。
+ */
+tasks.named<io.jimble.conventions.RepoUpload>("repoPublish") {
+
+	dependsOn(centralPublishLocal)
+
+	val dryRun = providers.gradleProperty("repo.dryRun").map { it.toBoolean() }.getOrElse(false)
+	var tree: Pair<String, String>? = null
+
+	doFirst {
+		if (!dryRun) {
+
+			val (commit, remote) = centralCheckTree(jimbleVersion)
+			tree = commit to remote
+
+			// タグの push に失敗したとき、./gradlew centralTag がこの控えで打ち直す（D-186）
+			val record = java.util.Properties()
+			record.setProperty("id", "repo.jimble.io")
+			record.setProperty("version", jimbleVersion)
+			record.setProperty("commit", commit)
+			record.setProperty("remote", remote)
+			centralReleaseFile.get().asFile.writer(Charsets.UTF_8).use { record.store(it, "written by repoPublish (D-186)") }
+
+		}
+	}
+
+	doLast {
+		tree?.let { (commit, remote) -> centralTagAndPush(jimbleVersion, commit, remote) }
 	}
 
 }
