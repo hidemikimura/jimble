@@ -164,5 +164,9 @@ Set `required = false` on the shop databases.
 - Per data source, use `DBUtil.healthCheckAll()`
 - A database that could not be reached at startup did not get its framework tables or migrations. Apply
   them with the CLI's `migrate --data-source` once it is back
+- **MQ keeps going** (since 2.7.9). A database that is down is retried after a pause (1 second, doubling
+  up to 30 seconds), and meanwhile the other databases' rows keep being claimed. Once it is back, its rows
+  are claimed again. Recovering stale rows and `pendingCount()` also skip the database that is down and
+  return the others
 
 See [DB](./db#data-sources-that-may-be-down).

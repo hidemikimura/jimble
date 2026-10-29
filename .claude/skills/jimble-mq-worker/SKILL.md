@@ -84,5 +84,7 @@ public class MqWorkerBatch extends AbstractBatch {
 取り出し役は、直前に行を取ったデータソースの次から見る（1つの DB が溜まっても、ほかを待たせない）。
 データソースを何十も並べたら **`mq.hint = redis`**（積んだときに印を付け、印のある DB だけ見に行く）。全部を回るのは `mq.sweep_interval`（既定 10s）ごと。
 印の無い行（別プロセスが時刻付きで積んだ・Redis が落ちていた）は最悪 `sweep_interval` 遅れる。既定は `off`（毎周すべて）。
+**データソースが 1 つ落ちても MQ は止まらない**（2.7.9）。落ちた DB は 1 秒から倍々（最大 30 秒）あけて見直し、ほかの DB を取り出し続ける。
+`recoverStale` は落ちた DB を飛ばす（起動もできる）。`pendingCount()` は落ちた DB を数えずに返す（2.7.8 までは例外）。
 
 詳しくは <https://jimble.io/ja/mq.md> / <https://jimble.io/ja/execution.md>。
