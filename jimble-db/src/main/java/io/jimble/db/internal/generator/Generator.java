@@ -428,12 +428,17 @@ public class Generator {
 
 					textOutput.write("\t\tsql.append(");
 					textOutput.write(tableInfo.className + "." + columnInfo.name);
-					textOutput.write(").append(\" " + columnInfo.type);
+					/*
+					 * DB から読んだものは、Java の文字列の中に書くので必ずエスケープする。
+					 * かつては既定値をそのまま埋め込んでいたので、jsonb の既定値 '{"a": 1}' の " で文字列が閉じ、
+					 * 生成したソースがコンパイルできなかった（2.7.10）
+					 */
+					textOutput.write(").append(\" " + javaString(columnInfo.type));
 					if (columnInfo.extra != null && !columnInfo.extra.isEmpty()) {
-						textOutput.write(" " + columnInfo.extra);
+						textOutput.write(" " + javaString(columnInfo.extra));
 					}
 					if (columnInfo.defaultValueString != null) {
-						textOutput.write(" default " + reader.defaultValueSql(columnInfo.typeClass, columnInfo.defaultValueString));
+						textOutput.write(" default " + javaString(reader.defaultValueSql(columnInfo.typeClass, columnInfo.defaultValueString)));
 					}
 					if (!columnInfo.nullable) {
 						textOutput.write(" not null");
@@ -457,11 +462,12 @@ public class Generator {
 
 				for (IndexInfo indexInfo : tableInfo.indexList) {
 					if (indexInfo.isPrimary) {
-						textOutput.writeLine("\t\tsql.append(\"" + reader.addPrimaryKeySql(tableInfo.name, indexInfo.columnNameList) + "\");");
+						textOutput.writeLine("\t\tsql.append(\"" + javaString(reader.addPrimaryKeySql(tableInfo.name, indexInfo.columnNameList)) + "\");");
 					} else if (indexInfo.isUnique) {
-						textOutput.writeLine("\t\tsql.append(\"" + reader.addUniqueSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList) + "\");");
+						textOutput.writeLine("\t\tsql.append(\"" + javaString(reader.addUniqueSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList)) + "\");");
 					} else {
-						textOutput.writeLine("\t\tsql.append(\"" + reader.addIndexSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList, indexInfo.predicate) + "\");");
+						// 部分索引の条件（pg_get_expr）には "Status" のような名前が出ることがある
+						textOutput.writeLine("\t\tsql.append(\"" + javaString(reader.addIndexSql(tableInfo.name, indexInfo.name, indexInfo.columnNameList, indexInfo.predicate)) + "\");");
 					}
 				}
 
@@ -509,7 +515,19 @@ public class Generator {
 	 */
 	static String escapeComment (String comment) {
 
-		return comment
+		return javaString(comment);
+
+	}
+
+	/**
+	 * Java の文字列リテラルの中に書けるようにする（DB から読んだ既定値・型・索引の SQL など）
+	 *
+	 * @param text	文字列
+	 * @return	エスケープしたもの
+	 */
+	static String javaString (String text) {
+
+		return text
 			.replace("\\", "\\\\")
 			.replace("\"", "\\\"")
 			.replace("\n", "\\n")
@@ -1098,7 +1116,8 @@ public class Generator {
 		}
 
 		if (String.class.equals(columnInfo.typeClass)) {
-			return "\"%s\"".formatted(columnInfo.defaultValueString);
+			// " や \ があっても、元の文字列に戻るリテラルにする（2.7.10）
+			return "\"%s\"".formatted(javaString(columnInfo.defaultValueString));
 		}
 
 		if (Date.class.equals(columnInfo.typeClass)) {
@@ -1107,7 +1126,7 @@ public class Generator {
 			if (DateUtil.parseDate(columnInfo.defaultValueString) == null) {
 				return "null";
 			}
-			return "io.jimble.util.date.DateUtil.parseDate(\"%s\")".formatted(columnInfo.defaultValueString);
+			return "io.jimble.util.date.DateUtil.parseDate(\"%s\")".formatted(javaString(columnInfo.defaultValueString));
 		}
 
 		if (int.class.equals(columnInfo.typeClass)) {
