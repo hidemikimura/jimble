@@ -109,6 +109,9 @@ public final class MqQueue {
 	/* 主のデータソースだけに置くか */
 	private final boolean mainOnly;
 
+	/* 落ちているデータソースを、しばらくあけてから見直す（取り出し役・迷子の戻し・件数の数えで分け合う） */
+	private final DataSourceBackoff backoff;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -124,6 +127,7 @@ public final class MqQueue {
 
 		this.queueName = queueName;
 		this.mainOnly = mainOnly;
+		this.backoff = new DataSourceBackoff(queueName);
 
 	}
 
@@ -420,6 +424,11 @@ public final class MqQueue {
 	 * 戻すのも1回のリトライと数える。{@link MqExecutor#maxRetry()} を使い切った行は、戻さずに {@code dead} にする。
 	 * </p>
 	 *
+	 * <p>
+	 * <b>落ちているデータソースは飛ばし、ほかのデータソースを戻す</b>（2.7.9。ログに出す）。
+	 * それまでは例外を投げたので、キューを起動するときに 1 つ落ちていると、キューが起動しなかった。
+	 * </p>
+	 *
 	 * @return	戻した件数（{@code dead} にしたものは数えない）
 	 */
 	public int recoverStale () {
@@ -428,82 +437,107 @@ public final class MqQueue {
 
 		for (DBSource source : dataSources()) {
 
-			DB db = DBUtil.getDB(source);
+			long now = System.currentTimeMillis();
 
-			String table = db.dialect().identifier(queueName);
-			String stale = db.dialect().intervalFromNow("SECOND", true);
-			long staleSeconds = MqConf.stale().toSeconds();
-
-			/*
-			 * <b>戻すたびに retry_count を数え、上限を超えたら dead にする</b>（D-250）。
-			 * かつては数えずに waiting へ戻すだけだったので、<b>処理するたびにプロセスを落とす行</b>
-			 * （メモリを使い切らせる大きな data など）は、戻されては落とし、を際限なく繰り返した。
-			 * 1行ずつ、拾ったときと同じ状態（running・同じ retry_count・古いまま）のときだけ書き換えるので、
-			 * 何台かで同時に呼んでも二重には数えない
-			 */
-			List<Data> rows = db.selectList("""
-					SELECT
-						id, mq_key, retry_count
-					FROM
-						%s
-					WHERE
-						status = ?
-						AND updated_at < %s
-				""".formatted(table, stale)
-				, MqStatus.running.name()
-				, staleSeconds);
-
-			int count = 0;
-
-			for (Data row : rows) {
-
-				long id = row.getLong("id");
-				int retryCount = row.getInt("retry_count");
-				MqExecutor executor = MqRegistry.create(queueName, row.getStringOptional("mq_key"));
-				int maxRetry = executor == null ? 0 : executor.maxRetry();
-				boolean dead = retryCount >= maxRetry;
-
-				int updated = db.update("""
-						UPDATE %s SET
-							status = ?
-							, retry_count = ?
-							, log_info = ?
-							, updated_at = NOW()
-						WHERE
-							id = ?
-							AND status = ?
-							AND retry_count = ?
-							AND updated_at < %s
-					""".formatted(table, stale)
-					, dead ? MqStatus.dead.name() : MqStatus.waiting.name()
-					, dead ? retryCount : retryCount + 1
-					, new Data().putData("reason", "running のまま止まっていました（処理中にプロセスが落ちた）")
-					, id
-					, MqStatus.running.name()
-					, retryCount
-					, staleSeconds);
-
-				if (updated == 0) {
-					continue;
-				}
-
-				if (dead) {
-					Log.error("MQ の迷子をあきらめました: %s / id=%d / %d 回目".formatted(queueName, id, retryCount + 1));
-				} else {
-					count++;
-				}
-
+			// 落ちているデータソースは飛ばし、ほかのデータソースを戻す（2.7.9）
+			if (!backoff.isAvailable(source.name(), now)) {
+				continue;
 			}
 
-			if (count > 0) {
-				Log.warn("MQ の迷子を戻しました: %s / %d 件".formatted(queueName, count));
-				total += count;
-				MqHints.mark(queueName, source.name());
+			try {
+				total += recoverStale(source);
+				backoff.succeeded(source.name());
+			} catch (RuntimeException ex) {
+				backoff.failed(source.name(), now, "迷子の戻し", ex);
 			}
 
 		}
 
 		return total;
+
+	}
+
+	/**
+	 * 1 つのデータソースの迷子を戻す
+	 *
+	 * @param source	データソース
+	 * @return	戻した件数（{@code dead} にしたものは数えない）
+	 */
+	private int recoverStale (DBSource source) {
+
+		DB db = DBUtil.getDB(source);
+
+		String table = db.dialect().identifier(queueName);
+		String stale = db.dialect().intervalFromNow("SECOND", true);
+		long staleSeconds = MqConf.stale().toSeconds();
+
+		/*
+		 * <b>戻すたびに retry_count を数え、上限を超えたら dead にする</b>（D-250）。
+		 * かつては数えずに waiting へ戻すだけだったので、<b>処理するたびにプロセスを落とす行</b>
+		 * （メモリを使い切らせる大きな data など）は、戻されては落とし、を際限なく繰り返した。
+		 * 1行ずつ、拾ったときと同じ状態（running・同じ retry_count・古いまま）のときだけ書き換えるので、
+		 * 何台かで同時に呼んでも二重には数えない
+		 */
+		List<Data> rows = db.selectList("""
+				SELECT
+					id, mq_key, retry_count
+				FROM
+					%s
+				WHERE
+					status = ?
+					AND updated_at < %s
+			""".formatted(table, stale)
+			, MqStatus.running.name()
+			, staleSeconds);
+
+		int count = 0;
+
+		for (Data row : rows) {
+
+			long id = row.getLong("id");
+			int retryCount = row.getInt("retry_count");
+			MqExecutor executor = MqRegistry.create(queueName, row.getStringOptional("mq_key"));
+			int maxRetry = executor == null ? 0 : executor.maxRetry();
+			boolean dead = retryCount >= maxRetry;
+
+			int updated = db.update("""
+					UPDATE %s SET
+						status = ?
+						, retry_count = ?
+						, log_info = ?
+						, updated_at = NOW()
+					WHERE
+						id = ?
+						AND status = ?
+						AND retry_count = ?
+						AND updated_at < %s
+				""".formatted(table, stale)
+				, dead ? MqStatus.dead.name() : MqStatus.waiting.name()
+				, dead ? retryCount : retryCount + 1
+				, new Data().putData("reason", "running のまま止まっていました（処理中にプロセスが落ちた）")
+				, id
+				, MqStatus.running.name()
+				, retryCount
+				, staleSeconds);
+
+			if (updated == 0) {
+				continue;
+			}
+
+			if (dead) {
+				Log.error("MQ の迷子をあきらめました: %s / id=%d / %d 回目".formatted(queueName, id, retryCount + 1));
+			} else {
+				count++;
+			}
+
+		}
+
+		if (count > 0) {
+			Log.warn("MQ の迷子を戻しました: %s / %d 件".formatted(queueName, count));
+			MqHints.mark(queueName, source.name());
+		}
+
+		return count;
 
 	}
 
@@ -529,7 +563,12 @@ public final class MqQueue {
 	 * {@code mq.<キュー名>.completed} の差でおおよそは分かる（こちらは常に数えている）。
 	 * </p>
 	 *
-	 * @return	待っている件数
+	 * <p>
+	 * <b>落ちているデータソースは数えずに飛ばす</b>（2.7.9。ログに出す）。それまでは例外を投げたので、
+	 * 1 つ落ちただけで、ほかのデータソースの分も含めて滞留数が取れなくなった。
+	 * </p>
+	 *
+	 * @return	待っている件数（落ちているデータソースの分は入らない）
 	 */
 	public long pendingCount () {
 
@@ -537,12 +576,25 @@ public final class MqQueue {
 
 		for (DBSource source : dataSources()) {
 
-			DB db = DBUtil.getDB(source);
+			long now = System.currentTimeMillis();
 
-			// 読めなければ例外（1.x はその DB を黙って 0 件と数えていた）
-			total += db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
-				.formatted(db.dialect().identifier(queueName))
-				, MqStatus.waiting.name()).map(row -> row.getLong("pending")).orElse(0L);
+			/*
+			 * 落ちているデータソースは数えずに飛ばし、ほかのデータソースの分を返す（2.7.9）。
+			 * 1 つ落ちただけで滞留数のメトリクスが取れなくなると、いちばん見たいときに見えない。
+			 * 落ちていることはログ（と DBUtil.healthCheckAll()）で分かる
+			 */
+			if (!backoff.isAvailable(source.name(), now)) {
+				continue;
+			}
+
+			try (DB db = DBUtil.getDB(source)) {
+				total += db.select("SELECT count(*) AS pending FROM %s WHERE status = ?"
+					.formatted(db.dialect().identifier(queueName))
+					, MqStatus.waiting.name()).map(row -> row.getLong("pending")).orElse(0L);
+				backoff.succeeded(source.name());
+			} catch (RuntimeException ex) {
+				backoff.failed(source.name(), now, "件数の数え", ex);
+			}
 
 		}
 
@@ -630,93 +682,124 @@ public final class MqQueue {
 		try {
 
 			while (!cancelOrderNotify.isCancelOrder()) {
+				try {
 
-				// ここから先で手が空いた分だけ、次の起こしになる
-				wake.drainPermits();
+					// ここから先で手が空いた分だけ、次の起こしになる
+					wake.drainPermits();
 
-				boolean found = false;
-				boolean anyIdle = false;
+					boolean found = false;
+					boolean anyIdle = false;
 
-				/*
-				 * このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）。
-				 *
-				 * <b>直前に行を取ったデータソースの次から見る</b>（2.7.8）。
-				 * かつては毎周同じ順に見て、手の空いたワーカーの数を使い切ったら抜けていたので、
-				 * 前のデータソースに行が溜まり続けると、<b>後ろのデータソースの行は、前が空になるまで取り出されなかった</b>。
-				 * 周の数でずらすのでは足りない。ワーカーが手を空けるたびに「取る周」と「全員が処理中の周」が交互に来るので、
-				 * 取る周がいつも同じデータソースから始まる。データソースが1つなら、これまでと同じ。
-				 *
-				 * mq.hint を使うときは、印の付いたもの・まだ残っていそうなもの・sweep_interval ごとの全部、だけを見る（Targets）
-				 */
-				List<DBSource> sources = startAfter(targets.next(dataSources(), System.currentTimeMillis()), lastClaimed);
+					/*
+					 * このキューを置いたデータソースだけを見る（db.<名前>.mq・mq.queues.<キュー名>.data_sources）。
+					 *
+					 * <b>直前に行を取ったデータソースの次から見る</b>（2.7.8）。
+					 * かつては毎周同じ順に見て、手の空いたワーカーの数を使い切ったら抜けていたので、
+					 * 前のデータソースに行が溜まり続けると、<b>後ろのデータソースの行は、前が空になるまで取り出されなかった</b>。
+					 * 周の数でずらすのでは足りない。ワーカーが手を空けるたびに「取る周」と「全員が処理中の周」が交互に来るので、
+					 * 取る周がいつも同じデータソースから始まる。データソースが1つなら、これまでと同じ。
+					 *
+					 * mq.hint を使うときは、印の付いたもの・まだ残っていそうなもの・sweep_interval ごとの全部、だけを見る（Targets）
+					 */
+					List<DBSource> sources = startAfter(targets.next(dataSources(), System.currentTimeMillis()), lastClaimed);
 
-				for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
+					for (Map.Entry<MqExecuteType, Handoff> entry : handoffs.entrySet()) {
 
-					Handoff handoff = entry.getValue();
+						Handoff handoff = entry.getValue();
 
-					for (DBSource source : sources) {
+						for (DBSource source : sources) {
 
-						// 待っているワーカーがいなければ、DB を見にいかない
-						int want = handoff.acquireIdle();
+							long now = System.currentTimeMillis();
 
-						if (want == 0) {
-							break;
-						}
+							// 落ちているデータソースは、見直す時刻まで飛ばす（ほかのデータソースを待たせない。2.7.9）
+							if (!backoff.isAvailable(source.name(), now)) {
+								continue;
+							}
 
-						anyIdle = true;
+							// 待っているワーカーがいなければ、DB を見にいかない
+							int want = handoff.acquireIdle();
 
-						List<Data> rows = claim(DBUtil.getDB(source), entry.getKey(), want);
+							if (want == 0) {
+								break;
+							}
 
-						if (rows.size() < want) {
-							handoff.idle.release(want - rows.size());
-						}
+							anyIdle = true;
 
-						// 欲しいだけ取れたなら、まだ残っているかもしれない（印が無くても次の周も見る）
-						targets.claimed(source.name(), rows.size() >= want);
+							List<Data> rows;
 
-						if (rows.isEmpty()) {
-							continue;
-						}
+							try {
+								rows = claim(DBUtil.getDB(source), entry.getKey(), want);
+								backoff.succeeded(source.name());
+							} catch (RuntimeException ex) {
+								/*
+								 * <b>そのデータソースだけを飛ばし、取り出し役は続ける</b>（2.7.9）。
+								 * required = true のデータソースでも、取り出し役を終わらせない（ほかの DB の行が止まる）
+								 */
+								handoff.idle.release(want);
+								backoff.failed(source.name(), now, "取り出し", ex);
+								continue;
+							}
 
-						found = true;
-						lastClaimed = source.name();
+							if (rows.size() < want) {
+								handoff.idle.release(want - rows.size());
+							}
 
-						/*
-						 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
-						 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
-						 *
-						 * <b>{@link DB} は1件ごとに作り直す。</b>DB は握っている接続をフィールドに持つので、
-						 * 1つを何本ものワーカーで使うと接続を取り合い、プールへ戻らなくなる（D-295）
-						 */
-						for (Data row : rows) {
-							putUninterruptibly(handoff.queue, new Claimed(DBUtil.getDB(source), row));
+							// 欲しいだけ取れたなら、まだ残っているかもしれない（印が無くても次の周も見る）
+							targets.claimed(source.name(), rows.size() >= want);
+
+							if (rows.isEmpty()) {
+								continue;
+							}
+
+							found = true;
+							lastClaimed = source.name();
+
+							/*
+							 * <b>必ず渡し切る。</b>許可を引いた数だけ、待っているワーカーがいる。
+							 * 取った行を捨てると running のまま残る（stale で戻るまで誰も処理しない）。
+							 *
+							 * <b>{@link DB} は1件ごとに作り直す。</b>DB は握っている接続をフィールドに持つので、
+							 * 1つを何本ものワーカーで使うと接続を取り合い、プールへ戻らなくなる（D-295）
+							 */
+							for (Data row : rows) {
+								putUninterruptibly(handoff.queue, new Claimed(DBUtil.getDB(source), row));
+							}
+
 						}
 
 					}
 
-				}
+					if (found) {
+						// 取れた。続けて見る（取れる限り、待たずに回す）
+						sleepManager.reset();
+					} else if (!anyIdle) {
+						/*
+						 * 全員が処理中。DB は見ずに、<b>誰かの手が空くまで待つ</b>（D-295）。
+						 * かつては poll_min（10ms）だけ眠っていたので、眠り始めた直後に手が空いたワーカーは
+						 * 最大 10ms 何もせずに待たされた。数 ms で終わる処理を少ないスレッドで回すと、
+						 * 処理しているより待っている時間のほうが長かった（2本・5ms の処理で約 130 件/秒。起こすようにして約 240 件/秒）
+						 */
+						sleepManager.sleepMax(wake);
+					} else {
+						/*
+						 * 手は空いているが、キューが空。だんだん間隔を伸ばす。
+						 * <b>ほかの種別のワーカーの手が空いたら、そこで起きる</b>（その種別にはまだ溜まっているかもしれない）
+						 */
+						sleepManager.sleep(wake);
+					}
 
-				if (found) {
-					// 取れた。続けて見る（取れる限り、待たずに回す）
-					sleepManager.reset();
-				} else if (!anyIdle) {
+				} catch (RuntimeException ex) {
+
 					/*
-					 * 全員が処理中。DB は見ずに、<b>誰かの手が空くまで待つ</b>（D-295）。
-					 * かつては poll_min（10ms）だけ眠っていたので、眠り始めた直後に手が空いたワーカーは
-					 * 最大 10ms 何もせずに待たされた。数 ms で終わる処理を少ないスレッドで回すと、
-					 * 処理しているより待っている時間のほうが長かった（2本・5ms の処理で約 130 件/秒。起こすようにして約 240 件/秒）
+					 * <b>周で思いがけない失敗があっても、取り出し役は終わらせない</b>（2.7.9）。
+					 * 終わると、プロセスを起動し直すまで、このキューは全部のデータソースで取り出されない
 					 */
+					Log.error(ex, "MQ の取り出し役で失敗しました。少し待って続けます: %s".formatted(queueName));
 					sleepManager.sleepMax(wake);
-				} else {
-					/*
-					 * 手は空いているが、キューが空。だんだん間隔を伸ばす。
-					 * <b>ほかの種別のワーカーの手が空いたら、そこで起きる</b>（その種別にはまだ溜まっているかもしれない）
-					 */
-					sleepManager.sleep(wake);
+
 				}
 
 			}
-
 
 		} finally {
 			if (targets.hint != MqConf.Hint.off) {
@@ -990,6 +1073,7 @@ public final class MqQueue {
 	 * @param type	実行種別
 	 * @param limit	取る件数の上限（待っているワーカーの数）
 	 * @return	行（無ければ空）
+	 * @throws RuntimeException	取れなかった場合（つながらない・表が無いなど。取り出し役がデータソースごとに受け止める）
 	 */
 	private List<Data> claim (DB db, MqExecuteType type, int limit) {
 
@@ -1057,11 +1141,6 @@ public final class MqQueue {
 			tx.commit();
 
 			return claimed;
-
-		} catch (Exception ex) {
-
-			Log.error(ex, "MQ の取り出しに失敗しました: %s".formatted(queueName));
-			return List.of();
 
 		}
 

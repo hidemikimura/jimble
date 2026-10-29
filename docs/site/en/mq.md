@@ -149,6 +149,21 @@ mq.queues {
 > main data source only, use `MqQueue.mainOnly("name")` and return true from `mainOnly()` in the
 > `MqExecutor` that puts to it.
 
+### When one data source goes down
+
+With several data sources, if one goes down (cannot connect, cannot read the table), **the queue keeps
+running on the other data sources** (since 2.7.9).
+
+- The poller **retries the data source that is down after a pause** (1 second, doubling up to 30
+  seconds) and skips it meanwhile, so waiting for a connection to an unreachable database does not hold
+  back the other data sources' rows
+- A log line is written when it goes down, when a retry still fails, and when it comes back (not on
+  every round)
+- Recovering stale rows (`recoverStale`) skips the data source that is down and recovers the others, so
+  the queue starts even if one is down at startup
+- `pendingCount()` leaves out the data source that is down and returns the rest (it used to throw)
+- The poller does not stop on an unexpected failure either (it logs, waits a little and goes on)
+
 ## Visiting only the databases that have work
 
 With dozens of data sources, the poller visits **even the empty ones on every round**. Whether the
