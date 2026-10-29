@@ -26,6 +26,25 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 /*
+ * 公開（repo.jimble.io へ上げる）の部品にはテストがある。
+ * 署名を AWS の例と突き合わせ、maven-metadata.xml の合成を確かめる。
+ * CI の plugin ジョブが ./gradlew -p build-logic build で流す。
+ */
+dependencies {
+	testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.withType<Test>().configureEach {
+	useJUnitPlatform()
+	jvmArgs("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+	testLogging {
+		events("failed")
+		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+	}
+}
+
+/*
  * <b>パッケージを io.jimble.build にしてはいけない。</b>
  *
  * .gitignore の `build/` は<b>どの階層でも「build という名前のディレクトリ」に当たる</b>ので、
@@ -58,6 +77,12 @@ gradlePlugin {
 			implementationClass = "io.jimble.conventions.PluginPublishConventionsPlugin"
 			displayName = "jimble gradle-plugin publish conventions"
 			description = "gradle-plugin（別ビルド）を Maven Central へ出す設定"
+		}
+		create("repoPublish") {
+			id = "jimble.repo-publish"
+			implementationClass = "io.jimble.conventions.RepoPublishPlugin"
+			displayName = "jimble repo publish"
+			description = "repo.jimble.io（Cloudflare R2）へ上げる repoPublish タスク"
 		}
 	}
 }

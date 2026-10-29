@@ -129,7 +129,7 @@ buried under "fixed".
 
 ## Choosing a version
 
-**Releases are on [Maven Central](https://repo.maven.apache.org/maven2/io/jimble/).**
+**Releases are in jimble's own repository, `https://repo.jimble.io`** (version list: [maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml); versions up to 2.7.10 are also on Maven Central).
 The dependency coordinates and a build file that works as it stands are on the
 [Gradle plugins](./gradle) page.
 

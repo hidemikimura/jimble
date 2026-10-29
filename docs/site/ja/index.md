@@ -64,8 +64,8 @@ jimble が目指すのは **読む人が上から順に追えること** です�
 **このサイトは、いちばん新しいリリースの内容です。**
 反映はリリースのときだけなので、ここに書いてあることは<b>公開されている版で動きます</b>。
 
-公開されているものは
-[Maven Central](https://repo.maven.apache.org/maven2/io/jimble/) にあります。
+公開されているものは jimble の置き場 `https://repo.jimble.io` にあります
+（版の一覧は [jimble-web の maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml)。2.7.10 までは Maven Central にもあります）。
 依存の座標と、そのまま動くビルドファイルは [Gradle プラグイン](./gradle) に、
 ソースは [GitHub](https://github.com/hidemikimura/jimble) にあります。
 

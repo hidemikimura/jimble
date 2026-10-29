@@ -132,6 +132,10 @@ jobs:
       - name: build（テスト・javadoc 込み）
         run: ./gradlew -p gradle-plugin build --stacktrace
 
+      # ビルドの規約と、repo.jimble.io へ上げる部品（署名・maven-metadata.xml）のテスト
+      - name: build-logic のテスト
+        run: ./gradlew -p build-logic build --stacktrace
+
       - name: テスト結果を残す
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -41,7 +41,7 @@ GitHub の非公開報告から知らせてください。
 
 ## 対象の範囲
 
-**対象になるもの** — Maven Central に公開している `io.jimble` のライブラリと Gradle プラグイン。
+**対象になるもの** — `https://repo.jimble.io`（2.7.10 までは Maven Central）に公開している `io.jimble` のライブラリと Gradle プラグイン。
 
 **対象にならないもの。**
 

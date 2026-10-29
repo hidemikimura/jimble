@@ -4,6 +4,18 @@
 
 ---
 
+## 2.7.11（未公開）
+
+**この版から、jimble は Maven Central ではなく `https://repo.jimble.io` に置きます。**Maven Central に月ごとの公開の上限（ファイル数・大きさ・リリース数）が入り、jimble の 1 版（16 の成果物・約 400 ファイル・約 60MB）でほぼ届くためです。座標（`io.jimble:jimble-web` など）とプラグイン ID（`io.jimble.db` など）は変わりません。2.7.10 までの版は Maven Central に残ります。
+
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **`settings.gradle.kts` に `maven("https://repo.jimble.io")` を足してください** | `pluginManagement` と `dependencyResolutionManagement`（`build.gradle.kts` の `repositories` に書いているならそちら）の両方に、`mavenCentral()` より前に足します。足さないと `Plugin [id: 'io.jimble.db', version: '2.7.11'] was not found` や `Could not find io.jimble:jimble-web:2.7.11` で止まります。`jimble new` の雛形には入っています。書き方は [Gradle プラグイン](https://jimble.io/ja/gradle) にあります |
+
+---
+
 ## 2.7.10（2026-10-29）
 
 ### 直したこと

@@ -35,11 +35,11 @@ GitHub の非公開報告（private vulnerability reporting）を使っていま
 **最新の版に修正を入れます。**古い版へのバックポートはしません。
 
 まだ 0.x なので、上げていただくのがいちばん早い道です。
-公開済みの版は [Maven Central](https://repo.maven.apache.org/maven2/io/jimble/) にあります。
+公開済みの版は `https://repo.jimble.io` にあります（版の一覧は [maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml)）。
 
 ## 対象の範囲
 
-**対象になるもの** — Maven Central に公開している `io.jimble` のライブラリと Gradle プラグイン。
+**対象になるもの** — `https://repo.jimble.io`（2.7.10 までは Maven Central）に公開している `io.jimble` のライブラリと Gradle プラグイン。
 
 **対象にならないもの。**
 
@@ -88,12 +88,12 @@ Helpful things to include:
 
 **Fixes go into the latest release.** We do not backport to older versions.
 
-This is still 0.x, so upgrading is the fastest path. Released versions are on
-[Maven Central](https://repo.maven.apache.org/maven2/io/jimble/).
+This is still 0.x, so upgrading is the fastest path. Released versions are in `https://repo.jimble.io`
+(version list: [maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml)).
 
 ## Scope
 
-**In scope** — the `io.jimble` libraries and Gradle plugins published to Maven Central.
+**In scope** — the `io.jimble` libraries and Gradle plugins published to `https://repo.jimble.io` (Maven Central up to 2.7.10).
 
 **Out of scope:**
 

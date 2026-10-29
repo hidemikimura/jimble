@@ -29,7 +29,7 @@ export PATH="$PWD/jimble-cli/build/install/jimble/bin:$PATH"
 ```
 
 > [!NOTE]
-> **CLI は Maven Central にありますが、そのままでは起動できません**
+> **CLI は jimble の置き場（`repo.jimble.io`）にありますが、そのままでは起動できません**
 > （`io.jimble:jimble-cli` の jar に `Main-Class` を入れていないので、
 > `java -jar` では動きません）。リポジトリからビルドしてください。
 >

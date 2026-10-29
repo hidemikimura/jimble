@@ -127,7 +127,7 @@ jimble でこれまで実際に起きた壊れ方は、**ほとんどがシグ�
 
 ## 版を選ぶ
 
-**公開されているものは [Maven Central](https://repo.maven.apache.org/maven2/io/jimble/) にあります。**
+**公開されているものは jimble の置き場 `https://repo.jimble.io` にあります**（版の一覧は [maven-metadata.xml](https://repo.jimble.io/io/jimble/jimble-web/maven-metadata.xml)。2.7.10 までは Maven Central にもあります）。
 依存の座標と、そのまま動くビルドファイルは [Gradle プラグイン](./gradle) にあります。
 
 **このドキュメントサイトは、いちばん新しいリリースの内容です**（[版について](./index)）。
