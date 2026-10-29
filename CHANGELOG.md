@@ -4,7 +4,7 @@
 
 ---
 
-## 2.7.11（未公開）
+## 2.7.11（2026-10-29）
 
 **この版から、jimble は Maven Central ではなく `https://repo.jimble.io` に置きます。**Maven Central に月ごとの公開の上限（ファイル数・大きさ・リリース数）が入り、jimble の 1 版（16 の成果物・約 400 ファイル・約 60MB）でほぼ届くためです。座標（`io.jimble:jimble-web` など）とプラグイン ID（`io.jimble.db` など）は変わりません。2.7.10 までの版は Maven Central に残ります。
 
