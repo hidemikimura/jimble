@@ -8,19 +8,19 @@ Java 製の Web アプリケーションフレームワーク。
 - **アノテーションと DI を使わない。**コードを上から辿れば処理が分かることを最優先にする
 - Web / バッチ / MQ を同じ `Context` で扱う
 
-**2.7.11 を公開している。置き場は `https://repo.jimble.io`（以前の版は Maven Central）。ドキュメントは <https://jimble.io>。**
+**2.7.12 を公開している。置き場は `https://repo.jimble.io`（以前の版は Maven Central）。ドキュメントは <https://jimble.io>。**
 
 ```kotlin
 plugins {
 	application
 	// src/main/jte を compileJava の前に Java へ変換する
-	id("io.jimble.jte") version "2.7.11"
+	id("io.jimble.jte") version "2.7.12"
 	// 開発用のホットリロード（./gradlew jimbleRun）
-	id("io.jimble.run") version "2.7.11"
+	id("io.jimble.run") version "2.7.12"
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:2.7.11")
+	implementation("io.jimble:jimble-web:2.7.12")
 }
 ```
 
