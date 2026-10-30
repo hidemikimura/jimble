@@ -359,9 +359,10 @@ sql_cache {
 }
 
 redis {
-	host = ""        # empty means no Redis
+	host = ""        # empty means no Redis (leave it out for a cluster)
 	port = 6379
 	ssl  = false
+	ssl_verification = "strict"   # strict | ca_only: how far to check the TLS certificate (since 2.7.12)
 	username = ""    # Redis 6 ACL user; empty sends none
 	password = ${?REDIS_PASSWORD}   # empty sends none
 
@@ -377,6 +378,12 @@ redis {
 
 		subscription_connection_minimum_idle_size = 1
 		subscription_connection_pool_size         = 50
+	}
+
+	# Redis Cluster (since 2.7.12). Writing nodes connects to a cluster; it cannot be combined with host
+	cluster {
+		nodes         = []   # a list of "host:port" (or one comma-separated string such as "a:6379,b:6379", handy from an env var)
+		scan_interval = 5s   # how often to re-read the topology (failover, nodes added or removed)
 	}
 }
 
@@ -538,6 +545,40 @@ jimble {
 	# server.port also takes -Djimble.server.port=8080 (the system property wins)
 }
 ```
+
+## Connecting to a Redis Cluster
+
+**Writing `redis.cluster.nodes` connects to a Redis Cluster** (since 2.7.12).
+If you also write `redis.host`, there is no telling which one you meant, so startup stops (checked in `DBUtil.load`, as are malformed nodes and ports).
+Authentication (`username` / `password`), TLS (`ssl`) and `redis.settings` are shared with the single-server setup.
+
+```hocon
+# AWS ElastiCache / MemoryDB (cluster mode enabled)
+redis {
+	cluster.nodes = ["clustercfg.my-cache.xxxxxx.apne1.cache.amazonaws.com:6379"]   # configuration endpoint
+	ssl      = true                        # if in-transit encryption is on
+	password = ${?REDIS_PASSWORD}          # AUTH token (and a username with RBAC)
+}
+```
+
+```hocon
+# OCI Cache (sharded cluster). TLS is required
+redis {
+	cluster.nodes = ["<discovery endpoint FQDN>:6379"]
+	ssl = true
+}
+```
+
+- **An entry point is enough.** The other nodes are learned from the cluster after connecting.
+  If you list the nodes of your own cluster, write two or more so that one being down does not stop the connection
+- **Reads go to masters only**, never to replicas, so sessions, locks and SQL-cache invalidation never see a stale value right after a write
+- **Connection counts are per master.** With `connection_minimum_idle = 24` and three masters, each app keeps at least 72 connections open.
+  Lower it if you run many instances
+- **Operations fail during a failover (a few seconds to a dozen or so).** The cache reports a failed write as `false`;
+  sessions and locks throw. On a local cluster (`cluster-node-timeout 5000`) it recovered about 13 seconds after a master was stopped
+- **If the TLS certificate name does not match** (nodes are announced by IP), the connection fails. Only then set
+  `ssl_verification = "ca_only"` (the issuer is checked, the name is not). Not checking at all (`none`) is not offered
+- If several apps or environments share one cluster, give each its own `sql_cache.namespace`, as with a single server
 
 ## `cipher.key` and `auth.mfa.secret_key` are different keys
 

@@ -29,6 +29,7 @@ import io.jimble.db.value.DBValue;
 import io.jimble.db.internal.version.DBVersion;
 import io.jimble.core.lifecycle.Shutdown;
 import io.jimble.util.log.Log;
+import io.jimble.db.redis.RedisClient;
 import io.jimble.db.redis.lock.RedisLock;
 import io.jimble.db.sqlcache.SqlCacheConf;
 
@@ -396,6 +397,12 @@ public class DBUtil {
 	 * @throws IllegalStateException	{@code sql_cache.ttl} に単位が書いていないとき
 	 */
 	public static void load (Config conf, Class<?> appCls) {
+
+		/*
+		 * <b>Redis の設定の誤りも、起動のときに落とす</b>（2.7.12）。Redis は最初に使うときに繋ぐので、
+		 * ここで見ないと、host と cluster.nodes の両方書きなどが起動のあとまで残る
+		 */
+		RedisClient.validate();
 
 		if (!conf.hasPath("db")) {
 			return;

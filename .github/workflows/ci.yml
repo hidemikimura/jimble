@@ -206,8 +206,15 @@ jobs:
           # gradle-wrapper.jar が公開されているものと同じかを確かめる（既定でも有効。明示しておく）
           validate-wrappers: true
 
+      # Redis クラスター（マスター 3・レプリカ 3）。RedisCluster*IntegrationTest が使う。
+      # services では 6 つのノードを 1 つのクラスターに組めないので、スクリプトで立てる
+      - name: Redis クラスター
+        run: .github/scripts/redis-cluster.sh
+
       - name: dbTest（@Tag("db") のテスト）
         run: ./gradlew dbTest --stacktrace
+        env:
+          JIMBLE_TEST_REDIS_CLUSTER: 127.0.0.1:17001,127.0.0.1:17002,127.0.0.1:17003
 
       # 要件 F-G-14。コミットされている生成物がスキーマと一致するか
       - name: codegenCheck

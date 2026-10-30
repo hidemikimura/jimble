@@ -1,6 +1,6 @@
 ---
 name: jimble-db-config
-description: jimble の DB と Redis の設定を書くときに使う。db.<名前> のキー（snake_case・知らないキーは起動で落ちる・単位）、プールの大きさと Agroal、落ちても全体を止めないデータソース（required）、管理の表を絞る（framework_tables）、SQL 結果キャッシュ（selectCached・sql_cache・サブ DB）、Redis のパスワード、MySQL と PostgreSQL の違い（DialectException）を含む。
+description: jimble の DB と Redis の設定を書くときに使う。db.<名前> のキー（snake_case・知らないキーは起動で落ちる・単位）、プールの大きさと Agroal、落ちても全体を止めないデータソース（required）、管理の表を絞る（framework_tables）、SQL 結果キャッシュ（selectCached・sql_cache・サブ DB）、Redis のパスワードとクラスター（redis.cluster.nodes）、MySQL と PostgreSQL の違い（DialectException）を含む。
 ---
 
 # jimble の DB と Redis の設定
@@ -64,6 +64,10 @@ description: jimble の DB と Redis の設定を書くときに使う。db.<名
 - **Redis にパスワードを掛ける**：`redis.password = ${?REDIS_PASSWORD}`（Redis 6 の ACL なら `redis.username` も。2.2.3）。
   既定の行を先に置く2行の書き方は `jimble-config`
 - Redis には**文字列として**読み書きする（2.2.3。それまでの Kryo は、読むときに何のクラスでも作った）。アプリは何もしなくてよい
+- **Redis クラスター**は `redis.cluster.nodes = ["host:port"]`（2.7.12）。`redis.host` と両方書くと起動で止まる。
+  ElastiCache / OCI Cache は入口（設定エンドポイント・ディスカバリー・エンドポイント）を1つと `ssl = true`。
+  マスターだけから読む。接続の数はマスター1つごと（`connection_minimum_idle` × マスターの数）。
+  証明書の名前が合わないときだけ `redis.ssl_verification = "ca_only"`（`none` は無い）。https://jimble.io/ja/config.md
 
 ## 製品の違い
 

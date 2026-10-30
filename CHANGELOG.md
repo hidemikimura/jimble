@@ -4,6 +4,18 @@
 
 ---
 
+## 2.7.12（未公開）
+
+### 足したこと
+
+| | |
+|---|---|
+| **Redis クラスターに繋げるようになりました（`redis.cluster.nodes`）** | `redis.cluster.nodes = ["host:port"]` を書くと、単体（`redis.host`）のかわりにクラスターに繋ぎます。AWS ElastiCache / MemoryDB は設定エンドポイント、OCI Cache はディスカバリー・エンドポイントを 1 つ書き、TLS なら `redis.ssl = true` です。認証・TLS・`redis.settings` は単体と同じものを使います。**マスターだけから読みます**（レプリカからは読まない）。接続の数はマスター 1 つごとです（`connection_minimum_idle` × マスターの数）。`redis.host` と両方書くと、`DBUtil.load` のときに止まります（ノードの書き方・ポートの誤りも同じ）。環境変数から渡すなら `nodes = ${?REDIS_CLUSTER_NODES}` に `"a:6379,b:6379"` のような , 区切りの文字列でも書けます。キャッシュ・ロック・セッション・流量制限・SQL 結果キャッシュ・MQ の印は、アプリを直さずにそのまま動きます。書き方は [設定](https://jimble.io/ja/config) の「Redis クラスターに繋ぐ」にあります |
+| **TLS の証明書の確かめ方を選べるようになりました（`redis.ssl_verification`）** | 既定は `strict`（発行元と名前）で、これまでと同じです。クラスターがノードを IP で返し、証明書の名前と合わないときだけ `ca_only` にします。確かめない（`none`）は選べません |
+| **起動時の構成のログに、Redis が単体かクラスターかを出すようにしました** | `redis=単体` / `redis=クラスター` / `redis=なし`。構造化ログには `redis_mode`（`single` / `cluster` / `none`）を足しました。`redis`（true / false）はそのままです |
+
+---
+
 ## 2.7.11（2026-10-29）
 
 **この版から、jimble は Maven Central ではなく `https://repo.jimble.io` に置きます。**Maven Central に月ごとの公開の上限（ファイル数・大きさ・リリース数）が入り、jimble の 1 版（16 の成果物・約 400 ファイル・約 60MB）でほぼ届くためです。座標（`io.jimble:jimble-web` など）とプラグイン ID（`io.jimble.db` など）は変わりません。2.7.10 までの版は Maven Central に残ります。
