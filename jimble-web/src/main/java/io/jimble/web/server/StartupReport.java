@@ -18,6 +18,7 @@ import io.jimble.web.upload.UploadConf;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 起動時に「今どの実装が有効か」を出す（要件 F-U-11）
@@ -53,6 +54,8 @@ public final class StartupReport {
 		 */
 		fields.put("sql_cache", sqlCache());
 		fields.put("redis", RedisClient.isConfigured());
+		// 単体かクラスターか（2.7.12）
+		fields.put("redis_mode", RedisClient.mode().name().toLowerCase(Locale.ROOT));
 		fields.put("db", dataSourceNames());
 		fields.put("upload_max_file_size", UploadConf.maxFileSize());
 
@@ -83,7 +86,11 @@ public final class StartupReport {
 				, SessionConf.store()
 				, Cache.type()
 				, sqlCache()
-				, RedisClient.isConfigured() ? "あり" : "なし"
+				, switch (RedisClient.mode()) {
+					case SINGLE -> "単体";
+					case CLUSTER -> "クラスター";
+					case NONE -> "なし";
+				}
 				, dataSourceNames()
 				, PasswordUtil.isEncrypt() ? "あり" : "なし"
 				, secretCounts()

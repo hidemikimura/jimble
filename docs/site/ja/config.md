@@ -352,9 +352,10 @@ sql_cache {
 }
 
 redis {
-	host = ""        # 空なら Redis 無し
+	host = ""        # 空なら Redis 無し（クラスターなら書かない）
 	port = 6379
 	ssl  = false
+	ssl_verification = "strict"   # strict | ca_only。TLS の証明書をどこまで確かめるか（2.7.12 から）
 	username = ""    # Redis 6 の ACL の利用者。空なら送らない
 	password = ${?REDIS_PASSWORD}   # 空なら送らない
 
@@ -370,6 +371,12 @@ redis {
 
 		subscription_connection_minimum_idle_size = 1
 		subscription_connection_pool_size         = 50
+	}
+
+	# Redis クラスター（2.7.12 から）。書けばクラスターに繋ぐ。host とは同時に書けない
+	cluster {
+		nodes         = []   # "host:port" の並び（"a:6379,b:6379" のように , で区切った文字列でもよい。環境変数から渡すとき）
+		scan_interval = 5s   # 構成（フェイルオーバー・ノードの増減）を見直す間隔
 	}
 }
 
@@ -531,6 +538,40 @@ jimble {
 	# server.port は -Djimble.server.port=8080 でも指定できる（システムプロパティが優先）
 }
 ```
+
+## Redis クラスターに繋ぐ
+
+**`redis.cluster.nodes` を書くと、Redis クラスターに繋ぎます**（2.7.12 から）。
+`redis.host` と両方書くと、どちらに繋ぐか分からないので起動で止まります（`DBUtil.load` のときに見ます。ノードの書き方やポートの誤りも同じ）。
+認証（`username` / `password`）・TLS（`ssl`）・`redis.settings` は、単体と同じものを使います。
+
+```hocon
+# AWS ElastiCache / MemoryDB（クラスターモード有効）
+redis {
+	cluster.nodes = ["clustercfg.my-cache.xxxxxx.apne1.cache.amazonaws.com:6379"]   # 設定エンドポイント
+	ssl      = true                        # 転送中の暗号化を有効にしているなら
+	password = ${?REDIS_PASSWORD}          # AUTH トークン（RBAC ならユーザー名も）
+}
+```
+
+```hocon
+# OCI Cache（シャード化されたクラスター）。TLS は必須
+redis {
+	cluster.nodes = ["<ディスカバリー・エンドポイントの FQDN>:6379"]
+	ssl = true
+}
+```
+
+- **書くのは入口だけでよい。**残りのノードは、繋いでからクラスターに教わります。
+  自前のクラスターでノードを並べるなら、入口が1つ落ちても繋げるよう2つ以上書いてください
+- **マスターだけから読みます。**レプリカからは読みません（書いた直後に読むセッション・ロック・SQL 結果キャッシュの消し込みが、古い値を見ないように）
+- **接続の数はマスター1つごとです。**`connection_minimum_idle = 24` でマスターが3つなら、アプリ1つにつき最低 72 本を開けておきます。
+  台数が多いなら小さくしてください
+- **フェイルオーバーのあいだ（数秒〜十数秒）は失敗します。**キャッシュは書けなかったことを `false` で返し、
+  セッションとロックは例外になります。手元のクラスター（`cluster-node-timeout 5000`）では、マスターを止めてから約 13 秒で戻りました
+- **TLS の証明書の名前が合わない**（ノードが IP で返ってくる）と繋がりません。そのときだけ `ssl_verification = "ca_only"`
+  （発行元は確かめ、名前は確かめない）にしてください。確かめない（`none`）は選べません
+- 1つのクラスターを複数のアプリや環境で分け合うなら、`sql_cache.namespace` をそれぞれ別の値にしてください（単体と同じ）
 
 ## cipher.key と auth.mfa.secret_key は別のもの
 
