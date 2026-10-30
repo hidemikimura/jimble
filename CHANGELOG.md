@@ -6,6 +6,13 @@
 
 ## 2.7.12（未公開）
 
+### 上げる前に見るところ
+
+| | |
+|---|---|
+| **multipart の部分の数の超過と、chunked の本文の超過が、400 ではなく 413 で返るようになりました** | どちらも Helidon が上限で断ったものです。2.7.11 までは `HttpException` 400「multipart を読めませんでした」に包んでいたので、jimble 自身の上限（`upload.max_files` などの 413）と同じ「上限を超えた」なのに、アプリには 400 と 413 が混ざって届きました。いまは `HttpException` 413 で、文言は「アップロードできる部分（項目とファイル）は 1000 個までです」と「リクエストのサイズが上限（N バイト）を超えています」です。**400 を見て上限超過を見分けていたなら、413 に直してください。**読めない multipart はこれまでどおり 400 です |
+| **`upload.max_files` が 1,000 を超えていると起動時に落ちます** | Helidon は 1 リクエストの部分（項目とファイル）を 1,000 個までしか読みません（設定では変えられません）。1,000 を超える `max_files` には決して届かないので、`upload.max_total_size` が `server.max_request_size` を超えているときと同じく、起動で止めます。1,000 ちょうどなら起動します（項目を送るなら、届くファイルはその分だけ減ります） |
+
 ### 足したこと
 
 | | |
@@ -13,6 +20,13 @@
 | **Redis クラスターに繋げるようになりました（`redis.cluster.nodes`）** | `redis.cluster.nodes = ["host:port"]` を書くと、単体（`redis.host`）のかわりにクラスターに繋ぎます。AWS ElastiCache / MemoryDB は設定エンドポイント、OCI Cache はディスカバリー・エンドポイントを 1 つ書き、TLS なら `redis.ssl = true` です。認証・TLS・`redis.settings` は単体と同じものを使います。**マスターだけから読みます**（レプリカからは読まない）。接続の数はマスター 1 つごとです（`connection_minimum_idle` × マスターの数）。`redis.host` と両方書くと、`DBUtil.load` のときに止まります（ノードの書き方・ポートの誤りも同じ）。環境変数から渡すなら `nodes = ${?REDIS_CLUSTER_NODES}` に `"a:6379,b:6379"` のような , 区切りの文字列でも書けます。キャッシュ・ロック・セッション・流量制限・SQL 結果キャッシュ・MQ の印は、アプリを直さずにそのまま動きます。書き方は [設定](https://jimble.io/ja/config) の「Redis クラスターに繋ぐ」にあります |
 | **TLS の証明書の確かめ方を選べるようになりました（`redis.ssl_verification`）** | 既定は `strict`（発行元と名前）で、これまでと同じです。クラスターがノードを IP で返し、証明書の名前と合わないときだけ `ca_only` にします。確かめない（`none`）は選べません |
 | **起動時の構成のログに、Redis が単体かクラスターかを出すようにしました** | `redis=単体` / `redis=クラスター` / `redis=なし`。構造化ログには `redis_mode`（`single` / `cluster` / `none`）を足しました。`redis`（true / false）はそのままです |
+
+### 直したこと
+
+| | |
+|---|---|
+| **大きさを名乗らない本文（chunked）が `server.max_request_size` を超えたとき、本文が空として読まれていました** | `bodyText()` は空、JSON は 400「本文の JSON を読めません」、`application/x-www-form-urlencoded` のフォームは空になっていました。いまは 413「リクエストのサイズが上限（N バイト）を超えています」です。`bodyStream()` で自分で読むときは、これまでどおり読む途中で Helidon の例外が出ます |
+| **[アップロード](https://jimble.io/ja/upload) の「上限」に、部分の数（1,000 個）と chunked の本文の行を足しました** | あわせて、`max_total_size` を `server.max_request_size` と同じ値にすると、本文には multipart の区切りの分も入るので本文の上限が先に効き、合計の 413（「アップロードのサイズが上限…」）には届かないことも書きました |
 
 ---
 

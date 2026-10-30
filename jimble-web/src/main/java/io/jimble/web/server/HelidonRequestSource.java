@@ -2,6 +2,8 @@ package io.jimble.web.server;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
+import io.helidon.http.RequestException;
+import io.helidon.http.Status;
 import io.helidon.http.media.multipart.MultiPart;
 import io.helidon.http.media.multipart.ReadablePart;
 import io.helidon.webserver.http.ServerRequest;
@@ -27,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * helidon のリクエストを包む
@@ -245,7 +248,9 @@ final class HelidonRequestSource implements RequestSource {
 				return Map.of();
 			}
 			return toMultiMap(request.content().as(Parameters.class));
-		} catch (Exception ignore) {
+		} catch (Exception ex) {
+			// 本文が上限を超えたのは 413。読めないものはこれまでどおり空
+			throwIfTooLarge(ex);
 			return Map.of();
 		}
 
@@ -379,9 +384,74 @@ final class HelidonRequestSource implements RequestSource {
 		} catch (Exception ex) {
 
 			cleanup();
-			throw new HttpException(400, "multipart を読めませんでした", ex);
+			throw tooLarge(ex).orElseGet(() -> new HttpException(400, "multipart を読めませんでした", ex));
 
 		}
+
+	}
+
+	/**
+	 * helidon が上限で断った例外なら、jimble の 413 にする
+	 *
+	 * <p>
+	 * <b>helidon の上限も 413 で返す。</b>包まずに 400 にすると、jimble の上限（413）と
+	 * 同じ「上限を超えた」なのに、アプリには 400 と 413 が混ざって届く。
+	 * 文言は helidon のものを出さず、jimble の上限超過と同じ形にそろえる。
+	 * </p>
+	 *
+	 * <ul>
+	 *   <li>部分の数（{@value UploadConf#MAX_PARTS} 個）を超えた：helidon の {@code io.helidon.http.HttpException}</li>
+	 *   <li>大きさを名乗らない本文（chunked）が {@code server.max_request_size} を超えた：helidon の {@code RequestException}</li>
+	 * </ul>
+	 *
+	 * @param ex	読んでいて出た例外
+	 * @return	413 の例外（上限で断ったのでなければ空）
+	 */
+	static Optional<HttpException> tooLarge (Throwable ex) {
+
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+
+			if (cause instanceof io.helidon.http.HttpException helidon && isTooLarge(helidon.status())) {
+				return Optional.of(new HttpException(TOO_LARGE_STATUS_CODE,
+					"アップロードできる部分（項目とファイル）は %d 個までです".formatted(UploadConf.MAX_PARTS), ex));
+			}
+
+			if (cause instanceof RequestException helidon && isTooLarge(helidon.status())) {
+				return Optional.of(new HttpException(TOO_LARGE_STATUS_CODE,
+					"リクエストのサイズが上限（%d バイト）を超えています".formatted(ServerConf.maxRequestSize()), ex));
+			}
+
+		}
+
+		return Optional.empty();
+
+	}
+
+	/**
+	 * helidon が上限で断った例外なら、jimble の 413 を投げる
+	 *
+	 * @param ex	読んでいて出た例外
+	 * @throws HttpException	上限で断った場合（413）
+	 */
+	private static void throwIfTooLarge (Exception ex) {
+
+		Optional<HttpException> tooLarge = tooLarge(ex);
+
+		if (tooLarge.isPresent()) {
+			throw tooLarge.get();
+		}
+
+	}
+
+	/**
+	 * 413 か
+	 *
+	 * @param status	helidon のステータス
+	 * @return	413 の場合 = true
+	 */
+	private static boolean isTooLarge (Status status) {
+
+		return status != null && status.code() == TOO_LARGE_STATUS_CODE;
 
 	}
 
@@ -737,7 +807,9 @@ final class HelidonRequestSource implements RequestSource {
 
 		try {
 			return request.content().as(String.class);
-		} catch (Exception ignore) {
+		} catch (Exception ex) {
+			// 本文が上限を超えたのは 413。読めないものはこれまでどおり空
+			throwIfTooLarge(ex);
 			return "";
 		}
 

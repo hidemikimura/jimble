@@ -103,6 +103,36 @@ class UploadLimitTest {
 
 	}
 
+	@Test
+	@DisplayName("max_files が部分の数の上限（1,000。helidon が決めていて変えられない）を超えていたら起動しない")
+	void maxFilesOverPartLimitFailsAtStartup () {
+
+		conf("upload { max_files = %d }".formatted(UploadConf.MAX_PARTS + 1));
+
+		IllegalStateException thrown = assertThrows(IllegalStateException.class
+			, () -> JimbleServer.start(new JimbleApp() { }, 0)
+			, "届かない上限を黙って通しています");
+
+		assertTrue(thrown.getMessage().contains("upload.max_files"), thrown.getMessage());
+
+	}
+
+	@Test
+	@DisplayName("max_files がちょうど 1,000 なら起動する（項目を送らなければ届く）")
+	void maxFilesAtPartLimitIsFine () {
+
+		conf("upload { max_files = %d }".formatted(UploadConf.MAX_PARTS));
+
+		JimbleServer server = JimbleServer.start(new JimbleApp() { }, 0);
+
+		try {
+			assertTrue(server.port() > 0);
+		} finally {
+			server.stop();
+		}
+
+	}
+
 	// region ここで固定していないこと
 
 	/*

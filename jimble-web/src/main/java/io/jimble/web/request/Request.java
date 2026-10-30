@@ -947,6 +947,9 @@ public final class Request {
 					String text = null;
 					try {
 						text = source.bodyText(StandardCharsets.UTF_8);
+					} catch (io.jimble.web.http.HttpException ex) {
+						// 本文が上限を超えた（413）。JSON が壊れているのとは分ける
+						bodyError = ex;
 					} catch (Exception ex) {
 						malformedJson = "本文を読めませんでした: " + ex.getMessage();
 					}
@@ -965,9 +968,17 @@ public final class Request {
 				} else if (contentType().toLowerCase().startsWith("text/")) {
 					try {
 						body.put("text", source.bodyText(StandardCharsets.UTF_8));
+					} catch (io.jimble.web.http.HttpException ex) {
+						// 本文が上限を超えた（413）。空として読ませない
+						bodyError = ex;
 					} catch (Exception ex) {}
 				}
 			}
+		}
+
+		if (bodyError != null) {
+			// 何度読んでも同じ答えにする
+			throw bodyError;
 		}
 
 		if (malformedJson != null) {
@@ -981,6 +992,9 @@ public final class Request {
 
 	/* 本文の JSON を読めなかった理由（読めたら null） */
 	private String malformedJson = null;
+
+	/* 本文を読んでいて出た HTTP の例外（上限を超えたときの 413。無ければ null） */
+	private io.jimble.web.http.HttpException bodyError = null;
 
 	/**
 	 * path
