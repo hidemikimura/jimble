@@ -80,6 +80,9 @@ parentheses is a gloss, not what the response says.
 | --- | --- |
 | Too many files | **413**「アップロードできるファイル数は N 件までです」（"at most N files"） |
 | One file, or the total, over the limit | **413**「アップロードのサイズが上限（N バイト）を超えています」（"over the N byte limit"） |
+| More than 1,000 parts (fields and files) | **413**「アップロードできる部分（項目とファイル）は 1000 個までです」（"at most 1000 parts, fields and files"） |
+| A body with no declared length (chunked) over `server.max_request_size` | **413**「リクエストのサイズが上限（N バイト）を超えています」（"request over the N byte limit"） |
+| A body with a declared length (Content-Length) over `server.max_request_size` | **413** (the server refuses it before routing; your code never runs) |
 | Not readable as multipart | **400**「multipart を読めませんでした」（"could not read the multipart body"） |
 
 Size is checked **as the data is read**. Measure it after taking everything in
@@ -90,6 +93,19 @@ and you have already written the excess to disk.
 > If `upload.max_total_size` is larger, **startup fails** — the server cuts the body
 > first, so the limit you wrote could never be reached.
 > If you want to allow large uploads, raise both.
+
+> [!WARN]
+> **With `max_total_size` equal to `server.max_request_size`, the total-size 413 (「アップロードのサイズが上限…」) is never reached.**
+> The body also carries the multipart boundaries and each part's headers, so the body limit bites before
+> the files add up to the total. Both are 413, but the message and the source differ. If you want the
+> total-size limit to be the one that fires, set `max_total_size` lower by the boundary overhead.
+
+> [!WARN]
+> **A request can carry at most 1,000 parts, fields included** (Helidon fixes this; it is not configurable).
+> Fields and files each count as one part, so every field you send leaves room for one file fewer.
+> Setting `upload.max_files` above 1,000 can never be reached, so **startup fails**.
+>
+> Up to 2.7.11, too many parts and an oversized chunked body came back as **400**「multipart を読めませんでした」.
 
 ## Saving
 

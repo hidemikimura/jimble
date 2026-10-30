@@ -683,6 +683,8 @@ public final class JimbleServer {
 	 */
 	private static void checkUploadLimits () {
 
+		checkMaxFiles();
+
 		long total = UploadConf.maxTotalSize();
 		long request = ServerConf.maxRequestSize();
 
@@ -704,6 +706,30 @@ public final class JimbleServer {
 				+ "先にサーバー側で切られるので、この上限には届きません。"
 				+ "server.max_request_size を上げるか、upload.max_total_size を下げてください")
 				.formatted(total, request));
+
+	}
+
+	/**
+	 * ファイル数の上限が部分の数の上限を超えていたら落とす
+	 *
+	 * <p>
+	 * <b>helidon は部分を {@value UploadConf#MAX_PARTS} 個までしか読まない</b>（設定では変えられない）。
+	 * {@code upload.max_files} をそれより大きくしても、その上限には決して届かない。
+	 * {@code upload.max_total_size} と {@code server.max_request_size} の関係と同じ考え方で、黙って通さない。
+	 * </p>
+	 */
+	private static void checkMaxFiles () {
+
+		int maxFiles = UploadConf.maxFiles();
+
+		if (maxFiles <= UploadConf.MAX_PARTS) {
+			return;
+		}
+
+		throw new IllegalStateException(
+			("upload.max_files（%d）が、1リクエストで読める部分の数（%d。項目も含む。helidon が決めていて変えられない）を超えています。"
+				+ "この上限には届きません。upload.max_files を %d 以下にしてください")
+				.formatted(maxFiles, UploadConf.MAX_PARTS, UploadConf.MAX_PARTS));
 
 	}
 

@@ -207,7 +207,7 @@ session {
 upload {
 	max_file_size  = 10MiB   # per file
 	max_total_size = 10MiB   # per request, in total (keep it level with server.max_request_size)
-	max_files      = 20      # files per request
+	max_files      = 20      # files per request (at most 1000; a request carries at most 1000 parts, fields included)
 	temp_dir       = ""      # empty means java.io.tmpdir
 }
 

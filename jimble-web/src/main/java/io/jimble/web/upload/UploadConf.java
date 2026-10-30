@@ -56,6 +56,21 @@ public final class UploadConf {
 	/** 既定のファイル数上限 */
 	public static final int DEFAULT_MAX_FILES = 20;
 
+	/**
+	 * 1リクエストの部分（フォーム項目とファイル）の上限
+	 *
+	 * <p>
+	 * <b>helidon が決めている値で、設定では変えられない</b>（helidon 4.5.6 の {@code MultiPartImpl}）。
+	 * 項目もファイルも1個と数える。超えると 413 で断る。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>{@code max_files} はこれを超えられない</b>（起動で落とす）。
+	 * 項目も送るなら、届くファイル数はその分だけ減る。
+	 * </p>
+	 */
+	public static final int MAX_PARTS = 1000;
+
 	/** 一時ファイルの接頭辞 */
 	public static final String TEMP_PREFIX = "jimble-upload-";
 

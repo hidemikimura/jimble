@@ -200,7 +200,7 @@ session {
 upload {
 	max_file_size  = 10MiB   # 1ファイル
 	max_total_size = 10MiB   # 1リクエスト合計（server.max_request_size と揃える）
-	max_files      = 20      # 1リクエストのファイル数
+	max_files      = 20      # 1リクエストのファイル数（1000 まで。部分は項目も含めて 1000 個まで）
 	temp_dir       = ""      # 空なら java.io.tmpdir
 }
 
