@@ -93,6 +93,29 @@ class RepoLayoutTest {
 
 	}
 
+	@Test
+	@DisplayName("段は jar などが先、pom / module があと（段の中は並べて上げてよい）")
+	void stages () throws IOException {
+
+		touch("io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.pom");
+		touch("io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.pom.asc");
+		touch("io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.jar");
+		touch("io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.jar.asc");
+		touch("io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.module.sha256");
+
+		List<List<String>> stages = RepoLayout.plan(root, "2.7.11").stages();
+
+		assertEquals(List.of(
+			List.of(
+				"io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.jar",
+				"io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.jar.asc"),
+			List.of(
+				"io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.module.sha256",
+				"io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.pom",
+				"io/jimble/jimble-web/2.7.11/jimble-web-2.7.11.pom.asc")), stages);
+
+	}
+
 	private void touch (String path) throws IOException {
 
 		Path file = root.resolve(path);

@@ -61,6 +61,25 @@ final class RepoLayout {
 		}
 
 		/**
+		 * 上げる段（1段目は jar など、2段目は pom / module とその署名・チェックサム）
+		 *
+		 * <p>
+		 * <b>段の中は並べて上げてよいが、段をまたいではいけない。</b>
+		 * 2段目は、1段目が全部置けてから上げる（pom が見えた時点で jar も取れるようにする）。
+		 * </p>
+		 *
+		 * @return 段ごとのファイル（空の段は入れない）
+		 */
+		List<List<String>> stages () {
+
+			List<String> artifacts = files.stream().filter(file -> !isDescriptor(file)).toList();
+			List<String> descriptors = files.stream().filter(RepoLayout::isDescriptor).toList();
+
+			return Stream.of(artifacts, descriptors).filter(stage -> !stage.isEmpty()).toList();
+
+		}
+
+		/**
 		 * 署名（.asc）が無い jar / pom / module
 		 *
 		 * @return 置き場の中のパス
