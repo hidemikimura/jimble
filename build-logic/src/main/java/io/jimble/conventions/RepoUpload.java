@@ -26,6 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * build/central にある版を、repo.jimble.io（Cloudflare R2）へ上げる
@@ -57,6 +59,12 @@ public abstract class RepoUpload extends DefaultTask {
 
 	/* 何ファイルごとに進み具合を出すか */
 	private static final int PROGRESS_EVERY = 50;
+
+	/*
+	 * 同時に送る数。1ファイルごとに HEAD と PUT の往復があり、1つずつだと約 400 ファイルで 6 分かかった（2.7.12）。
+	 * 往復の待ちを重ねるためなので、多くしすぎない（R2 の 429 はやり直す）
+	 */
+	private static final int UPLOAD_THREADS = 8;
 
 	/**
 	 * 上げる版
@@ -131,8 +139,11 @@ public abstract class RepoUpload extends DefaultTask {
 
 		R2Client client = new R2Client(env("JIMBLE_R2_ACCOUNT_ID"), bucket(), env("JIMBLE_R2_ACCESS_KEY_ID"), env("JIMBLE_R2_SECRET_ACCESS_KEY"));
 
+		Map<RepoLayout.Coordinate, Optional<String>> fetched = new ConcurrentHashMap<>();
+		Parallel.each(plan.coordinates(), UPLOAD_THREADS, c -> fetched.put(c, client.getText(c.dir() + "/maven-metadata.xml")));
+
 		Map<RepoLayout.Coordinate, Optional<String>> metadata = new LinkedHashMap<>();
-		plan.coordinates().forEach(c -> metadata.put(c, client.getText(c.dir() + "/maven-metadata.xml")));
+		plan.coordinates().forEach(c -> metadata.put(c, fetched.get(c)));
 
 		List<RepoLayout.Coordinate> missing = plan.coordinates().stream()
 			.filter(c -> metadata.get(c).map(xml -> !MavenMetadata.versions(xml).contains(version)).orElse(true))
@@ -148,7 +159,7 @@ public abstract class RepoUpload extends DefaultTask {
 				version, missing.size(), plan.coordinates().size());
 		}
 
-		uploadFiles(client, root, plan.files());
+		uploadFiles(client, root, plan);
 		writeMetadata(client, missing, metadata, version);
 		verifyPublic(plan.coordinates().get(0), version);
 
@@ -160,35 +171,44 @@ public abstract class RepoUpload extends DefaultTask {
 	 * <b>「上がっている」は maven-metadata.xml に載っているかで決める</b>（pom の有無ではない）。
 	 * pom の有無で止めると、途中で落ちたときに流し直せず、手で消すしかなくなる。
 	 * 載せる前の版は、まだ誰にも知らせていないので、手元の中身で置き直してよい。
+	 *
+	 * <b>段（jar → pom / module）の中は並べて送り、段をまたがない</b>（RepoLayout.Plan#stages）。
 	 */
-	private void uploadFiles (R2Client client, Path root, List<String> files) {
+	private void uploadFiles (R2Client client, Path root, RepoLayout.Plan plan) {
 
-		int done = 0;
-		int skipped = 0;
-		int replaced = 0;
+		int total = plan.files().size();
+		AtomicInteger done = new AtomicInteger();
+		AtomicInteger skipped = new AtomicInteger();
+		AtomicInteger replaced = new AtomicInteger();
 
-		for (String key : files) {
+		for (List<String> stage : plan.stages()) {
 
-			byte[] body = read(root.resolve(key));
-			Optional<String> etag = client.etag(key);
+			Parallel.each(stage, UPLOAD_THREADS, key -> {
 
-			if (etag.isPresent() && etag.get().equals(S3Signer.digestHex("MD5", body))) {
-				skipped++;
-			} else {
-				replaced += etag.isPresent() ? 1 : 0;
-				client.put(key, body, RepoLayout.contentType(key), RepoLayout.cacheControl(key));
-			}
+				byte[] body = read(root.resolve(key));
+				Optional<String> etag = client.etag(key);
 
-			done++;
+				if (etag.isPresent() && etag.get().equals(S3Signer.digestHex("MD5", body))) {
+					skipped.incrementAndGet();
+				} else {
+					if (etag.isPresent()) {
+						replaced.incrementAndGet();
+					}
+					client.put(key, body, RepoLayout.contentType(key), RepoLayout.cacheControl(key));
+				}
 
-			if (done % PROGRESS_EVERY == 0 || done == files.size()) {
-				getLogger().lifecycle("  {} / {}", done, files.size());
-			}
+				int count = done.incrementAndGet();
+
+				if (count % PROGRESS_EVERY == 0 || count == total) {
+					getLogger().lifecycle("  {} / {}", count, total);
+				}
+
+			});
 
 		}
 
-		if (skipped > 0 || replaced > 0) {
-			getLogger().lifecycle("同じ中身で置いてあったので飛ばした: {} / 違う中身だったので置き直した: {}", skipped, replaced);
+		if (skipped.get() > 0 || replaced.get() > 0) {
+			getLogger().lifecycle("同じ中身で置いてあったので飛ばした: {} / 違う中身だったので置き直した: {}", skipped.get(), replaced.get());
 		}
 
 	}
@@ -199,7 +219,8 @@ public abstract class RepoUpload extends DefaultTask {
 
 		String now = ZonedDateTime.now(ZoneOffset.UTC).format(LAST_UPDATED);
 
-		for (RepoLayout.Coordinate c : coordinates) {
+		// 成果物ごとに、チェックサム → 本体の順を守る（成果物どうしは並べてよい）
+		Parallel.each(coordinates, UPLOAD_THREADS, c -> {
 
 			String key = c.dir() + "/maven-metadata.xml";
 			String merged = MavenMetadata.merge(existing.get(c).orElse(null), c.groupId(), c.artifactId(), version, now);
@@ -212,7 +233,7 @@ public abstract class RepoUpload extends DefaultTask {
 
 			client.put(key, body, RepoLayout.contentType(key), RepoLayout.CACHE_METADATA);
 
-		}
+		});
 
 		getLogger().lifecycle("maven-metadata.xml を {} 個書き直しました（並べて流さないこと。読んで書き戻すので、片方の版が消える）", coordinates.size());
 
