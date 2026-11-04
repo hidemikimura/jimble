@@ -28,7 +28,7 @@ io.jimble.db.sql.query
 io.jimble.util
 io.jimble.web
 
-[public] 公開 API（103）
+[public] 公開 API（104）
 io.jimble.batch
 io.jimble.batch.manager
 io.jimble.batch.scheduler
@@ -108,6 +108,7 @@ io.jimble.web.auth.oidc
 io.jimble.web.auth.passkey
 io.jimble.web.bot
 io.jimble.web.call
+io.jimble.web.captcha
 io.jimble.web.context
 io.jimble.web.cookie
 io.jimble.web.cors

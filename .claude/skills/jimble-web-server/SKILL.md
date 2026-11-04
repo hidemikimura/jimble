@@ -1,6 +1,6 @@
 ---
 name: jimble-web-server
-description: jimble の Web をロードバランサやプロキシの後ろに置く・外と繋ぐときに使う。trust_proxy と X-Forwarded-For / X-Forwarded-Proto（送り元の IP・isSecure・HSTS）、IPUtil.inRange、流量制限（RateLimit は宣言ごと）、CORS、リバースプロキシ（ReverseProxy・タイムアウト）、アクセスログで伏せる値、MCP サーバー（/mcp の認証）を含む。
+description: jimble の Web をロードバランサやプロキシの後ろに置く・外と繋ぐときに使う。trust_proxy と X-Forwarded-For / X-Forwarded-Proto（送り元の IP・isSecure・HSTS）、IPUtil.inRange、流量制限（RateLimit は宣言ごと）、ロボット対策（ALTCHA。Altcha::challenge と Altcha::verify・altcha.secret・使った答えの印）、CORS、リバースプロキシ（ReverseProxy・タイムアウト）、アクセスログで伏せる値、MCP サーバー（/mcp の認証）を含む。
 ---
 
 # jimble の Web をプロキシの後ろに置く・外と繋ぐ
@@ -20,6 +20,14 @@ description: jimble の Web をロードバランサやプロキシの後ろに�
 
 - **流量制限は宣言ごとに数える**（2.5.2。それまではログインの `perIp(5, 1m)` と `/api` の `perIp(60, 1m)` が同じ枠を分け合い、ログインの制限が効いていなかった）
 - **`new Cors().addAllowOrigin("*")` と `allowCredentials(true)` は一緒に使えない**（例外。2.2.3）。資格情報つきなら、オリジンを並べる
+
+## ロボット対策（ALTCHA）
+
+- 外のサービスに登録しない proof-of-work（2.7.13）。`get("/altcha/challenge", Altcha::challenge)` と、フォームを受けるブロックに `before(Altcha::verify)`。ブラウザ側は ALTCHA のウィジェット（`altcha` 3.x）を版を決めて置く
+- `altcha.secret` は 32 文字以上で、環境変数から読む（`${?ALTCHA_SECRET}`）。無い・短いと使ったところで例外
+- 断るのは 403（`AltchaResult` の文言）。フォームを出し直すなら `Altcha.check(値)`。**`check` は通った答えを「使った」と記録するので、`verify` を掛けたルートの中で呼び直さない**（2 回目は `REPLAYED`）
+- 使った印は `rate_limit.store` に置く。**複数台なら `redis` か `db`**（`memory` だと別の台で同じ答えが通る）。置き場が落ちたときは通す（ログに出す）
+- これだけでは止めきれない。送る回数は流量制限、ログインは `Lockout.attempt` でも絞る
 
 ## リバースプロキシ
 

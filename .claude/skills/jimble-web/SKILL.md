@@ -1,6 +1,6 @@
 ---
 name: jimble-web
-description: jimble の Web 層を書くときに最初に使う。ルートを並べる（初期化ブロック・コントローラの install）、フィルタと属性が「書いた場所」にしか効かないこと、大文字小文字と正規の URL、確定後にフィルタを足さないなどの全体の決まりと、入力（jimble-web-input）・返す/エラー/静的ファイル（jimble-web-response）・セッション/CSRF/Cookie（jimble-web-session）・ログインと認可（jimble-web-auth・jimble-web-auth-methods・jimble-web-api-token）・プロキシ/流量制限/MCP（jimble-web-server）のどの skill を読むかの案内。
+description: jimble の Web 層を書くときに最初に使う。ルートを並べる（初期化ブロック・コントローラの install）、フィルタと属性が「書いた場所」にしか効かないこと、大文字小文字と正規の URL、確定後にフィルタを足さないなどの全体の決まりと、入力（jimble-web-input）・返す/エラー/静的ファイル（jimble-web-response）・セッション/CSRF/Cookie（jimble-web-session）・ログインと認可（jimble-web-auth・jimble-web-auth-methods・jimble-web-api-token）・プロキシ/流量制限/ロボット対策/MCP（jimble-web-server）のどの skill を読むかの案内。
 ---
 
 # jimble の Web 層
@@ -133,7 +133,7 @@ if (context.route().route().attribute(NO_AUTH)) { return; }
 | ログインと認可（フィルタの順・`Auth` の属性・remember-me・締め出し・`Auth.REALM`・ロックアウト・パスワードのハッシュ） | `jimble-web-auth` |
 | 二要素認証（TOTP）・パスキー・「Google でログイン」（OIDC） | `jimble-web-auth-methods` |
 | API のトークン（`Authorization: Bearer`・スコープ・マルチテナントの Host の照合） | `jimble-web-api-token` |
-| プロキシの後ろ（`trust_proxy`）・リバースプロキシ・送り元の IP・流量制限・CORS・アクセスログ・MCP | `jimble-web-server` |
+| プロキシの後ろ（`trust_proxy`）・リバースプロキシ・送り元の IP・流量制限・ロボット対策（ALTCHA）・CORS・アクセスログ・MCP | `jimble-web-server` |
 
 ## 詳しいことは引く
 
