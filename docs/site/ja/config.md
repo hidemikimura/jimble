@@ -319,6 +319,13 @@ rate_limit {
 	store   = "db"     # db | memory | redis
 }
 
+altcha {
+	secret      = ${?ALTCHA_SECRET}   # 問題に署名する鍵（32 文字以上。必ず環境変数から）
+	cost        = 5000                # 1 回の計算の重さ（PBKDF2 の繰り返し回数）
+	counter_max = 10000               # 答えの数の上限（半分〜上限から選ぶ）
+	expires     = 10m                 # 問題の期限
+}
+
 cache {
 	type          = "db"    # db | memory | redis
 	temp_dir      = ""      # ファイルを置くところ

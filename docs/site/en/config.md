@@ -326,6 +326,13 @@ rate_limit {
 	store   = "db"     # db | memory | redis
 }
 
+altcha {
+	secret      = ${?ALTCHA_SECRET}   # signs the challenges (32+ characters; always from the environment)
+	cost        = 5000                # weight of one attempt (PBKDF2 iterations)
+	counter_max = 10000               # upper bound of the answer (picked from half of it up to it)
+	expires     = 10m                 # how long a challenge stays valid
+}
+
 cache {
 	type          = "db"    # db | memory | redis
 	temp_dir      = ""      # where the files go
