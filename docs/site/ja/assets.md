@@ -118,8 +118,43 @@ assets {
 | 本体のルート一覧 | **混ざらない**（別インスタンス。要件 F-W-20） |
 
 > [!NOTE]
-> 書き換えたときだけ `ETag` と `Last-Modified` は付きません（中身がリクエストごとに変わるため）。
-> `Cache-Control` は `public,max-age=<assets.max_age>,must-revalidate` になります。
+> 書き換えたときは `ETag` と `Last-Modified` を付けず、`Cache-Control` は `private,no-cache` になります
+> （中身がリクエストごとに変わるので、CDN などの共有キャッシュに置かせない。D-212）。
+
+### head に title・OGP を入れる（SpaHead）
+
+`SpaHead` を使うと、**テンプレートエンジンを使わずに**、ビルドした index.html の `<head>` に
+title・description・OGP・canonical・JSON-LD を入れられます。
+
+```java snippet=spa-head
+```
+
+- **index.html には何も書き足しません。**`<head>` に同じタグ（同じ `<title>`・同じ `name`・同じ `property`・canonical）があれば差し替え、
+  無ければ `</head>` の前に足します。Vite などが出した index.html をそのまま使えます
+- **書き換えるのは、サーバーが返す最初の HTML だけです。**`<body>` にも JS にも触らないので、
+  2 ページ目からブラウザの中で描く動き（CSR）は変わりません
+- プレビューの Bot（Slack・X・LINE・Facebook など）は JS を動かさないので、ここで入れた OGP だけを見ます。
+  **人にも Bot にも同じものを返す**ので、User-Agent で分けなくてかまいません
+- 値はすべてエスケープします。JSON-LD（`jsonLd(...)`）は `<` を `\u003c` にして、`</script>` で閉じられないようにします
+- 同じものを 2 回足すと、あとの値になります。足すたびに新しい `SpaHead` を返します（元は変えません）
+- 関数が `null` を返すと、index.html をそのまま返します（見つからないものなど）
+- 1 ページあたりの手間は、タグ 6 つ・index.html 1.8KB で約 10 マイクロ秒でした
+
+| メソッド | 入るタグ |
+| --- | --- |
+| `title(...)` | `<title>` |
+| `description(...)` | `<meta name="description">` |
+| `meta(name, ...)` | `<meta name="...">`（`robots` など） |
+| `og(name, ...)` | `<meta property="og:...">` |
+| `twitter(name, ...)` | `<meta name="twitter:...">` |
+| `property(name, ...)` | `<meta property="...">`（`og:` 以外。`fb:app_id` など） |
+| `canonical(url)` | `<link rel="canonical">` |
+| `jsonLd(...)` | `<script type="application/ld+json">`（文字列か、`Data` などを JSON にしたもの。いつも足す） |
+
+> [!NOTE]
+> 画面を移ったあとの title や meta は、これまでどおりクライアント側（vue-router のフックや `@unhead/vue` など）で変えてください。
+> サーバーが入れたタグはクライアントのライブラリが知らないので、移ったあとも残ることがあります。
+> Bot は最初の HTML しか見ないので、Bot に見えるものには影響しません。
 
 ## MPA
 

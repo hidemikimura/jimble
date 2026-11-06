@@ -1,6 +1,6 @@
 ---
 name: jimble-web-response
-description: jimble の Web で応答を返す・エラーを返す・静的ファイルを出すときに使う。text / json / view / redirect を組み立てて送るのは実行の終わり（send を書かない）、返し方を2種類積まない、outputStream と flush・tcp_no_delay、セキュリティヘッダ、error(...) の書き方（500 番台の中身を返さない・ValidationException の素通し）、例外とステータスコード、AssetHandler のキャッシュ、SpaRewriter を含む。
+description: jimble の Web で応答を返す・エラーを返す・静的ファイルを出すときに使う。text / json / view / redirect を組み立てて送るのは実行の終わり（send を書かない）、返し方を2種類積まない、outputStream と flush・tcp_no_delay、セキュリティヘッダ、error(...) の書き方（500 番台の中身を返さない・ValidationException の素通し）、例外とステータスコード、AssetHandler のキャッシュ、SpaRewriter と SpaHead（SPA の head に title・OGP を入れる）を含む。
 ---
 
 # jimble の Web で返す
@@ -81,5 +81,8 @@ error((context, cause, statusCode) -> {
 - **静的ファイルの置き場に空（`""` / `"/"`）を渡すと起動時に落ちる**（2.5.2。それまではクラスパスの根から返し、`application.conf` や `.class` が取れた）。
   `AssetHandler.mount("/static", "assets")` のように専用のディレクトリを渡す
 - **SPA の書き換え（`SpaRewriter`）で差し込む値は `SpaRewriter.escapeHtml(...)` を通す。**パスの値はデコード済みで、そのまま HTML になる
+- **SPA の head に title・description・OGP・canonical・JSON-LD を入れるなら `SpaHead`**（2.7.14）。`spa.route("/items/{id}", SpaHead.rewriter(context -> SpaHead.of().title(...).og("image", ...)))`。
+  テンプレートエンジン（Thymeleaf など）は要らない。index.html に印は要らず、同じタグは差し替え・無いものは `</head>` の前に足す。
+  値はエスケープ済み。書き換えるのは最初の HTML だけで、body と JS に触らないので CSR は変わらない。`null` を返せば index.html のまま
 
 詳しくは <https://jimble.io/ja/request-response.md> / <https://jimble.io/ja/errors.md> / <https://jimble.io/ja/assets.md>。

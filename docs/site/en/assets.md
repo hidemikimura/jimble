@@ -118,8 +118,43 @@ Paths are written the same way as real routes (`{id}`, a trailing `/*`).
 | Your real route list | **Stays separate** (a different instance — requirement F-W-20) |
 
 > [!NOTE]
-> When a rewrite happens — and only then — `ETag` and `Last-Modified` are not attached (the content changes per request).
-> `Cache-Control` becomes `public,max-age=<assets.max_age>,must-revalidate`.
+> A rewritten page gets no `ETag` or `Last-Modified`, and `Cache-Control` becomes `private,no-cache`
+> (the content can change per request, so shared caches such as a CDN must not keep it — D-212).
+
+### Putting title and OGP into the head (SpaHead)
+
+`SpaHead` puts title, description, OGP, canonical and JSON-LD into the `<head>` of your built index.html,
+**without a template engine.**
+
+```java snippet=spa-head
+```
+
+- **You add nothing to index.html.** If the `<head>` already has the same tag (the same `<title>`, the same `name`, the same `property`, or canonical), it is replaced;
+  otherwise it is inserted before `</head>`. The index.html that Vite and friends produce works as it is
+- **Only the first HTML the server returns is rewritten.** The `<body>` and the JS are untouched,
+  so rendering in the browser from the second page on (CSR) does not change
+- Link-preview bots (Slack, X, LINE, Facebook and so on) run no JS, so they see exactly the OGP put in here.
+  **People and bots get the same page**, so there is no need to branch on the User-Agent
+- Every value is escaped. JSON-LD (`jsonLd(...)`) turns `<` into `\u003c`, so `</script>` cannot close it
+- Adding the same thing twice keeps the later value. Each call returns a new `SpaHead` (the original is unchanged)
+- If your function returns `null`, index.html goes out unchanged (for something that was not found, say)
+- The cost per page was about 10 microseconds for six tags on a 1.8 KB index.html
+
+| Method | Tag |
+| --- | --- |
+| `title(...)` | `<title>` |
+| `description(...)` | `<meta name="description">` |
+| `meta(name, ...)` | `<meta name="...">` (`robots` and so on) |
+| `og(name, ...)` | `<meta property="og:...">` |
+| `twitter(name, ...)` | `<meta name="twitter:...">` |
+| `property(name, ...)` | `<meta property="...">` (other than `og:`, such as `fb:app_id`) |
+| `canonical(url)` | `<link rel="canonical">` |
+| `jsonLd(...)` | `<script type="application/ld+json">` (a string, or `Data` and the like turned into JSON; always added) |
+
+> [!NOTE]
+> Keep changing the title and meta after navigation on the client side, as before (a vue-router hook, `@unhead/vue`, and so on).
+> The client library does not know about tags the server put in, so they can remain after navigation.
+> Bots only read the first HTML, so what bots see is not affected.
 
 ## MPA
 
