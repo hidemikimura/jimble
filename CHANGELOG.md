@@ -4,6 +4,22 @@
 
 ---
 
+## 2.7.14（未公開）
+
+### 足したこと
+
+| | |
+|---|---|
+| **SPA の index.html の head に、title・description・OGP・canonical・JSON-LD を入れる `SpaHead` を足しました** | `spa.route("/items/{id}", SpaHead.rewriter(context -> SpaHead.of().title(...).og("image", ...)))` のように書きます。**テンプレートエンジンを使いません。**ビルドした index.html の `<head>` に同じタグがあれば差し替え、無ければ `</head>` の前に足すので、index.html に印を書き足す必要もありません。値はエスケープします。書き換えるのはサーバーが返す最初の HTML だけで、`<body>` と JS には触らないので、2 ページ目からブラウザで描く動き（CSR）は変わりません。プレビューの Bot（JS を動かさない）はここで入れた OGP を見ます。書き方は [静的ファイル・SPA](https://jimble.io/ja/assets) にあります |
+
+### 直したこと
+
+| | |
+|---|---|
+| **ドキュメントの「静的ファイル・SPA」で、書き換えたページの `Cache-Control` が古いままでした** | `public,max-age=...,must-revalidate` と書いてありましたが、実際は（D-212 から）`private,no-cache` です。動きは変わりません |
+
+---
+
 ## 2.7.13（2026-11-04）
 
 ### 足したこと
