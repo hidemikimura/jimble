@@ -1180,6 +1180,9 @@ public final class MqQueue {
 
 		Metrics.count("mq.%s.received".formatted(queueName));
 
+		// 長くかかる処理は、終わるまで running の印を延ばす（mq.stale で戻されない）
+		MqHeartbeats.Target heartbeat = executor.keepAlive() ? new MqHeartbeats.Target(db.getDBName(), queueName) : null;
+
 		/*
 		 * 積んだところに繋ぐ（要件 NF-O-05）。
 		 *
@@ -1196,6 +1199,11 @@ public final class MqQueue {
 		span.attribute("messaging.operation.name", key);
 		span.attribute("messaging.message.id", id);
 		span.attribute("messaging.message.retry_count", retryCount);
+
+		// 外す finally の直前で足す（間で投げると、延ばし続けてしまう）
+		if (heartbeat != null) {
+			MqHeartbeats.add(heartbeat, id);
+		}
 
 		// メッセージ1件ごとに Context を作る（要件 F-M-01）
 		try (MqContext context = new MqContext(queueName, id, retryCount + 1)) {
@@ -1225,6 +1233,9 @@ public final class MqQueue {
 			Metrics.record("mq.%s".formatted(queueName), context.elapsed().toNanos());
 
 		} finally {
+			if (heartbeat != null) {
+				MqHeartbeats.remove(heartbeat, id);
+			}
 			span.close();
 		}
 

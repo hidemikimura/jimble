@@ -1,6 +1,6 @@
 ---
 name: jimble-mq-worker
-description: jimble の MQ を取り出して回す側を書く・設定するときに使う。キューの表の用意と Executor の登録、ワーカーのバッチ（時間で止める・doCancel を呼ばない）と DbScheduler、取り出し役とスレッド数・待ち（mq.thread_count・poll）、running のまま止まった行の戻し（mq.stale・recover_interval）、キューを置くデータソースを絞る・mq.hint を含む。
+description: jimble の MQ を取り出して回す側を書く・設定するときに使う。キューの表の用意と Executor の登録、ワーカーのバッチ（時間で止める・doCancel を呼ばない）と DbScheduler、取り出し役とスレッド数・待ち（mq.thread_count・poll）、running のまま止まった行の戻し（mq.stale・recover_interval・長い処理の keepAlive）、キューを置くデータソースを絞る・mq.hint を含む。
 ---
 
 # jimble の MQ を回す
@@ -74,6 +74,7 @@ public class MqWorkerBatch extends AbstractBatch {
 処理するたびにプロセスを落とす行（大きすぎる `data` など）が、いつまでも回り続けないため。`dead` の行は管理画面か SQL で見る。
 **戻すのは `mq.recover_interval`（既定 1m）ごと**（2.7.8。それまでは起動のときだけ。`0s` で起動のときだけ）。
 **`mq.stale` は一番長い処理より長くする。**短いと動いている行が戻されて二重に動く。そのとき古い処理は結果を書かない（取ったときの状態の行だけ書き換える。2.7.8）。
+**一部の Executor だけ長いなら、`mq.stale` を延ばさずに、その Executor の `keepAlive()` を true にする**（2.7.14）。処理している間 `mq.stale` の 1/3 ごとに `updated_at` を書き直すので戻されない。落ちたプロセスの行はこれまでどおり `mq.stale` で戻る。終わらない処理はいつまでも戻らないので、外部の呼び出しにはタイムアウトを付ける。
 
 ## キューを置くデータソースを絞る（2.7.8）
 
