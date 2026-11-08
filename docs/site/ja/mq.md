@@ -90,6 +90,29 @@ mq {
 }
 ```
 
+#### 長くかかる処理は、動いている間だけ延ばす（`keepAlive`）
+
+`mq.stale` より長くかかる処理がある Executor は、`keepAlive()` を true にします（2.7.14 から）。
+
+```java
+public class ExportExecutor extends MqExecutor {
+	...
+	@Override
+	public boolean keepAlive () {
+		return true;    // 処理している間、running の印を延ばし続ける
+	}
+}
+```
+
+- 処理している間、**`mq.stale` の 1/3 ごとに行の `updated_at` を書き直す**ので、まだ動いている行は戻されません
+- **`mq.stale` を長くするのと違い、プロセスが落ちたときに戻るまでの時間は延びません**（落ちれば延ばす人がいないので、これまでどおり `mq.stale` で戻ります）
+- 延ばすのはプロセスで 1 本のスレッドで、キューとデータソースごとに 1 本の `UPDATE ... WHERE id IN (...)` でまとめて打ちます。延ばす行が無いときは動きません
+- 既定は false です（これまでと同じ）
+
+> [!WARN]
+> **`keepAlive()` を true にした処理は、終わらなければいつまでも戻されません**（止まった外部の呼び出しなど）。
+> 外部を呼ぶなら、呼ぶ側で必ずタイムアウトを付けてください。
+
 ## 登録して回す
 
 ```java

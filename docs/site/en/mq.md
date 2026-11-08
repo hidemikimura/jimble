@@ -93,6 +93,29 @@ mq {
 }
 ```
 
+#### Keeping long jobs alive while they run (`keepAlive`)
+
+For an Executor whose jobs can take longer than `mq.stale`, make `keepAlive()` return true (since 2.7.14).
+
+```java
+public class ExportExecutor extends MqExecutor {
+	...
+	@Override
+	public boolean keepAlive () {
+		return true;    // keep the running mark fresh while the job runs
+	}
+}
+```
+
+- While the job runs, **the row's `updated_at` is rewritten every third of `mq.stale`**, so a row that is still running is not put back
+- **Unlike raising `mq.stale`, this does not delay recovery when the process dies** (nobody is left to keep it fresh, so it comes back after `mq.stale` as before)
+- One thread per process does it, with one `UPDATE ... WHERE id IN (...)` per queue and data source. It does not run when there is nothing to keep alive
+- The default is false (as before)
+
+> [!WARN]
+> **A job with `keepAlive()` true is never put back if it never finishes** (a stuck call to an outside service, say).
+> If you call outside services, always set a timeout on the call.
+
 ## Registering it and running it
 
 ```java
