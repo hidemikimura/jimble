@@ -12,6 +12,7 @@ import io.jimble.util.conf.Conf;
  *   tick_interval       = 1s      # cron を確かめる間隔
  *   exit_check          = 3s      # 止められていないか確かめる間隔
  *   execute_threads     = 10      # バッチを走らせるスレッド数（0 で無制限）
+ *   claim_stagger       = 1s      # cron の回を取りにいく前に、忙しい台が待つ時間（ほかの台より1本多いごと。0s で待たない）
  *   queue_name          = "mq_scheduler"
  * }
  * </pre>
@@ -29,6 +30,12 @@ public final class SchedulerConf {
 
 	/** 設定キー：バッチを走らせるスレッド数 */
 	public static final String KEY_EXECUTE_THREADS = "scheduler.execute_threads";
+
+	/** 設定キー：cron の回を取りにいく前に、忙しい台が待つ時間（ほかの台より1本多いごと） */
+	public static final String KEY_CLAIM_STAGGER = "scheduler.claim_stagger";
+
+	/** 忙しい台が待つ時間の上限（どれだけ忙しくても、回をこれより遅らせない） */
+	public static final Duration MAX_CLAIM_STAGGER = Duration.ofSeconds(5);
 
 	/** 設定キー：スケジューラが使うキューの名前 */
 	public static final String KEY_QUEUE_NAME = "scheduler.queue_name";
@@ -84,6 +91,24 @@ public final class SchedulerConf {
 	public static int executeThreads () {
 
 		return (int) Conf.conf().getLong(KEY_EXECUTE_THREADS, 10);
+
+	}
+
+	/**
+	 * cron の回を取りにいく前に、忙しい台が待つ時間（ほかの台より1本多いごと）
+	 *
+	 * <p>
+	 * 既定は {@code tick_interval} の既定と同じ 1 秒。どの台にも、同じ回の時刻が 1 秒以内に来るので、
+	 * 1 本多い台が 1 秒待てば、空いている台が先に取る。
+	 * </p>
+	 *
+	 * @return	待つ時間（0 なら待たない）
+	 */
+	public static Duration claimStagger () {
+
+		Duration value = Conf.conf().getDuration(KEY_CLAIM_STAGGER, Duration.ofSeconds(1));
+
+		return value.isNegative() ? Duration.ZERO : value;
 
 	}
 

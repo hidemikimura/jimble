@@ -497,6 +497,7 @@ scheduler {
 	tick_interval   = 1s              # cron を確かめる間隔
 	exit_check      = 3s              # 止められていないか確かめる間隔
 	execute_threads = 10              # バッチを走らせるスレッド数（0 で無制限）
+	claim_stagger   = 1s              # cron の回を取りにいく前に、忙しい台が待つ時間（いちばん少ない台より1本多いごと。上限 5 秒。0s で待たない）
 	queue_name      = "mq_scheduler"
 }
 
