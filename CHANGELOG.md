@@ -4,6 +4,16 @@
 
 ---
 
+## 2.7.16（未公開）
+
+### 速くしたこと
+
+| | |
+|---|---|
+| **パスキーの表（`auth_passkey`）に `(realm, user_id)` の索引を足しました** | サイト（rp）を渡さない一覧 `Passkey.list(realm, userId)`・`Passkey.list(userId)` と、`Passkey.deleteAll(realm, userId)` は `realm = ? AND user_id = ?` で引きます。これまでの索引は `(realm, rp_id, user_id)` だけで、間に `rp_id` があるため種別の頭しか効かず、**その種別の全員の行をなめていました。**`deleteAll` の DELETE はなめた範囲にロックを掛けるので、ほかの人のパスキーのログイン（署名の回数の UPDATE）や登録（INSERT）と待ち合っていました。利用者が数万人いる種別で効きます。表の版を 2 に上げ、**すでに表がある DB にも、パスキーを次に使ったとき（起動後の初回）に索引を足します**（MySQL・PostgreSQL）。足すあいだ、MySQL は書き込みを止めずに作り、PostgreSQL は書き込みを待たせます（行の数だけかかります）。動きは変わりません |
+
+---
+
 ## 2.7.15（2026-11-09）
 
 ### 足したこと
