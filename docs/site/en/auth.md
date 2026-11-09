@@ -908,7 +908,7 @@ post("/passkey/login", c -> {
 | | |
 | --- | --- |
 | Challenge | Kept in the session and **usable once**. Refused after `timeout`. A registration challenge only works for the user who was logged in when it was issued |
-| Origin | Anything not in `origins` is refused, and so are calls from inside another site's iframe (`crossOrigin`) |
+| Origin | Anything not in `origins` is refused. **Only an exact match passes; subdomains are not allowed** (even with rp_id `example.com`, a call from `shop.example.com` is refused unless it is listed in `origins`). Calls from inside another site's iframe (`crossOrigin`) are refused too |
 | User verification | **On-device user verification (UV) is always required.** A security key that was only touched (UP) does not pass |
 | Signature | Verified with the registered public key (ES256 / EdDSA / RS256, all with the JDK alone) |
 | User | The user handle the browser returns must match the registered one |
