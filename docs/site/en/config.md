@@ -504,6 +504,7 @@ scheduler {
 	tick_interval   = 1s              # how often cron is checked
 	exit_check      = 3s              # how often a stop order is checked for
 	execute_threads = 10              # threads that run batches (0 for unlimited)
+	claim_stagger   = 1s              # how long a busy server waits before claiming a cron firing, per batch more than the least busy server (at most 5s; 0s to not wait)
 	queue_name      = "mq_scheduler"
 }
 

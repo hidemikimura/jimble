@@ -1,5 +1,7 @@
 package io.jimble.batch.scheduler;
 
+import com.typesafe.config.ConfigFactory;
+
 import io.jimble.batch.AbstractBatch;
 import io.jimble.batch.BatchArgs;
 import io.jimble.batch.BatchRegistry;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -50,6 +53,9 @@ class SchedulerIntegrationTest {
 	/* 走ったときの引数 */
 	static final ConcurrentLinkedQueue<String> RUN_ARGS = new ConcurrentLinkedQueue<>();
 
+	/* 走らせた台（毎分のバッチ） */
+	static final ConcurrentLinkedQueue<String> RUN_SCHEDULERS = new ConcurrentLinkedQueue<>();
+
 	// region テスト用のバッチ
 
 	/**
@@ -65,6 +71,7 @@ class SchedulerIntegrationTest {
 
 			RUN_COUNT.incrementAndGet();
 			RUN_ARGS.add(String.valueOf(args.cliArgs().getStringOptional("site_id")));
+			RUN_SCHEDULERS.add(args.schedulerId());
 			executeInfo().putData("ran", true);
 
 		}
@@ -152,6 +159,7 @@ class SchedulerIntegrationTest {
 
 		RUN_COUNT.set(0);
 		RUN_ARGS.clear();
+		RUN_SCHEDULERS.clear();
 
 		scheduler = new DbScheduler("test-scheduler");
 
@@ -281,6 +289,131 @@ class SchedulerIntegrationTest {
 			}
 
 		}
+
+	}
+
+	@Test
+	@DisplayName("回を取った台が、ほかの台より多くのバッチを抱えていても、その回は走らせる（譲っても、ほかの台はその回を取れない）")
+	void claimedFireRunsEvenIfBusier () throws Exception {
+
+		DbScheduler serverA = new DbScheduler("server-a");
+
+		try {
+
+			ZonedDateTime now = ZonedDateTime.of(2026, 9, 6, 12, 0, 0, 0, ZoneId.of("Asia/Tokyo"));
+
+			serverA.reload();
+			serverA.tick(now);
+
+			// ほかのバッチを、A は2本・B は1本抱えている（B は生きているが、この回の時刻はまだ来ていない）
+			insertRunning("server-a", 2);
+			insertRunning("server-b", 1);
+
+			// 12:01 の回は、A しか取りにいかない。A は忙しいので少し待つが、ほかに取る台がいないので自分で取る
+			serverA.tick(now.plusMinutes(1));
+
+			awaitRunCount(1);
+
+			assertEquals(1, RUN_COUNT.get(), "回を取った台が譲り、その回がどの台でも走りませんでした");
+			assertEquals("server-a", RUN_SCHEDULERS.peek(), "回を取ったのは A のはず");
+
+		} finally {
+			serverA.stopAndAwait();
+		}
+
+	}
+
+	@Test
+	@DisplayName("同じ回の時刻が来たら、空いている台が先に取る（忙しい台は少し待つ）")
+	void lessBusyServerClaimsFirst () throws Exception {
+
+		DbScheduler serverA = new DbScheduler("server-a");
+		DbScheduler serverB = new DbScheduler("server-b");
+
+		try {
+
+			ZonedDateTime now = ZonedDateTime.of(2026, 9, 6, 12, 0, 0, 0, ZoneId.of("Asia/Tokyo"));
+
+			serverA.reload();
+			serverB.reload();
+			serverA.tick(now);
+			serverB.tick(now);
+
+			insertRunning("server-a", 2);
+			insertRunning("server-b", 1);
+
+			// 先に時刻が来るのは忙しい A（300ms 先）。待たなければ A が取ってしまうが、A は 1 秒待つので、あとから来た B が取る
+			serverA.tick(now.plusMinutes(1));
+			Thread.sleep(300);
+			serverB.tick(now.plusMinutes(1));
+
+			awaitRunCount(1);
+
+			assertEquals(1, RUN_COUNT.get(), "1 回だけ走るはず");
+			assertEquals("server-b", RUN_SCHEDULERS.peek(), "空いている B が取るはず");
+
+		} finally {
+			serverA.stopAndAwait();
+			serverB.stopAndAwait();
+		}
+
+	}
+
+	@Test
+	@DisplayName("忙しい台が待つ時間は、いちばん少ない台との差 × claim_stagger（上限 5 秒）。走らせていない台・設定 0s は待たない")
+	void claimStagger () {
+
+		insertRunning("server-a", 3);
+		insertRunning("server-b", 1);
+
+		assertEquals(Duration.ofSeconds(2), new DbScheduler("server-a").claimStagger());
+		assertEquals(Duration.ZERO, new DbScheduler("server-b").claimStagger());
+		assertEquals(Duration.ZERO, new DbScheduler("server-c").claimStagger(), "走らせていない台は待たない");
+
+		insertRunning("server-a", 6);
+		assertEquals(SchedulerConf.MAX_CLAIM_STAGGER, new DbScheduler("server-a").claimStagger());
+
+		try {
+			Conf.replace(ConfigFactory.parseString(SchedulerConf.KEY_CLAIM_STAGGER + " = 0s").withFallback(Conf.conf().config()));
+			assertEquals(Duration.ZERO, new DbScheduler("server-a").claimStagger());
+		} finally {
+			Conf.reload();
+		}
+
+	}
+
+	/**
+	 * ほかのバッチを走らせていることにする（どれも生きている）
+	 *
+	 * @param schedulerId	台
+	 * @param count			本数
+	 */
+	private static void insertRunning (String schedulerId, int count) {
+
+		DB db = DBUtil.getMainDB();
+
+		for (int i = 0; i < count; i++) {
+			db.insert("INSERT INTO batch_execute_info (uid, scheduler_id, class_name, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())"
+				, "busy-" + schedulerId + "-" + java.util.UUID.randomUUID(), schedulerId, "example.LongBatch" + i);
+		}
+
+	}
+
+	/**
+	 * 走った回数がそろうまで待ち、そのあと少し待つ（余計に走らないことも見る）
+	 *
+	 * @param expected	回数
+	 * @throws InterruptedException	割り込まれた場合
+	 */
+	private static void awaitRunCount (int expected) throws InterruptedException {
+
+		long deadline = System.currentTimeMillis() + 15_000;
+
+		while (RUN_COUNT.get() < expected && System.currentTimeMillis() < deadline) {
+			Thread.sleep(20);
+		}
+
+		Thread.sleep(SchedulerConf.MAX_CLAIM_STAGGER.toMillis() + 500);
 
 	}
 

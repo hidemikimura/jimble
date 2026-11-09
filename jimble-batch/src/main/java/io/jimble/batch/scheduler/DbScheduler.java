@@ -597,6 +597,11 @@ public final class DbScheduler implements CancelOrderNotify {
 					return;
 				}
 
+				// 忙しい台は少し待ってから取りにいく（空いている台が先に取る。誰も取らなければ自分が取る）
+				if (!waitClaimStagger()) {
+					return;
+				}
+
 				if (claimFire(batch.className(), fireAt)) {
 					execute(batch.className(), batch.cron().expression(), false, null);
 				}
@@ -612,6 +617,102 @@ public final class DbScheduler implements CancelOrderNotify {
 	// endregion
 
 	// region 走らせる
+
+	/**
+	 * cron の回を取りにいく前に、忙しい台だけ少し待つ（2.7.14）
+	 *
+	 * <p>
+	 * <b>回を取った台は譲らない</b>（取った回をほかの台に譲ると、その回はどの台でも走らない）。そのかわり、
+	 * <b>取りにいく前に</b>、いま走らせているバッチがほかの台より多い分だけ待つ。どの台にも同じ回の時刻が
+	 * {@code tick_interval} 以内に来るので、空いている台が先に {@link #claimFire} で取る。
+	 * 空いている台が取らなければ（止まっている・その回の時刻がまだ来ていないなど）、待ったあとで自分が取るので、<b>回は消えない</b>。
+	 * </p>
+	 *
+	 * @return	取りにいってよい場合 = true（待っている間に止められたら false）
+	 */
+	boolean waitClaimStagger () {
+
+		Duration wait = claimStagger();
+
+		if (wait.isZero()) {
+			return true;
+		}
+
+		try {
+			Thread.sleep(wait.toMillis());
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			return false;
+		}
+
+		return !isCancelOrder();
+
+	}
+
+	/**
+	 * 忙しい台が待つ時間
+	 *
+	 * <p>
+	 * 生きているバッチ（{@code batch.alive} 以内に心拍のあるもの）を台ごとに数え、
+	 * <b>自分の数から、いちばん少ない台の数を引いた分</b>だけ {@code scheduler.claim_stagger} を掛ける（上限 {@link SchedulerConf#MAX_CLAIM_STAGGER}）。
+	 * 1本も走らせていない台は表に出てこないので、自分が1本も走らせていなければ待たない。
+	 * 数えられなかったときも待たない（回を遅らせない）。
+	 * </p>
+	 *
+	 * @return	待つ時間
+	 */
+	Duration claimStagger () {
+
+		Duration step = SchedulerConf.claimStagger();
+
+		if (step.isZero()) {
+			return Duration.ZERO;
+		}
+
+		try {
+
+			DB db = DBUtil.getMainDB();
+
+			List<Data> rows = db.selectList("""
+					SELECT
+						scheduler_id
+						, COUNT(1) AS cnt
+					FROM
+						batch_execute_info
+					WHERE
+						updated_at >= %s
+					GROUP BY
+						scheduler_id
+				""".formatted(db.dialect().intervalFromNow("SECOND", true))
+				, BatchConf.alive().toSeconds());
+
+			long mine = 0;
+			long least = Long.MAX_VALUE;
+
+			for (Data row : rows) {
+				long count = row.getLong("cnt");
+				least = Math.min(least, count);
+				if (schedulerId.equals(row.getStringOptional("scheduler_id"))) {
+					mine = count;
+				}
+			}
+
+			if (mine == 0 || mine <= least) {
+				return Duration.ZERO;
+			}
+
+			Duration wait = step.multipliedBy(mine - least);
+
+			return wait.compareTo(SchedulerConf.MAX_CLAIM_STAGGER) > 0 ? SchedulerConf.MAX_CLAIM_STAGGER : wait;
+
+		} catch (RuntimeException ex) {
+
+			Log.error(ex, "スケジューラ: ほかの台の忙しさを数えられませんでした（待たずに取りにいきます）");
+			return Duration.ZERO;
+
+		}
+
+	}
 
 	/**
 	 * cron のこの回を、この台が走らせてよいか（D-300 / D-301）

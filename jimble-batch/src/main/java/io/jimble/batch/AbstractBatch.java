@@ -8,7 +8,6 @@ import io.jimble.batch.status.BatchMasterStatus;
 import io.jimble.core.context.BatchContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
-import io.jimble.db.dialect.SqlFunction;
 import io.jimble.db.SqlExecuteException;
 import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
@@ -18,7 +17,6 @@ import io.jimble.util.log.Log;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -380,10 +378,12 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					return false;
 				}
 
-				if (!isMyTurn(db, args)) {
-					return false;
-				}
-
+				/*
+				 * <b>ほかの台に譲らない</b>（2.7.14）。2.7.13 までは、ここで「いちばん抱えているバッチが少ない台か」（isMyTurn）を見て、
+				 * そうでなければ飛ばしていた。cron の回は DbScheduler.claimFire で1台だけが取るので、譲った相手はその回を走らせず、
+				 * <b>その回はどの台でも走らなかった</b>。空いている台に寄せるのは、回を取りにいく前に忙しい台が少し待つことで行う
+				 * （DbScheduler の scheduler.claim_stagger）
+				 */
 				insertExecuteInfo(db, args);
 
 				tx.commit();
@@ -422,79 +422,6 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			, BatchConf.alive().toSeconds()).orElse(null);
 
 		return row == null ? 0 : row.getInt("cnt");
-
-	}
-
-	/**
-	 * 自分の番か（インスタンス間の割り振り）
-	 *
-	 * <p>
-	 * <b>いちばん抱えているバッチが少ないインスタンスに寄せる。</b>
-	 * まだ1本も走らせていないインスタンスがあれば、そちらに譲る。
-	 * </p>
-	 *
-	 * <p>
-	 * 判定のキーは {@link BatchConf#schedulerId()} である。
-	 * <b>移送元はここに MAC アドレスを使っていた</b>ので、
-	 * コンテナだと起動のたびに変わり、割り振りが安定しなかった。
-	 * </p>
-	 *
-	 * @param db	DB
-	 * @param args	引数
-	 * @return	実行してよい場合 = true
-	 */
-	private boolean isMyTurn (DB db, BatchArgs args) {
-
-		List<Data> rows = db.selectList("""
-				SELECT
-					scheduler_id
-					, COUNT(1) AS cnt
-				FROM
-					batch_execute_info
-				WHERE
-					updated_at >= %s
-				GROUP BY
-					scheduler_id
-				ORDER BY
-					cnt ASC
-					, %s
-			""".formatted(
-				db.dialect().intervalFromNow("SECOND", true)
-				, db.dialect().call(SqlFunction.RAND))
-			, BatchConf.alive().toSeconds());
-
-		if (rows.isEmpty()) {
-			return true;
-		}
-
-		int minCount = Integer.MAX_VALUE;
-		boolean found = false;
-
-		for (Data row : rows) {
-
-			minCount = Math.min(minCount, row.getInt("cnt"));
-
-			if (row.getStringOptional("scheduler_id").equals(args.schedulerId())) {
-				found = true;
-			}
-
-		}
-
-		// まだ1本も走らせていないインスタンスなら、そのまま実行してよい
-		if (!found) {
-			return true;
-		}
-
-		for (Data row : rows) {
-
-			if (row.getInt("cnt") == minCount
-				&& row.getStringOptional("scheduler_id").equals(args.schedulerId())) {
-				return true;
-			}
-
-		}
-
-		return false;
 
 	}
 
