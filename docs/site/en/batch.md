@@ -215,6 +215,8 @@ Even across several servers, **one cron firing runs at most as many times as the
 Every server sees the same firing time, but only the servers that manage to advance the "last fired" time and the "runs in that firing" count in `batch_master` run it.
 Up to 2.5.7 only the number of running copies was checked, so **a batch that finished quickly could run again on a server whose clock reached the same firing a little later** (the check runs every second, plus any clock drift between servers).
 
+**The server that claimed a firing runs it, even if another server is less busy** (since 2.7.14). Up to 2.7.13, a server that was running more batches than another one tried to hand the firing over to the less busy server and skipped it. The other servers can no longer claim that firing, so **it did not run on any server** (the only trace was "同時実行数の上限に達しています" — the concurrency limit was reached). This does not happen with a single server.
+
 ## Running one on its own
 
 **You write the batch entry point yourself.** The whole startup order is right there in that one file.

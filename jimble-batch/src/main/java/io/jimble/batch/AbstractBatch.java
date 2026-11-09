@@ -380,7 +380,11 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 					return false;
 				}
 
-				if (!isMyTurn(db, args)) {
+				/*
+				 * <b>cron の回を取ってから来たなら、譲らない</b>。
+				 * 回はこの台が取ったので、ほかの台はもう取れない。ここで譲ると、その回はどの台でも走らない
+				 */
+				if (!args.fireClaimed() && !isMyTurn(db, args)) {
 					return false;
 				}
 
@@ -431,6 +435,11 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * <p>
 	 * <b>いちばん抱えているバッチが少ないインスタンスに寄せる。</b>
 	 * まだ1本も走らせていないインスタンスがあれば、そちらに譲る。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>cron の回を {@code DbScheduler} が取ってから来た実行（{@link BatchArgs#fireClaimed()}）には使わない</b>。
+	 * 回は1台しか取れないので、譲った相手はその回を走らせない。
 	 * </p>
 	 *
 	 * <p>

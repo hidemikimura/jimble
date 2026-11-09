@@ -598,7 +598,7 @@ public final class DbScheduler implements CancelOrderNotify {
 				}
 
 				if (claimFire(batch.className(), fireAt)) {
-					execute(batch.className(), batch.cron().expression(), false, null);
+					execute(batch.className(), batch.cron().expression(), false, true, null);
 				}
 
 			});
@@ -704,7 +704,7 @@ public final class DbScheduler implements CancelOrderNotify {
 			return false;
 		}
 
-		executeThreads().execute(() -> execute(className, null, true, null));
+		executeThreads().execute(() -> execute(className, null, true, false, null));
 
 		return true;
 
@@ -744,7 +744,7 @@ public final class DbScheduler implements CancelOrderNotify {
 		 */
 		Data executeInfo = history.getDataOptional("execute_info");
 
-		executeThreads().execute(() -> execute(className, null, true, executeInfo));
+		executeThreads().execute(() -> execute(className, null, true, false, executeInfo));
 
 		return true;
 
@@ -756,9 +756,10 @@ public final class DbScheduler implements CancelOrderNotify {
 	 * @param className		クラス名
 	 * @param cron			cron（無ければ null）
 	 * @param force			マスタの状態を無視するか
+	 * @param fireClaimed	cron のこの回を {@link #claimFire} で取ってから走らせるか
 	 * @param executeInfo	やり直しの元になる実行情報（無ければ null）
 	 */
-	private void execute (String className, String cron, boolean force, Data executeInfo) {
+	private void execute (String className, String cron, boolean force, boolean fireClaimed, Data executeInfo) {
 
 		AbstractBatch batch = BatchRegistry.create(className);
 
@@ -775,6 +776,7 @@ public final class DbScheduler implements CancelOrderNotify {
 		args.schedulerId(schedulerId);
 		args.cron(cron);
 		args.forceExecute(force);
+		args.fireClaimed(fireClaimed);
 
 		if (executeInfo != null) {
 			args.cliArgs(executeInfo.getDataOptional("args"));

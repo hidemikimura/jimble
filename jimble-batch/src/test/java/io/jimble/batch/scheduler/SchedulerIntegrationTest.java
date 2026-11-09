@@ -284,6 +284,52 @@ class SchedulerIntegrationTest {
 
 	}
 
+	@Test
+	@DisplayName("回を取った台が、ほかの台より多くのバッチを抱えていても、その回は走らせる（譲っても、ほかの台はその回を取れない）")
+	void claimedFireRunsEvenIfBusier () throws Exception {
+
+		DbScheduler serverA = new DbScheduler("server-a");
+		DbScheduler serverB = new DbScheduler("server-b");
+
+		try {
+
+			serverA.reload();
+			serverB.reload();
+
+			ZonedDateTime now = ZonedDateTime.of(2026, 9, 6, 12, 0, 0, 0, ZoneId.of("Asia/Tokyo"));
+
+			serverA.tick(now);
+			serverB.tick(now);
+
+			// ほかのバッチを、A は2本・B は1本抱えている（どちらも生きている）
+			DB db = DBUtil.getMainDB();
+			String insert = "INSERT INTO batch_execute_info (uid, scheduler_id, class_name, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())";
+			db.insert(insert, "busy-a-1", "server-a", "example.LongBatchA1");
+			db.insert(insert, "busy-a-2", "server-a", "example.LongBatchA2");
+			db.insert(insert, "busy-b-1", "server-b", "example.LongBatchB1");
+
+			// 12:01 の回は A が取る。B には少し遅れて同じ回の時刻が来る
+			serverA.tick(now.plusMinutes(1));
+			Thread.sleep(500);
+			serverB.tick(now.plusMinutes(1).plusSeconds(1));
+
+			long deadline = System.currentTimeMillis() + 10_000;
+
+			while (RUN_COUNT.get() < 1 && System.currentTimeMillis() < deadline) {
+				Thread.sleep(20);
+			}
+
+			Thread.sleep(500);
+
+			assertEquals(1, RUN_COUNT.get(), "回を取った台が譲り、その回がどの台でも走りませんでした");
+
+		} finally {
+			serverA.stopAndAwait();
+			serverB.stopAndAwait();
+		}
+
+	}
+
 	/**
 	 * 走らせたかもしれないものが終わるまで待つ（走らないこともあるので、回数は見ない）
 	 *

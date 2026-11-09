@@ -48,6 +48,9 @@ public final class BatchArgs {
 	/** スケジューラからの実行か */
 	private boolean fromScheduler = false;
 
+	/** cron のこの回を、この台が取ってから実行するか */
+	private boolean fireClaimed = false;
+
 	/** どのインスタンスから実行されたか（{@link BatchConf#schedulerId()}） */
 	private String schedulerId = "";
 
@@ -180,6 +183,34 @@ public final class BatchArgs {
 	public void fromScheduler (boolean fromScheduler) {
 
 		this.fromScheduler = fromScheduler;
+
+	}
+
+	/**
+	 * cron のこの回を、この台が取ってから実行するか
+	 *
+	 * <p>
+	 * スケジューラは cron の1回を {@code batch_master} の UPDATE で取り合い、取れた台だけが走らせる（D-300）。
+	 * <b>取った回は、ほかの台はもう取れない。</b>だから、取った台は「ほかの台のほうが空いている」ことを理由に譲らない
+	 * （譲ると、その回はどの台でも走らない）。
+	 * </p>
+	 *
+	 * @return	取ってから実行するなら true
+	 */
+	public boolean fireClaimed () {
+
+		return fireClaimed;
+
+	}
+
+	/**
+	 * cron のこの回を、この台が取ってから実行するかを決める
+	 *
+	 * @param fireClaimed	取ってから実行するなら true
+	 */
+	public void fireClaimed (boolean fireClaimed) {
+
+		this.fireClaimed = fireClaimed;
 
 	}
 
