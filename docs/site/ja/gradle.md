@@ -18,9 +18,9 @@ order: 2
 ```kotlin
 plugins {
 	application
-	id("io.jimble.jte") version "2.7.15"
-	id("io.jimble.run") version "2.7.15"
-	id("io.jimble.db")  version "2.7.15"
+	id("io.jimble.jte") version "2.7.16"
+	id("io.jimble.run") version "2.7.16"
+	id("io.jimble.db")  version "2.7.16"
 }
 ```
 
@@ -65,9 +65,9 @@ rootProject.name = "memo"
 // build.gradle.kts
 plugins {
 	application
-	id("io.jimble.jte") version "2.7.15"   // src/main/jte を使うなら
-	id("io.jimble.run") version "2.7.15"   // ホットリロードを使うなら
-	id("io.jimble.db")  version "2.7.15"   // DB を使うなら
+	id("io.jimble.jte") version "2.7.16"   // src/main/jte を使うなら
+	id("io.jimble.run") version "2.7.16"   // ホットリロードを使うなら
+	id("io.jimble.db")  version "2.7.16"   // DB を使うなら
 }
 
 repositories {
@@ -83,7 +83,7 @@ java {
 }
 
 dependencies {
-	implementation("io.jimble:jimble-web:2.7.15")
+	implementation("io.jimble:jimble-web:2.7.16")
 
 	testImplementation(platform("org.junit:junit-bom:5.11.4"))
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -117,7 +117,7 @@ jimbleRun {
 >
 > ```
 > Dependency resolution is looking for a library compatible with JVM runtime version 21,
-> but 'io.jimble:jimble-web:2.7.15' is only compatible with JVM runtime version 25 or newer
+> but 'io.jimble:jimble-web:2.7.16' is only compatible with JVM runtime version 25 or newer
 > ```
 
 ## どれを依存に足すか
