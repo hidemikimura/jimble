@@ -26,6 +26,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.function.Function;
 
 /**
@@ -63,6 +64,14 @@ import java.util.function.Function;
  * <p>
  * <b>クライアントごとにドメインが違う SaaS</b> では、設定（{@code auth.passkey.rp_id}）の代わりに {@link PasskeyRp} を作り、
  * 4つのメソッドに同じものを渡す（D-262）。
+ * </p>
+ *
+ * <p>
+ * <b>{@link Auth} を使わずにログインを自分で持つアプリ</b>は、種別と利用者 ID を渡す口を使う。
+ * {@link #registrationOptions(WebContext, PasskeyRp, String, long, String)}・
+ * {@link #register(WebContext, PasskeyRp, String, long, Data, String)}・
+ * {@link #loginOptions(WebContext, PasskeyRp, String)}・{@link #authenticate}。
+ * {@code authenticate} は確かめて利用者 ID を返すだけで、ログインさせない。表は同じ（種別で分かれる）。
  * </p>
  *
  * <h2>確かめること（WebAuthn Level 3 の 7.1 / 7.2）</h2>
@@ -169,10 +178,54 @@ public final class Passkey {
 			throw new HttpException(401, "ログインしてください");
 		}
 
-		String realm = Auth.realmOf(context);
-		String handle = userHandle(realm, rp.id(), principal.id());
-		String challenge = issueChallenge(context, CREATE, rp, realm + ":" + principal.id(), handle);
 		String name = userName == null || userName.isBlank() ? principal.name() : userName;
+
+		return creationOptions(context, rp, Auth.realmOf(context), principal.id(), name);
+
+	}
+
+	/**
+	 * 登録の options を作る（{@link Auth} を使わない。ログインを自分で持つアプリ向け）
+	 *
+	 * <p>
+	 * <b>ログインしているか、本人か（パスワードの入れ直しなど）は、呼ぶ側が確かめてから呼ぶ。</b>
+	 * ここでは確かめない。チャレンジはセッションに置き、{@code realm}・{@code userId}・{@code rp} に結びつける
+	 * （{@link #register(WebContext, PasskeyRp, String, long, Data, String)} で、違うものを渡すと断る）。
+	 * その人がこのサイトで登録済みのパスキーは {@code excludeCredentials} に入れる。
+	 * </p>
+	 *
+	 * <p>
+	 * <b>セッションは中で保存する</b>（{@code session().save()}）。呼ぶ側が要求の終わりに保存し直してもよい。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param rp		パスキーを結びつけるサイト
+	 * @param realm		種別（{@link Auth#checkRealm} と同じ決まり。種別なしは空文字）
+	 * @param userId	利用者 ID（1 以上）
+	 * @param userName	パスキーの一覧に出る名前（ログイン ID やメール）
+	 * @return	options（JSON にして返す）
+	 * @throws IllegalArgumentException	種別・利用者 ID・名前が正しくない場合
+	 */
+	public static Data registrationOptions (WebContext context, PasskeyRp rp, String realm, long userId, String userName) {
+
+		requireUsable();
+		checkSubject(rp, realm, userId);
+
+		if (userName == null || userName.isBlank()) {
+			throw new IllegalArgumentException("パスキーの一覧に出る名前（userName）が空です");
+		}
+
+		return creationOptions(context, rp, realm, userId, userName);
+
+	}
+
+	/**
+	 * 登録の options を作る（誰のものかは決めてある）
+	 */
+	private static Data creationOptions (WebContext context, PasskeyRp rp, String realm, long userId, String name) {
+
+		String handle = userHandle(realm, rp.id(), userId);
+		String challenge = issueChallenge(context, CREATE, rp, realm + ":" + userId, handle);
 
 		List<Data> params = new ArrayList<>();
 		for (int alg : new int[] { CoseKey.ES256, CoseKey.EDDSA, CoseKey.RS256 }) {
@@ -180,7 +233,7 @@ public final class Passkey {
 		}
 
 		List<Data> exclude = new ArrayList<>();
-		for (String id : credentialIds(realm, rp.id(), principal.id())) {
+		for (String id : credentialIds(realm, rp.id(), userId)) {
 			exclude.add(new Data().putData("type", "public-key").putData("id", id));
 		}
 
@@ -236,15 +289,51 @@ public final class Passkey {
 			throw new HttpException(401, "ログインしてください");
 		}
 
+		store(context, rp, realm, principal.id(), credential, label);
+
+	}
+
+	/**
+	 * 登録する（{@link Auth} を使わない。ログインを自分で持つアプリ向け）
+	 *
+	 * <p>
+	 * {@link #registrationOptions(WebContext, PasskeyRp, String, long, String)} で渡したのと<b>同じ
+	 * {@code rp}・{@code realm}・{@code userId}</b> を渡す。違えば断る（ほかの人の登録の手続きを使わせない）。
+	 * ログインと本人の確かめは、呼ぶ側の責任。
+	 * </p>
+	 *
+	 * @param context		コンテキスト
+	 * @param rp			パスキーを結びつけるサイト
+	 * @param realm			種別（options と同じもの）
+	 * @param userId		利用者 ID（options と同じもの）
+	 * @param credential	ブラウザが返したもの（{@code PublicKeyCredential.toJSON()} の形）
+	 * @param label			利用者が見分けるための名前（「ノート PC」など。空でもよい）
+	 * @throws HttpException	手続きが違う・時間切れ・確かめられなかった場合（400。理由はログにだけ出す）、登録済みの場合（409）
+	 * @throws IllegalArgumentException	種別・利用者 ID が正しくない場合
+	 */
+	public static void register (WebContext context, PasskeyRp rp, String realm, long userId, Data credential, String label) {
+
+		requireUsable();
+		checkSubject(rp, realm, userId);
+
+		store(context, rp, realm, userId, credential, label);
+
+	}
+
+	/**
+	 * 登録の応答を確かめて保存する（誰のものかは決めてある）
+	 */
+	private static void store (WebContext context, PasskeyRp rp, String realm, long userId, Data credential, String label) {
+
 		String handle = context.session().get(KEY_HANDLE);
-		String challenge = takeChallenge(context, CREATE, rp, realm + ":" + principal.id());
+		String challenge = takeChallenge(context, CREATE, rp, realm + ":" + userId);
 
 		Registration registration;
 
 		try {
 			registration = verifyRegistration(rp.id(), rp.origins(), challenge, credential);
 		} catch (IllegalArgumentException ex) {
-			Log.warn("パスキーを登録できませんでした: %s / %s".formatted(who(realm, principal.id()), ex.getMessage()));
+			Log.warn("パスキーを登録できませんでした: %s / %s".formatted(who(realm, userId), ex.getMessage()));
 			throw new HttpException(400, "パスキーを登録できませんでした");
 		}
 
@@ -256,7 +345,7 @@ public final class Passkey {
 			db.insert(("INSERT INTO %s (credential_hash, realm, rp_id, user_id, credential_id, user_handle, public_key, algorithm"
 				+ ", sign_count, backup_eligible, backed_up, label, created_at, last_used_at)"
 				+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)").formatted(table(db))
-				, hash(registration.credentialId()), realm, rp.id(), principal.id(), credentialId, handle
+				, hash(registration.credentialId()), realm, rp.id(), userId, credentialId, handle
 				, B64.encodeToString(registration.publicKey()), registration.algorithm(), registration.signCount()
 				, registration.backupEligible() ? 1 : 0, registration.backedUp() ? 1 : 0
 				, label == null ? "" : label.strip(), now);
@@ -362,9 +451,30 @@ public final class Passkey {
 	 */
 	public static Data loginOptions (WebContext context, PasskeyRp rp) {
 
-		requireUsable();
+		return loginOptions(context, rp, Auth.realmOf(context));
 
-		String challenge = issueChallenge(context, GET, rp, Auth.realmOf(context), "");
+	}
+
+	/**
+	 * ログインの options を作る（種別を渡す。ルートの {@code Auth.REALM} に頼らない）
+	 *
+	 * <p>
+	 * {@link #authenticate} と組で使う。{@code authenticate} には同じ {@code rp}・{@code realm} を渡す。
+	 * <b>セッションは中で保存する</b>（{@code session().save()}）。
+	 * </p>
+	 *
+	 * @param context	コンテキスト
+	 * @param rp		パスキーを結びつけるサイト
+	 * @param realm		種別（{@link Auth#checkRealm} と同じ決まり。種別なしは空文字）
+	 * @return	options（JSON にして返す）
+	 * @throws IllegalArgumentException	種別が正しくない場合
+	 */
+	public static Data loginOptions (WebContext context, PasskeyRp rp, String realm) {
+
+		requireUsable();
+		Auth.checkRealm(realm);
+
+		String challenge = issueChallenge(context, GET, rp, realm, "");
 
 		return new Data()
 			.putData("challenge", challenge)
@@ -411,62 +521,17 @@ public final class Passkey {
 		requireUsable();
 
 		String realm = Auth.realmOf(context);
+
+		// 手続きが違う・時間切れ・2度目は、これまでどおり 400 で断る
 		String challenge = takeChallenge(context, GET, rp, realm);
 
-		byte[] credentialId;
+		OptionalLong verified = verifyLogin(rp, realm, challenge, credential);
 
-		try {
-			credentialId = b64(credential.getString("rawId"), "rawId");
-		} catch (IllegalArgumentException ex) {
-			Log.warn("パスキーでログインできませんでした: " + ex.getMessage());
+		if (verified.isEmpty()) {
 			return false;
 		}
 
-		Data row = row(credentialId);
-
-		if (row == null || !realm.equals(row.getStringOptional("realm"))) {
-			Log.warn("パスキーでログインできませんでした: 登録されていない資格情報です");
-			return false;
-		}
-
-		// 別のサイト（クライアント）で登録したパスキーは通さない（D-262）
-		if (!rp.id().equals(row.getStringOptional("rp_id"))) {
-			Log.warn("パスキーでログインできませんでした: 別のサイト（%s）で登録したパスキーです: %s"
-				.formatted(row.getStringOptional("rp_id"), rp.id()));
-			return false;
-		}
-
-		long userId = row.getLong("user_id");
-		long storedCount = row.getLong("sign_count");
-
-		Assertion assertion;
-
-		try {
-			assertion = verifyAssertion(rp.id(), rp.origins(), challenge, credential
-				, CoseKey.restore(B64_DECODER.decode(row.getString("public_key")), row.getInt("algorithm"))
-				, row.getInt("algorithm"), row.getString("user_handle"), storedCount);
-		} catch (IllegalArgumentException ex) {
-			Log.warn("パスキーでログインできませんでした: %s / %s".formatted(who(realm, userId), ex.getMessage()));
-			return false;
-		}
-
-		try (DB db = DBUtil.getMainDB()) {
-
-			/*
-			 * <b>読んだときと同じ回数のときだけ進める。</b>同じ応答を同時に2本送られても、通るのは1本だけ
-			 * （チャレンジも1度しか使えないが、セッションを分けて送られたときのため）
-			 */
-			int updated = db.update(("UPDATE %s SET sign_count = ?, backed_up = ?, last_used_at = ?"
-				+ " WHERE credential_hash = ? AND sign_count = ?").formatted(table(db))
-				, assertion.signCount(), assertion.backedUp() ? 1 : 0, nowSeconds(), hash(credentialId), storedCount);
-
-			if (updated == 0) {
-				Log.warn("パスキーでログインできませんでした: 同時に使われました: " + who(realm, userId));
-				return false;
-			}
-
-		}
-
+		long userId = verified.getAsLong();
 		Principal principal = lookup.apply(userId);
 
 		if (principal == null || !principal.isAuthenticated()) {
@@ -481,6 +546,116 @@ public final class Passkey {
 		Auth.login(context, principal, realm);
 
 		return true;
+
+	}
+
+	/**
+	 * パスキーを確かめて、利用者 ID を返す（<b>ログインはさせない</b>。ログインを自分で持つアプリ向け）
+	 *
+	 * <p>
+	 * {@link #loginOptions(WebContext, PasskeyRp, String)} で渡したのと同じ {@code rp}・{@code realm} を渡す。
+	 * 確かめることは {@link #login} と同じ（チャレンジは1度だけ・時間切れ・オリジン・crossOrigin・本人確認（UV）・
+	 * 署名・userHandle・署名の回数・rp_id・種別）で、通れば {@code last_used_at} と署名の回数を進める。
+	 * </p>
+	 *
+	 * <ul>
+	 *   <li><b>{@link Auth#login} もセッション ID の振り直しもしない。</b>呼ぶ側が自分のセッションでログインさせ、
+	 *       ID を振り直す（{@code session().regenerateId()}）</li>
+	 *   <li><b>通らなければ空</b>（例外にしない）。どの確かめで落ちたかはログ（warn）にだけ出す</li>
+	 *   <li>利用者を止めた・消した・テナントが違うといった判断は、返った ID で呼ぶ側が引き直して行う</li>
+	 *   <li>セッションのチャレンジは中で消して保存する（{@code session().save()}）</li>
+	 * </ul>
+	 *
+	 * @param context		コンテキスト
+	 * @param rp			パスキーを結びつけるサイト
+	 * @param realm			種別（options と同じもの）
+	 * @param credential	ブラウザが返したもの（{@code PublicKeyCredential.toJSON()} の形）
+	 * @return	通った場合は利用者 ID。通らなければ空
+	 * @throws IllegalArgumentException	種別が正しくない場合
+	 */
+	public static OptionalLong authenticate (WebContext context, PasskeyRp rp, String realm, Data credential) {
+
+		requireUsable();
+		Auth.checkRealm(realm);
+
+		String challenge;
+
+		try {
+			challenge = takeChallenge(context, GET, rp, realm);
+		} catch (HttpException ex) {
+			Log.warn("パスキーでログインできませんでした: " + ex.getMessage());
+			return OptionalLong.empty();
+		}
+
+		return verifyLogin(rp, realm, challenge, credential);
+
+	}
+
+	/**
+	 * ログインの応答を確かめ、署名の回数を進める（ログインはさせない）
+	 *
+	 * @return	通った場合は利用者 ID。通らなければ空（理由はログにだけ出す）
+	 */
+	private static OptionalLong verifyLogin (PasskeyRp rp, String realm, String challenge, Data credential) {
+
+		byte[] credentialId;
+
+		try {
+			if (credential == null) {
+				throw new IllegalArgumentException("資格情報がありません");
+			}
+			credentialId = b64(credential.getString("rawId"), "rawId");
+		} catch (IllegalArgumentException ex) {
+			Log.warn("パスキーでログインできませんでした: " + ex.getMessage());
+			return OptionalLong.empty();
+		}
+
+		Data row = row(credentialId);
+
+		if (row == null || !realm.equals(row.getStringOptional("realm"))) {
+			Log.warn("パスキーでログインできませんでした: 登録されていない資格情報です");
+			return OptionalLong.empty();
+		}
+
+		// 別のサイト（クライアント）で登録したパスキーは通さない（D-262）
+		if (!rp.id().equals(row.getStringOptional("rp_id"))) {
+			Log.warn("パスキーでログインできませんでした: 別のサイト（%s）で登録したパスキーです: %s"
+				.formatted(row.getStringOptional("rp_id"), rp.id()));
+			return OptionalLong.empty();
+		}
+
+		long userId = row.getLong("user_id");
+		long storedCount = row.getLong("sign_count");
+
+		Assertion assertion;
+
+		try {
+			assertion = verifyAssertion(rp.id(), rp.origins(), challenge, credential
+				, CoseKey.restore(B64_DECODER.decode(row.getString("public_key")), row.getInt("algorithm"))
+				, row.getInt("algorithm"), row.getString("user_handle"), storedCount);
+		} catch (IllegalArgumentException ex) {
+			Log.warn("パスキーでログインできませんでした: %s / %s".formatted(who(realm, userId), ex.getMessage()));
+			return OptionalLong.empty();
+		}
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			/*
+			 * <b>読んだときと同じ回数のときだけ進める。</b>同じ応答を同時に2本送られても、通るのは1本だけ
+			 * （チャレンジも1度しか使えないが、セッションを分けて送られたときのため）
+			 */
+			int updated = db.update(("UPDATE %s SET sign_count = ?, backed_up = ?, last_used_at = ?"
+				+ " WHERE credential_hash = ? AND sign_count = ?").formatted(table(db))
+				, assertion.signCount(), assertion.backedUp() ? 1 : 0, nowSeconds(), hash(credentialId), storedCount);
+
+			if (updated == 0) {
+				Log.warn("パスキーでログインできませんでした: 同時に使われました: " + who(realm, userId));
+				return OptionalLong.empty();
+			}
+
+		}
+
+		return OptionalLong.of(userId);
 
 	}
 
@@ -1115,6 +1290,23 @@ public final class Passkey {
 	private static long nowSeconds () {
 
 		return System.currentTimeMillis() / 1000;
+
+	}
+
+	/**
+	 * 誰のパスキーかを確かめる（{@link Auth} を使わない口）
+	 */
+	private static void checkSubject (PasskeyRp rp, String realm, long userId) {
+
+		if (rp == null) {
+			throw new IllegalArgumentException("サイト（PasskeyRp）が null です");
+		}
+
+		Auth.checkRealm(realm);
+
+		if (userId <= 0) {
+			throw new IllegalArgumentException("利用者 ID は 1 以上にしてください: " + userId);
+		}
 
 	}
 

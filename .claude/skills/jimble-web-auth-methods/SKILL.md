@@ -1,6 +1,6 @@
 ---
 name: jimble-web-auth-methods
-description: jimble の Web でパスワード以外のログインの方法を書くときに使う。二要素認証（TOTP。Mfa.pending / complete / enroll / activate・回復コード・ログインの種別）、パスキー（Passkey・rp_id・登録は FULL_AUTH から・SaaS の PasskeyRp）、「Google でログイン」（OIDC。Oidc.start / callback・版による引数・二要素の画面を渡す）を含む。
+description: jimble の Web でパスワード以外のログインの方法を書くときに使う。二要素認証（TOTP。Mfa.pending / complete / enroll / activate・回復コード・ログインの種別）、パスキー（Passkey・rp_id・登録は FULL_AUTH から・SaaS の PasskeyRp・Auth を使わないアプリの authenticate）、「Google でログイン」（OIDC。Oidc.start / callback・版による引数・二要素の画面を渡す）を含む。
 ---
 
 # jimble の二要素認証・パスキー・OIDC
@@ -87,5 +87,12 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
 - 一覧は `Passkey.list(id)`、削除は `Passkey.delete(id, 一覧の id)`（FULL_AUTH のルートから）。`Auth.revoke` ではパスキーは消えない
 - **クライアントごとにドメインが違う（SaaS）なら `PasskeyRp.of(ドメイン, 名前)` を作り、4つのメソッドに同じものを渡す**（`loginOptions(c, rp)` / `login(c, rp, ...)` など）。
   ドメインはクライアントの表から引く（Host ヘッダをそのまま使わない）。A で登録したパスキーは B では使えない
+- **jimble の `Auth` を使わず、ログインを自分のセッションで持つアプリ**は、種別と利用者 ID を渡す口を使う（2.7.15）。
+  `registrationOptions(c, rp, realm, userId, userName)` / `register(c, rp, realm, userId, credential, label)` /
+  `loginOptions(c, rp, realm)` / `OptionalLong authenticate(c, rp, realm, credential)`。
+  - 登録の前に、ログインと本人（パスワードの入れ直しなど）は**アプリが確かめる**。register は options と違う種別・ID・サイトなら 400
+  - **`authenticate` はログインさせない。**通れば利用者 ID、通らなければ空（理由はログだけ）。返った ID で止めた・消した・テナント違いを引き直し、
+    `session().regenerateId()` してから自分のログインを入れる
+  - チャレンジを置く・消すときに中で `session().save()` する。表は既定のデータソース（main DB）。`framework_tables` は効かない
 
 詳しくは <https://jimble.io/ja/auth.md>。
