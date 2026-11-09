@@ -12,6 +12,12 @@
 |---|---|
 | **パスキーの表（`auth_passkey`）に `(realm, user_id)` の索引を足しました** | サイト（rp）を渡さない一覧 `Passkey.list(realm, userId)`・`Passkey.list(userId)` と、`Passkey.deleteAll(realm, userId)` は `realm = ? AND user_id = ?` で引きます。これまでの索引は `(realm, rp_id, user_id)` だけで、間に `rp_id` があるため種別の頭しか効かず、**その種別の全員の行をなめていました。**`deleteAll` の DELETE はなめた範囲にロックを掛けるので、ほかの人のパスキーのログイン（署名の回数の UPDATE）や登録（INSERT）と待ち合っていました。利用者が数万人いる種別で効きます。表の版を 2 に上げ、**すでに表がある DB にも、パスキーを次に使ったとき（起動後の初回）に索引を足します**（MySQL・PostgreSQL）。足すあいだ、MySQL は書き込みを止めずに作り、PostgreSQL は書き込みを待たせます（行の数だけかかります）。動きは変わりません |
 
+### ドキュメント
+
+| | |
+|---|---|
+| **パスキーの origin は完全一致で比べ、サブドメインを許さないことを書きました** | 動きは 2.4.0 から同じです。rp_id をゾーンの頂点（`example.com`）にしても、`origins` に並べていないサブドメイン（`shop.example.com`）からの呼び出しは、署名が正しくても断ります。[ログインと認可](https://jimble.io/ja/auth) の「何を確かめるか」に書き、テストで確かめるようにしました |
+
 ---
 
 ## 2.7.15（2026-11-09）

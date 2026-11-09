@@ -252,6 +252,26 @@ class PasskeyWithoutAuthIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("origin は完全一致：rp_id のサブドメインから呼ばれ、rp_id で正しく署名されていても空")
+	void subdomainOriginRejected () throws Exception {
+
+		FakeAuthenticator authenticator = register(new Browser(), REALM, USER_ID, "a");
+
+		/*
+		 * rp_id がゾーンの頂点（aqsell.app）で、テナントのページ（shop1.aqsell.app）からも
+		 * navigator.credentials.get を呼べる形。ブラウザは rp_id のサブドメインからの呼び出しを許すので、
+		 * 認証器の署名も rpIdHash も正しい。断る手がかりは origin だけ
+		 */
+		for (String origin : List.of("http://shop.client-a.localhost", "http://client-a.localhost:8080", "https://client-a.localhost")) {
+			assertEquals(0, login(new Browser(), authenticator, REALM, "a", OK, origin).getLong("userId"), origin + " から通った");
+		}
+
+		// 並べたオリジンそのものなら通る
+		assertEquals(USER_ID, login(new Browser(), authenticator, REALM, "a", OK, ORIGIN_A).getLong("userId"));
+
+	}
+
+	@Test
 	@DisplayName("別のサイト（rp_id）・別の種別で登録した資格情報は空")
 	void otherRpAndRealm () throws Exception {
 
