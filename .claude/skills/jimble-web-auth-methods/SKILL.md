@@ -94,5 +94,7 @@ get("/passkey.js", Passkey.script()).attribute(Auth.PUBLIC, true);   // ブラ�
   - **`authenticate` はログインさせない。**通れば利用者 ID、通らなければ空（理由はログだけ）。返った ID で止めた・消した・テナント違いを引き直し、
     `session().regenerateId()` してから自分のログインを入れる
   - チャレンジを置く・消すときに中で `session().save()` する。表は既定のデータソース（main DB）。`framework_tables` は効かない
+- サイトを渡さない `Passkey.list(realm, userId)` と `deleteAll(realm, userId)` は、**2.7.16 から `(realm, user_id)` の索引で引く**
+  （前は種別の全員の行をなめた）。索引は jimble が表の版で足す。**アプリのマイグレーションで足さない**
 
 詳しくは <https://jimble.io/ja/auth.md>。

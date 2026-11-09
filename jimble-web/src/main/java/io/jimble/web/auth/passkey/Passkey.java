@@ -1331,6 +1331,15 @@ public final class Passkey {
 	}
 
 	/**
+	 * 表を作ったかを忘れる（テストで、古い版の表から上げ直すため）
+	 */
+	static void resetInstalled () {
+
+		initialized = false;
+
+	}
+
+	/**
 	 * 表を作る
 	 */
 	private static void install () {
@@ -1389,6 +1398,15 @@ public final class Passkey {
 					)
 					""".formatted(name)
 					, "create index %s__user on \"%s\" (realm, rp_id, user_id)".formatted(name, name));
+
+			/*
+			 * 版2：rp を渡さない一覧（list(realm, userId)）と deleteAll は {@code realm = ? AND user_id = ?} で引く。
+			 * 版1の索引は rp_id が間にあるので realm の頭しか効かず、その種別の全員の行をなめていた
+			 * （DELETE はなめた範囲にロックを掛け、ほかの人のログイン・登録と待ち合う）。
+			 */
+			version.add(2)
+				.mysql("create index %s__realm_user on `%s` (realm, user_id)".formatted(name, name))
+				.postgresql("create index %s__realm_user on \"%s\" (realm, user_id)".formatted(name, name));
 
 			if (!version.apply(DBUtil.getMainDB())) {
 				throw new IllegalStateException("パスキーの表を作れませんでした（直前のエラーログを見てください）");
