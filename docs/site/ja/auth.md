@@ -935,6 +935,52 @@ Passkey.deleteAll("", me.id());                        // 退会など
 >
 > **パスキーのログインの口には、流量制限を掛けてください**（`RateLimit`）。総当たりは効きませんが、チャレンジを出すたびにセッションを作ります。
 
+### Auth を使わないアプリから使う
+
+**ログインを自分のセッションで持ち、jimble の `Auth` を使わないアプリ**は、種別と利用者 ID を渡す口を使います（2.7.15 から）。
+`Auth.principal` も `Auth.login` もルートの `Auth.REALM` も見ません。
+
+```java
+// 登録（本人であることは、アプリが確かめてから呼ぶ。パスワードの入れ直しなど）
+post("/admin/passkey/register/options", c -> {
+	long me = myLoggedInUserId(c);    // アプリのログイン
+	c.response().json(Passkey.registrationOptions(c, rp(c), "admin", me, myLoginId(c)));
+});
+post("/admin/passkey/register", c -> {
+	Passkey.register(c, rp(c), "admin", myLoggedInUserId(c), c.request().bodyJson(), "ノート PC");
+	c.response().json("ok", true);
+});
+
+// ログイン（確かめるだけ。ログインはアプリがさせる）
+post("/admin/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c, rp(c), "admin")));
+post("/admin/passkey/login", c -> {
+	OptionalLong id = Passkey.authenticate(c, rp(c), "admin", c.request().bodyJson());
+	Admin admin = id.isPresent() ? admins.findActive(id.getAsLong()).orElse(null) : null;   // 止めた・消した・テナント違いはアプリが断る
+	if (admin == null) {
+		throw new HttpException(401, "パスキーでログインできませんでした");
+	}
+	c.session().regenerateId();       // ID の振り直しもアプリがする
+	myLogin(c, admin);
+	c.response().json("ok", true);
+});
+```
+
+| | |
+| --- | --- |
+| `registrationOptions(c, rp, realm, userId, userName)` | チャレンジをセッションに置き、種別・利用者 ID・サイトに結びつけます。その人がこのサイトで登録済みのパスキーは `excludeCredentials` に入ります。**ログインしているか・本人かは確かめません**（呼ぶ側の責任） |
+| `register(c, rp, realm, userId, credential, label)` | options で渡した種別・利用者 ID・サイトと違えば 400 で断ります（ほかの人の登録の手続きを使わせない）。確かめられなければ 400、登録済みなら 409 です |
+| `loginOptions(c, rp, realm)` | ルートの属性ではなく、渡した種別のチャレンジを出します |
+| `authenticate(c, rp, realm, credential)` | 「何を確かめるか」の表のすべてを確かめ、通れば `last_used_at` と署名の回数を進めて**利用者 ID を返します**。**通らなければ空**（例外にしません）で、理由はログ（warn）にだけ出します。`Auth.login` もセッション ID の振り直しもしません |
+| 種別 | `Auth.checkRealm` と同じ決まり（英数字・`_`・`-` の 64 文字まで。種別なしは空文字）。違えば `IllegalArgumentException` です。利用者 ID は 1 以上 |
+| セッション | **チャレンジを置く・消すときに、中で `session().save()` します**。アプリが要求の終わりに保存し直してもかまいません。セッション（`session.store`）は要ります |
+| 表 | `Auth` の口と同じ `auth_passkey` と `auth_passkey_challenge` です。**既定のデータソース（`DBUtil.getMainDB()`）に、初めて使ったときに作ります。**`db.<名前>.framework_tables` はデータソースごとに作る表（`db_lock` など）だけを絞るもので、パスキーの表には効きません。ほかのデータソースに作ることはできません |
+
+`Auth` の口で登録したパスキーと同じ表に並び、種別で分かれます。一覧と削除は、種別を渡す `Passkey.list(realm, rp, userId)`・`Passkey.delete(realm, userId, id)`・`Passkey.deleteAll(realm, userId)` を使います。
+
+> [!TRAP]
+> **`authenticate` が ID を返しても、その人を入れてよいとは限りません。**止めた利用者・消した利用者・ほかのテナントの利用者かは、返った ID でアプリが引き直して確かめてください。
+> **ログインさせるときは、セッション ID を振り直してください**（`session().regenerateId()`）。振り直さないと、ログインの前に渡したセッション ID を知っている人が、そのまま入れます。
+
 ## Basic 認証
 
 運用向けの口には Basic 認証が使えます（[リクエストとレスポンス](./request-response)）。

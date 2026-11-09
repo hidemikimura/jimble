@@ -937,6 +937,52 @@ Passkey.deleteAll("", me.id());                        // account deletion, etc.
 >
 > **Put a rate limit on the passkey login endpoints** (`RateLimit`). Guessing does not work, but every issued challenge creates a session.
 
+### Using passkeys without Auth
+
+**Apps that keep the login in their own session and do not use jimble's `Auth`** use the methods that take a realm and a user ID (since 2.7.15).
+They never look at `Auth.principal`, `Auth.login`, or the route's `Auth.REALM`.
+
+```java
+// Registration (the app checks that this is the user first, e.g. by asking for the password again)
+post("/admin/passkey/register/options", c -> {
+	long me = myLoggedInUserId(c);    // the app's own login
+	c.response().json(Passkey.registrationOptions(c, rp(c), "admin", me, myLoginId(c)));
+});
+post("/admin/passkey/register", c -> {
+	Passkey.register(c, rp(c), "admin", myLoggedInUserId(c), c.request().bodyJson(), "Laptop");
+	c.response().json("ok", true);
+});
+
+// Login (verification only; the app logs the user in)
+post("/admin/passkey/login/options", c -> c.response().json(Passkey.loginOptions(c, rp(c), "admin")));
+post("/admin/passkey/login", c -> {
+	OptionalLong id = Passkey.authenticate(c, rp(c), "admin", c.request().bodyJson());
+	Admin admin = id.isPresent() ? admins.findActive(id.getAsLong()).orElse(null) : null;   // the app refuses disabled, deleted or other-tenant users
+	if (admin == null) {
+		throw new HttpException(401, "Could not log in with the passkey");
+	}
+	c.session().regenerateId();       // the app also regenerates the session ID
+	myLogin(c, admin);
+	c.response().json("ok", true);
+});
+```
+
+| | |
+| --- | --- |
+| `registrationOptions(c, rp, realm, userId, userName)` | Keeps the challenge in the session, bound to the realm, user ID and site. The user's passkeys already registered for this site go into `excludeCredentials`. **Does not check that anyone is logged in or who they are** (the caller's job) |
+| `register(c, rp, realm, userId, credential, label)` | Refuses with 400 if the realm, user ID or site differ from the options (so nobody can finish someone else's registration). 400 if verification fails, 409 if already registered |
+| `loginOptions(c, rp, realm)` | Issues the challenge for the given realm instead of the route attribute |
+| `authenticate(c, rp, realm, credential)` | Checks everything in "What is checked", advances `last_used_at` and the signature counter, and **returns the user ID**. **Returns empty on failure** (no exception) and logs the reason only as a warning. Neither calls `Auth.login` nor regenerates the session ID |
+| Realm | Same rule as `Auth.checkRealm` (letters, digits, `_`, `-`, up to 64; empty for no realm); otherwise `IllegalArgumentException`. The user ID must be 1 or more |
+| Session | **Calls `session().save()` itself when it stores or removes the challenge.** Saving again at the end of the request is fine. A session store (`session.store`) is required |
+| Tables | The same `auth_passkey` and `auth_passkey_challenge` as the `Auth` methods. **Created in the default data source (`DBUtil.getMainDB()`) on first use.** `db.<name>.framework_tables` only limits the per-data-source tables (`db_lock` and so on) and has no effect on the passkey tables, which cannot be put in another data source |
+
+They share the table with passkeys registered through `Auth`, separated by realm. For listing and deleting, use the realm-taking `Passkey.list(realm, rp, userId)`, `Passkey.delete(realm, userId, id)` and `Passkey.deleteAll(realm, userId)`.
+
+> [!TRAP]
+> **An ID from `authenticate` does not mean the user may get in.** Look the ID up again to refuse disabled, deleted or other-tenant users.
+> **Regenerate the session ID when logging in** (`session().regenerateId()`). Otherwise anyone who knew the pre-login session ID gets in too.
+
 ## Basic auth
 
 Operational endpoints can use Basic auth

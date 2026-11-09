@@ -234,11 +234,14 @@ public final class Auth {
 	}
 
 	/**
-	 * 種別の書式を確かめる
+	 * 種別の書式を確かめる（英数字・_・- の 64 文字まで。種別なしは空文字）
+	 *
+	 * <p>{@code Auth} を使わずに種別を受け取る口（{@code Passkey.authenticate} など）も、これで確かめる。</p>
 	 *
 	 * @param realm	種別
+	 * @throws IllegalArgumentException	null の場合、使えない文字がある場合
 	 */
-	static void checkRealm (String realm) {
+	public static void checkRealm (String realm) {
 
 		if (realm == null) {
 			throw new IllegalArgumentException("ログインの種別が null です（種別なしなら空文字にしてください）");

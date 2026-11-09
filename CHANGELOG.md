@@ -4,6 +4,16 @@
 
 ---
 
+## 2.7.15（未公開）
+
+### 足したこと
+
+| | |
+|---|---|
+| **パスキーを、jimble の `Auth` を使わずにログインを自分で持つアプリからも使えるようにしました** | これまでのパスキーは、登録に `Auth.principal` のログインが要り、ログインの確かめのあとに中で `Auth.login` を呼び、種別はルートの `Auth.REALM` から取っていました。種別と利用者 ID を渡す口を足しました：`Passkey.registrationOptions(c, rp, realm, userId, userName)`・`Passkey.register(c, rp, realm, userId, credential, label)`・`Passkey.loginOptions(c, rp, realm)`・`Passkey.authenticate(c, rp, realm, credential)`。**`authenticate` は確かめて利用者 ID（`OptionalLong`）を返すだけで、ログインもセッション ID の振り直しもしません。**通らなければ空を返し、理由はログ（warn）にだけ出します。確かめること（チャレンジは 1 度だけ・時間切れ・オリジン・本人確認・署名・署名の回数・rp_id・種別）は `login` と同じです。登録は、options で渡した種別・利用者 ID・サイトと違えば断ります。表（`auth_passkey`）はこれまでと同じで、`Auth` の口で登録したものと種別で分かれて並びます。あわせて、種別の書式を確かめる `Auth.checkRealm` を公開しました。これまでの口の動きは変わりません。書き方は [ログインと認可](https://jimble.io/ja/auth) の「Auth を使わないアプリから使う」にあります |
+
+---
+
 ## 2.7.14（2026-11-09）
 
 ### 足したこと
