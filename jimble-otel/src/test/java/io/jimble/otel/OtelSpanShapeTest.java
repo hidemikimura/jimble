@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -44,6 +45,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  */
 class OtelSpanShapeTest {
+
+	/** 送られたものが届くまで待つ上限 */
+	private static final Duration WAIT_FOR_EXPORT = Duration.ofSeconds(10);
+
+	/** 1回の flush で待つ上限 */
+	private static final long FLUSH_MILLIS = 1000;
 
 	/** 受け取ったもの */
 	private final List<SpanData> exported = new CopyOnWriteArrayList<>();
@@ -320,14 +327,38 @@ class OtelSpanShapeTest {
 	 */
 	private SpanData one (String name) {
 
-		tracer.flush(3000);
+		/*
+		 * <b>届くまで待つ。</b>flush は待ちきれなくても黙って戻るので、1度 flush しただけで数えると、
+		 * CI の遅いマシンで送り終わる前に数えて 0 件になる（opentelemetry 1.68.0 の PR で起きた）
+		 */
+		long deadline = System.nanoTime() + WAIT_FOR_EXPORT.toNanos();
+		List<SpanData> found = byName(name);
 
-		List<SpanData> found = exported.stream().filter(s -> name.equals(s.getName())).toList();
+		while (found.isEmpty() && System.nanoTime() < deadline) {
+			tracer.flush(FLUSH_MILLIS);
+			found = byName(name);
+		}
+
+		// 遅れて2つ目が届かないことも見る（同じ名前が2つ送られていないか）
+		tracer.flush(FLUSH_MILLIS);
+		found = byName(name);
 
 		assertEquals(1, found.size(), "「%s」が %d 件（%s）".formatted(name, found.size()
 			, exported.stream().map(SpanData::getName).toList()));
 
 		return found.get(0);
+
+	}
+
+	/**
+	 * いままでに届いた、その名前のもの
+	 *
+	 * @param name 名前
+	 * @return 届いたもの
+	 */
+	private List<SpanData> byName (String name) {
+
+		return exported.stream().filter(s -> name.equals(s.getName())).toList();
 
 	}
 
