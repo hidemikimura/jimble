@@ -23,14 +23,16 @@ class PasswordCostTest {
 	void keep () {
 
 		Conf.reload();
-		original = Conf.conf().config();
+		// コストは BCrypt のもの（2.7.17 から既定は Argon2id）
+		original = ConfigFactory.parseString("hash.password.algorithm = bcrypt").withFallback(Conf.conf().config());
+		Conf.replace(original);
 
 	}
 
 	@AfterEach
 	void restore () {
 
-		Conf.replace(original);
+		Conf.reload();
 
 	}
 

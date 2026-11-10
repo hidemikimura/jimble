@@ -60,7 +60,7 @@ class PasswordUtilTest {
 
 		String hash = PasswordUtil.createHash("password");
 
-		assertTrue(hash.startsWith("$2a$"), "BCrypt のハッシュがそのまま入っているはず: " + hash);
+		assertTrue(hash.startsWith("$argon2id$"), "Argon2id のハッシュがそのまま入っているはず: " + hash);
 		assertTrue(PasswordUtil.check("password", hash));
 		assertFalse(PasswordUtil.check("wrong", hash));
 
@@ -80,7 +80,7 @@ class PasswordUtilTest {
 
 		String hash = PasswordUtil.createHash("password");
 
-		assertTrue(hash.startsWith("$2a$"), hash);
+		assertTrue(hash.startsWith("$argon2id$"), hash);
 		assertTrue(PasswordUtil.check("password", hash));
 
 	}
@@ -102,7 +102,7 @@ class PasswordUtilTest {
 
 		String hash = PasswordUtil.createHash("password");
 
-		assertFalse(hash.startsWith("$2a$"), "暗号化されていない: " + hash);
+		assertFalse(hash.startsWith("$argon2id$"), "暗号化されていない: " + hash);
 		assertTrue(PasswordUtil.check("password", hash));
 		assertFalse(PasswordUtil.check("wrong", hash));
 

@@ -317,6 +317,13 @@ hash {
 		# If you set cipher.*, you must set this too (startup fails otherwise)
 		encrypt = false
 		pepper  = ${?PASSWORD_PEPPER}   # only for 1.x compatibility. gives no protection (below). cannot be rotated
+		algorithm = "argon2id"   # argon2id (default since 2.7.17) | bcrypt. checking tells them apart by prefix, so stored hashes keep working after a change
+		argon2 {
+			memory      = 19MiB   # memory per hash (8KiB per lane up to 1GiB)
+			iterations  = 2       # passes (1-100)
+			parallelism = 1       # lanes (1-64)
+			max_concurrency = 8   # hashes computed at once (default: CPU count; the rest wait). each holds memory, so lower it on a small heap
+		}
 		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}
 }
@@ -608,7 +615,7 @@ was added.
 | `cipher.key` / `cipher.iv` | Reads the **already-encrypted password hashes of a migrated app**. Not for anything new — fixed IV, no tamper detection |
 | `auth.mfa.secret_key` | Encrypts **TOTP secrets**. AES-256-GCM |
 
-An app with no `cipher.*` at all needs no setting, exactly as before (BCrypt only, no
+An app with no `cipher.*` at all needs no setting, exactly as before (hash only, no
 encryption).
 
 ## trust_proxy is false by default

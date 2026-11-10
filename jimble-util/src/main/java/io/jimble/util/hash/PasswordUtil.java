@@ -11,7 +11,13 @@ import java.security.Security;
  * パスワードのハッシュ
  *
  * <p>
- * BCrypt でハッシュ化する。<b>そのうえで暗号化するかどうかは選べる</b>
+ * <b>Argon2id でハッシュ化する</b>（2.7.17 から。{@code hash.password.algorithm = "bcrypt"} で BCrypt）。
+ * <b>照合はハッシュの頭で方式を見分ける</b>（{@code $argon2id$} なら Argon2id、{@code $2a$} などなら BCrypt）ので、
+ * 方式を変えても保存済みのハッシュはそのまま照合できる。作り直すかは {@link #needsRehash(String)} で分かる。
+ * </p>
+ *
+ * <p>
+ * <b>そのうえで暗号化するかどうかは選べる</b>
  * （{@code hash.password.encrypt}）。ハッシュだけでも安全だが、
  * DB が漏れたときに総当たりの足がかりを与えないよう、
  * さらに鍵で包んでおきたい場合に使う。
@@ -20,8 +26,11 @@ import java.security.Security;
  * <pre>
  * hash {
  *   password {
- *     encrypt = true          # 既定は cipher.key があれば true、無ければ false
+ *     algorithm = "argon2id"  # argon2id（既定）| bcrypt
+ *     encrypt = true          # cipher.* を書くなら必ず書く
  *     pepper  = ${?PEPPER}
+ *     argon2 { memory = 19MiB, iterations = 2, parallelism = 1, max_concurrency = 8 }
+ *     cost    = 10            # bcrypt のとき
  *   }
  * }
  * </pre>
@@ -42,7 +51,7 @@ import java.security.Security;
  *
  * <h2>ペッパーの入れ方について（移送元のまま）</h2>
  * <p>
- * このクラスは <b>{@code BCrypt.hashpw(password) + pepper}</b> という形、
+ * このクラスは <b>{@code BCrypt.hashpw(password) + pepper}</b>（Argon2id も同じく {@code PHC の文字列 + pepper}）という形、
  * つまり<b>ハッシュした後ろにペッパーを繋げている</b>。
  * 一般にペッパーは<b>ハッシュする前の入力に混ぜる</b>ものなので、
  * この形では総当たりを難しくする効果がない（照合時に外して捨てているだけ）。
@@ -70,6 +79,34 @@ public final class PasswordUtil {
 	/** BCrypt のコストの既定 */
 	public static final int DEFAULT_COST = 10;
 
+	/**
+	 * 設定キー：ハッシュを作る方式（{@value #ALGORITHM_ARGON2ID}（既定）| {@value #ALGORITHM_BCRYPT}）
+	 *
+	 * <p>照合は保存してあるハッシュの頭で見分けるので、変えても保存済みのものはそのまま照合できる。</p>
+	 */
+	public static final String KEY_ALGORITHM = "hash.password.algorithm";
+
+	/** 方式：Argon2id */
+	public static final String ALGORITHM_ARGON2ID = "argon2id";
+
+	/** 方式：BCrypt */
+	public static final String ALGORITHM_BCRYPT = "bcrypt";
+
+	/** 設定キー：Argon2id のメモリ（大きさ。既定 19MiB） */
+	public static final String KEY_ARGON2_MEMORY = "hash.password.argon2.memory";
+
+	/** 設定キー：Argon2id の繰り返し（既定 2） */
+	public static final String KEY_ARGON2_ITERATIONS = "hash.password.argon2.iterations";
+
+	/** 設定キー：Argon2id の並列（既定 1） */
+	public static final String KEY_ARGON2_PARALLELISM = "hash.password.argon2.parallelism";
+
+	/** 設定キー：Argon2id を同時に計算する数の上限（既定は CPU の数。超えた分は待つ） */
+	public static final String KEY_ARGON2_MAX_CONCURRENCY = "hash.password.argon2.max_concurrency";
+
+	/* BCrypt のハッシュの頭（$2a$・$2b$・$2y$） */
+	private static final java.util.regex.Pattern BCRYPT_PREFIX = java.util.regex.Pattern.compile("^\\$2[aby]?\\$(\\d{2})\\$");
+
 	/** BCrypt が見るのはここまで（バイト） */
 	public static final int BCRYPT_MAX_BYTES = 72;
 
@@ -93,6 +130,25 @@ public final class PasswordUtil {
 		}
 
 		return cost;
+
+	}
+
+	/**
+	 * ハッシュを作る方式（{@code hash.password.algorithm}）
+	 *
+	 * @return	{@value #ALGORITHM_ARGON2ID} か {@value #ALGORITHM_BCRYPT}
+	 * @throws IllegalStateException	知らない方式の場合
+	 */
+	public static String algorithm () {
+
+		String algorithm = Conf.conf().getString(KEY_ALGORITHM, ALGORITHM_ARGON2ID).strip().toLowerCase(java.util.Locale.ROOT);
+
+		if (!ALGORITHM_ARGON2ID.equals(algorithm) && !ALGORITHM_BCRYPT.equals(algorithm)) {
+			throw new IllegalStateException("%s は %s か %s にしてください。いまの値: %s"
+				.formatted(KEY_ALGORITHM, ALGORITHM_ARGON2ID, ALGORITHM_BCRYPT, algorithm));
+		}
+
+		return algorithm;
 
 	}
 
@@ -170,6 +226,24 @@ public final class PasswordUtil {
 	 */
 	public static String createHash (String password, boolean encrypt) {
 
+		String digest = ALGORITHM_BCRYPT.equals(algorithm())
+			? bcrypt(password)
+			: Argon2Hash.create(password, Argon2Hash.configured(), createSecureRandom());
+
+		String hash = digest + pepper();
+
+		return encrypt ? CipherUtil.encryptAes(hash) : hash;
+
+	}
+
+	/**
+	 * BCrypt のハッシュを作る
+	 *
+	 * @param password	パスワード
+	 * @return	ハッシュ
+	 */
+	private static String bcrypt (String password) {
+
 		/*
 		 * <b>72 バイトを超えた分は効かない</b>（BCrypt の仕様。D-247）。断ると、長いパスワードを受けていたアプリの登録が
 		 * 上げた日に落ちるので、1度だけ言う。登録の検証で長さを抑えるのがよい
@@ -180,9 +254,7 @@ public final class PasswordUtil {
 					.formatted(BCRYPT_MAX_BYTES, BCRYPT_MAX_BYTES));
 		}
 
-		String hash = BCrypt.hashpw(password, BCrypt.gensalt(cost(), createSecureRandom())) + pepper();
-
-		return encrypt ? CipherUtil.encryptAes(hash) : hash;
+		return BCrypt.hashpw(password, BCrypt.gensalt(cost(), createSecureRandom()));
 
 	}
 
@@ -213,6 +285,118 @@ public final class PasswordUtil {
 			return false;
 		}
 
+		String hash = unwrap(passwordHash, encrypted);
+
+		if (hash == null) {
+			return false;
+		}
+
+		try {
+
+			if (Argon2Hash.isArgon2id(hash)) {
+				return Argon2Hash.matches(inputPassword, hash);
+			}
+
+			return BCrypt.checkpw(inputPassword, hash);
+
+		} catch (IllegalArgumentException ex) {
+
+			Log.error(ex, "パスワードハッシュが Argon2id でも BCrypt でもない形です（%s・%s の設定を確認してください）"
+				.formatted(KEY_ENCRYPT, KEY_PEPPER));
+
+			return false;
+
+		}
+
+	}
+
+	/**
+	 * 作り直したほうがよいか（いまの設定で作ったハッシュでないか）
+	 *
+	 * <p>
+	 * <b>ログインに成功したときに呼び、true なら入力されたパスワードで {@link #createHash(String)} し直して保存する。</b>
+	 * 平文はそのときしか無いので、方式やパラメータを変えたあとは、ログインした人から順に入れ替わる。
+	 * </p>
+	 *
+	 * <pre>
+	 * if (Auth.checkPassword(input, user.getString("password_hash"))) {
+	 *     if (PasswordUtil.needsRehash(user.getString("password_hash"))) {
+	 *         users.updatePasswordHash(user.getLong("id"), PasswordUtil.createHash(input));
+	 *     }
+	 * }
+	 * </pre>
+	 *
+	 * <ul>
+	 *   <li>方式（{@code hash.password.algorithm}）が違う</li>
+	 *   <li>Argon2id のメモリ・繰り返し・並列（{@code hash.password.argon2.*}）が違う</li>
+	 *   <li>BCrypt のコスト（{@code hash.password.cost}）が違う</li>
+	 * </ul>
+	 *
+	 * <p>読めないハッシュ（復号できない・形が違う）は false（照合も通らないので、作り直す機会が無い）。</p>
+	 *
+	 * @param passwordHash	保存してあるハッシュ
+	 * @return	作り直したほうがよい場合 = true
+	 */
+	public static boolean needsRehash (String passwordHash) {
+
+		return needsRehash(passwordHash, isEncrypt());
+
+	}
+
+	/**
+	 * 作り直したほうがよいか（暗号化されているかを指定する）
+	 *
+	 * @param passwordHash	保存してあるハッシュ
+	 * @param encrypted		暗号化されている場合 = true
+	 * @return	作り直したほうがよい場合 = true
+	 */
+	public static boolean needsRehash (String passwordHash, boolean encrypted) {
+
+		if (passwordHash == null || passwordHash.isEmpty()) {
+			return false;
+		}
+
+		String hash = unwrap(passwordHash, encrypted);
+
+		if (hash == null) {
+			return false;
+		}
+
+		if (Argon2Hash.isArgon2id(hash)) {
+
+			Argon2Hash.Parsed parsed;
+
+			try {
+				parsed = Argon2Hash.parse(hash);
+			} catch (IllegalArgumentException ex) {
+				return false;
+			}
+
+			return !ALGORITHM_ARGON2ID.equals(algorithm())
+				|| !parsed.params().equals(Argon2Hash.configured())
+				|| parsed.hash().length != Argon2Hash.HASH_BYTES;
+
+		}
+
+		java.util.regex.Matcher bcrypt = BCRYPT_PREFIX.matcher(hash);
+
+		if (!bcrypt.find()) {
+			return false;
+		}
+
+		return !ALGORITHM_BCRYPT.equals(algorithm()) || Integer.parseInt(bcrypt.group(1)) != cost();
+
+	}
+
+	/**
+	 * 保存してあるものから、方式のハッシュを取り出す（復号し、ペッパーを外す）
+	 *
+	 * @param passwordHash	保存してあるハッシュ
+	 * @param encrypted		暗号化されている場合 = true
+	 * @return	方式のハッシュ。取り出せなければ null（理由はログに出す）
+	 */
+	private static String unwrap (String passwordHash, boolean encrypted) {
+
 		String hash;
 
 		if (encrypted) {
@@ -231,7 +415,7 @@ public final class PasswordUtil {
 					+ "鍵（%s）が変わったか、%s の設定が保存時と食い違っています"
 						.formatted(CipherUtil.KEY_CIPHER_KEY, KEY_ENCRYPT));
 
-				return false;
+				return null;
 
 			}
 
@@ -246,22 +430,10 @@ public final class PasswordUtil {
 		if (hash.length() < pepper.length()) {
 			Log.error("パスワードハッシュが短すぎます（%s の設定が保存時と食い違っている可能性があります）"
 				.formatted(KEY_PEPPER));
-			return false;
+			return null;
 		}
 
-		try {
-
-			return BCrypt.checkpw(inputPassword, hash.substring(0, hash.length() - pepper.length()));
-
-		} catch (IllegalArgumentException ex) {
-
-			// BCrypt の形式ではない
-			Log.error(ex, "パスワードハッシュが BCrypt の形式ではありません（%s の設定を確認してください）"
-				.formatted(KEY_ENCRYPT));
-
-			return false;
-
-		}
+		return hash.substring(0, hash.length() - pepper.length());
 
 	}
 

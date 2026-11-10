@@ -18,6 +18,7 @@ fastcsv = "4.4.0"
 jts = "1.20.0"
 caffeine = "3.3.1"
 jbcrypt = "0.4"
+password4j = "1.8.4"
 brotli = "0.1.2"
 jspecify = "1.0.1"
 hikaricp = "7.1.0"
@@ -82,6 +83,7 @@ fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
 jts-core = { module = "org.locationtech.jts:jts-core", version.ref = "jts" }
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 jbcrypt = { module = "org.mindrot:jbcrypt", version.ref = "jbcrypt" }
+password4j = { module = "com.password4j:password4j", version.ref = "password4j" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 

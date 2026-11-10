@@ -310,6 +310,13 @@ hash {
 		# cipher.* を書くなら、これも必ず書く（書かないと起動時に落ちる）
 		encrypt = false
 		pepper  = ${?PASSWORD_PEPPER}   # 1.x との互換のためだけ。守りにならない（下記）。入れ替えられない
+		algorithm = "argon2id"   # argon2id（既定。2.7.17 から）| bcrypt。照合はハッシュの頭で見分けるので、変えても保存済みのものは照合できる
+		argon2 {
+			memory      = 19MiB   # 1 回に使うメモリ（並列 1 つあたり 8KiB〜1GiB）
+			iterations  = 2       # 繰り返し（1〜100）
+			parallelism = 1       # 並列（1〜64）
+			max_concurrency = 8   # 同時に計算する数の上限（既定は CPU の数。超えた分は待つ）。1 回ごとに memory を持つので、ヒープが小さければ下げる
+		}
 		cost    = 10   # bcrypt のコスト（4〜31）。1 上げると倍の時間。72 バイトより後ろは bcrypt が読まない
 	}
 }
@@ -602,7 +609,7 @@ redis {
 | `auth.mfa.secret_key` | **TOTP の秘密鍵を暗号化する**ためのもの。AES-256-GCM です |
 
 `cipher.*` をまったく書いていないアプリは、これまでどおり何も書かなくて構いません
-（暗号化なし、BCrypt だけ）。
+（暗号化なし、ハッシュだけ）。
 
 ## trust_proxy は既定で false
 
