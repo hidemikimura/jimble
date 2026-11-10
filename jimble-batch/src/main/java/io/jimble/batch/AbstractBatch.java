@@ -9,9 +9,7 @@ import io.jimble.core.context.BatchContext;
 import io.jimble.core.lifecycle.CancelOrderNotify;
 import io.jimble.db.DB;
 import io.jimble.db.SqlExecuteException;
-import io.jimble.db.Tx;
 import io.jimble.db.DBUtil;
-import io.jimble.db.lock.DBLock;
 import io.jimble.util.data.Data;
 import io.jimble.util.log.Log;
 
@@ -286,14 +284,14 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 		int allowCount = args.forceExecute() ? 0 : master.getInt("allow_concurrent_execution");
 
-		if (!registerExecuteInfo(db, args, allowCount)) {
+		if (!BatchExecuteInfo.register(db, args, className(), allowCount)) {
 			Log.warn("同時実行数の上限に達しています: %s / allow=%d".formatted(className(), allowCount));
 			return BatchResult.skipped_concurrent;
 		}
 
 		try {
 
-			startHeartbeat(args);
+			startHeartbeat(args, allowCount);
 
 			return executeWithHistory(db, args, !args.fromScheduler());
 
@@ -348,105 +346,6 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 
 	}
 
-	/**
-	 * 実行情報を登録する（同時実行数の判定つき。要件 F-B-05）
-	 *
-	 * @param db			DB
-	 * @param args			引数
-	 * @param allowCount	同時実行可能数（0 以下なら上限なし）
-	 * @return	登録できた場合 = true
-	 */
-	private boolean registerExecuteInfo (DB db, BatchArgs args, int allowCount) {
-
-		if (allowCount <= 0) {
-			insertExecuteInfo(db, args);
-			return true;
-		}
-
-		String lockKey = "batch_ace_" + className();
-
-		try {
-
-			DBLock.create(db, lockKey);
-
-			// 数えてから入れるまでを1つにする。return で抜けたら巻き戻る
-			try (Tx tx = db.begin()) {
-
-				DBLock.lock(db, lockKey);
-
-				if (runningCount(db) >= allowCount) {
-					return false;
-				}
-
-				/*
-				 * <b>ほかの台に譲らない</b>（2.7.14）。2.7.13 までは、ここで「いちばん抱えているバッチが少ない台か」（isMyTurn）を見て、
-				 * そうでなければ飛ばしていた。cron の回は DbScheduler.claimFire で1台だけが取るので、譲った相手はその回を走らせず、
-				 * <b>その回はどの台でも走らなかった</b>。空いている台に寄せるのは、回を取りにいく前に忙しい台が少し待つことで行う
-				 * （DbScheduler の scheduler.claim_stagger）
-				 */
-				insertExecuteInfo(db, args);
-
-				tx.commit();
-
-				return true;
-
-			}
-
-		} catch (Exception ex) {
-
-			Log.error(ex, "同時実行数の判定に失敗しました: %s".formatted(className()));
-			return false;
-
-		}
-
-	}
-
-	/**
-	 * いま走っている数
-	 *
-	 * @param db	DB
-	 * @return	件数
-	 */
-	private int runningCount (DB db) {
-
-		Data row = db.select("""
-				SELECT
-					COUNT(1) AS cnt
-				FROM
-					batch_execute_info
-				WHERE
-					class_name = ?
-					AND updated_at >= %s
-			""".formatted(db.dialect().intervalFromNow("SECOND", true))
-			, className()
-			, BatchConf.alive().toSeconds()).orElse(null);
-
-		return row == null ? 0 : row.getInt("cnt");
-
-	}
-
-	/**
-	 * 実行情報を入れる
-	 *
-	 * @param db	DB
-	 * @param args	引数
-	 * @throws io.jimble.db.SqlExecuteException	入れられなかったとき
-	 */
-	private void insertExecuteInfo (DB db, BatchArgs args) {
-
-		db.insert("""
-				INSERT INTO batch_execute_info (
-					uid, scheduler_id, class_name, created_at, updated_at
-				) VALUES (
-					?, ?, ?, NOW(), NOW()
-				)
-			"""
-			, args.uid()
-			, args.schedulerId()
-			, className());
-
-	}
-
 	// endregion
 
 	// region ハートビート
@@ -459,11 +358,40 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 	 * DB の応答が遅れると<b>動いているバッチの数だけ接続が埋まっていた</b>。
 	 * </p>
 	 *
-	 * @param args	引数
+	 * @param args			引数
+	 * @param allowCount	同時実行可能数（0 以下なら上限なし）
 	 */
-	private void startHeartbeat (BatchArgs args) {
+	private void startHeartbeat (BatchArgs args, int allowCount) {
 
-		BatchHeartbeats.add(args.uid());
+		BatchHeartbeats.add(args.uid(), () -> readmit(args, allowCount));
+
+	}
+
+	/**
+	 * 心拍が途切れたあとで、まだ数に入っていてよいかを確かめ直す（2.7.18）
+	 *
+	 * <p>
+	 * 途切れているあいだに同じバッチが同時実行数まで起動していれば、<b>こちらが退く</b>
+	 * （中断の指示を立てる。{@link #isCancelOrder()} を見て抜ければ、履歴は {@code canceled} になる）。
+	 * 先に動いていたほうを残すと、あとから起動したほうは心拍が途切れていないので確かめ直さず、
+	 * 誰も退かない。
+	 * </p>
+	 *
+	 * @param args			引数
+	 * @param allowCount	同時実行可能数
+	 * @throws io.jimble.db.SqlExecuteException	DB に届かなかったとき（次の心拍でもう一度確かめる）
+	 */
+	private void readmit (BatchArgs args, int allowCount) {
+
+		if (BatchExecuteInfo.readmit(DBUtil.getMainDB(), args, className(), allowCount)) {
+			return;
+		}
+
+		Log.warn("心拍が途切れているあいだに同じバッチが同時実行数（%d）まで起動したので、こちらを止めます: %s / uid=%s"
+			.formatted(allowCount, className(), args.uid()));
+
+		cancelOrder = true;
+		stopHeartbeat(args);
 
 	}
 
@@ -776,7 +704,8 @@ public abstract class AbstractBatch implements CancelOrderNotify {
 			try {
 				DBUtil.getMainDB().select(
 					"SELECT cancel_status FROM batch_history WHERE id = ?", batchId)
-					.ifPresent(row -> cancelOrder = row.getBoolean("cancel_status"));
+					// 心拍の確かめ直しで立った印（readmit）を、読んだ値で倒さない
+					.ifPresent(row -> cancelOrder = cancelOrder || row.getBoolean("cancel_status"));
 			} catch (SqlExecuteException ex) {
 				// 見に行けなかっただけでバッチは止めない。次の間隔でもう一度見る
 				Log.warn("中断の指示を読めませんでした: %s（%s）".formatted(className(), ex.getMessage()));

@@ -10,12 +10,16 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -143,6 +147,40 @@ class HeartbeatIntegrationTest {
 	/** 並べるバッチ3 */
 	public static class HoldBatchC extends HoldBatch { @Override public String batchName () { return "しばらく走る C"; } }
 
+	/** いま execute の中にいる LoopBatch の数 */
+	static final AtomicInteger LOOPING = new AtomicInteger();
+
+	/** LoopBatch を終わらせる合図 */
+	static volatile boolean stopLoop = false;
+
+	/**
+	 * 中断の指示（{@code isCancelOrder()}）が来るまで回り続けるバッチ（同時実行数は 1）
+	 */
+	public static class LoopBatch extends AbstractBatch {
+
+		@Override public String batchName () { return "回り続ける"; }
+
+		@Override
+		public void execute (BatchArgs args) {
+
+			LOOPING.incrementAndGet();
+
+			try {
+				// 合図が来なくても、いつかは終わる（テストが落ちたときに残らないように）
+				long limit = System.currentTimeMillis() + 30_000;
+				while (!stopLoop && !isCancelOrder() && System.currentTimeMillis() < limit) {
+					Thread.sleep(20);
+				}
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			} finally {
+				LOOPING.decrementAndGet();
+			}
+
+		}
+
+	}
+
 	/* 元の設定 */
 	private static Config originalConf;
 
@@ -171,6 +209,7 @@ class HeartbeatIntegrationTest {
 		BatchRegistry.add(HoldBatchA::new);
 		BatchRegistry.add(HoldBatchB::new);
 		BatchRegistry.add(HoldBatchC::new);
+		BatchRegistry.add(LoopBatch::new);
 		BatchRegistry.sync(DBUtil.getMainDB());
 
 	}
@@ -260,6 +299,101 @@ class HeartbeatIntegrationTest {
 			Thread.sleep(50);
 		}
 		assertEquals(0, heartbeatThreads(), "バッチがいないのに心拍のスレッドが残っています");
+
+	}
+
+	/**
+	 * DB が止まって行が消えても（deleted）・古くなっても（stale）、戻ったあとに走っている数は同時実行数を超えない
+	 *
+	 * <p>
+	 * <b>2.7.17 まで</b>、共通の DB が止まっているあいだは心拍が打てず、戻った直後の回が心拍より先に走ると、
+	 * 動いているバッチの行は古いと見なされて（30 秒を超えていれば消されて）、2 本目が起動した。
+	 * 1 本目の心拍は消えた行に 0 件当たるだけで気づかず、<b>止まるたびに 1 本ずつ増えた</b>。
+	 * </p>
+	 *
+	 * <p>
+	 * 止まった DB は、表の名前を一時的に変えて作る。消された行は {@code cleanupExecuteInfo}（30 秒を超えた行）を、
+	 * 古い行は 10〜30 秒の停止を真似る。
+	 * </p>
+	 */
+	@ParameterizedTest
+	@ValueSource(strings = { "deleted", "stale" })
+	@DisplayName("F-B-05 DB が止まって戻っても、同時実行数より多くは走らない")
+	void concurrencyHoldsAfterDbOutage (String damage) throws Exception {
+
+		DB db = DBUtil.getMainDB();
+		stopLoop = false;
+
+		AtomicReference<BatchResult> first = new AtomicReference<>();
+		AtomicReference<BatchResult> second = new AtomicReference<>();
+
+		Thread firstRun = Thread.ofVirtual().start(() -> first.set(BatchExecutor.execute(
+			BatchExecutor.parseArgs(new String[]{ "class=" + LoopBatch.class.getName() }))));
+		Thread secondRun = null;
+
+		try {
+
+			long deadline = System.currentTimeMillis() + 5000;
+			while (LOOPING.get() < 1 && System.currentTimeMillis() < deadline) {
+				Thread.sleep(20);
+			}
+			assertEquals(1, LOOPING.get(), "1 本目が走り出しません");
+
+			// DB が止まる（心拍は 200ms ごとに失敗する）
+			db.execute("ALTER TABLE batch_execute_info RENAME TO batch_execute_info_off");
+
+			try {
+				Thread.sleep(600);
+				if ("deleted".equals(damage)) {
+					db.delete("DELETE FROM batch_execute_info_off WHERE class_name = ?", LoopBatch.class.getName());
+				} else {
+					db.update("UPDATE batch_execute_info_off SET updated_at = %s WHERE class_name = ?"
+						.formatted(db.dialect().intervalFromNow("SECOND", true)), 20, LoopBatch.class.getName());
+				}
+			} finally {
+				db.execute("ALTER TABLE batch_execute_info_off RENAME TO batch_execute_info");
+			}
+
+			// 戻った直後の回
+			secondRun = Thread.ofVirtual().start(() -> second.set(BatchExecutor.execute(
+				BatchExecutor.parseArgs(new String[]{ "class=" + LoopBatch.class.getName() }))));
+
+			// どちらか 1 本に落ち着く（心拍が気づいて古いほうが退く・または 2 本目が起動しない）
+			deadline = System.currentTimeMillis() + BEAT_WAIT_MS;
+			while ((LOOPING.get() != 1 || first.get() == null && second.get() == null)
+				&& System.currentTimeMillis() < deadline) {
+				Thread.sleep(50);
+			}
+
+			assertEquals(1, LOOPING.get(), "同時実行数が 1 なのに %d 本走っています（%s）".formatted(LOOPING.get(), damage));
+
+			BatchResult ended = first.get() != null ? first.get() : second.get();
+			assertTrue(ended == BatchResult.canceled || ended == BatchResult.skipped_concurrent
+				, "退いたほうの結果が違います: " + ended);
+
+			// 残ったほうは数に入っている（次の回が 2 本目を起動しない）
+			deadline = System.currentTimeMillis() + BEAT_WAIT_MS;
+			long rows = 0;
+			while (rows != 1 && System.currentTimeMillis() < deadline) {
+				Thread.sleep(50);
+				rows = db.select("SELECT count(*) AS n FROM batch_execute_info WHERE class_name = ? AND updated_at >= %s"
+						.formatted(db.dialect().intervalFromNow("SECOND", true)), LoopBatch.class.getName(), 10)
+					.map(row -> row.getLong("n")).orElse(0L);
+			}
+			assertEquals(1, rows, "残ったバッチが実行情報に生きていません");
+
+			assertEquals(BatchResult.skipped_concurrent, BatchExecutor.execute(
+				BatchExecutor.parseArgs(new String[]{ "class=" + LoopBatch.class.getName() }))
+				, "次の回でもう 1 本起動しました");
+
+		} finally {
+			stopLoop = true;
+			firstRun.join(10_000);
+			if (secondRun != null) {
+				secondRun.join(10_000);
+			}
+			db.execute("DROP TABLE IF EXISTS batch_execute_info_off");
+		}
 
 	}
 
