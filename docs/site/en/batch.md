@@ -221,6 +221,9 @@ Instead, **steering work to less busy servers now happens before a firing is cla
 Every server sees the same firing within `tick_interval` (1 second by default), so the less busy server usually claims it first. If no less busy server claims it (it is stopped, say), the busier server claims it after waiting, so the firing is never lost.
 This steers work "usually", not always (clocks and check intervals differ between servers). Set it to `0s` to not wait at all.
 
+**A database outage does not let more than the limit run either** (since 2.7.18). While the database is down, the heartbeat (`batch_execute_info.updated_at`, every `batch.heartbeat`) cannot be written, so right after it comes back the running batch's row looks old (rows older than `batch.alive` are not counted, and rows older than three times that are deleted). If a second copy starts in that window, the first one, whose heartbeat was interrupted, recounts the next time it reaches the database and **steps aside** (its cancel order is set). Up to 2.7.17 nothing recounted, so each outage could add one more copy.
+Only a batch that checks the cancel order can step aside. **A batch that never calls `isCancelOrder()` runs until it finishes** (it is still counted, so no further copies start).
+
 ## Running one on its own
 
 **You write the batch entry point yourself.** The whole startup order is right there in that one file.
