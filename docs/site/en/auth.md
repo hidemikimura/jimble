@@ -89,7 +89,7 @@ success.** `Auth.login` **regenerates the session id** before storing anything, 
 > [!TRAP]
 > **Do not call `PasswordUtil.check` directly here.** With a `null` hash it returns
 > `false` **immediately**, so **a user that does not exist answers measurably faster**
-> (being slow is BCrypt's whole job). That timing **lets someone enumerate which ids
+> (being slow is a password hash's whole job). That timing **lets someone enumerate which ids
 > exist.**
 >
 > `Auth.attemptLogin` runs one round anyway before returning `false`.

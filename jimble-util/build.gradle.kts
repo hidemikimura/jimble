@@ -43,5 +43,6 @@ dependencies {
 	implementation(libs.jts.core)
 	implementation(libs.caffeine)
 	implementation(libs.jbcrypt)
+	implementation(libs.password4j)
 	implementation(libs.brotli.dec)
 }

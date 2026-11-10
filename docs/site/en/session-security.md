@@ -364,7 +364,7 @@ counting accounts whose last login is old, for instance.**
 
 ## Passwords
 
-`PasswordUtil` hashes with BCrypt. **Whether it then encrypts is yours to choose.**
+`PasswordUtil` hashes with **Argon2id** (since 2.7.17; BCrypt before that). **Whether it then encrypts is yours to choose.**
 
 ```java
 String hash = PasswordUtil.createHash(password);
@@ -397,6 +397,37 @@ in the startup log (`パスワード暗号化=あり`). Write `encrypt` when you
 Turning encryption on or off later means rebuilding the hashes you already stored.
 `createHash(password, encrypt)` and `check(input, hash, encrypted)` let you pin each side
 on its own.
+
+### Argon2id and BCrypt
+
+| | |
+| --- | --- |
+| Algorithm | Chosen by `hash.password.algorithm`: `argon2id` by default, `bcrypt` to go back |
+| Checking | **The stored hash's prefix decides** (`$argon2id$` is Argon2id, `$2a$` is BCrypt). Stored hashes keep working after a change, and both can sit in the same table |
+| Parameters | `hash.password.argon2.memory` (default 19MiB), `iterations` (default 2), `parallelism` (default 1): the OWASP minimum. 16-byte salt, 32-byte hash |
+| Format | A PHC string (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`), interchangeable with libargon2, Spring Security, argon2-cffi and others |
+| Cost | Computed with Password4j. About 20 ms each, and **each hash uses `memory` of RAM** (50 logins at once hold about 1 GB meanwhile) |
+
+**After changing the algorithm or parameters, rehash on successful login.** The plain password exists only then, so users move over as they log in.
+
+```java
+String stored = user.getString("password_hash");
+
+if (Auth.checkPassword(input, stored)) {
+	if (PasswordUtil.needsRehash(stored)) {      // true when algorithm, parameters or cost differ from the settings
+		users.updatePasswordHash(user.getLong("id"), PasswordUtil.createHash(input));
+	}
+	// log the user in
+}
+```
+
+> [!TRAP]
+> **A short password column will not fit the new hashes.** BCrypt was 60 characters; Argon2id is **about 97** (around 110 with large parameters), with the pepper after it.
+> With `hash.password.encrypt = true` the encrypted value is **about 150**. Widen the column (to `varchar(255)`, say) before upgrading,
+> and keep `hash.password.algorithm = "bcrypt"` until you can.
+>
+> **Until everyone has moved over, login time differs per user.** BCrypt users and Argon2id users take different times, and unknown IDs take the Argon2id time, so response times reveal that an ID with a BCrypt hash exists.
+> Rehash with `needsRehash` to close the gap quickly.
 
 `CipherUtil` is **AES/CBC with a fixed IV.** It is kept so that ciphertext already in your
 database can still be read. **Do not use it for anything you encrypt from now on.** The same

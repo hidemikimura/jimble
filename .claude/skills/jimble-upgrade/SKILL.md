@@ -46,6 +46,9 @@ description: jimble の版を上げるとき・古い版（1.x など）のコ�
 ## 版ごとの手当て（よく踏むもの）
 
 - **2.7.11 からは Maven Central に無い。**置き場は `https://repo.jimble.io`。`settings.gradle.kts` の `pluginManagement` と `dependencyResolutionManagement`（か `build.gradle.kts` の `repositories`）の両方に、`mavenCentral()` より前に `maven("https://repo.jimble.io")` を足す。足さないと `Plugin [id: 'io.jimble.db', version: '<上げた版>'] was not found` や `Could not find io.jimble:jimble-web:<上げた版>` で止まる。座標とプラグイン ID は変わらない
+- **2.7.17 からパスワードのハッシュの既定が Argon2id。**保存済みの BCrypt はそのまま照合できるが、新しいハッシュは 97 文字前後（暗号化すると 150 文字ほど）になる。
+  パスワードの列が BCrypt の 60 文字に合わせてあれば、上げる前に広げる（広げられないうちは `hash.password.algorithm = "bcrypt"`）。
+  ログインに成功したときに `PasswordUtil.needsRehash` を見て作り直すと、順に Argon2id に入れ替わる（`jimble-web-auth`）
 - codegen の出力が変わった版（2.2.4・2.5.4）は、上げたあと `codegenCheck` が差分を出したら `codegen` で作り直してコミットする（`jimble-db-migration`）
 - jooby_base から移した `batch_master` や MQ の表を使うなら 2.5.9 以上（`jimble-batch-run`）
 - `router.ignore_case` と `router.redirect_to_canonical` を両方使うなら 2.5.11 以上（`jimble-web`）

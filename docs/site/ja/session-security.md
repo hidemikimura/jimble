@@ -360,7 +360,7 @@ DB が漏れたときに総当たりを難しくする効果は**ありません
 
 ## パスワード
 
-`PasswordUtil` は BCrypt でハッシュ化します。**そのうえで暗号化するかどうかは選べます。**
+`PasswordUtil` は **Argon2id** でハッシュ化します（2.7.17 から。それまでは BCrypt）。**そのうえで暗号化するかどうかは選べます。**
 
 ```java
 String hash = PasswordUtil.createHash(password);
@@ -392,6 +392,37 @@ cipher {
 
 暗号化を後から入れる・外すときは、保存済みのハッシュを作り直す必要があります。
 `createHash(password, encrypt)` と `check(input, hash, encrypted)` で片方ずつ指定できます。
+
+### Argon2id と BCrypt
+
+| | |
+| --- | --- |
+| 方式 | `hash.password.algorithm` で選びます。既定は `argon2id`、前の方式に戻すなら `bcrypt` |
+| 照合 | **保存してあるハッシュの頭で見分けます**（`$argon2id$` なら Argon2id、`$2a$` なら BCrypt）。方式を変えても、保存済みのハッシュはそのまま照合できます。同じ表に混ざってかまいません |
+| パラメータ | `hash.password.argon2.memory`（既定 19MiB）・`iterations`（既定 2）・`parallelism`（既定 1）。既定は OWASP の推奨の最小です。ソルトは 16 バイト、ハッシュは 32 バイト |
+| 形 | PHC の文字列（`$argon2id$v=19$m=19456,t=2,p=1$<ソルト>$<ハッシュ>`）。libargon2・Spring Security・argon2-cffi などほかの実装が作ったものとも照合できます |
+| 計算 | Password4j を使います。1 回に 20ms ほどかかり、**1 回ごとに `memory` のメモリを使います**（同時に 50 人がログインすれば、その間 1GB ほど） |
+
+**方式やパラメータを変えたあとは、ログインに成功したときに作り直します。**平文はそのときしか無いので、ログインした人から順に入れ替わります。
+
+```java
+String stored = user.getString("password_hash");
+
+if (Auth.checkPassword(input, stored)) {
+	if (PasswordUtil.needsRehash(stored)) {      // 方式・パラメータ・コストがいまの設定と違えば true
+		users.updatePasswordHash(user.getLong("id"), PasswordUtil.createHash(input));
+	}
+	// ログインさせる
+}
+```
+
+> [!TRAP]
+> **パスワードの列が短いと、新しいハッシュが入りません。**BCrypt は 60 文字でしたが、Argon2id は **97 文字前後**（パラメータを大きくすると 110 文字ほど）で、ペッパーはその後ろに付きます。
+> `hash.password.encrypt = true` なら暗号化して **150 文字ほど**になります。上げる前に、列を `varchar(255)` などに広げてください。
+> 広げられないうちは `hash.password.algorithm = "bcrypt"` のままにしておきます。
+>
+> **入れ替わるまでは、ログインにかかる時間が利用者ごとに違います。**BCrypt の人と Argon2id の人とで時間が違い、いない ID は Argon2id の時間になるので、応答時間から「BCrypt のハッシュを持つ ID がある」ことが分かります。
+> `needsRehash` で作り直して、早く揃えてください。
 
 `CipherUtil` は **AES/CBC で IV が固定**です。既に保存されている暗号文を読むために残してあります。
 **新しく暗号化するものには使わないでください。** 同じ平文が必ず同じ暗号文になり、改ざん検知もありません。
