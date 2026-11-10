@@ -322,6 +322,7 @@ hash {
 			memory      = 19MiB   # memory per hash (8KiB per lane up to 1GiB)
 			iterations  = 2       # passes (1-100)
 			parallelism = 1       # lanes (1-64)
+			max_concurrency = 8   # hashes computed at once (default: CPU count; the rest wait). each holds memory, so lower it on a small heap
 		}
 		cost    = 10   # bcrypt cost (4-31). each step doubles the time. bcrypt ignores everything past 72 bytes
 	}

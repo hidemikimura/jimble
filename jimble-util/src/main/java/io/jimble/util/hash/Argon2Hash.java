@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.concurrent.Semaphore;
 
 /**
  * Argon2id のパスワードハッシュ（{@link PasswordUtil} から使う）
@@ -22,6 +23,25 @@ import java.util.Base64;
  * <p>
  * 既定は OWASP の Password Storage Cheat Sheet の最小の推奨（メモリ 19 MiB・2 回・並列 1）。
  * ソルトは 16 バイト、ハッシュは 32 バイト（RFC 9106 の推奨）。
+ * </p>
+ *
+ * <h2>同時に計算する数を絞る</h2>
+ * <p>
+ * <b>1 回の計算は、終わるまで {@code memory}（既定 19 MiB）を持ち続ける</b>（Password4j は、ほかに繰り返し 1 回ごとに
+ * 約 39 MiB の使い捨てを作る）。使うメモリは、同時に計算している数で決まる。
+ * </p>
+ *
+ * <ul>
+ *   <li><b>仮想スレッド（Helidon のリクエスト）</b>は、計算の間 CPU を手放さないので、同時に計算するのはもともと CPU の数まで
+ *       （10 コアで 200 本並べて、最大 10）</li>
+ *   <li><b>普通のスレッド</b>（バッチ・MQ のワーカー・自前のスレッドプール）は、並べた数だけ同時に計算する
+ *       （200 本並べて、最大 155。ヒープ 160 MiB で 50 本並べると {@link OutOfMemoryError} になる）</li>
+ * </ul>
+ *
+ * <p>
+ * そこで<b>同時に計算する数を {@code hash.password.argon2.max_concurrency}（既定は CPU の数）に絞り、超えた分は待たせる。</b>
+ * 計算は CPU を使い切るので、CPU の数より多く並べても速くならない（待つ時間が増えるだけ）。
+ * ヒープが小さいのに CPU が多いときは、CPU の数より小さくする。
  * </p>
  */
 final class Argon2Hash {
@@ -61,6 +81,9 @@ final class Argon2Hash {
 	static final int MIN_HASH_BYTES = 16;
 	static final int MAX_HASH_BYTES = 64;
 
+	/** 同時に計算する数の上限の、設定できる最大 */
+	static final int MAX_CONCURRENCY = 1024;
+
 	/** Argon2 の版（1.3） */
 	private static final int VERSION = 19;
 
@@ -71,7 +94,18 @@ final class Argon2Hash {
 	private static final Base64.Encoder B64 = Base64.getEncoder().withoutPadding();
 	private static final Base64.Decoder B64_DECODER = Base64.getDecoder();
 
+	/* 同時に計算する数を絞る門（設定が変われば作り直す） */
+	private static volatile Gate gate = null;
+
 	private Argon2Hash () {}
+
+	/**
+	 * 同時に計算する数を絞る門
+	 *
+	 * @param permits	上限
+	 * @param semaphore	門
+	 */
+	private record Gate (int permits, Semaphore semaphore) {}
 
 	/**
 	 * パラメータ
@@ -122,6 +156,26 @@ final class Argon2Hash {
 		}
 
 		return new Params((int) memoryKib, iterations, parallelism);
+
+	}
+
+	/**
+	 * 同時に計算する数の上限（{@code hash.password.argon2.max_concurrency}。既定は CPU の数）
+	 *
+	 * @return	上限
+	 * @throws IllegalStateException	範囲の外の場合
+	 */
+	static int maxConcurrency () {
+
+		int processors = Runtime.getRuntime().availableProcessors();
+		int value = Conf.conf().getInt(PasswordUtil.KEY_ARGON2_MAX_CONCURRENCY, processors);
+
+		if (value < 1 || value > MAX_CONCURRENCY) {
+			throw new IllegalStateException("%s は 1〜%d にしてください（既定は CPU の数 = %d）。いまの値: %d"
+				.formatted(PasswordUtil.KEY_ARGON2_MAX_CONCURRENCY, MAX_CONCURRENCY, processors, value));
+		}
+
+		return value;
 
 	}
 
@@ -272,7 +326,50 @@ final class Argon2Hash {
 		Argon2Function function = Argon2Function.getInstance(params.memoryKib(), params.iterations(), params.parallelism()
 			, length, Argon2.ID, VERSION);
 
-		return function.hash(password.getBytes(StandardCharsets.UTF_8), salt).getBytes();
+		Semaphore semaphore = gate();
+
+		try {
+			semaphore.acquire();
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("パスワードのハッシュの計算を待っている間に割り込まれました", ex);
+		}
+
+		try {
+			return function.hash(password.getBytes(StandardCharsets.UTF_8), salt).getBytes();
+		} finally {
+			semaphore.release();
+		}
+
+	}
+
+	/**
+	 * 同時に計算する数を絞る門（上限の設定が変わっていれば作り直す）
+	 *
+	 * <p>
+	 * 作り直したときに古い門で待っている・計算しているものは、古い門のまま終わる（設定を変えるのはテストと起動のときだけ）。
+	 * </p>
+	 *
+	 * @return	門
+	 */
+	private static Semaphore gate () {
+
+		int permits = maxConcurrency();
+		Gate current = gate;
+
+		if (current != null && current.permits() == permits) {
+			return current.semaphore();
+		}
+
+		synchronized (Argon2Hash.class) {
+
+			if (gate == null || gate.permits() != permits) {
+				gate = new Gate(permits, new Semaphore(permits, true));
+			}
+
+			return gate.semaphore();
+
+		}
 
 	}
 

@@ -315,6 +315,7 @@ hash {
 			memory      = 19MiB   # 1 回に使うメモリ（並列 1 つあたり 8KiB〜1GiB）
 			iterations  = 2       # 繰り返し（1〜100）
 			parallelism = 1       # 並列（1〜64）
+			max_concurrency = 8   # 同時に計算する数の上限（既定は CPU の数。超えた分は待つ）。1 回ごとに memory を持つので、ヒープが小さければ下げる
 		}
 		cost    = 10   # bcrypt のコスト（4〜31）。1 上げると倍の時間。72 バイトより後ろは bcrypt が読まない
 	}

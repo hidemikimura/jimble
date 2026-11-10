@@ -10,13 +10,13 @@
 
 | | |
 |---|---|
-| **パスワードのハッシュの既定が、BCrypt から Argon2id に変わりました** | `PasswordUtil.createHash`（と `Auth` のログインの時間合わせ）が作るハッシュが `$argon2id$v=19$m=19456,t=2,p=1$...` になります。**保存済みの BCrypt はそのまま照合できます**（照合はハッシュの頭で見分けます）。**Argon2id のハッシュは 97 文字前後で、暗号化（`hash.password.encrypt = true`）すると 150 文字ほどです。**BCrypt の 60 文字に合わせた列には入らないので、上げる前に `varchar(255)` などに広げてください。広げられないうちは `hash.password.algorithm = "bcrypt"` と書けば、これまでどおり BCrypt で作ります。1 回のハッシュに 20ms ほどと、`hash.password.argon2.memory`（既定 19MiB）のメモリを使います |
+| **パスワードのハッシュの既定が、BCrypt から Argon2id に変わりました** | `PasswordUtil.createHash`（と `Auth` のログインの時間合わせ）が作るハッシュが `$argon2id$v=19$m=19456,t=2,p=1$...` になります。**保存済みの BCrypt はそのまま照合できます**（照合はハッシュの頭で見分けます）。**Argon2id のハッシュは 97 文字前後で、暗号化（`hash.password.encrypt = true`）すると 150 文字ほどです。**BCrypt の 60 文字に合わせた列には入らないので、上げる前に `varchar(255)` などに広げてください。広げられないうちは `hash.password.algorithm = "bcrypt"` と書けば、これまでどおり BCrypt で作ります。1 回のハッシュに 20ms ほどかかり、計算の間 `hash.password.argon2.memory`（既定 19MiB）を持ち続けます（使い捨てを含めて 1 回で約 97MiB を確保します）。同時に計算する数は `hash.password.argon2.max_concurrency`（既定は CPU の数）で絞るので、ヒープが小さいのに CPU が多いときは下げてください |
 
 ### 足したこと
 
 | | |
 |---|---|
-| **パスワードのハッシュに Argon2id を使えるようにしました（`hash.password.algorithm`）** | `argon2id`（既定）か `bcrypt` を選びます。パラメータは `hash.password.argon2.memory`（既定 19MiB）・`iterations`（既定 2）・`parallelism`（既定 1）で、既定は OWASP の推奨の最小です。形は PHC の文字列なので、libargon2・Spring Security・argon2-cffi などほかの実装が作ったものとも照合できます（OpenSSL で作ったものと照合できることをテストで確かめています）。保存されている値の大きさ（メモリ 1GiB まで など）は計算する前に確かめ、壊れた値でメモリを使い切らないようにしています |
+| **パスワードのハッシュに Argon2id を使えるようにしました（`hash.password.algorithm`）** | `argon2id`（既定）か `bcrypt` を選びます。パラメータは `hash.password.argon2.memory`（既定 19MiB）・`iterations`（既定 2）・`parallelism`（既定 1）で、既定は OWASP の推奨の最小です。形は PHC の文字列なので、libargon2・Spring Security・argon2-cffi などほかの実装が作ったものとも照合できます（OpenSSL で作ったものと照合できることをテストで確かめています）。保存されている値の大きさ（メモリ 1GiB まで など）は計算する前に確かめ、壊れた値でメモリを使い切らないようにしています。同時に計算する数は `hash.password.argon2.max_concurrency`（既定は CPU の数）で絞り、超えた分は待たせます（普通のスレッドを並べても、並べた数だけメモリを使わないため） |
 | **作り直したほうがよいハッシュかを返す `PasswordUtil.needsRehash` を足しました** | 方式・Argon2id のパラメータ・BCrypt のコストがいまの設定と違えば true です。ログインに成功したときに見て、true なら入力されたパスワードで `createHash` し直して保存すると、ログインした人から順に新しい方式に入れ替わります。書き方は [セッションと安全側の既定](https://jimble.io/ja/session-security) の「Argon2id と BCrypt」にあります |
 
 ### 依存

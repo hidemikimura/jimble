@@ -29,7 +29,7 @@ import java.security.Security;
  *     algorithm = "argon2id"  # argon2id（既定）| bcrypt
  *     encrypt = true          # cipher.* を書くなら必ず書く
  *     pepper  = ${?PEPPER}
- *     argon2 { memory = 19MiB, iterations = 2, parallelism = 1 }
+ *     argon2 { memory = 19MiB, iterations = 2, parallelism = 1, max_concurrency = 8 }
  *     cost    = 10            # bcrypt のとき
  *   }
  * }
@@ -100,6 +100,9 @@ public final class PasswordUtil {
 
 	/** 設定キー：Argon2id の並列（既定 1） */
 	public static final String KEY_ARGON2_PARALLELISM = "hash.password.argon2.parallelism";
+
+	/** 設定キー：Argon2id を同時に計算する数の上限（既定は CPU の数。超えた分は待つ） */
+	public static final String KEY_ARGON2_MAX_CONCURRENCY = "hash.password.argon2.max_concurrency";
 
 	/* BCrypt のハッシュの頭（$2a$・$2b$・$2y$） */
 	private static final java.util.regex.Pattern BCRYPT_PREFIX = java.util.regex.Pattern.compile("^\\$2[aby]?\\$(\\d{2})\\$");

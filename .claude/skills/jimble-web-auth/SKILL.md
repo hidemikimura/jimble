@@ -65,7 +65,8 @@ post("/password", Password::change).attribute(Auth.FULL_AUTH, true);    // 要�
   照合はハッシュの頭（`$argon2id$` / `$2a$`）で見分けるので、方式を変えても保存済みのものは通る。
   **ログインに成功したら `PasswordUtil.needsRehash(stored)` を見て、true なら `createHash(input)` で作り直して保存する**
 - **Argon2id のハッシュは 97 文字前後（暗号化すると 150 文字ほど）。**BCrypt の 60 文字に合わせた列には入らないので、`varchar(255)` などに広げる。
-  パラメータは `hash.password.argon2.memory`（19MiB）・`iterations`（2）・`parallelism`（1）。1 回ごとに `memory` を使う
+  パラメータは `hash.password.argon2.memory`（19MiB）・`iterations`（2）・`parallelism`（1）。計算の間 `memory` を持ち続ける（1 回で約 97MiB を確保）。
+  同時に計算する数は `max_concurrency`（既定は CPU の数）で絞る。ヒープが小さいのに CPU が多いなら下げる。ログインの口には `RateLimit` を掛ける
 - BCrypt のコストは `hash.password.cost`（既定 10、4〜31。2.2.4）。
   **bcrypt は 72 バイトより後ろを見ない**（超えると1度だけ WARN）。長いパスフレーズを許すなら、画面で上限を決める
 - **`cipher.key` を流用しない。**`cipher.*` を書くと **`hash.password.encrypt` も書かないと起動しない**。
