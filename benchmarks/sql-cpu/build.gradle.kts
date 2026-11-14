@@ -39,7 +39,7 @@ application {
 
 /*
  * 古い公開版ではコンパイルできないベンチは、このリポジトリのソースで測るときだけ入れる
- * （template は 2.8.0 から、HashBench の Hash.sipHashOf は 2.7.5 から）
+ * （template は 3.0.0 から、HashBench の Hash.sipHashOf は 2.7.5 から）
  */
 if (providers.gradleProperty("jimble.local").orNull != "true") {
 	sourceSets.main {

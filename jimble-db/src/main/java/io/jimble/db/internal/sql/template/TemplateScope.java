@@ -6,7 +6,7 @@ import io.jimble.db.sql.TemplateParam;
 import java.util.concurrent.Callable;
 
 /**
- * {@link io.jimble.db.sql.SelectTemplate} を組み立てている最中か（2.8.0）
+ * {@link io.jimble.db.sql.SelectTemplate} を組み立てている最中か（3.0.0）
  *
  * <p>
  * 値の印（{@link TemplateParam}）は、template を組み立てている間だけ値の場所に置ける。

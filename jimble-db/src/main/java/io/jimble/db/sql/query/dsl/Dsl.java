@@ -1753,7 +1753,7 @@ public class Dsl {
 
 	// endregion
 
-	// region template の値の印（2.8.0）
+	// region template の値の印（3.0.0）
 
 	/**
 	 * 値の印（{@link io.jimble.db.sql.SQL#template(io.jimble.db.sql.SelectBuilder)} で、値を差し替える場所）

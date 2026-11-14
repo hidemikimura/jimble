@@ -239,7 +239,7 @@ public final class SqlCache {
 		 * SQL 全文をキーにできればいちばん確かだが、置き場の主キーに入らない（DB の置き場は varchar(64)。このキーは 40 文字）。
 		 *
 		 * 2.7.19 までは SipHash-2-4（64 bit）だった。キャッシュに当たる SELECT の CPU の 4 割がそこだったので、
-		 * XXH3-128 にした（2.8.0。800 byte で約 6 倍速い）。ハッシュにかける中身（keySource）は 2.7.4 から変えていない
+		 * XXH3-128 にした（3.0.0。800 byte で約 6 倍速い）。ハッシュにかける中身（keySource）は 2.7.4 から変えていない
 		 */
 		return io.jimble.util.hash.Hash.xxh3Hex128(bytes) + HEX.toHexDigits(bytes.length);
 

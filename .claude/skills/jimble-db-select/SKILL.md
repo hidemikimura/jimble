@@ -71,7 +71,7 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 インデックスのヒント（MySQL。2.5.0）はテーブルに付けて渡す：`from(Orders.instance().forceIndex("orders__created_at"))`、`left(Customer.instance().useIndex("customer__code"))`、`ignoreIndex("PRIMARY")`。
 **PostgreSQL では組み立てたところで `DialectException`**（黙って外さない）。最後の手段にし、`EXPLAIN` で効いていることを確かめる。
 
-## 形の決まった SELECT（`SQL.template`。2.8.0）
+## 形の決まった SELECT（`SQL.template`。3.0.0）
 
 要求のたびに同じ形（値だけ違う）で引く SELECT は、形を一度だけ作って値を差し替える。SQL の字面は方言ごとに 1 回だけ作る。
 

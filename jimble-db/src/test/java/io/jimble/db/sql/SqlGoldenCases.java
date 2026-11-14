@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  *
  * <p>
  * <b>ここは 2.7.4 にもある API だけで書く</b>（同じファイルを 2.7.4 の jar で動かして答えを作るため）。
- * 例外はキャッシュのキーの {@code SqlCacheKeys.legacy(...)}（2.8.0）で、答えを作り直すときは {@code SqlCache.key(...)} に置き換える。
+ * 例外はキャッシュのキーの {@code SqlCacheKeys.legacy(...)}（3.0.0）で、答えを作り直すときは {@code SqlCache.key(...)} に置き換える。
  * 組み立てを足したら答えも作り直す（手順は {@link SqlGoldenTest} の javadoc）。
  * </p>
  */
@@ -692,7 +692,7 @@ public final class SqlGoldenCases {
 			List<Object> withData = new ArrayList<>(params);
 			withData.add(json);
 			withData.add(null);
-			// キーのハッシュは 2.8.0 で XXH3-128 にした。ハッシュにかける中身が 2.7.4 と同じことを、2.7.4 の形（SipHash）で比べる
+			// キーのハッシュは 3.0.0 で XXH3-128 にした。ハッシュにかける中身が 2.7.4 と同じことを、2.7.4 の形（SipHash）で比べる
 			return io.jimble.db.sqlcache.SqlCacheKeys.legacy(sql, params) + "\n"
 				+ io.jimble.db.sqlcache.SqlCacheKeys.legacy("other_db", sql, params) + "\n"
 				+ io.jimble.db.sqlcache.SqlCacheKeys.legacy(null, sql, params) + "\n"

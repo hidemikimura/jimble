@@ -34,9 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <b>今のソースで作り直してはいけない</b>——今の出力を答えにすると、何も確かめていないのと同じになる。
  * </p>
  *
- * <h2>キャッシュのキー（2.8.0 から）</h2>
+ * <h2>キャッシュのキー（3.0.0 から）</h2>
  * <p>
- * 2.8.0 でキーのハッシュを SipHash から XXH3-128 に替えた（キーの値は変わった）。
+ * 3.0.0 でキーのハッシュを SipHash から XXH3-128 に替えた（キーの値は変わった）。
  * ハッシュにかける中身（{@code SqlCache.keySource}）は変えていないので、{@link SqlGoldenCases} は
  * その中身を 2.7.4 と同じ形（SipHash + 長さ）で表した {@code SqlCacheKeys.legacy(...)} を書き出し、答えのキーと比べる。
  * 一致すれば、ハッシュにかける byte 列が 2.7.4 と同じだと言える。新しいキーの形は {@code SqlCacheKeyTest} が見る。

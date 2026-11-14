@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 値を入れた {@link SelectTemplate}（2.8.0）
+ * 値を入れた {@link SelectTemplate}（3.0.0）
  *
  * <p>
  * {@link SelectTemplate#bind(Object...)} で作り、{@code db.select(...)}・{@code db.selectList(...)}・

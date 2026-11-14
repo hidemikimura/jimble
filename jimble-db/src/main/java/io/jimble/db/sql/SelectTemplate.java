@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
- * 形を決めて、値だけを差し替える SELECT（2.8.0）
+ * 形を決めて、値だけを差し替える SELECT（3.0.0）
  *
  * <pre>
  * // 一度だけ作る（static final に置く）

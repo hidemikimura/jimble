@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
- * XXH3（{@link Hash#xxh3(String)} / {@link Hash#xxh3Hex128(byte[])}。2.8.0）
+ * XXH3（{@link Hash#xxh3(String)} / {@link Hash#xxh3Hex128(byte[])}。3.0.0）
  *
  * <p>
  * <b>ここで出す値は DB と Redis に入る</b>（ロックのキー・SQL 結果キャッシュのタグとキー・流量制限の行）。
@@ -60,7 +60,7 @@ class Xxh3Test {
 	}
 
 	/**
-	 * 固定する値（2.8.0 で hash4j 0.31.0 の XXH3 から求めた。上の参照の値と一致する実装）
+	 * 固定する値（3.0.0 で hash4j 0.31.0 の XXH3 から求めた。上の参照の値と一致する実装）
 	 */
 	private static final class Pinned {
 

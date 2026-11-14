@@ -3,7 +3,7 @@ package io.jimble.db.sql;
 import java.util.regex.Pattern;
 
 /**
- * 値の印（{@link SelectTemplate} の値を差し替える場所。2.8.0）
+ * 値の印（{@link SelectTemplate} の値を差し替える場所。3.0.0）
  *
  * <p>
  * {@link io.jimble.db.sql.query.dsl.Dsl#param(String)}（1 つの値）と

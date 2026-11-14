@@ -455,7 +455,7 @@ public final class SqlCacheTags {
 				return true;
 			}
 
-			// template の値の並びの印（bind で、空でない値の一覧だけが入る。2.8.0）
+			// template の値の並びの印（bind で、空でない値の一覧だけが入る。3.0.0）
 			if (term.isIn() && term.value() instanceof io.jimble.db.sql.TemplateParam param && param.isList()) {
 				return true;
 			}

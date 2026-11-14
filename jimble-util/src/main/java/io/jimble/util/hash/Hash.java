@@ -42,11 +42,11 @@ public class Hash {
 	private static final java.util.HexFormat HEX = java.util.HexFormat.of();
 
 	/**
-	 * XXH3（64 bit）を作る（2.8.0）
+	 * XXH3（64 bit）を作る（3.0.0）
 	 *
 	 * <p>
 	 * 文字列を UTF-8 にしてから XXH3_64bits（seed 0）を取る。{@link #sipHash(String)} と同じく、null と空文字は 0。
-	 * 800 byte で SipHash の約 6 倍速い。jimble は 2.8.0 から、ロックのキー・SQL 結果キャッシュのタグ・流量制限の行に使う。
+	 * 800 byte で SipHash の約 6 倍速い。jimble は 3.0.0 から、ロックのキー・SQL 結果キャッシュのタグ・流量制限の行に使う。
 	 * <b>暗号のハッシュではない</b>（わざと衝突させる相手には強くない）。秘密や改ざんの検出には使わない。
 	 * </p>
 	 *
@@ -64,7 +64,7 @@ public class Hash {
 	}
 
 	/**
-	 * XXH3（128 bit）を 16 進 32 文字で作る（2.8.0）
+	 * XXH3（128 bit）を 16 進 32 文字で作る（3.0.0）
 	 *
 	 * <p>
 	 * XXH3_128bits（seed 0）の上位 64 bit・下位 64 bit の順に 16 進でつなぐ。jimble は SQL 結果キャッシュのキーに使う。

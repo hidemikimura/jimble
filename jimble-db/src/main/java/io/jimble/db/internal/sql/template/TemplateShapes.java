@@ -6,7 +6,7 @@ import io.jimble.db.sql.SelectBuilder;
 import java.util.function.Function;
 
 /**
- * template の形を、jimble の中（SQL 結果キャッシュの依存を求めるところ）にだけ渡す（2.8.0）
+ * template の形を、jimble の中（SQL 結果キャッシュの依存を求めるところ）にだけ渡す（3.0.0）
  *
  * <p>
  * 形は template が写して持つビルダーで、同時に読まれる。公開メソッドにすると、
