@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -391,23 +392,60 @@ public class Table implements ITable, IFrom {
 	 * - getColumnList() を一度でも呼んだインスタンスは覚えた字面を使わない。返した一覧は書き換えられるので、
 	 *   2.7.4 と同じく、そのインスタンスの一覧から書く
 	 * - ClassValue に置くので、アプリのクラスを読み直してもクラスローダーを引き留めない。数はテーブルのクラスの数で止まる
+	 * - 宣言が書き換えられない一覧（List.of など。生成物はこれ）で、覚えたときと<b>同じ一覧のオブジェクト</b>なら、
+	 *   列を比べずにそのまま書く（2.7.19。比べる手間と方言の表を引く手間が、要求ごとに残っていた）
 	 */
-	private static final ClassValue<Map<io.jimble.db.dialect.Dialect, SelectAll>> SELECT_ALL = new ClassValue<>() {
+	private static final ClassValue<SelectAllCache> SELECT_ALL = new ClassValue<>() {
 
 		@Override
-		protected Map<io.jimble.db.dialect.Dialect, SelectAll> computeValue (Class<?> type) {
-			return new ConcurrentHashMap<>();
+		protected SelectAllCache computeValue (Class<?> type) {
+			return new SelectAllCache();
 		}
 
 	};
 
+	/*
+	 * 書き換えられない一覧のクラス（List.of・List.copyOf・Stream.toList が返すもの）。
+	 * 宣言がこれなら、覚えたときと<b>同じ一覧のオブジェクト</b>である限り中身も同じなので、列を 1 つずつ比べない
+	 */
+	private static final Set<Class<?>> IMMUTABLE_LISTS = Set.of(
+		List.of().getClass(), List.of(1).getClass());
+
+	/**
+	 * テーブルのクラスごとの、覚えた全列の字面
+	 */
+	private static final class SelectAllCache {
+
+		/* 最後に使ったもの（方言はふつう 1 つなので、たいていここで当たる） */
+		private volatile SelectAll last;
+
+		/* 方言ごと */
+		private final Map<io.jimble.db.dialect.Dialect, SelectAll> byDialect = new ConcurrentHashMap<>();
+
+		/**
+		 * 宣言の一覧が覚えたときと同じオブジェクトなら、その字面（違えば null）
+		 */
+		SelectAll sameSource (io.jimble.db.dialect.Dialect dialect, List<Column> declared) {
+
+			SelectAll current = last;
+			if (current != null && current.dialect() == dialect && current.source() == declared) {
+				return current;
+			}
+			return null;
+
+		}
+
+	}
+
 	/**
 	 * 覚えた全列の字面
 	 *
+	 * @param dialect	方言
+	 * @param source	作ったときの宣言の一覧（書き換えられない一覧のときだけ。ほかは null）
 	 * @param columns	作ったときの列（同一性で比べる）
 	 * @param sql		字面
 	 */
-	private record SelectAll (Column[] columns, String sql) {
+	private record SelectAll (io.jimble.db.dialect.Dialect dialect, List<Column> source, Column[] columns, String sql) {
 
 		/**
 		 * 今の列から作ったものと同じか
@@ -449,6 +487,17 @@ public class Table implements ITable, IFrom {
 
 		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
 
+		SelectAllCache cache = SELECT_ALL.get(getClass());
+
+		// 速い道：覚えたときと同じ宣言の一覧（生成物の静的な一覧）なら、比べずにそのまま書く
+		if (declared != null) {
+			SelectAll same = cache.sameSource(sb.dialect(), declared);
+			if (same != null) {
+				sb.append(same.sql());
+				return true;
+			}
+		}
+
 		if (declared == null || !isPlainColumns(declared)) {
 			List<Column> columns = getColumnList();
 			writeSelectAll(sb, columns);
@@ -459,15 +508,17 @@ public class Table implements ITable, IFrom {
 			return false;
 		}
 
-		Map<io.jimble.db.dialect.Dialect, SelectAll> byDialect = SELECT_ALL.get(getClass());
-		SelectAll cached = byDialect.get(sb.dialect());
+		SelectAll cached = cache.byDialect.get(sb.dialect());
 
 		if (cached == null || !cached.matches(declared)) {
 			SqlWriter written = new SqlWriter(sb.dialect());
 			writeSelectAll(written, declared);
-			cached = new SelectAll(declared.toArray(new Column[0]), written.toString());
-			byDialect.put(sb.dialect(), cached);
+			List<Column> source = IMMUTABLE_LISTS.contains(declared.getClass()) ? declared : null;
+			cached = new SelectAll(sb.dialect(), source, declared.toArray(new Column[0]), written.toString());
+			cache.byDialect.put(sb.dialect(), cached);
 		}
+
+		cache.last = cached;
 
 		sb.append(cached.sql());
 
@@ -489,6 +540,12 @@ public class Table implements ITable, IFrom {
 	public void selectAllParameters (List<Object> out) {
 
 		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
+
+		if (declared != null && IMMUTABLE_LISTS.contains(declared.getClass())
+			&& SELECT_ALL.get(getClass()).last instanceof SelectAll last && last.source() == declared) {
+			// 覚えた一覧と同じ（列はどれも Column そのもので、値を持たない）
+			return;
+		}
 
 		if (declared != null && isPlainColumns(declared)) {
 			return;
