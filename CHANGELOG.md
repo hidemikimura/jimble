@@ -12,6 +12,12 @@
 |---|---|
 | **形の決まった SELECT を一度だけ組み立てて、値だけ差し替えて使い回せるようにしました（`SQL.template`）** | `SQL.template(SQL.select()...)` で形を作り、値の場所に `Dsl.param("名前")`、`in` / `not_in` の値の並びに `Dsl.params("名前")` を置きます。要求のたびに `bind("名前", 値, ...)` で値を入れ、`db.select` / `selectList` / `selectCached` / `selectListCached` に渡します。**SQL の字面は方言ごとに 1 回だけ作るので、要求のたびの組み立て（ビルダーを作る・SQL を書き出す・値を集める）が無くなります。**主キー 1 行の全列 SELECT は 128ns・2,296B → 39ns・376B、130 列の 3 表の全列 JOIN は 1,057ns・21,776B → 41ns・376B、IN（3 個）つきの 2 表 JOIN は 442ns・4,320B → 77ns・752B、SQL 結果キャッシュに当たる SELECT は 721ns → 577ns の CPU です（`benchmarks/sql-cpu` の `TemplateBench`・`TemplateCpuPerQuery`）。**出る SQL・パラメータ・結果の形（テーブル名でネストした `Data`）・キャッシュのキーは、同じ形をビルダーに値を入れて引いたときと同じです。**`in` の値の数だけ `?` を並べ、値の並びの印が 1 つなら値の数 32 個までの字面を覚えます（覚える量は template の数 × 方言の数で止まり、値はためません）。`bind` の `null`・空の一覧・名前の過不足・列などの SQL の部品は `SqlBuildException` です。`starts_with` / `contains` / `ends_with` には印を置けません（`like(Dsl.param(...))` に `%` を付けた値を bind します）。主 DB の方言で書けない形（MySQL のインデックスのヒントなど）も、書ける方言で作れます。値の印を置いたビルダーを template にせずに投げると、DB に送る前に `SqlBuildException` になります。**今の書き方（`db.select(SQL.select()...)`）はそのまま動き、出る SQL も変わりません** |
 
+
+### 速くしたこと
+
+| | |
+|---|---|
+| **結果を読む CPU を減らしました（20 行の一覧で約 2 割）** | 結果ごとに、最初の行で列ごとの読み方を 1 回だけ決めます（jOOQ が型ごとの読み方を 1 回だけ決めるのと同じ考え）。これまでは値ごとに型を指定しない `getObject(i)` を呼んでいて、ドライバ（MariaDB Connector/J）が値ごとに型に合う変換器を表から探していました。ドライバが `getObject(i)` で返すクラスが `Long`・`Integer`・`String`・`BigDecimal` の列は `getLong`・`getInt`・`getString`・`getBigDecimal` で読み、それ以外の列（JSON・日時・`Boolean`・`BigInteger`・バイナリなど）はこれまでどおり読みます。表名と列名の分けと、行・表ごとの `Data` に入る数も 1 回だけ求め、`Data` を伸び直さない大きさで作ります（これまでは既定の大きさで、13 列を超える表では行ごとに作り直していました）。20 行・全列の一覧を引くスレッドの CPU は 76.8µs → 60.8µs です（`benchmarks/sql-cpu` の `DbPathCpu`。MySQL 8.4）。**返る値・値の型・`Data` のキーの並びと入れ子の形は変わりません**（同じ行を両方で読んで比べるテストを、MySQL と PostgreSQL の主な型 × 値あり・NULL で足しました）。あわせて、入る数を指定して作る `new Data(int)` を足しました |
 ---
 
 ## 2.7.19（2026-11-14）

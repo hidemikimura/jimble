@@ -24,6 +24,31 @@ import java.util.function.Function;
  */
 public class Data extends LinkedHashMap<String, Object> {
 
+	/**
+	 * 空の Data
+	 */
+	public Data () {
+
+		super();
+
+	}
+
+	/**
+	 * 入る数が分かっているときの空の Data（2.8.0）
+	 *
+	 * <p>
+	 * 入る数だけ入れても伸び直さない大きさで作る。中身と使い方は {@link #Data()} と同じ。
+	 * 既定の大きさでは 13 個目を入れたところで作り直すので、列の多い行を詰めるときに使う。
+	 * </p>
+	 *
+	 * @param expectedSize	入る数（0 以下なら最小の大きさ）
+	 */
+	public Data (int expectedSize) {
+
+		super((int) Math.ceil(Math.max(expectedSize, 1) / 0.75d));
+
+	}
+
 	/*
 	 * 直列化の版。
 	 * SQL 結果キャッシュ（要件 F-D-28）が置き場に書き出すので、
