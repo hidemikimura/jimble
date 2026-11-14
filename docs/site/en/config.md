@@ -364,6 +364,10 @@ mail {
 	}
 }
 
+sql {
+	select_alias = false   # put AS `table__column` on SELECT columns; off by default since 3.0.0 (true gives the 2.x SQL)
+}
+
 sql_cache {
 	enabled = false
 	store   = "memory"   # memory | redis | db

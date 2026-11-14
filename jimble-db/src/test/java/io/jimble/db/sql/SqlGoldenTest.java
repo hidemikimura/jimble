@@ -61,7 +61,8 @@ class SqlGoldenTest {
 	@DisplayName("SQL・パラメータ・キャッシュのキーのもとの byte 列が 2.7.4 と 1 文字も変わらない（MySQL / PostgreSQL）")
 	void sameAs274 () throws Exception {
 
-		Conf.replace(ConfigFactory.parseString("sql_cache { enabled = true, namespace = golden }"));
+		// 2.x と同じ SQL（列に AS `表__列` を付ける）で比べる。付けないときは SelectAliasTest が見る（3.0.0）
+		Conf.replace(ConfigFactory.parseString("sql_cache { enabled = true, namespace = golden }, sql.select_alias = true"));
 
 		String expected;
 		try (InputStream in = SqlGoldenTest.class.getResourceAsStream("/golden/sql-2.7.4.txt")) {

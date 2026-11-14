@@ -77,10 +77,7 @@ final class RowPlan {
 	/* 行の直下に入る数（直下の列 + 表） */
 	private final int topSize;
 
-	/* 全部 null の表を落とすか */
-	private final boolean removeAllNullTableData;
-
-	private RowPlan (int[] kinds, int[] columnTypes, int[] parentIndex, String[] keys, String[] parents, int[] parentSizes, int topSize, boolean removeAllNullTableData) {
+	private RowPlan (int[] kinds, int[] columnTypes, int[] parentIndex, String[] keys, String[] parents, int[] parentSizes, int topSize) {
 
 		this.kinds = kinds;
 		this.columnTypes = columnTypes;
@@ -89,7 +86,6 @@ final class RowPlan {
 		this.parents = parents;
 		this.parentSizes = parentSizes;
 		this.topSize = topSize;
-		this.removeAllNullTableData = removeAllNullTableData;
 
 	}
 
@@ -99,11 +95,10 @@ final class RowPlan {
 	 * @param metaData					結果の列
 	 * @param keyInfoList				列のキー（{@link ResultSetIterator} が分けたもの）
 	 * @param columnTypeList			列の型の分け
-	 * @param removeAllNullTableData	全部 null の表を落とすか
 	 * @return	段取り（同じ名前の列があるなど、今の読み方に任せる結果なら null）
 	 * @throws SQLException	列の情報を読めなかったとき
 	 */
-	static RowPlan of (ResultSetMetaData metaData, Dialect dialect, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList, boolean removeAllNullTableData) throws SQLException {
+	static RowPlan of (ResultSetMetaData metaData, Dialect dialect, List<ResultSetIterator.KeyInfo> keyInfoList, List<Integer> columnTypeList) throws SQLException {
 
 		// DECIMAL を getBigDecimal で読んでよいか（MySQL の DECIMAL は getObject も同じ読み方。PostgreSQL の numeric は違う）
 		boolean plainDecimal = dialect instanceof MySqlDialect;
@@ -164,7 +159,7 @@ final class RowPlan {
 		}
 
 		return new RowPlan(kinds, columnTypes, parentIndex, keys, parents.toArray(new String[0]), parentSizes
-			, topKeys.size() + parents.size(), removeAllNullTableData);
+			, topKeys.size() + parents.size());
 
 	}
 
@@ -211,11 +206,12 @@ final class RowPlan {
 	/**
 	 * 今の行を読む
 	 *
-	 * @param resultSet	結果
-	 * @param dialect	方言
+	 * @param resultSet				結果
+	 * @param dialect				方言
+	 * @param removeAllNullTableData	全部 null の表を落とすか（段取りは使い回すので、設定は読むたびに受け取る）
 	 * @return	行（読めなければ null。{@link ResultSetConverter} と同じ）
 	 */
-	Data read (ResultSet resultSet, Dialect dialect) {
+	Data read (ResultSet resultSet, Dialect dialect, boolean removeAllNullTableData) {
 
 		try {
 

@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 推測ではなく実際の出力で固定する。
  * </p>
  */
+@org.junit.jupiter.api.extension.ExtendWith(LegacySelectAlias.class)
 class SqlBuilderPortingTest {
 
 	/* site.id */

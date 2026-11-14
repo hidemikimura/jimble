@@ -11,6 +11,23 @@ import io.jimble.db.sql.query.where.WhereQuery;
 public interface ISelect extends io.jimble.db.sql.query.ParameterSource {
 
 	/**
+	 * 結果のこの列のキー（3.0.0）
+	 *
+	 * <p>
+	 * SELECT 句のこの位置の値を、結果の {@code Data} のどのキーに入れるか。{@code 表__列} の形なら表名で入れ子にする。
+	 * 別名を付けた式は別名、列は {@code 表__列}。null なら、DB のドライバが返す列名を使う（別名の無い式など）。
+	 * 3.0.0 から SELECT 句の列に {@code AS `表__列`} を付けず、この値で結果を位置で入れ子にする。
+	 * </p>
+	 *
+	 * @return	キー（決まらなければ null）
+	 */
+	default String resultLabel () {
+
+		return null;
+
+	}
+
+	/**
 	 * 別名を設定する
 	 *
 	 * @param as	別名

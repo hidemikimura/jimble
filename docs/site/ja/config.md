@@ -357,6 +357,10 @@ mail {
 	}
 }
 
+sql {
+	select_alias = false   # SELECT 句の列に AS `表__列` を付けるか。3.0.0 から既定は付けない（true で 2.x と同じ SQL）
+}
+
 sql_cache {
 	enabled = false
 	store   = "memory"   # memory | redis | db

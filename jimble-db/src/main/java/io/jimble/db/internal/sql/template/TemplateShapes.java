@@ -16,8 +16,18 @@ import java.util.function.Function;
  */
 public final class TemplateShapes {
 
-	/* 形の求め方 */
-	private static volatile Function<BoundSelect, SelectBuilder> shape;
+	/**
+	 * 渡し方
+	 *
+	 * @param shape		形
+	 * @param labels		方言の、位置ごとの結果のキー（3.0.0）
+	 * @param cacheable		方言の SELECT 句が値を含まず、結果の列の読み方を覚えてよいか（3.0.0）
+	 */
+	public record Access (Function<BoundSelect, SelectBuilder> shape, java.util.function.BiFunction<BoundSelect, io.jimble.db.dialect.Dialect, java.util.List<String>> labels,
+		java.util.function.BiPredicate<BoundSelect, io.jimble.db.dialect.Dialect> cacheable) {}
+
+	/* 渡し方 */
+	private static volatile Access access;
 
 	private TemplateShapes () {}
 
@@ -26,7 +36,7 @@ public final class TemplateShapes {
 	 *
 	 * @param function	求め方
 	 */
-	public static synchronized void install (Function<BoundSelect, SelectBuilder> function) {
+	public static synchronized void install (Access function) {
 
 		// SelectTemplate のほかから決めさせない（先に呼ばれると、キャッシュの依存を違う形で求めてしまう）
 		Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).getCallerClass();
@@ -34,8 +44,8 @@ public final class TemplateShapes {
 			throw new IllegalStateException("TemplateShapes.install は SelectTemplate だけが呼べます: " + caller.getName());
 		}
 
-		if (shape == null) {
-			shape = function;
+		if (access == null) {
+			access = function;
 		}
 
 	}
@@ -48,7 +58,33 @@ public final class TemplateShapes {
 	 */
 	public static SelectBuilder shape (BoundSelect select) {
 
-		return shape.apply(select);
+		return access.shape().apply(select);
+
+	}
+
+	/**
+	 * 方言の、位置ごとの結果のキー（3.0.0）
+	 *
+	 * @param select	値を入れた SELECT
+	 * @param dialect	方言
+	 * @return	キー
+	 */
+	public static java.util.List<String> labels (BoundSelect select, io.jimble.db.dialect.Dialect dialect) {
+
+		return access.labels().apply(select, dialect);
+
+	}
+
+	/**
+	 * 方言の SELECT 句が値を含まず、結果の列の読み方を覚えてよいか（3.0.0）
+	 *
+	 * @param select	値を入れた SELECT
+	 * @param dialect	方言
+	 * @return	覚えてよければ true
+	 */
+	public static boolean cacheable (BoundSelect select, io.jimble.db.dialect.Dialect dialect) {
+
+		return access.cacheable().test(select, dialect);
 
 	}
 

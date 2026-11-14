@@ -150,6 +150,7 @@ io.jimble.mcp.tool
 io.jimble.cli.internal
 io.jimble.converter.internal
 io.jimble.db.internal
+io.jimble.db.internal.data
 io.jimble.db.internal.generator
 io.jimble.db.internal.generator.info
 io.jimble.db.internal.sql
@@ -165,6 +166,7 @@ io.jimble.db.internal.sql.query.set
 io.jimble.db.internal.sql.query.value
 io.jimble.db.internal.sql.query.where
 io.jimble.db.internal.sql.query.where.condition
+io.jimble.db.internal.sql.select
 io.jimble.db.internal.sql.template
 io.jimble.db.internal.version
 io.jimble.json.internal

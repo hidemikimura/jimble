@@ -130,8 +130,8 @@ db {
 
 ```java
 // この1行が、product に応じて
-//   MySQL      SELECT `post`.`id` AS `post__id` ... LIMIT ? OFFSET ?
-//   PostgreSQL SELECT "post"."id" AS "post__id" ... LIMIT ? OFFSET ?
+//   MySQL      SELECT `post`.`id`, `post`.`title` ... LIMIT ? OFFSET ?
+//   PostgreSQL SELECT "post"."id", "post"."title" ... LIMIT ? OFFSET ?
 // になります
 SQL.select().from(Post.instance()).where(Post.id.eq(1L));
 ```

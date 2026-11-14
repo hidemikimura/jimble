@@ -14,6 +14,23 @@ import java.util.Iterator;
  */
 public class ResultSetFetcher implements Iterable<Data>, Closeable, AutoCloseable {
 
+	static {
+		// SQL・位置ごとの結果のキー・データソースを、jimble の中（DB）からだけ受け取る（3.0.0）
+		io.jimble.db.internal.data.FetchHints.install(new io.jimble.db.internal.data.FetchHints.Access() {
+
+			@Override
+			public void hint (ResultSetFetcher fetcher, String source, String sql, java.util.List<String> labels) {
+				fetcher.iterator.hint(source, sql, labels);
+			}
+
+			@Override
+			public void clear () {
+				ResultColumnCache.clear();
+			}
+
+		});
+	}
+
 	/* SQL結果セットイテレータ */
 	private ResultSetIterator iterator;
 

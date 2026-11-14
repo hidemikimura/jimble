@@ -57,6 +57,9 @@ row.getData(Post.instance());             // null。ビルダーの結果と同�
   `id` が1つだけ残る（**あとの列の値**。PostgreSQL で確かめた）。例外もログも出ない。
   列を並べて別名を付ける（`c.id AS comment_id`）
 - **ビルダーと同じ形にしたいなら、別名を `テーブル__列` にする**（`p.id AS "post__id"`）。区切りは `__`
+- **3.0.0 から、ビルダーの SQL には `AS テーブル__列` が付かない**（結果は位置で入れ子にする）。
+  `builder.sql()` の文字列を自分で `db.select(String, ...)` に渡すと**平らになり、同じ名前の列は後ろが勝つ**。
+  ビルダーのまま `db.select(builder)` に渡す（どうしても文字列で投げるなら `sql.select_alias = true` で 2.x と同じ SQL に戻す）
 - **ビルダーの結果を扱うコードに、文字列の SQL の結果を渡さない。**`getData(テーブル)` が `null`、
   JSON にすると入れ子が1段少ない、`putData(列, 値)` は**ネストを作る**ので平らな行の中に `post: {...}` が生える
   （平らな行には `putData("title", 値)` か `putDataTakeCare(列, 値)`）

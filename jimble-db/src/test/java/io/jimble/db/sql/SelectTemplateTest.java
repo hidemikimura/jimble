@@ -315,7 +315,7 @@ class SelectTemplateTest {
 		@DisplayName("形の受け渡し口は、SelectTemplate のほかからは決められない")
 		void shapesInstallIsGuarded () {
 
-			assertThrows(IllegalStateException.class, () -> io.jimble.db.internal.sql.template.TemplateShapes.install(bound -> null));
+			assertThrows(IllegalStateException.class, () -> io.jimble.db.internal.sql.template.TemplateShapes.install(new io.jimble.db.internal.sql.template.TemplateShapes.Access(bound -> null, (bound, dialect) -> null, (bound, dialect) -> false)));
 
 		}
 

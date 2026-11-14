@@ -191,6 +191,18 @@ public class Column implements IColumn, ISelect, IWhere, IOrderBy {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * <p>{@code 表__列}（{@link #getJoinSelectName()}）。結果では表名で入れ子になる。</p>
+	 */
+	@Override
+	public String resultLabel () {
+
+		return getJoinSelectName();
+
+	}
+
+	/**
+	 * {@inheritDoc}
 	 */
 	@Override
 	public ISelect dsl(IDsl dsl) {

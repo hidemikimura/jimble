@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * インデックスのヒント（D-265。DB 接続なし）
  */
+@org.junit.jupiter.api.extension.ExtendWith(LegacySelectAlias.class)
 class IndexHintTest {
 
 	@Test

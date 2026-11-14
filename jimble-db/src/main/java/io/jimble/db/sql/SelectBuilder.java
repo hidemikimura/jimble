@@ -33,6 +33,24 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
+	static {
+		// 位置ごとの結果のキーと主キーだけの写しを、jimble の中（DB）にだけ渡す
+		io.jimble.db.internal.sql.select.SelectAccess.install(new io.jimble.db.internal.sql.select.SelectAccess.Access(
+			builder -> builder.resultLabels, builder -> builder.resultCacheable, SelectBuilder::simpleBuilder));
+	}
+
+	/*
+	 * 直前の sql() で書いた、位置ごとの結果のキー（3.0.0）。null の位置はドライバの列名を使う。
+	 * SQL に AS `表__列` を付けないので、結果はこのキーで表名の入れ子にする
+	 */
+	List<String> resultLabels = null;
+
+	/*
+	 * 直前の sql() の SELECT 句が値（?）を含まないか（3.0.0）。
+	 * 含むと結果の列の型が値で変わる（SELECT ? AS v は 5 なら BIGINT、"a" なら VARCHAR）ので、列の読み方を覚えない
+	 */
+	boolean resultCacheable = false;
+
 	/**
 	 * コンストラクタ
 	 *
@@ -746,8 +764,11 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		SqlWriter sb = new SqlWriter(new StringBuilder(capacity), dialect);
 
-		// SELECT
-		sqlSelect(sb);
+		// SELECT（位置ごとの結果のキーも集める）
+		List<String> labels = new ArrayList<>();
+		sqlSelect(sb, labels);
+		this.resultLabels = labels;
+		this.resultCacheable = !selectHasParameters();
 
 		// FROM
 		sqlFrom(sb);
@@ -835,53 +856,33 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	public String simpleSql (io.jimble.db.dialect.Dialect dialect) {
 
-		/*
-		 * 写しで組む（要件 D-190）。1.4 までは自分の SELECT 句に PK 列を足していたので、
-		 * <b>呼ぶたびに PK 列が1本ずつ増え</b>、そのあとの sql() にも混ざっていた。
-		 */
-		SelectBuilder target = copy();
-		return target.simpleSqlOnSelf(dialect);
+		return simpleBuilder().sql(dialect);
 
 	}
 
-	private String simpleSqlOnSelf (io.jimble.db.dialect.Dialect dialect) {
+	/**
+	 * 主キーだけを SELECT する写し（{@link #simpleSql} と同じ SQL になる。DB が位置で入れ子にして読むのに使う）
+	 *
+	 * <p>
+	 * 写しで組む（要件 D-190）。1.4 までは自分の SELECT 句に PK 列を足していたので、
+	 * <b>呼ぶたびに PK 列が1本ずつ増え</b>、そのあとの sql() にも混ざっていた。
+	 * </p>
+	 *
+	 * @return	写し
+	 */
+	private SelectBuilder simpleBuilder () {
 
-		SqlWriter sb = new SqlWriter(dialect);
+		SelectBuilder target = copy();
 
-		// SELECT
-		{
-			Column column = mainTablePkColumn();
-			if (column != null) {
-				select(column);
-			}
-			if (selectList.isEmpty()) {
-				setSelectList();
-			}
+		Column column = target.mainTablePkColumn();
+		if (column != null) {
+			target.select(column);
 		}
-		sqlSelect(sb);
+		if (target.selectList.isEmpty()) {
+			target.setSelectList();
+		}
 
-		// FROM
-		sqlFrom(sb);
-
-		// WHERE
-		sqlWhere(sb);
-
-		// GROUP BY
-		sqlGroupBy(sb);
-
-		// HAVING
-		sqlHaving(sb);
-
-		// ORDER BY
-		sqlOrderBy(sb);
-
-		// LIMIT
-		sqlLimitOffset(sb);
-
-		// FOR UPDATE
-		sqlForUpdate(sb);
-
-		return sb.toString();
+		return target;
 
 	}
 
@@ -938,7 +939,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 *
 	 * @param sb	書き出し先
 	 */
-	private void sqlSelect(SqlWriter sb) {
+	private void sqlSelect(SqlWriter sb, List<String> labels) {
 
 		/*
 		 * <b>何も出ない組み立てを通さない（D-174）。</b>
@@ -956,9 +957,12 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 				"SELECT する列も FROM もありません（列は from(...) のテーブルから並べます）");
 		}
 
+		// AS `表__列` を付けるか（3.0.0 から既定は付けない。結果は labels で位置ごとに入れ子にする）
+		boolean alias = io.jimble.db.internal.sql.select.SelectAlias.enabled();
+
 		sb.append("SELECT");
 		if (selectList.isEmpty()) {
-			writeAllColumns(sb);
+			writeAllColumns(sb, alias, labels);
 			return;
 		}
 
@@ -969,7 +973,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			}
 			sb.append(" ");
 			selectList.get(i).selectSql(sb);
-			if (select instanceof Column column) {
+			if (alias && select instanceof Column column) {
 				sb.append(" AS ");
 				if (column.getClass() == Column.class) {
 					// 列が覚えた別名の字面を使う（getJoinSelectName を上書きした列は毎回囲む）
@@ -978,7 +982,35 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 					sb.identifier(column.getJoinSelectName());
 				}
 			}
+			labels.add(select.resultLabel());
 		}
+
+	}
+
+	/**
+	 * SELECT 句が値（?）を含むか（直前の sql() のあと）
+	 *
+	 * @return	含むなら true
+	 */
+	private boolean selectHasParameters () {
+
+		for (ISelect select : selectList) {
+			if (select.hasParameter()) {
+				return true;
+			}
+		}
+
+		if (allColumnsWritten && selectList.isEmpty() && allColumnsTables != null) {
+			List<Object> values = new ArrayList<>();
+			for (ITable iTable : allColumnsTables) {
+				((Table) iTable).selectAllParameters(values);
+				if (!values.isEmpty()) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 
 	}
 
@@ -992,7 +1024,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 *
 	 * @param sb	書き出し先
 	 */
-	private void writeAllColumns (SqlWriter sb) {
+	private void writeAllColumns (SqlWriter sb, boolean alias, List<String> labels) {
 
 		List<ITable> tableList = allColumnsTables != null ? allColumnsTables : from.getTableList();
 
@@ -1009,11 +1041,11 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 				// 書き出し先へじかに書き、1 列も無ければ "," ごと戻す（別の書き出し先に作って写さない）
 				int mark = sb.length();
 				sb.append(",");
-				if (!((Table) iTable).selectAllSql(sb)) {
+				if (!((Table) iTable).selectAllSql(sb, alias, labels)) {
 					sb.setLength(mark);
 				}
 			} else {
-				written = ((Table) iTable).selectAllSql(sb);
+				written = ((Table) iTable).selectAllSql(sb, alias, labels);
 			}
 		}
 
