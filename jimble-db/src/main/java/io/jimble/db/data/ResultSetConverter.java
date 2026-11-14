@@ -112,44 +112,7 @@ public class ResultSetConverter {
 			int i = 0;
 			for (ResultSetIterator.KeyInfo keyInfo : keyInfoList) {
 
-				Object value = null;
-				if (TYPE_JSON == columnTypeList.get(i)) {
-					// JSON
-					String jsonString = resultSet.getString(i + 1);
-					if (jsonString != null) {
-						if (jsonString.startsWith("[")) {
-							/*
-							 * 印を付けて入れる（D-189）。getString すると先頭の要素だけが返るので、
-							 * そうしたときに Data が1度だけ言えるようにする
-							 */
-							List<?> list = Dson.decodes(jsonString, List.class);
-							value = list == null ? null : new io.jimble.util.internal.JsonArrayList(list);
-						} else {
-							value = Dson.decodes(jsonString, Data.class);
-						}
-					}
-				} else if (TYPE_GEOMETRY == columnTypeList.get(i)) {
-					// Geometry（返ってくる形が製品で違う。要件 F-D-30）
-					value = dialect.geometryText(resultSet, i + 1);
-				} else if (TYPE_LOCAL_DATETIME == columnTypeList.get(i)) {
-					// 時差を持たない日時（Dialect#isLocalDateTimeType）
-					value = localDateTime(resultSet, i + 1);
-				} else {
-					// その他
-					value = resultSet.getObject(i + 1);
-					if (value instanceof LocalDateTime) {
-						LocalDateTime d = (LocalDateTime) value;
-						Calendar calendar = Calendar.getInstance();
-						calendar.set(Calendar.YEAR, d.getYear());
-						calendar.set(Calendar.MONTH, d.getMonth().ordinal());
-						calendar.set(Calendar.DAY_OF_MONTH, d.getDayOfMonth());
-						calendar.set(Calendar.HOUR_OF_DAY, d.getHour());
-						calendar.set(Calendar.MINUTE, d.getMinute());
-						calendar.set(Calendar.SECOND, d.getSecond());
-						calendar.set(Calendar.MILLISECOND, 0);
-						value = calendar.getTime();
-					}
-				}
+				Object value = value(resultSet, i + 1, columnTypeList.get(i), dialect);
 
 				if (keyInfo.isNest) {
 					Data child;
@@ -195,6 +158,62 @@ public class ResultSetConverter {
 			return null;
 
 		}
+
+	}
+
+	/**
+	 * 1 つの値を読む（列の型の分けごと。{@link RowPlan} も、型を指定した getter で読めない列はここで読む）
+	 *
+	 * @param resultSet		SQL結果セット
+	 * @param index			列の位置（1 から）
+	 * @param columnType	列の型の分け（{@link #TYPE_JSON} などか、{@link java.sql.Types} の値）
+	 * @param dialect		方言
+	 * @return	値
+	 * @throws Exception	読めなかったとき
+	 */
+	static Object value (ResultSet resultSet, int index, int columnType, Dialect dialect) throws Exception {
+
+		if (TYPE_JSON == columnType) {
+			// JSON
+			String jsonString = resultSet.getString(index);
+			if (jsonString == null) {
+				return null;
+			}
+			if (jsonString.startsWith("[")) {
+				/*
+				 * 印を付けて入れる（D-189）。getString すると先頭の要素だけが返るので、
+				 * そうしたときに Data が1度だけ言えるようにする
+				 */
+				List<?> list = Dson.decodes(jsonString, List.class);
+				return list == null ? null : new io.jimble.util.internal.JsonArrayList(list);
+			}
+			return Dson.decodes(jsonString, Data.class);
+		}
+
+		if (TYPE_GEOMETRY == columnType) {
+			// Geometry（返ってくる形が製品で違う。要件 F-D-30）
+			return dialect.geometryText(resultSet, index);
+		}
+
+		if (TYPE_LOCAL_DATETIME == columnType) {
+			// 時差を持たない日時（Dialect#isLocalDateTimeType）
+			return localDateTime(resultSet, index);
+		}
+
+		// その他
+		Object value = resultSet.getObject(index);
+		if (value instanceof LocalDateTime d) {
+			Calendar calendar = Calendar.getInstance();
+			calendar.set(Calendar.YEAR, d.getYear());
+			calendar.set(Calendar.MONTH, d.getMonth().ordinal());
+			calendar.set(Calendar.DAY_OF_MONTH, d.getDayOfMonth());
+			calendar.set(Calendar.HOUR_OF_DAY, d.getHour());
+			calendar.set(Calendar.MINUTE, d.getMinute());
+			calendar.set(Calendar.SECOND, d.getSecond());
+			calendar.set(Calendar.MILLISECOND, 0);
+			return calendar.getTime();
+		}
+		return value;
 
 	}
 

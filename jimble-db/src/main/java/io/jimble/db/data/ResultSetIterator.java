@@ -147,6 +147,9 @@ class ResultSetIterator implements Iterator<Data> {
 	/* 全部 null のテーブルを落とすか（結果を読み始めたときに1回だけ設定から読む） */
 	private boolean removeAllNullTableData;
 
+	/* 1 行を読む段取り（最初の行で作る。作らない結果なら null で、ResultSetConverter で読む。2.8.0） */
+	private RowPlan rowPlan;
+
 	/* キー情報一覧 */
 	private final List<KeyInfo> keyInfoList = new ArrayList<>();
 
@@ -188,43 +191,9 @@ class ResultSetIterator implements Iterator<Data> {
 				if (!isKeyGot) {
 					try {
 						ResultSetMetaData metaData = resultSet.getMetaData();
-						int colCount = metaData.getColumnCount();
-						for (int i = 0; i < colCount; i++) {
-							String key = metaData.getColumnLabel(i + 1);
-
-							/*
-							 * 型名で見分ける（要件 F-D-30）。
-							 *
-							 * MySQL の geometry は VARBINARY として返るので、
-							 * <b>型名を見ずに VARBINARY を全部 geometry 扱いすると、
-							 * PostgreSQL の bytea が壊れる。</b>
-							 */
-							String typeName = metaData.getColumnTypeName(i + 1);
-							Dialect dialect = dialect();
-
-							if (dialect.isJsonType(typeName)) {
-								columnTypeList.add(ResultSetConverter.TYPE_JSON);
-							} else if (dialect.isGeometryType(typeName)) {
-								columnTypeList.add(ResultSetConverter.TYPE_GEOMETRY);
-							} else if (metaData.getColumnType(i + 1) == Types.TIMESTAMP && dialect.isLocalDateTimeType(typeName)) {
-								columnTypeList.add(ResultSetConverter.TYPE_LOCAL_DATETIME);
-							} else {
-								columnTypeList.add(metaData.getColumnType(i + 1));
-							}
-
-							{
-								KeyInfo keyInfo = new KeyInfo();
-								keyInfo.key = key;
-								int delimiterIndex = key.indexOf(Column.SPLITTER);
-								if (delimiterIndex != -1) {
-									keyInfo.isNest = true;
-									keyInfo.parentKey = key.substring(0, delimiterIndex);
-									keyInfo.childKey = key.substring(delimiterIndex + 2);
-								}
-								keyInfoList.add(keyInfo);
-							}
-						}
+						readColumns(metaData, dialect(), keyInfoList, columnTypeList);
 						removeAllNullTableData = ResultSetConverter.removesAllNullTableData();
+						rowPlan = RowPlan.of(metaData, dialect(), keyInfoList, columnTypeList, removeAllNullTableData);
 						isKeyGot = true;
 					} catch (Exception ex) {
 						// 1.4 までは握りつぶして、<b>キーの無い空の行</b>を返していた（要件 D-190）
@@ -234,7 +203,9 @@ class ResultSetIterator implements Iterator<Data> {
 				}
 
 				// データを変換して保持する
-				currentData = ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList, dialect(), removeAllNullTableData);
+				currentData = rowPlan != null
+					? rowPlan.read(resultSet, dialect())
+					: ResultSetConverter.convert(resultSet, keyInfoList, columnTypeList, dialect(), removeAllNullTableData);
 
 			}
 
@@ -243,6 +214,55 @@ class ResultSetIterator implements Iterator<Data> {
 	}
 
 	// endregion
+
+	/**
+	 * 結果の列のキーと型の分けを読む
+	 *
+	 * @param metaData			結果の列
+	 * @param dialect			方言
+	 * @param keyInfoList		キーを足す先
+	 * @param columnTypeList	型の分けを足す先
+	 * @throws java.sql.SQLException	列の情報を読めなかったとき
+	 */
+	static void readColumns (ResultSetMetaData metaData, Dialect dialect, List<KeyInfo> keyInfoList, List<Integer> columnTypeList) throws java.sql.SQLException {
+
+		int colCount = metaData.getColumnCount();
+		for (int i = 0; i < colCount; i++) {
+
+			String key = metaData.getColumnLabel(i + 1);
+
+			/*
+			 * 型名で見分ける（要件 F-D-30）。
+			 *
+			 * MySQL の geometry は VARBINARY として返るので、
+			 * <b>型名を見ずに VARBINARY を全部 geometry 扱いすると、
+			 * PostgreSQL の bytea が壊れる。</b>
+			 */
+			String typeName = metaData.getColumnTypeName(i + 1);
+
+			if (dialect.isJsonType(typeName)) {
+				columnTypeList.add(ResultSetConverter.TYPE_JSON);
+			} else if (dialect.isGeometryType(typeName)) {
+				columnTypeList.add(ResultSetConverter.TYPE_GEOMETRY);
+			} else if (metaData.getColumnType(i + 1) == Types.TIMESTAMP && dialect.isLocalDateTimeType(typeName)) {
+				columnTypeList.add(ResultSetConverter.TYPE_LOCAL_DATETIME);
+			} else {
+				columnTypeList.add(metaData.getColumnType(i + 1));
+			}
+
+			KeyInfo keyInfo = new KeyInfo();
+			keyInfo.key = key;
+			int delimiterIndex = key.indexOf(Column.SPLITTER);
+			if (delimiterIndex != -1) {
+				keyInfo.isNest = true;
+				keyInfo.parentKey = key.substring(0, delimiterIndex);
+				keyInfo.childKey = key.substring(delimiterIndex + 2);
+			}
+			keyInfoList.add(keyInfo);
+
+		}
+
+	}
 
 	public static class KeyInfo {
 
