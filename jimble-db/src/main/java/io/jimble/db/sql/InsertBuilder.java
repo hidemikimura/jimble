@@ -382,28 +382,31 @@ public class InsertBuilder extends AbstractBuilder<InsertBuilder> {
 	@Override
 	public List<Object> params() {
 
-		List<Object> params = new ArrayList<>();
+		// 平らなリストに直接足す（入れ子のリストを作ってから平らにしない）。並びは同じ
+		List<Object> params = new ArrayList<>(valueList.size() + setList.size());
 
 		// value
 		for (IValue value : valueList) {
 			if (value.hasParameter()) {
-				params.add(value.getParameter());
+				Parameter.flattenInto(value.getParameter(), params);
 			}
 		}
 
-		// select
+		// select（jimble の SelectBuilder#params は平らだが、継承して params() を上書きしたものも、これまでどおり平らにする）
 		if (selectBuilder != null) {
-			params.addAll(selectBuilder.params());
+			for (Object param : selectBuilder.params()) {
+				Parameter.flattenInto(param, params);
+			}
 		}
 
 		// set
 		for (ISet set : setList) {
 			if (set.hasParameter()) {
-				params.add(set.getParameter());
+				Parameter.flattenInto(set.getParameter(), params);
 			}
 		}
 
-		return Parameter.flatten(params);
+		return params;
 
 	}
 

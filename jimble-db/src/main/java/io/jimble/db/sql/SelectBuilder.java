@@ -9,6 +9,7 @@ import io.jimble.util.data.definition.IColumn;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.sql.definition.column.TemporaryColumn;
 import io.jimble.util.data.definition.ITable;
+import io.jimble.db.internal.sql.query.from.FromQuery;
 import io.jimble.db.sql.definition.table.Table;
 import io.jimble.db.sql.definition.table.TemporaryTable;
 import io.jimble.db.internal.sql.query.from.IFrom;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * select builder
@@ -674,13 +676,75 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 */
 	private static final int SQL_CAPACITY = 512;
 
+	/*
+	 * 書き出し先の大きさの見込みの上限。IN に値を何千も並べた 1 回で、その表のどの文にも大きく取らないようにする
+	 */
+	private static final int SQL_CAPACITY_HINT_MAX = 16 * 1024;
+
+	/*
+	 * 主表のクラスごとの、書き出し先の大きさの見込み（書いた長さで上げ下げする。上限つき）。
+	 * 列の多い表の全列の SELECT は数千文字になり、512 文字から倍々に伸ばすと文の 2〜3 倍を写し直していた。
+	 * 見込みなので、同時に書き換えて小さい値が残っても字面は変わらない（伸び直すだけ。2.7.19）。
+	 * ClassValue に置くので、数はテーブルのクラスの数で止まり、クラスローダーも引き留めない
+	 */
+	private static final ClassValue<AtomicInteger> SQL_LENGTH_HINT = new ClassValue<>() {
+
+		@Override
+		protected AtomicInteger computeValue (Class<?> type) {
+			return new AtomicInteger(SQL_CAPACITY);
+		}
+
+	};
+
+	/**
+	 * 主表のクラスの見込み（主表が分からなければ null）
+	 */
+	private AtomicInteger sqlLengthHint () {
+
+		ITable table = switch (from) {
+			case Table t -> t;
+			case FromQuery q -> q.firstTableOrNull();
+			case null, default -> null;
+		};
+
+		return table == null ? null : SQL_LENGTH_HINT.get(table.getClass());
+
+	}
+
+	/**
+	 * 書いた長さで見込みを直す
+	 *
+	 * <p>
+	 * 長ければ（上限まで）そこまで上げる。見込みの 4 分の 1 にも届かなければ半分に下げる
+	 * （IN に値を多く並べた 1 回のあと、その表の短い文がずっと大きく取り続けないように）。
+	 * </p>
+	 *
+	 * @param hint		見込み
+	 * @param capacity	今回取った大きさ
+	 * @param length	書いた長さ
+	 */
+	private static void updateSqlLengthHint (AtomicInteger hint, int capacity, int length) {
+
+		if (length > capacity) {
+			if (length <= SQL_CAPACITY_HINT_MAX) {
+				hint.set(length);
+			}
+		} else if (length < capacity / 4 && capacity > SQL_CAPACITY) {
+			hint.set(Math.max(SQL_CAPACITY, capacity / 2));
+		}
+
+	}
+
 	/**
 	 * {@inheritDoc}
 	 */
 	@Override
 	public String sql (io.jimble.db.dialect.Dialect dialect) {
 
-		SqlWriter sb = new SqlWriter(new StringBuilder(SQL_CAPACITY), dialect);
+		AtomicInteger hint = sqlLengthHint();
+		int capacity = hint == null ? SQL_CAPACITY : hint.get();
+
+		SqlWriter sb = new SqlWriter(new StringBuilder(capacity), dialect);
 
 		// SELECT
 		sqlSelect(sb);
@@ -705,6 +769,10 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		// FOR UPDATE
 		sqlForUpdate(sb);
+
+		if (hint != null) {
+			updateSqlLengthHint(hint, capacity, sb.length());
+		}
 
 		return sb.toString();
 
@@ -903,7 +971,12 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 			selectList.get(i).selectSql(sb);
 			if (select instanceof Column column) {
 				sb.append(" AS ");
-				sb.identifier(column.getJoinSelectName());
+				if (column.getClass() == Column.class) {
+					// 列が覚えた別名の字面を使う（getJoinSelectName を上書きした列は毎回囲む）
+					column.joinNameSql(sb);
+				} else {
+					sb.identifier(column.getJoinSelectName());
+				}
 			}
 		}
 
@@ -933,9 +1006,11 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 		boolean written = false;
 		for (ITable iTable : tableList) {
 			if (written) {
-				SqlWriter part = new SqlWriter(sb.dialect());
-				if (((Table) iTable).selectAllSql(part)) {
-					sb.append(",").append(part.toString());
+				// 書き出し先へじかに書き、1 列も無ければ "," ごと戻す（別の書き出し先に作って写さない）
+				int mark = sb.length();
+				sb.append(",");
+				if (!((Table) iTable).selectAllSql(sb)) {
+					sb.setLength(mark);
 				}
 			} else {
 				written = ((Table) iTable).selectAllSql(sb);

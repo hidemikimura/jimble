@@ -159,6 +159,21 @@ public class FromQuery implements IFrom {
 	}
 
 	/**
+	 * 最初の FROM のテーブル（テーブルでなければ null）。並びを作らずに見る
+	 *
+	 * @return	テーブル
+	 */
+	public ITable firstTableOrNull () {
+
+		if (fromList.isEmpty()) {
+			return null;
+		}
+
+		return fromList.getFirst() instanceof FromQueryInner inner && inner.from instanceof ITable table ? table : null;
+
+	}
+
+	/**
 	 * from
 	 */
 	static class FromQueryInner implements IFrom {
