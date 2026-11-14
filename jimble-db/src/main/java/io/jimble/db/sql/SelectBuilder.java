@@ -764,11 +764,8 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		SqlWriter sb = new SqlWriter(new StringBuilder(capacity), dialect);
 
-		// SELECT（位置ごとの結果のキーも集める）
-		List<String> labels = new ArrayList<>();
-		sqlSelect(sb, labels);
-		this.resultLabels = labels;
-		this.resultCacheable = !selectHasParameters();
+		// SELECT（位置ごとの結果のキーと、SELECT 句が値を含むかも、書くのと同じ 1 回のたどりで決める）
+		sqlSelect(sb);
 
 		// FROM
 		sqlFrom(sb);
@@ -939,7 +936,7 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 *
 	 * @param sb	書き出し先
 	 */
-	private void sqlSelect(SqlWriter sb, List<String> labels) {
+	private void sqlSelect(SqlWriter sb) {
 
 		/*
 		 * <b>何も出ない組み立てを通さない（D-174）。</b>
@@ -962,9 +959,12 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		sb.append("SELECT");
 		if (selectList.isEmpty()) {
-			writeAllColumns(sb, alias, labels);
+			writeAllColumns(sb, alias);
 			return;
 		}
+
+		List<String> labels = new ArrayList<>(selectList.size());
+		boolean parameters = false;
 
 		for (int i = 0; i < selectList.size(); i++) {
 			ISelect select = selectList.get(i);
@@ -983,34 +983,11 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 				}
 			}
 			labels.add(select.resultLabel());
+			parameters |= select.hasParameter();
 		}
 
-	}
-
-	/**
-	 * SELECT 句が値（?）を含むか（直前の sql() のあと）
-	 *
-	 * @return	含むなら true
-	 */
-	private boolean selectHasParameters () {
-
-		for (ISelect select : selectList) {
-			if (select.hasParameter()) {
-				return true;
-			}
-		}
-
-		if (allColumnsWritten && selectList.isEmpty() && allColumnsTables != null) {
-			List<Object> values = new ArrayList<>();
-			for (ITable iTable : allColumnsTables) {
-				((Table) iTable).selectAllParameters(values);
-				if (!values.isEmpty()) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		this.resultLabels = labels;
+		this.resultCacheable = !parameters;
 
 	}
 
@@ -1024,30 +1001,65 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	 *
 	 * @param sb	書き出し先
 	 */
-	private void writeAllColumns (SqlWriter sb, boolean alias, List<String> labels) {
+	private void writeAllColumns (SqlWriter sb, boolean alias) {
 
 		List<ITable> tableList = allColumnsTables != null ? allColumnsTables : from.getTableList();
 
 		allColumnsWritten = true;
 		allColumnsTables = tableList;
 
+		this.resultLabels = List.of();
+		this.resultCacheable = true;
+
 		if (tableList == null) {
 			return;
 		}
 
+		/*
+		 * 結果のキーは、1 表なら表が覚えた変えられない一覧をそのまま使う（3.0.1。3.0.0 は毎回新しいリストに写していた）。
+		 * 2 表から先は、そのときだけつなぐ
+		 */
+		List<String> first = null;
+		List<String> merged = null;
+		boolean parameters = false;
+
 		boolean written = false;
 		for (ITable iTable : tableList) {
+
+			Table table = (Table) iTable;
+			List<String> labels;
+
 			if (written) {
 				// 書き出し先へじかに書き、1 列も無ければ "," ごと戻す（別の書き出し先に作って写さない）
 				int mark = sb.length();
 				sb.append(",");
-				if (!((Table) iTable).selectAllSql(sb, alias, labels)) {
+				labels = table.selectAllSql(sb, alias);
+				if (labels.isEmpty()) {
 					sb.setLength(mark);
 				}
 			} else {
-				written = ((Table) iTable).selectAllSql(sb, alias, labels);
+				labels = table.selectAllSql(sb, alias);
+				written = !labels.isEmpty();
 			}
+
+			if (!labels.isEmpty()) {
+				if (first == null) {
+					first = labels;
+				} else {
+					if (merged == null) {
+						merged = new ArrayList<>(first.size() + labels.size() * (tableList.size() - 1));
+						merged.addAll(first);
+					}
+					merged.addAll(labels);
+				}
+			}
+
+			parameters |= table.selectAllHasParameters();
+
 		}
+
+		this.resultLabels = merged != null ? merged : first != null ? first : List.of();
+		this.resultCacheable = !parameters;
 
 	}
 

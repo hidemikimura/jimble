@@ -146,6 +146,11 @@ public final class CodeMigration {
 
 			throw new MigrationException("コードマイグレーションに失敗しました", ex);
 
+		} finally {
+
+			// 表の形が変わったかもしれないので、覚えた結果の列の読み方を忘れる（途中で失敗したときも。3.0.1）
+			io.jimble.db.internal.data.FetchHints.clear();
+
 		}
 
 	}

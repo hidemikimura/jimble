@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *
  * <p>
  * SELECT 句が値（?）を含むと、列の型が値で変わる（MySQL の {@code SELECT ? AS v} は 5 なら BIGINT、"abc" なら VARCHAR）。
- * そうした結果は覚えない。覚えた結果も、列ごとの JDBC の型が変われば（実行中の DDL）読み直す。
+ * そうした結果は覚えない。DDL はアプリのマイグレーションで流す前提で、マイグレーションを当てたら（と DBUtil.load で）覚えた読み方を忘れる。
  * </p>
  */
 @Tag("db")
@@ -92,6 +92,8 @@ class ResultColumnCacheIntegrationTest {
 	@DisplayName("SELECT 句に値を含むと、値ごとの型で返る（ビルダー・template。null の行にならない）")
 	void parameterInSelectList () {
 
+		reset();
+
 		for (Object value : new Object[] { 5L, "abc", new BigDecimal("1.5"), 6L }) {
 
 			Data row = db.select(SQL.select(RcNum.id, new SelectValue().value(value).as("v"))
@@ -116,17 +118,77 @@ class ResultColumnCacheIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("覚えたあとに列の型を INT から BIGINT に替えても、読み直して正しい値を返す")
-	void alterColumnType () {
+	@DisplayName("コードのマイグレーションで列の型を INT から BIGINT に替えたあとは、覚えた読み方を忘れて正しい値を返す")
+	void alterColumnTypeByMigration () {
 
-		SelectBuilder builder = SQL.select().from(RcNum.instance()).where(RcNum.id.eq(1L));
-		assertEquals(7L, db.select(builder).orElseThrow().getData("rc_num").getLong("n"));
+		reset();
+		assertEquals(7L, readN());
+
+		io.jimble.db.migration.code.CodeMigration.clear();
+		io.jimble.db.migration.code.CodeMigration.add(new WidenN());
+		try {
+			io.jimble.db.migration.code.CodeMigration.execute();
+		} finally {
+			io.jimble.db.migration.code.CodeMigration.clear();
+			db.execute("DELETE FROM migration_code");
+		}
+
+		assertEquals(3000000000L, readN());
+
+	}
+
+	@Test
+	@DisplayName("マイグレーションを通さずに外で列の型を替えたら、起動し直す（DBUtil.load）と正しい値を返す")
+	void alterColumnTypeOutsideThenReload () {
+
+		reset();
+		assertEquals(7L, readN());
+
+		widen();
+
+		// 外で DDL を流したら起動し直す前提。DBUtil.load で覚えた読み方を忘れる
+		DBUtil.load(Conf.conf().config(), ResultColumnCacheIntegrationTest.class);
+		db = DBUtil.getMainDB();
+
+		assertEquals(3000000000L, readN());
+
+	}
+
+	/** 表を INT の列に戻す */
+	private static void reset () {
+
+		db.execute("DROP TABLE IF EXISTS rc_num");
+		db.execute("CREATE TABLE rc_num (id bigint primary key, n int null)");
+		db.execute("INSERT INTO rc_num VALUES (1, 7)");
+
+	}
+
+	/** 列を BIGINT にして、INT に入らない値を入れる */
+	private static void widen () {
 
 		db.execute(mysql ? "ALTER TABLE rc_num MODIFY n bigint null" : "ALTER TABLE rc_num ALTER COLUMN n TYPE bigint");
 		db.execute("UPDATE rc_num SET n = 3000000000 WHERE id = 1");
 
-		Data row = db.select(SQL.select().from(RcNum.instance()).where(RcNum.id.eq(1L))).orElseThrow();
-		assertEquals(3000000000L, row.getData("rc_num").getLong("n"));
+	}
+
+	private static long readN () {
+
+		return db.select(SQL.select().from(RcNum.instance()).where(RcNum.id.eq(1L))).orElseThrow().getData("rc_num").getLong("n");
+
+	}
+
+	/** 列を広げるコードのマイグレーション */
+	static final class WidenN extends io.jimble.db.migration.code.AbstractCodeMigration {
+
+		@Override
+		protected int versionYyyyMmDd () {
+			return 20261115;
+		}
+
+		@Override
+		protected void execute () {
+			widen();
+		}
 
 	}
 

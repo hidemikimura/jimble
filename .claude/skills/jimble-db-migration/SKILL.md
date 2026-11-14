@@ -23,6 +23,7 @@ conf/migration/<フォルダ名>/001_xxx.sql      # --- !Ups / # --- !Downs
 - 並べた DB は**起動では当てず、デプロイの段で CLI から当てる**（2.7.8 から）。`db.<名前>.migrate_on_startup = false` を付け、
   `JimbleDbCli migrate --migration-dir shop --parallel 4 --keep-going` → `JimbleDbCli migrateCheck --migration-dir shop` → 起動。
   Gradle は `-Pjimble.migrateArgs="..."`。`migrateCheck` は DB に書かず、未適用・余分・ハッシュ違いがあれば 0 以外で終わる
+- **DDL はマイグレーションで流す**（3.0.0 から結果の列の読み方を SQL ごとに覚え、3.0.1 からは列の型を聞き直さない。マイグレーションを当てたら忘れる）。アプリの外で DDL を流したら、アプリを起動し直す（そのままだと型が変わった列を古い読み方で読み、読めない行が `null` になる）
 - 何台が同時に起動しても1台だけが当てる（`db_lock` の行ロック。DDL を流す接続とは別の接続で持つので、DDL の暗黙コミットで外れない）。
   そのため**マイグレーションを当てるデータソースは `maximum_pool_size` を 2 以上にする**（1 だと例外で止まる）
 - `required = false` のデータソースで起動時につながらなかったものには当てない（CLI の `migrate --data-source` で当てる）

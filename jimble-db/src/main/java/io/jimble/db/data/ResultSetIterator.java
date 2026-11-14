@@ -246,15 +246,16 @@ class ResultSetIterator implements Iterator<Data> {
 		List<String> useLabels = labels != null && labels.size() == count ? labels : null;
 
 		boolean cacheable = source != null && sql != null;
-		int[] jdbcTypes = new int[count];
-		for (int i = 0; i < count; i++) {
-			jdbcTypes[i] = metaData.getColumnType(i + 1);
-		}
 
+		/*
+		 * 覚えた読み方は、列の数と位置ごとのキーが同じなら、列の型を聞き直さずに使う（3.0.1）。
+		 * 3.0.0 は実行のたびに全部の列の JDBC の型を聞いて比べていた。
+		 * DDL はアプリのマイグレーションで流す前提で、マイグレーションを当てたら（と DBUtil.load で）全部忘れる。
+		 * アプリの外で DDL を流したら、アプリを起動し直す
+		 */
 		if (cacheable) {
 			ResultColumns cached = ResultColumnCache.get(source, sql, useLabels, count);
-			// 列ごとの JDBC の型が覚えたときと同じときだけ使う（実行中の DDL で INT を BIGINT にした、などを拾う）
-			if (cached != null && java.util.Arrays.equals(cached.jdbcTypes(), jdbcTypes)) {
+			if (cached != null) {
 				return cached;
 			}
 		}
@@ -265,7 +266,7 @@ class ResultSetIterator implements Iterator<Data> {
 		RowPlan plan = RowPlan.of(metaData, dialect(), keyInfoList, columnTypeList);
 
 		ResultColumns created = new ResultColumns(List.copyOf(keyInfoList), List.copyOf(columnTypeList), plan
-			, useLabels == null ? null : java.util.Collections.unmodifiableList(new ArrayList<>(useLabels)), jdbcTypes);
+			, useLabels == null ? null : java.util.Collections.unmodifiableList(new ArrayList<>(useLabels)));
 
 		if (cacheable) {
 			ResultColumnCache.put(source, sql, created);

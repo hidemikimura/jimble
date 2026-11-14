@@ -10,6 +10,10 @@ plugins {
 }
 
 repositories {
+	// 2.7.11 からの公開版は jimble の置き場にある（基準の版として測るため。jimble のものだけ取る）
+	maven("https://repo.jimble.io") {
+		content { includeGroupByRegex("io\\.jimble(\\..*)?") }
+	}
 	mavenCentral()
 }
 
