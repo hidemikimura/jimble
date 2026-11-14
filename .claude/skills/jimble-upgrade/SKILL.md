@@ -49,6 +49,8 @@ description: jimble の版を上げるとき・古い版（1.x など）のコ�
 - **2.7.17 からパスワードのハッシュの既定が Argon2id。**保存済みの BCrypt はそのまま照合できるが、新しいハッシュは 97 文字前後（暗号化すると 150 文字ほど）になる。
   パスワードの列が BCrypt の 60 文字に合わせてあれば、上げる前に広げる（広げられないうちは `hash.password.algorithm = "bcrypt"`）。
   ログインに成功したときに `PasswordUtil.needsRehash` を見て作り直すと、順に Argon2id に入れ替わる（`jimble-web-auth`）
+- **2.8.0 でロック・SQL 結果キャッシュ・流量制限のキーのハッシュが XXH3 に変わった。2.7.19 以前と同時に動かさない**（全台を止めてから上げる。並ぶと `DBLock` の排他が効かない）。
+  上げたら `DBLock.create(db, キー)` を呼び直す（起動のたびに呼ぶ書き方なら不要）。SQL 結果キャッシュは 1 回全部外れ（`sql_cache.ttl = 0s` なら古いものが残るので消す）、流量制限は数え直しになる
 - codegen の出力が変わった版（2.2.4・2.5.4）は、上げたあと `codegenCheck` が差分を出したら `codegen` で作り直してコミットする（`jimble-db-migration`）
 - jooby_base から移した `batch_master` や MQ の表を使うなら 2.5.9 以上（`jimble-batch-run`）
 - `router.ignore_case` と `router.redirect_to_canonical` を両方使うなら 2.5.11 以上（`jimble-web`）

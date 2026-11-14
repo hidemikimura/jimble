@@ -173,7 +173,7 @@ public class DBLock {
 			if (key == null || key.isEmpty()) {
 				continue;
 			}
-			if (db.select("SELECT * FROM db_lock WHERE lock_key = ? FOR UPDATE", Hash.sipHash(key)).isEmpty()) {
+			if (db.select("SELECT * FROM db_lock WHERE lock_key = ? FOR UPDATE", Hash.xxh3(key)).isEmpty()) {
 				throw new IllegalStateException(
 					"ロックキーがありません（先に DBLock.create(db, キー) を呼んでください）: " + key);
 			}
@@ -191,7 +191,7 @@ public class DBLock {
 
 		for (String key : lockKey) {
 			if (key != null && !key.isEmpty()) {
-				lockKeyHashes.add(Hash.sipHash(key));
+				lockKeyHashes.add(Hash.xxh3(key));
 			}
 		}
 

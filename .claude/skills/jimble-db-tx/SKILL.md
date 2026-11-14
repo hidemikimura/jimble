@@ -72,7 +72,7 @@ try (Tx tx = db.begin()) {
 ## ロック
 
 ```java
-DBLock.create(db, "daily");            // キーの行を作る（あれば何もしない）。先に1回。void
+DBLock.create(db, "daily");            // キーの行を作る（あれば何もしない）。起動のたびに呼んでよい。void
 
 db.transaction(tx -> {
 	DBLock.lock(db, "daily");          // SELECT ... FOR UPDATE。トランザクションが終わるまで1つだけ

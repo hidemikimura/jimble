@@ -45,7 +45,7 @@ public final class DbRateLimitStore implements RateLimitStore {
 
 		initialize();
 
-		long hash = Hash.sipHash(key);
+		long hash = Hash.xxh3(key);
 		long durationMillis = duration.toMillis();
 
 		MAX_DURATION.accumulateAndGet(durationMillis, Math::max);

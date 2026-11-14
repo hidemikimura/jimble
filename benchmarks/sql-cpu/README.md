@@ -14,6 +14,7 @@ Maven Central の公開版とこのリポジトリのソースで比べる。jim
 | `TemplateCpuPerQuery` | 主キー 1 行の `select` と、キャッシュに当たる `selectListCached` を、ビルダーと template で投げたときのスレッドの CPU 時間。`-Pjimble.local=true` のときだけ |
 | `DbPathCpu` | DB の道（組み立て・バインド・ドライバ・結果の読み取り）のスレッドの CPU 時間。主キー 1 行の `select`、20 行・全列の `selectList`、キャッシュに当たる `selectListCached` |
 | `ProfileLoop` | JFR で内訳を見るために、1 本のスレッドで同じ SELECT を回し続ける（`pk` / `list` / `cached`） |
+| `HashBench` | SQL 結果キャッシュのキーなどに使うハッシュを、長さ 64〜4,000 byte で比べる（SipHash・値を変えずに書き直した SipHash・XXH3-64 / 128・rapidhash v3・komihash 5。後ろの 4 つは hash4j。`-Pjimble.local=true` のときだけビルドに入る） |
 | `SqlBench.pkBuild` | 主キー 1 行の SELECT（全列）の SQL とパラメータを作る |
 | `SqlBench.joinBuild` | JOIN・IN・IS NULL・ORDER BY・LIMIT / OFFSET の SELECT（全列）を作る |
 | `SqlBench.cachedSelect` | SQL 結果キャッシュ（メモリ）に当たる `selectListCached`。DB には行かない |

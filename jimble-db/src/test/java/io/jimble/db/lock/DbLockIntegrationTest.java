@@ -67,7 +67,7 @@ class DbLockIntegrationTest {
 	private static long rows (String key) {
 
 		return DBUtil.getMainDB()
-			.select("SELECT COUNT(*) AS c FROM db_lock WHERE lock_key = ?", Hash.sipHash(key))
+			.select("SELECT COUNT(*) AS c FROM db_lock WHERE lock_key = ?", Hash.xxh3(key))
 			.orElseThrow()
 			.getLong("c");
 

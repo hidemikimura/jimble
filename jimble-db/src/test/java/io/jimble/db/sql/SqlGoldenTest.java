@@ -33,6 +33,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * 下と同じ設定・時間帯（Asia/Tokyo）で {@code SqlGoldenCases.render()} をファイルに書く）。
  * <b>今のソースで作り直してはいけない</b>——今の出力を答えにすると、何も確かめていないのと同じになる。
  * </p>
+ *
+ * <h2>キャッシュのキー（2.8.0 から）</h2>
+ * <p>
+ * 2.8.0 でキーのハッシュを SipHash から XXH3-128 に替えた（キーの値は変わった）。
+ * ハッシュにかける中身（{@code SqlCache.keySource}）は変えていないので、{@link SqlGoldenCases} は
+ * その中身を 2.7.4 と同じ形（SipHash + 長さ）で表した {@code SqlCacheKeys.legacy(...)} を書き出し、答えのキーと比べる。
+ * 一致すれば、ハッシュにかける byte 列が 2.7.4 と同じだと言える。新しいキーの形は {@code SqlCacheKeyTest} が見る。
+ * <b>答えを作り直すときは</b>、2.7.4 には {@code SqlCacheKeys} が無いので、写したクラスの
+ * {@code io.jimble.db.sqlcache.SqlCacheKeys.legacy(...)} を {@code SqlCache.key(...)} に置き換えてから動かす
+ * （2.7.4 の {@code SqlCache.key} は同じ計算）。
+ * </p>
  */
 class SqlGoldenTest {
 
@@ -47,7 +58,7 @@ class SqlGoldenTest {
 	}
 
 	@Test
-	@DisplayName("SQL・パラメータ・キャッシュのキーが 2.7.4 と 1 文字も変わらない（MySQL / PostgreSQL）")
+	@DisplayName("SQL・パラメータ・キャッシュのキーのもとの byte 列が 2.7.4 と 1 文字も変わらない（MySQL / PostgreSQL）")
 	void sameAs274 () throws Exception {
 
 		Conf.replace(ConfigFactory.parseString("sql_cache { enabled = true, namespace = golden }"));

@@ -312,7 +312,7 @@ try (CsvWriter writer = new CsvWriter(new File("out.csv"), "UTF-8").setWithBom(t
 | 署名（改ざん検知） | `Signer.sign` / `unsign`（HMAC-SHA256） |
 | 暗号化 | **`Aead.encrypt` / `decrypt`**（AES-256-GCM） |
 | 短い ID | `Hashids` |
-| ハッシュ値 | `Hash.md5` / `sha256` / `sipHash` / `xxHash64` |
+| ハッシュ値 | `Hash.md5` / `sha256` / `sipHash` / `xxHash64` / `xxh3`・`xxh3Hex128`（XXH3。2.8.0。暗号のハッシュではない） |
 
 > [!WARN]
 > **`CipherUtil`（AES/CBC）は IV が設定で固定**です。同じ平文が必ず同じ暗号文になり、
