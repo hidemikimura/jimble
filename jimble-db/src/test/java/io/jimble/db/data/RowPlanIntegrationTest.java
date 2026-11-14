@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 列ごとの読み方を 1 回だけ決める読み方（{@link RowPlan}。2.8.0）が、これまでの読み方（{@link ResultSetConverter}）と同じ行を返すか
+ * 列ごとの読み方を 1 回だけ決める読み方（{@link RowPlan}。3.0.0）が、これまでの読み方（{@link ResultSetConverter}）と同じ行を返すか
  *
  * <p>
  * 同じ行を両方で読み、<b>キーの並び・値・値のクラス</b>が全部一致することを、

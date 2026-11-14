@@ -61,7 +61,7 @@ final class LikeEscape {
 	static String escapeValue (Object value, String method) {
 
 		/*
-		 * 値の印（Dsl.param）は文字列にされると「:名前」という値になり、template の守りを素通りして送られる（2.8.0）。
+		 * 値の印（Dsl.param）は文字列にされると「:名前」という値になり、template の守りを素通りして送られる（3.0.0）。
 		 * ここで断る。前後の % を付けた値を like(Dsl.param(...)) に bind すれば、同じ条件を template で書ける
 		 */
 		if (value instanceof io.jimble.db.sql.TemplateParam param) {

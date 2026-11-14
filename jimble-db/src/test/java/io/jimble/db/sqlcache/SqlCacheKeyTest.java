@@ -111,7 +111,7 @@ class SqlCacheKeyTest {
 	}
 
 	@Test
-	@DisplayName("2.8.0：キーは、もとの byte 列の XXH3-128（seed 0）と長さを 16 進でつないだ 40 文字")
+	@DisplayName("3.0.0：キーは、もとの byte 列の XXH3-128（seed 0）と長さを 16 進でつないだ 40 文字")
 	void xxh3_128 () {
 
 		List<Object> params = List.of(1, "あ");

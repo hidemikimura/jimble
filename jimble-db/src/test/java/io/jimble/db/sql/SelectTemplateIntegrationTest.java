@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 形を決めて値だけ差し替える SELECT を DB に投げる（2.8.0）
+ * 形を決めて値だけ差し替える SELECT を DB に投げる（3.0.0）
  *
  * <p>
  * 結果の形（テーブル名でネストした Data）・SQL 結果キャッシュ（当たる・書き込みで外れる）が、

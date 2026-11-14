@@ -295,7 +295,7 @@ where(Site.id.in(ids));
 ## Reusing a fixed-shape SELECT (`SQL.template`)
 
 If you run the same shape of SELECT on every request (same tables, same columns, same WHERE,
-only the values differ), **build the shape once and swap in the values** (2.8.0).
+only the values differ), **build the shape once and swap in the values** (3.0.0).
 
 ```java
 // Build once (keep it in a static final)

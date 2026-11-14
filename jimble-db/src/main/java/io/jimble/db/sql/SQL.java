@@ -23,7 +23,7 @@ public class SQL {
 	}
 
 	/**
-	 * 形を決めて、値だけを差し替える SELECT を作る（2.8.0）
+	 * 形を決めて、値だけを差し替える SELECT を作る（3.0.0）
 	 *
 	 * <pre>
 	 * static final SelectTemplate PRODUCT_BY_ID = SQL.template(SQL.select()

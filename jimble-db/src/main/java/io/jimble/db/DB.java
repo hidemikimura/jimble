@@ -733,7 +733,7 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * キャッシュを見てから1件取得する（値を入れた template。2.8.0）
+	 * キャッシュを見てから1件取得する（値を入れた template。3.0.0）
 	 *
 	 * <pre>
 	 * Optional&lt;Data&gt; customer = db.selectCached(CUSTOMER_BY_ID.bind("id", customerId));
@@ -755,7 +755,7 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * キャッシュを見てから複数件取得する（値を入れた template。2.8.0）
+	 * キャッシュを見てから複数件取得する（値を入れた template。3.0.0）
 	 *
 	 * <p>扱いは {@link #selectListCached(SelectBuilder)} と同じ。</p>
 	 *
@@ -851,7 +851,7 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * 1件取得する（値を入れた template。2.8.0）
+	 * 1件取得する（値を入れた template。3.0.0）
 	 *
 	 * <pre>
 	 * Optional&lt;Data&gt; product = db.select(PRODUCT_BY_ID.bind("id", productId));
@@ -991,7 +991,7 @@ public class DB implements Closeable, AutoCloseable {
 	}
 
 	/**
-	 * 複数件取得する（値を入れた template。2.8.0）
+	 * 複数件取得する（値を入れた template。3.0.0）
 	 *
 	 * <p>結果の形と失敗の扱いは {@link #selectList(SelectBuilder)} と同じ。</p>
 	 *

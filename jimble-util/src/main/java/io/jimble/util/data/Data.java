@@ -34,7 +34,7 @@ public class Data extends LinkedHashMap<String, Object> {
 	}
 
 	/**
-	 * 入る数が分かっているときの空の Data（2.8.0）
+	 * 入る数が分かっているときの空の Data（3.0.0）
 	 *
 	 * <p>
 	 * 入る数だけ入れても伸び直さない大きさで作る。中身と使い方は {@link #Data()} と同じ。

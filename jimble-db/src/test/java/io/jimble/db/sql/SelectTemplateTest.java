@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 形を決めて値だけ差し替える SELECT（{@link SelectTemplate}。2.8.0）
+ * 形を決めて値だけ差し替える SELECT（{@link SelectTemplate}。3.0.0）
  *
  * <p>
  * <b>今のビルダーに同じ値を入れて組み立てたときと、SQL もパラメータも 1 文字も変わらない</b>ことを、

@@ -119,7 +119,7 @@ public class Parameter {
 			}
 		} else {
 			if (o instanceof io.jimble.db.sql.TemplateParam param) {
-				// 値の印は template の中でだけ通す（印のオブジェクトそのものを値として送らない。2.8.0）
+				// 値の印は template の中でだけ通す（印のオブジェクトそのものを値として送らない。3.0.0）
 				io.jimble.db.internal.sql.template.TemplateScope.requireBuilding(param);
 			}
 			out.add(o);

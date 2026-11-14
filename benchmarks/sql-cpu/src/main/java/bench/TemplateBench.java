@@ -27,12 +27,12 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 形を決めて値だけ差し替える SELECT（SQL.template。2.8.0 から）の組み立て。DB に繋がない
+ * 形を決めて値だけ差し替える SELECT（SQL.template。3.0.0 から）の組み立て。DB に繋がない
  *
  * <p>
  * {@link BuildBench} の同じ名前の形（{@code pkAll}・{@code joinAll}・{@code wideJoin3}）を template にしたもの。
  * 1 回あたり {@code bind} して SQL とパラメータを取り出すまで。
- * 2.8.0 より前の版には template が無いので、{@code -Pjimble.local=true} のときだけビルドに入る。
+ * 3.0.0 より前の版には template が無いので、{@code -Pjimble.local=true} のときだけビルドに入る。
  * </p>
  */
 @BenchmarkMode(Mode.AverageTime)
