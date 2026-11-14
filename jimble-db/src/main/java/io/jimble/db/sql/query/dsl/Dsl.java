@@ -1753,4 +1753,44 @@ public class Dsl {
 
 	// endregion
 
+	// region template の値の印（2.8.0）
+
+	/**
+	 * 値の印（{@link io.jimble.db.sql.SQL#template(io.jimble.db.sql.SelectBuilder)} で、値を差し替える場所）
+	 *
+	 * <pre>
+	 * SQL.template(SQL.select().from(Product.instance()).where(Product.id.eq(Dsl.param("id"))));
+	 * </pre>
+	 *
+	 * <p><b>template の中でだけ使える。</b>印を置いたビルダーをそのまま DB に投げると {@link io.jimble.db.sql.SqlBuildException} になる。</p>
+	 *
+	 * @param name	名前（英字か _ で始め、英数字と _ だけ。64 文字まで）
+	 * @return	印
+	 * @throws io.jimble.db.sql.SqlBuildException	名前に使えない文字があるとき
+	 */
+	public static io.jimble.db.sql.TemplateParam param (String name) {
+
+		return io.jimble.db.sql.TemplateParam.single(name);
+
+	}
+
+	/**
+	 * 値の並びの印（{@code IN} / {@code NOT IN} の値の場所。bind で渡した値の数だけ {@code ?} を並べる）
+	 *
+	 * <pre>
+	 * SQL.template(SQL.select().from(Product.instance()).where(Product.id.in(Dsl.params("ids"))));
+	 * </pre>
+	 *
+	 * @param name	名前（英字か _ で始め、英数字と _ だけ。64 文字まで）
+	 * @return	印
+	 * @throws io.jimble.db.sql.SqlBuildException	名前に使えない文字があるとき
+	 */
+	public static io.jimble.db.sql.TemplateParam params (String name) {
+
+		return io.jimble.db.sql.TemplateParam.list(name);
+
+	}
+
+	// endregion
+
 }

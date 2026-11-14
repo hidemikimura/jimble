@@ -22,7 +22,7 @@ public class EndsWith implements ICondition {
 	 */
 	public EndsWith(Object value) {
 
-		this.value = "%" + LikeEscape.escape(String.valueOf(value));
+		this.value = "%" + LikeEscape.escapeValue(value, "ends_with");
 
 	}
 

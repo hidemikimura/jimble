@@ -55,11 +55,11 @@ public final class CpuPerQuery {
 
 	}
 
-	private interface Body {
+	interface Body {
 		Object run (int i);
 	}
 
-	private static long measure (ThreadMXBean threads, int count, Body body) {
+	static long measure (ThreadMXBean threads, int count, Body body) {
 
 		// 空回し
 		for (int i = 0; i < count; i++) {

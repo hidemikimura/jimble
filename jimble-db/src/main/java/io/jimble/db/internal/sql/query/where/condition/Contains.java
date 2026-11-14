@@ -22,7 +22,7 @@ public class Contains implements ICondition {
 	 */
 	public Contains(Object value) {
 
-		this.value = "%" + LikeEscape.escape(String.valueOf(value)) + "%";
+		this.value = "%" + LikeEscape.escapeValue(value, "contains") + "%";
 
 	}
 

@@ -45,6 +45,9 @@ public class In implements ICondition {
 			dsl.dslSql(sb);
 		} else if (value instanceof ISelect select) {
 			select.selectSql(sb);
+		} else if (value instanceof io.jimble.db.sql.TemplateParam param && param.isList()) {
+			// 値の並びの印。template が bind のときに値の数だけ ? を並べる（2.8.0）
+			sb.append(io.jimble.db.internal.sql.template.TemplateScope.listToken(param));
 		} else if (value instanceof Collection<?> list) {
 			for (int i = 0; i < list.size(); i++) {
 				if (i > 0) {

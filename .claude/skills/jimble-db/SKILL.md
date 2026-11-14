@@ -55,7 +55,7 @@ int updated = db.update(...);          // 0件は 0
 
 | やること | skill |
 | --- | --- |
-| 引く（`select` / `selectList`・条件・OR と括弧・`in`・結合・インデックスのヒント・ページング・カーソル） | `jimble-db-select` |
+| 引く（`select` / `selectList`・条件・OR と括弧・`in`・結合・インデックスのヒント・ページング・カーソル・形の決まった SELECT の `SQL.template`） | `jimble-db-select` |
 | 結果の `Data` を読む（テーブル名でネスト・文字列の SQL は平ら・JSON の列・getter の例外・`Data.put`） | `jimble-db-data` |
 | 入れる・直す・消す（`insert` / `insertKey` / `update` / `delete` / `execute`・`setRow` と許す列・バッチ・時刻）と、どこで catch するか | `jimble-db-write` |
 | トランザクション（`Tx`・`DB_004` / `DB_005`・入れ子）・コミットと外へ出すもの・ロック（`DBLock` / `RedisLock`） | `jimble-db-tx` |

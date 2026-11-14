@@ -165,6 +165,7 @@ io.jimble.db.internal.sql.query.set
 io.jimble.db.internal.sql.query.value
 io.jimble.db.internal.sql.query.where
 io.jimble.db.internal.sql.query.where.condition
+io.jimble.db.internal.sql.template
 io.jimble.db.internal.version
 io.jimble.json.internal
 io.jimble.util.internal

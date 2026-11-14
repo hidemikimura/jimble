@@ -10,6 +10,8 @@ Maven Central の公開版とこのリポジトリのソースで比べる。jim
 | 測るもの | 中身 |
 |---|---|
 | `BuildBench.*` | DB に繋がずに組み立てるだけ。全列・列の名指し・JOIN・IN（値の数が変わる）・UPDATE・INSERT と、列の多い表（`WideSchema`。60・40・30 列）の全列 SELECT・3 表 JOIN。`*NoSql` は `sql()` を呼ばずビルダーを作って値を集めるだけ |
+| `TemplateBench.*` | `BuildBench` の `pkAll`・`joinAll`・`wideJoin3` を `SQL.template` にしたもの（`bind` して SQL とパラメータを取り出すまで）。2.8.0 からなので、`-Pjimble.local=true` のときだけビルドに入る |
+| `TemplateCpuPerQuery` | 主キー 1 行の `select` と、キャッシュに当たる `selectListCached` を、ビルダーと template で投げたときのスレッドの CPU 時間。`-Pjimble.local=true` のときだけ |
 | `SqlBench.pkBuild` | 主キー 1 行の SELECT（全列）の SQL とパラメータを作る |
 | `SqlBench.joinBuild` | JOIN・IN・IS NULL・ORDER BY・LIMIT / OFFSET の SELECT（全列）を作る |
 | `SqlBench.cachedSelect` | SQL 結果キャッシュ（メモリ）に当たる `selectListCached`。DB には行かない |

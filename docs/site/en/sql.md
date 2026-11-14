@@ -292,6 +292,58 @@ if (ids.isEmpty()) {
 where(Site.id.in(ids));
 ```
 
+## Reusing a fixed-shape SELECT (`SQL.template`)
+
+If you run the same shape of SELECT on every request (same tables, same columns, same WHERE,
+only the values differ), **build the shape once and swap in the values** (2.8.0).
+
+```java
+// Build once (keep it in a static final)
+static final SelectTemplate POST_BY_ID = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.id.eq(Dsl.param("id")))
+	.where(Post.deleted_at.is_null()));
+
+static final SelectTemplate POSTS_IN = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site")))
+	.where(Post.id.in(Dsl.params("ids")))       // a list of values for IN
+	.orderBy(Post.id.asc()));
+
+// On each request, bind the values and run it
+Optional<Data> post = db.select(POST_BY_ID.bind("id", id));
+List<Data> posts    = db.selectListCached(POSTS_IN.bind("site", siteId, "ids", ids));
+```
+
+- **Put `Dsl.param("name")` where a value goes, and `Dsl.params("name")` where `in` / `not_in` takes a list.**
+  Bind the values with `bind("name", value, ...)` (or a `Map`). A missing or unknown name is a `SqlBuildException`
+- **The SQL text is built once per dialect.** The per-request work (creating the builder, writing the SQL,
+  collecting the parameters) goes away. The wider the tables you select all columns from, the more it saves
+- **The SQL, the parameters and the shape of the result (`Data` nested by table name) are the same as
+  binding the values into a builder of the same shape.** `selectCached` / `selectListCached` work too, with the same cache key
+- The statement changes with the number of `in` values: one `?` per value (one template serves any count)
+- Values that are not markers (the `1` in `status.eq(1)`) are sent as they are, every time
+- A template does not change once built, so threads can share it
+
+> [!TRAP]
+> **`bind` does not take `null`** (`SqlBuildException`). As with `eq(null)` on a builder, `= NULL` matches no row.
+> To compare with NULL, build a separate template that uses `is_null()`.
+> **An empty list is refused as well** (just as `in` refuses one).
+> **So are SQL parts such as columns and expressions** (the marker is already a `?`, so the part object itself would be sent).
+> To compare with a column, build a template with that column in place of the marker.
+> **`starts_with` / `contains` / `ends_with` cannot take a marker** (they turn the value into a string with `%`).
+> Use `like(Dsl.param("q"))` and bind the value with the `%` added and escaped.
+
+> [!TRAP]
+> **The markers (`Dsl.param` / `Dsl.params`) only work inside a template.**
+> Pass a builder holding a marker straight to `db.select(...)` and you get a `SqlBuildException` before anything is sent.
+> **Do not use a builder again after handing it to `SQL.template(...)`.**
+> The template copies the lists of clauses, but shares the FROM and condition parts with the original,
+> so adding `inner(...)` to the original later changes the template too.
+> Building it in place, `SQL.template(SQL.select()...)`, is the safe way.
+
+**It does not suit statements that add WHERE conditions only sometimes** (the shape changes each time). Keep using a builder for those.
+
 ## Product differences to watch
 
 **Where the name is the same but the meaning is not**, the DSL lines them up.

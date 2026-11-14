@@ -33,3 +33,13 @@ dependencies {
 application {
 	mainClass = "org.openjdk.jmh.Main"
 }
+
+/*
+ * template（SQL.template。2.8.0 から）を使うベンチは、それより前の公開版ではコンパイルできないので、
+ * このリポジトリのソースで測るときだけ入れる
+ */
+if (providers.gradleProperty("jimble.local").orNull != "true") {
+	sourceSets.main {
+		java.exclude("bench/Template*.java")
+	}
+}

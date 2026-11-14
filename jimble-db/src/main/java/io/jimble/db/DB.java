@@ -10,6 +10,7 @@ import io.jimble.db.data.SQLParameterList;
 import io.jimble.db.data.SelectListResponse;
 import io.jimble.util.paging.Paging;
 import io.jimble.db.sql.*;
+import io.jimble.db.internal.sql.template.TemplateShapes;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.Dialects;
@@ -720,18 +721,90 @@ public class DB implements Closeable, AutoCloseable {
 		 * - 直前に書き込んだ直後（要件 F-D-19。レプリカが追いつく前の値を
 		 *   <b>台をまたいで共有するキャッシュに焼き付けない</b>）
 		 */
+		if (!sqlCacheUsable()) {
+			return selectList(builder);
+		}
+
+		return selectListCached(builder.sql(dialect()), builder.params(), builder);
+
+	}
+
+	/**
+	 * キャッシュを見てから1件取得する（値を入れた template。2.8.0）
+	 *
+	 * <pre>
+	 * Optional&lt;Data&gt; customer = db.selectCached(CUSTOMER_BY_ID.bind("id", customerId));
+	 * </pre>
+	 *
+	 * <p>扱いは {@link #selectCached(SelectBuilder)} と同じ。キーも、同じ形をビルダーで引いたときと同じになる。</p>
+	 *
+	 * @param select	値を入れた template
+	 * @return	結果。1件も無ければ空
+	 * @throws SqlExecuteException	読めなかったとき
+	 */
+	@CheckReturnValue
+	public Optional<Data> selectCached (BoundSelect select) {
+
+		List<Data> rows = selectListCached(select);
+
+		return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
+
+	}
+
+	/**
+	 * キャッシュを見てから複数件取得する（値を入れた template。2.8.0）
+	 *
+	 * <p>扱いは {@link #selectListCached(SelectBuilder)} と同じ。</p>
+	 *
+	 * @param select	値を入れた template
+	 * @return	結果。0件なら空リスト（null は返さない）
+	 * @throws SqlExecuteException	読めなかったとき
+	 */
+	@CheckReturnValue
+	public List<Data> selectListCached (BoundSelect select) {
+
+		if (!sqlCacheUsable()) {
+			return selectList(select);
+		}
+
+		return selectListCached(select.sql(dialect()), select.params(), TemplateShapes.shape(select));
+
+	}
+
+	/**
+	 * SQL 結果キャッシュを使ってよいか
+	 *
+	 * <p>
+	 * 使わない場面：
+	 * </p>
+	 * <ul>
+	 *   <li>トランザクションの中（まだ確定していない値を残さない）</li>
+	 *   <li>直前に書き込んだ直後（要件 F-D-19。レプリカが追いつく前の値を<b>台をまたいで共有するキャッシュに焼き付けない</b>）</li>
+	 * </ul>
+	 *
+	 * @return	使ってよければ true
+	 */
+	private boolean sqlCacheUsable () {
+
 		if (!SqlCacheConf.enabled()) {
 			// 「書いたのに効かない」を黙って通さない（初回だけ）
 			SqlCache.warnDisabled();
-			return selectList(builder);
+			return false;
 		}
 
-		if (sqlCacheDisabled || isTransaction() || DBSticky.sticky()) {
-			return selectList(builder);
-		}
+		return !(sqlCacheDisabled || isTransaction() || DBSticky.sticky());
 
-		String sql = builder.sql(dialect());
-		List<Object> params = builder.params();
+	}
+
+	/**
+	 * キャッシュを見てから引き、無ければ引いて入れる
+	 *
+	 * @param sql		SQL
+	 * @param params	パラメータ
+	 * @param shape		依存を求める形
+	 * @return	結果
+	 */
+	private List<Data> selectListCached (String sql, List<Object> params, SelectBuilder shape) {
 
 		// データソースごとに分ける（D-222）。サブは「親.サブ」（2.7.8）
 		String key = SqlCache.key(dbSource.cacheName(), sql, params);
@@ -745,7 +818,7 @@ public class DB implements Closeable, AutoCloseable {
 		// 読めなければここで投げる。失敗はキャッシュに入らない
 		List<Data> rows = selectList(sql, params);
 
-		SqlCache.put(key, SqlCacheTags.of(dbSource.cacheName(), builder, rows), rows);
+		SqlCache.put(key, SqlCacheTags.of(dbSource.cacheName(), shape, rows), rows);
 
 		return rows;
 
@@ -768,6 +841,26 @@ public class DB implements Closeable, AutoCloseable {
 	public Optional<Data> select (SelectBuilder builder) {
 
 		return select(builder.sql(dialect()), builder.params());
+
+	}
+
+	/**
+	 * 1件取得する（値を入れた template。2.8.0）
+	 *
+	 * <pre>
+	 * Optional&lt;Data&gt; product = db.select(PRODUCT_BY_ID.bind("id", productId));
+	 * </pre>
+	 *
+	 * <p>結果の形（テーブル名でネストした Data）と失敗の扱いは {@link #select(SelectBuilder)} と同じ。</p>
+	 *
+	 * @param select	値を入れた template
+	 * @return	結果。1件も無ければ空
+	 * @throws SqlExecuteException	読めなかったとき
+	 */
+	@CheckReturnValue
+	public Optional<Data> select (BoundSelect select) {
+
+		return select(select.sql(dialect()), select.params());
 
 	}
 
@@ -872,6 +965,22 @@ public class DB implements Closeable, AutoCloseable {
 	public List<Data> selectList (SelectBuilder builder) {
 
 		return selectList(builder.sql(dialect()), builder.params());
+
+	}
+
+	/**
+	 * 複数件取得する（値を入れた template。2.8.0）
+	 *
+	 * <p>結果の形と失敗の扱いは {@link #selectList(SelectBuilder)} と同じ。</p>
+	 *
+	 * @param select	値を入れた template
+	 * @return	結果。0件なら空リスト（null は返さない）
+	 * @throws SqlExecuteException	読めなかったとき
+	 */
+	@CheckReturnValue
+	public List<Data> selectList (BoundSelect select) {
+
+		return selectList(select.sql(dialect()), select.params());
 
 	}
 
