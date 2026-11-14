@@ -1,6 +1,6 @@
 ---
 name: jimble-db-select
-description: jimble の SQL ビルダーで行を引くときに使う。select（Optional）と selectList、where の重ね方と NULL の比較、OR と括弧（Dsl.anyOf・a.or(b).and(c) の読み方）、in と空のリスト、1つの値の場所にリストを渡さない、結合と on、インデックスのヒント（MySQL）、ページング、カーソル（selectListWithFetcher）の閉じ方を含む。
+description: jimble の SQL ビルダーで行を引くときに使う。select（Optional）と selectList、where の重ね方と NULL の比較、OR と括弧（Dsl.anyOf・a.or(b).and(c) の読み方）、in と空のリスト、1つの値の場所にリストを渡さない、結合と on、インデックスのヒント（MySQL）、ページング、カーソル（selectListWithFetcher）の閉じ方、形の決まった SELECT を値だけ差し替えて使い回す（SQL.template・Dsl.param・bind）を含む。
 ---
 
 # jimble の DB で引く
@@ -70,6 +70,29 @@ OR や括弧は `Dsl.anyOf(...)` / `Dsl.allOf(...)` でまとめる。
 
 インデックスのヒント（MySQL。2.5.0）はテーブルに付けて渡す：`from(Orders.instance().forceIndex("orders__created_at"))`、`left(Customer.instance().useIndex("customer__code"))`、`ignoreIndex("PRIMARY")`。
 **PostgreSQL では組み立てたところで `DialectException`**（黙って外さない）。最後の手段にし、`EXPLAIN` で効いていることを確かめる。
+
+## 形の決まった SELECT（`SQL.template`。2.8.0）
+
+要求のたびに同じ形（値だけ違う）で引く SELECT は、形を一度だけ作って値を差し替える。SQL の字面は方言ごとに 1 回だけ作る。
+
+```java
+static final SelectTemplate POST_BY_ID = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.id.eq(Dsl.param("id"))));                  // 値の場所
+static final SelectTemplate POSTS_IN = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.id.in(Dsl.params("ids"))));                // in / not_in の値の並び
+
+Optional<Data> post = db.select(POST_BY_ID.bind("id", id));
+List<Data> posts    = db.selectListCached(POSTS_IN.bind("ids", ids));
+```
+
+- 出る SQL・パラメータ・結果の形（テーブル名でネスト）・キャッシュのキーは、同じ形のビルダーと同じ。`select` / `selectList` / `selectCached` / `selectListCached` に渡せる
+- **`bind` に `null` と空の一覧は渡せない**（`SqlBuildException`。`eq(null)`・`in(空)` と同じ理由）。名前の過不足と、列などの SQL の部品も例外
+- **`starts_with` / `contains` / `ends_with` に印は置けない**。`like(Dsl.param("q"))` にして `%` を付けた値を bind する
+- **`Dsl.param` / `Dsl.params` は template の中でだけ。**印を置いたビルダーをそのまま投げると `SqlBuildException`
+- **`SQL.template(...)` に渡したビルダーはそのあと使わない**（FROM や条件の部品を分け合う）。`SQL.template(SQL.select()...)` とその場で組む
+- 条件で WHERE を足したり足さなかったりする文には使わない（形が毎回変わる）。ビルダーで書く
 
 ## ページングとカーソル
 

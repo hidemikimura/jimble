@@ -22,7 +22,7 @@ public class StartsWith implements ICondition {
 	 */
 	public StartsWith(Object value) {
 
-		this.value = LikeEscape.escape(String.valueOf(value)) + "%";
+		this.value = LikeEscape.escapeValue(value, "starts_with") + "%";
 
 	}
 

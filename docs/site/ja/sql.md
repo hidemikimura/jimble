@@ -292,6 +292,57 @@ if (ids.isEmpty()) {
 where(Site.id.in(ids));
 ```
 
+## 形の決まった SELECT を使い回す（`SQL.template`）
+
+同じ形（同じ表・同じ列・同じ WHERE の形で、値だけ違う）の SELECT を要求のたびに引くなら、
+**形を一度だけ作って、値だけを差し替えます**（2.8.0）。
+
+```java
+// 一度だけ作る（static final に置く）
+static final SelectTemplate POST_BY_ID = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.id.eq(Dsl.param("id")))
+	.where(Post.deleted_at.is_null()));
+
+static final SelectTemplate POSTS_IN = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site")))
+	.where(Post.id.in(Dsl.params("ids")))       // IN の値の並び
+	.orderBy(Post.id.asc()));
+
+// 要求のたびに値を入れて投げる
+Optional<Data> post = db.select(POST_BY_ID.bind("id", id));
+List<Data> posts    = db.selectListCached(POSTS_IN.bind("site", siteId, "ids", ids));
+```
+
+- **値の場所には `Dsl.param("名前")`、`in` / `not_in` の値の並びには `Dsl.params("名前")` を置きます。**
+  `bind("名前", 値, ...)`（または `Map`）で値を入れます。名前の過不足は `SqlBuildException` です
+- **SQL の字面は方言ごとに 1 回だけ作ります。**要求のたびの組み立て（ビルダーを作る・SQL を書き出す・値を集める）が無くなります。
+  列の多い表の全列の SELECT ほど効きます
+- **出る SQL・パラメータ・結果の形（テーブル名でネストした `Data`）は、同じ形をビルダーに値を入れて引いたときと同じです。**
+  `selectCached` / `selectListCached` も使え、キャッシュのキーも同じになります
+- `in` の値の数で文は変わります。値の数だけ `?` を並べます（同じ template で、値の数がいくつでも引けます）
+- 値の印でない値（`status.eq(1)` の `1` など）は、決まった値のまま毎回送ります
+- 作った template は変わらないので、スレッドをまたいで同時に使えます
+
+> [!TRAP]
+> **`bind` に `null` は渡せません**（`SqlBuildException`）。ビルダーの `eq(null)` と同じく、`= NULL` はどの行にも当たらないからです。
+> NULL と比べるなら `is_null()` を使う template を別に作ってください。
+> **空の一覧も渡せません**（`in` に空の一覧を渡せないのと同じ）。
+> **列や式などの SQL の部品も渡せません**（印の場所はもう `?` なので、部品のオブジェクトがそのまま送られてしまいます）。
+> 列と比べるなら、印ではなくその列を置いた template を作ってください。
+> **`starts_with` / `contains` / `ends_with` には印を置けません**（値に `%` を付けて文字列にするためです）。
+> `like(Dsl.param("q"))` にして、`%` を付けてエスケープした値を `bind` してください。
+
+> [!TRAP]
+> **値の印（`Dsl.param` / `Dsl.params`）は、template の中でだけ使えます。**
+> 印を置いたビルダーをそのまま `db.select(...)` に渡すと、DB に送る前に `SqlBuildException` になります。
+> **`SQL.template(...)` に渡したビルダーは、そのあと使わないでください。**
+> 句の並びは写して持ちますが、FROM や条件の部品は元のビルダーと分け合うので、あとから `inner(...)` を足すと template も変わります。
+> `SQL.template(SQL.select()...)` と、その場で組み立てて渡すのが安全です。
+
+**条件によって WHERE を足したり足さなかったりする文には向きません**（形が毎回変わります）。それは今までどおりビルダーで書きます。
+
 ## 製品の違いで気をつけること
 
 **名前が同じでも意味が違う**ものは DSL が揃えます。
