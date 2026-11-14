@@ -60,7 +60,9 @@ public final class SelectTemplate {
 
 	static {
 		// SQL 結果キャッシュの依存を求めるところにだけ、形を渡す
-		io.jimble.db.internal.sql.template.TemplateShapes.install(bound -> bound.template().builder);
+		io.jimble.db.internal.sql.template.TemplateShapes.install(new io.jimble.db.internal.sql.template.TemplateShapes.Access(
+			bound -> bound.template().builder, (bound, dialect) -> bound.template().labels(dialect),
+			(bound, dialect) -> bound.template().cacheable(dialect)));
 	}
 
 	/* 組み立てる形（写し。外には出さない） */
@@ -94,8 +96,10 @@ public final class SelectTemplate {
 	 * @param fragments	値の並びの印で切った字面（印が n 個なら n + 1 個）
 	 * @param length	切れ端の長さの合計
 	 * @param sized		値の並びの印が 1 つのとき、値の数ごとの字面（添字が値の数。作ったら入れる。ほかは null）
+	 * @param labels	位置ごとの結果のキー（3.0.0。結果を表名で入れ子にするのに使う）
+	 * @param cacheable	SELECT 句が値を含まず、結果の列の読み方を覚えてよいか（3.0.0）
 	 */
-	private record Rendered (Dialect dialect, String[] fragments, int length, AtomicReferenceArray<String> sized) {}
+	private record Rendered (Dialect dialect, String[] fragments, int length, AtomicReferenceArray<String> sized, List<String> labels, boolean cacheable) {}
 
 	SelectTemplate (SelectBuilder source) {
 
@@ -176,7 +180,7 @@ public final class SelectTemplate {
 
 		String[] listOrder = listParams.toArray(new String[0]);
 
-		return new Prepared(slots, names, listOrder, split(dialect, sql, listOrder));
+		return new Prepared(slots, names, listOrder, split(dialect, sql, listOrder, labelsOf(builder), builder.resultCacheable));
 
 	}
 
@@ -207,7 +211,7 @@ public final class SelectTemplate {
 	 * @param listOrder	パラメータに現れた値の並びの印の名前（この順に字面にも出ていなければならない）
 	 * @return	切ったもの
 	 */
-	private static Rendered split (Dialect dialect, String sql, String[] listOrder) {
+	private static Rendered split (Dialect dialect, String sql, String[] listOrder, List<String> labels, boolean cacheable) {
 
 		String[] parts = sql.split(String.valueOf(TemplateScope.TOKEN), -1);
 
@@ -232,7 +236,7 @@ public final class SelectTemplate {
 
 		AtomicReferenceArray<String> sized = found == 1 ? new AtomicReferenceArray<>(SIZED_SQL_MAX + 1) : null;
 
-		return new Rendered(dialect, fragments, length, sized);
+		return new Rendered(dialect, fragments, length, sized, labels, cacheable);
 
 	}
 
@@ -273,10 +277,46 @@ public final class SelectTemplate {
 			return existing;
 		}
 
-		Rendered created = TemplateScope.building(() -> split(dialect, builder.sql(dialect), listOrder));
+		Rendered created = TemplateScope.building(() -> {
+			String sql = builder.sql(dialect);
+			return split(dialect, sql, listOrder, labelsOf(builder), builder.resultCacheable);
+		});
 		byDialect.put(dialect, created);
 
 		return created;
+
+	}
+
+	/**
+	 * 直前の sql() で書いた位置ごとの結果のキー（変えられない写し。NULL の位置はドライバの列名）
+	 */
+	private static List<String> labelsOf (SelectBuilder builder) {
+
+		return builder.resultLabels == null ? null : java.util.Collections.unmodifiableList(new ArrayList<>(builder.resultLabels));
+
+	}
+
+	/**
+	 * 方言の、位置ごとの結果のキー（3.0.0）
+	 *
+	 * @param dialect	方言
+	 * @return	キー
+	 */
+	List<String> labels (Dialect dialect) {
+
+		return rendered(dialect).labels();
+
+	}
+
+	/**
+	 * 方言の SELECT 句が値を含まず、結果の列の読み方を覚えてよいか（3.0.0）
+	 *
+	 * @param dialect	方言
+	 * @return	覚えてよければ true
+	 */
+	boolean cacheable (Dialect dialect) {
+
+		return rendered(dialect).cacheable();
 
 	}
 

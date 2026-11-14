@@ -11,6 +11,8 @@ import io.jimble.db.data.SelectListResponse;
 import io.jimble.util.paging.Paging;
 import io.jimble.db.sql.*;
 import io.jimble.db.internal.sql.template.TemplateShapes;
+import io.jimble.db.internal.sql.select.SelectAccess;
+import io.jimble.db.internal.data.FetchHints;
 import io.jimble.db.sql.definition.column.Column;
 import io.jimble.db.dialect.Dialect;
 import io.jimble.db.dialect.Dialects;
@@ -725,7 +727,8 @@ public class DB implements Closeable, AutoCloseable {
 			return selectList(builder);
 		}
 
-		return selectListCached(builder.sql(dialect()), builder.params(), builder);
+		String sql = builder.sql(dialect());
+		return selectListCached(sql, builder.params(), builder, SelectAccess.labels(builder), SelectAccess.cacheable(builder));
 
 	}
 
@@ -767,7 +770,7 @@ public class DB implements Closeable, AutoCloseable {
 			return selectList(select);
 		}
 
-		return selectListCached(select.sql(dialect()), select.params(), TemplateShapes.shape(select));
+		return selectListCached(select.sql(dialect()), select.params(), TemplateShapes.shape(select), TemplateShapes.labels(select, dialect()), TemplateShapes.cacheable(select, dialect()));
 
 	}
 
@@ -802,9 +805,11 @@ public class DB implements Closeable, AutoCloseable {
 	 * @param sql		SQL
 	 * @param params	パラメータ
 	 * @param shape		依存を求める形
+	 * @param labels	位置ごとの結果のキー（3.0.0）
+	 * @param cacheColumns	結果の列の読み方を覚えてよいか（3.0.0）
 	 * @return	結果
 	 */
-	private List<Data> selectListCached (String sql, List<Object> params, SelectBuilder shape) {
+	private List<Data> selectListCached (String sql, List<Object> params, SelectBuilder shape, List<String> labels, boolean cacheColumns) {
 
 		// データソースごとに分ける（D-222）。サブは「親.サブ」（2.7.8）
 		String key = SqlCache.key(dbSource.cacheName(), sql, params);
@@ -816,7 +821,7 @@ public class DB implements Closeable, AutoCloseable {
 		}
 
 		// 読めなければここで投げる。失敗はキャッシュに入らない
-		List<Data> rows = selectList(sql, params);
+		List<Data> rows = selectListWith(sql, labels, cacheColumns, params);
 
 		SqlCache.put(key, SqlCacheTags.of(dbSource.cacheName(), shape, rows), rows);
 
@@ -840,7 +845,8 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public Optional<Data> select (SelectBuilder builder) {
 
-		return select(builder.sql(dialect()), builder.params());
+		String sql = builder.sql(dialect());
+		return selectWith(sql, SelectAccess.labels(builder), SelectAccess.cacheable(builder), builder.params());
 
 	}
 
@@ -860,7 +866,7 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public Optional<Data> select (BoundSelect select) {
 
-		return select(select.sql(dialect()), select.params());
+		return selectWith(select.sql(dialect()), TemplateShapes.labels(select, dialect()), TemplateShapes.cacheable(select, dialect()), select.params());
 
 	}
 
@@ -886,11 +892,26 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public Optional<Data> select (String sql, Object...params) {
 
+		return selectWith(sql, null, false, params);
+
+	}
+
+	/**
+	 * 1件取得する（位置ごとの結果のキーを渡す。3.0.0）
+	 *
+	 * @param sql		SQL
+	 * @param labels	位置ごとの結果のキー（ビルダーが書いたもの。null なら列名で入れ子にする）
+	 * @param cacheColumns	結果の列の読み方を覚えてよいか
+	 * @param params	パラメータ
+	 * @return	結果
+	 */
+	private Optional<Data> selectWith (String sql, List<String> labels, boolean cacheColumns, Object...params) {
+
 		try (
 			ResultSetFetcher fetcher = new ResultSetFetcher()
 		) {
 
-			selectListWithFetcher(fetcher, sql, params);
+			fetchWith(fetcher, sql, labels, cacheColumns, params);
 
 			Iterator<Data> iterator = fetcher.iterator();
 			if (iterator.hasNext()) {
@@ -964,7 +985,8 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public List<Data> selectList (SelectBuilder builder) {
 
-		return selectList(builder.sql(dialect()), builder.params());
+		String sql = builder.sql(dialect());
+		return selectListWith(sql, SelectAccess.labels(builder), SelectAccess.cacheable(builder), builder.params());
 
 	}
 
@@ -980,7 +1002,7 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public List<Data> selectList (BoundSelect select) {
 
-		return selectList(select.sql(dialect()), select.params());
+		return selectListWith(select.sql(dialect()), TemplateShapes.labels(select, dialect()), TemplateShapes.cacheable(select, dialect()), select.params());
 
 	}
 
@@ -1000,11 +1022,26 @@ public class DB implements Closeable, AutoCloseable {
 	@CheckReturnValue
 	public List<Data> selectList (String sql, Object...params) {
 
+		return selectListWith(sql, null, false, params);
+
+	}
+
+	/**
+	 * 複数件取得する（位置ごとの結果のキーを渡す。3.0.0）
+	 *
+	 * @param sql		SQL
+	 * @param labels	位置ごとの結果のキー（ビルダーが書いたもの。null なら列名で入れ子にする）
+	 * @param cacheColumns	結果の列の読み方を覚えてよいか
+	 * @param params	パラメータ
+	 * @return	結果
+	 */
+	private List<Data> selectListWith (String sql, List<String> labels, boolean cacheColumns, Object...params) {
+
 		try (
 			ResultSetFetcher fetcher = new ResultSetFetcher()
 		) {
 
-			selectListWithFetcher(fetcher, sql, params);
+			fetchWith(fetcher, sql, labels, cacheColumns, params);
 
 			List<Data> res = new ArrayList<>();
 			for (Data row : fetcher) {
@@ -1077,7 +1114,7 @@ public class DB implements Closeable, AutoCloseable {
 	public List<Data> selectListPerformance (SelectBuilder builder) {
 
 		// メインテーブルのPK列のみ取得する
-		List<Data> _list = selectList(builder.simpleSql(dialect()), builder.params());
+		List<Data> _list = selectList(SelectAccess.simple(builder));
 
 		return selectListByPk(builder, _list);
 
@@ -1292,7 +1329,7 @@ public class DB implements Closeable, AutoCloseable {
 		long rowCount = selectRowCount(builder.rowCountSql(dialect()), builder.rowCountParams());
 
 		// メインテーブルのPK列のみ取得する（渡された builder は書き換えない。要件 D-190）
-		List<Data> list = selectListByPk(builder, selectList(builder.simpleSql(dialect()), builder.params()));
+		List<Data> list = selectListByPk(builder, selectList(SelectAccess.simple(builder)));
 
 		Paging paging = null;
 		if (builder.paging() != null) {
@@ -1317,7 +1354,8 @@ public class DB implements Closeable, AutoCloseable {
 	 */
 	public void selectListWithFetcher (ResultSetFetcher fetcher, SelectBuilder builder) {
 
-		selectListWithFetcher(fetcher, builder.sql(dialect()), builder.params());
+		String sql = builder.sql(dialect());
+		fetchWith(fetcher, sql, SelectAccess.labels(builder), SelectAccess.cacheable(builder), builder.params());
 
 	}
 
@@ -1335,6 +1373,27 @@ public class DB implements Closeable, AutoCloseable {
 	 * @throws SqlExecuteException	読めなかったとき
 	 */
 	public void selectListWithFetcher (ResultSetFetcher fetcher, String sql, Object...params) {
+
+		fetchWith(fetcher, sql, null, false, params);
+
+	}
+
+	/**
+	 * 逐次取得で取得する（位置ごとの結果のキーを渡す。3.0.0）
+	 *
+	 * <p>
+	 * キーがあれば（ビルダーと template）、列名をドライバに聞かずに位置で入れ子にする。
+	 * SELECT 句が値を含まなければ、列の読み方をデータソースと SQL ごとに覚えて使い回す
+	 * （含むと列の型が値で変わる）。文字列の SQL（キーなし）は、これまでどおり毎回聞く。
+	 * </p>
+	 *
+	 * @param fetcher	ResultSetFetcher
+	 * @param sql		SQL
+	 * @param labels	位置ごとの結果のキー（null なら列名で入れ子にする）
+	 * @param cacheColumns	結果の列の読み方を覚えてよいか
+	 * @param params	パラメータ
+	 */
+	private void fetchWith (ResultSetFetcher fetcher, String sql, List<String> labels, boolean cacheColumns, Object...params) {
 
 		// SQLを実行する
 		PreparedStatement st = null;
@@ -1383,6 +1442,7 @@ public class DB implements Closeable, AutoCloseable {
 			// 結果を保持する
 			// 列の型は接続先の製品で見分ける（要件 F-D-30）
 			fetcher.dialect(dialect());
+			FetchHints.hint(fetcher, labels != null && cacheColumns ? dbSource.cacheName() : null, sql, labels);
 			fetcher.load(st, rs);
 
 		} catch (Exception ex) {

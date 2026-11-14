@@ -202,7 +202,7 @@ class RowPlanIntegrationTest {
 			List<Integer> types = new ArrayList<>();
 			ResultSetIterator.readColumns(rs.getMetaData(), db.dialect(), keys, types);
 
-			assertEquals(null, RowPlan.of(rs.getMetaData(), db.dialect(), keys, types, false));
+			assertEquals(null, RowPlan.of(rs.getMetaData(), db.dialect(), keys, types));
 
 		}
 
@@ -228,14 +228,14 @@ class RowPlanIntegrationTest {
 			List<Integer> types = new ArrayList<>();
 			ResultSetIterator.readColumns(rs.getMetaData(), dialect, keys, types);
 
-			RowPlan plan = RowPlan.of(rs.getMetaData(), dialect, keys, types, removeAllNullTableData);
+			RowPlan plan = RowPlan.of(rs.getMetaData(), dialect, keys, types);
 			assertNotNull(plan, "段取りを作れなかった");
 
 			int number = 0;
 			while (rs.next()) {
 				number++;
 				Data expected = ResultSetConverter.convert(rs, keys, types, dialect, removeAllNullTableData);
-				Data actual = plan.read(rs, dialect);
+				Data actual = plan.read(rs, dialect, removeAllNullTableData);
 				assertNotNull(expected);
 				assertNotNull(actual);
 				assertSameRow(expected, actual, "行 " + number);

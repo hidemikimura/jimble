@@ -247,6 +247,21 @@ public final class SqlGoldenCases {
 
 	}
 
+	/**
+	 * SELECT の形を名前つきで返す（3.0.0 の別名なしのテスト {@code SelectAliasTest} 用。Java だけで書く）
+	 *
+	 * @return	名前と、毎回新しいビルダーを作るもの
+	 */
+	public static java.util.Map<String, Supplier<?>> selectShapes () {
+
+		java.util.Map<String, Supplier<?>> shapes = new java.util.LinkedHashMap<>();
+		for (Case c : selectCases()) {
+			shapes.put(c.name(), c.builder());
+		}
+		return shapes;
+
+	}
+
 	// region 書き出し
 
 	private static void renderSelect (StringBuilder out, Case c, Dialect dialect) {

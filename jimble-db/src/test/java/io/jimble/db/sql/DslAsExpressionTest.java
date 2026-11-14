@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><b>DB 接続なし。</b>出す SQL とパラメータをそのまま固定する。</p>
  */
+@org.junit.jupiter.api.extension.ExtendWith(LegacySelectAlias.class)
 class DslAsExpressionTest {
 
 	/* MySQL */

@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>いま動いているアプリの SQL が静かに変わる</b>。
  * </p>
  */
+@org.junit.jupiter.api.extension.ExtendWith(LegacySelectAlias.class)
 class SqlBuilderDialectTest {
 
 	@Test

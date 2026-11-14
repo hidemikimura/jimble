@@ -416,24 +416,46 @@ public class Table implements ITable, IFrom {
 	 */
 	private static final class SelectAllCache {
 
-		/* 最後に使ったもの（方言はふつう 1 つなので、たいていここで当たる） */
-		private volatile SelectAll last;
+		/* 最後に使ったもの（方言はふつう 1 つなので、たいていここで当たる。添字 0 = 別名なし、1 = 別名あり） */
+		private final SelectAll[] last = new SelectAll[2];
 
-		/* 方言ごと */
-		private final Map<io.jimble.db.dialect.Dialect, SelectAll> byDialect = new ConcurrentHashMap<>();
+		/* 方言ごと（添字は last と同じ） */
+		@SuppressWarnings("unchecked")
+		private final Map<io.jimble.db.dialect.Dialect, SelectAll>[] byDialect = new Map[] { new ConcurrentHashMap<>(), new ConcurrentHashMap<>() };
 
 		/**
 		 * 宣言の一覧が覚えたときと同じオブジェクトなら、その字面（違えば null）
 		 */
-		SelectAll sameSource (io.jimble.db.dialect.Dialect dialect, List<Column> declared) {
+		SelectAll sameSource (io.jimble.db.dialect.Dialect dialect, boolean alias, List<Column> declared) {
 
-			SelectAll current = last;
+			SelectAll current = last(alias);
 			if (current != null && current.dialect() == dialect && current.source() == declared) {
 				return current;
 			}
 			return null;
 
 		}
+
+		SelectAll last (boolean alias) {
+
+			// 配列の要素は volatile にできないので、不変の record を VarHandle で入れ替える
+			return (SelectAll) LAST.getVolatile(last, alias ? 1 : 0);
+
+		}
+
+		void last (boolean alias, SelectAll value) {
+
+			LAST.setVolatile(last, alias ? 1 : 0, value);
+
+		}
+
+		Map<io.jimble.db.dialect.Dialect, SelectAll> byDialect (boolean alias) {
+
+			return byDialect[alias ? 1 : 0];
+
+		}
+
+		private static final java.lang.invoke.VarHandle LAST = java.lang.invoke.MethodHandles.arrayElementVarHandle(SelectAll[].class);
 
 	}
 
@@ -444,8 +466,9 @@ public class Table implements ITable, IFrom {
 	 * @param source	作ったときの宣言の一覧（書き換えられない一覧のときだけ。ほかは null）
 	 * @param columns	作ったときの列（同一性で比べる）
 	 * @param sql		字面
+	 * @param labels	結果のキー（列ごとの {@code 表__列}。別名を付けないときに、位置で入れ子にするのに使う）
 	 */
-	private record SelectAll (io.jimble.db.dialect.Dialect dialect, List<Column> source, Column[] columns, String sql) {
+	private record SelectAll (io.jimble.db.dialect.Dialect dialect, List<Column> source, Column[] columns, String sql, List<String> labels) {
 
 		/**
 		 * 今の列から作ったものと同じか
@@ -485,22 +508,44 @@ public class Table implements ITable, IFrom {
 	 */
 	public boolean selectAllSql (SqlWriter sb) {
 
+		return selectAllSql(sb, true, null);
+
+	}
+
+	/**
+	 * 全列を SELECT 句に書く（別名を付けるかを選び、結果のキーを集める。3.0.0）
+	 *
+	 * <p>
+	 * 別名を付けないときは {@code " `t`.`c`"} を並べる。結果を表名で入れ子にするのに要るキー（列ごとの {@code 表__列}。
+	 * 別名を付けたときの別名と同じ）を {@code labels} に足す。
+	 * </p>
+	 *
+	 * @param sb		書き出し先
+	 * @param alias		{@code AS `表__列`} を付けるか
+	 * @param labels	結果のキーを足す先（null なら足さない）
+	 * @return	1 列でも書いたら true
+	 */
+	public boolean selectAllSql (SqlWriter sb, boolean alias, List<String> labels) {
+
 		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
 
 		SelectAllCache cache = SELECT_ALL.get(getClass());
 
 		// 速い道：覚えたときと同じ宣言の一覧（生成物の静的な一覧）なら、比べずにそのまま書く
 		if (declared != null) {
-			SelectAll same = cache.sameSource(sb.dialect(), declared);
+			SelectAll same = cache.sameSource(sb.dialect(), alias, declared);
 			if (same != null) {
 				sb.append(same.sql());
+				if (labels != null) {
+					labels.addAll(same.labels());
+				}
 				return true;
 			}
 		}
 
 		if (declared == null || !isPlainColumns(declared)) {
 			List<Column> columns = getColumnList();
-			writeSelectAll(sb, columns);
+			writeSelectAll(sb, columns, alias, labels);
 			return !columns.isEmpty();
 		}
 
@@ -508,19 +553,23 @@ public class Table implements ITable, IFrom {
 			return false;
 		}
 
-		SelectAll cached = cache.byDialect.get(sb.dialect());
+		SelectAll cached = cache.byDialect(alias).get(sb.dialect());
 
 		if (cached == null || !cached.matches(declared)) {
 			SqlWriter written = new SqlWriter(sb.dialect());
-			writeSelectAll(written, declared);
+			List<String> writtenLabels = new ArrayList<>(declared.size());
+			writeSelectAll(written, declared, alias, writtenLabels);
 			List<Column> source = IMMUTABLE_LISTS.contains(declared.getClass()) ? declared : null;
-			cached = new SelectAll(sb.dialect(), source, declared.toArray(new Column[0]), written.toString());
-			cache.byDialect.put(sb.dialect(), cached);
+			cached = new SelectAll(sb.dialect(), source, declared.toArray(new Column[0]), written.toString(), List.copyOf(writtenLabels));
+			cache.byDialect(alias).put(sb.dialect(), cached);
 		}
 
-		cache.last = cached;
+		cache.last(alias, cached);
 
 		sb.append(cached.sql());
+		if (labels != null) {
+			labels.addAll(cached.labels());
+		}
 
 		return true;
 
@@ -541,8 +590,10 @@ public class Table implements ITable, IFrom {
 
 		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
 
+		SelectAllCache cache = SELECT_ALL.get(getClass());
 		if (declared != null && IMMUTABLE_LISTS.contains(declared.getClass())
-			&& SELECT_ALL.get(getClass()).last instanceof SelectAll last && last.source() == declared) {
+			&& ((cache.last(false) instanceof SelectAll plain && plain.source() == declared)
+				|| (cache.last(true) instanceof SelectAll aliased && aliased.source() == declared))) {
 			// 覚えた一覧と同じ（列はどれも Column そのもので、値を持たない）
 			return;
 		}
@@ -600,7 +651,7 @@ public class Table implements ITable, IFrom {
 	 * @param sb		書き出し先
 	 * @param columns	列一覧
 	 */
-	private static void writeSelectAll (SqlWriter sb, List<Column> columns) {
+	private static void writeSelectAll (SqlWriter sb, List<Column> columns, boolean alias, List<String> labels) {
 
 		for (int i = 0; i < columns.size(); i++) {
 			if (i > 0) {
@@ -608,11 +659,18 @@ public class Table implements ITable, IFrom {
 			}
 			sb.append(" ");
 			Column column = columns.get(i);
-			if (column.getClass() == Column.class || column.getClass() == TemporaryColumn.class) {
+			boolean plain = column.getClass() == Column.class || column.getClass() == TemporaryColumn.class;
+			if (!alias) {
+				// 別名を付けない（3.0.0）。継承した列も selectSql の上書きが効く
+				column.selectSql(sb);
+			} else if (plain) {
 				column.selectAsJoinNameSql(sb);
 			} else {
 				// 継承した列は 2.7.4 と同じ道で書く（selectSql / getJoinSelectName の上書きが効くように）
 				column.as(column.getJoinSelectName()).selectSql(sb);
+			}
+			if (labels != null) {
+				labels.add(column.getJoinSelectName());
 			}
 		}
 

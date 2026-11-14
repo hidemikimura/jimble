@@ -42,6 +42,18 @@ public class SelectValue implements ISelect {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * <p>別名を付けていれば別名（SELECT 句にも {@code AS 別名} を書く）。</p>
+	 */
+	@Override
+	public String resultLabel () {
+
+		return as == null || as.isEmpty() ? null : as;
+
+	}
+
+	/**
+	 * {@inheritDoc}
 	 */
 	@Override
 	public ISelect dsl(IDsl dsl) {

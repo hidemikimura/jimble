@@ -398,6 +398,9 @@ public class DBUtil {
 	 */
 	public static void load (Config conf, Class<?> appCls) {
 
+		// 覚えた結果の列の読み方を忘れる（設定やデータソースが変わる。テストで表を作り直すときも。3.0.0）
+		io.jimble.db.internal.data.FetchHints.clear();
+
 		/*
 		 * <b>Redis の設定の誤りも、起動のときに落とす</b>（2.7.12）。Redis は最初に使うときに繋ぐので、
 		 * ここで見ないと、host と cluster.nodes の両方書きなどが起動のあとまで残る
