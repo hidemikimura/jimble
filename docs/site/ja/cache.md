@@ -260,7 +260,7 @@ Redis を設定していないときは、**黙って成功させずに例外**�
 Redis が無い場所では `DBLock` を使えます。先に行を作っておき、**トランザクションの中で**取ります。
 
 ```java
-DBLock.create(db, "daily");           // 1回だけ（あれば何もしない）
+DBLock.create(db, "daily");           // 起動のたびに呼んでよい（あれば何もしない）
 ...
 db.transaction(tx -> {
 	DBLock.lock(db, "daily");         // SELECT ... FOR UPDATE
@@ -269,6 +269,10 @@ db.transaction(tx -> {
 ```
 
 `create` も `lock` も戻り値はありません。**失敗は例外です。**
+
+> [!TRAP]
+> **2.8.0 で、行のキーの作り方（ハッシュ）が変わりました。**2.7.19 以前に `create` した行は使われないので、
+> 上げたら `create` を呼び直してください。起動のたびに `create` を呼んでおけば、版を上げても何もしなくて済みます。
 
 | | どうなるか |
 | --- | --- |

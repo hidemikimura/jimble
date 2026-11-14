@@ -44,5 +44,8 @@ dependencies {
 	implementation(libs.caffeine)
 	implementation(libs.jbcrypt)
 	implementation(libs.password4j)
+
+	// XXH3（Hash.xxh3 / xxh3Hex128。2.8.0。Apache-2.0、依存なし）
+	implementation(libs.hash4j)
 	implementation(libs.brotli.dec)
 }

@@ -2,7 +2,6 @@ package io.jimble.db.sqlcache;
 
 import io.jimble.db.redis.RedisClient;
 import io.jimble.util.data.Data;
-import io.jimble.util.hash.Hash;
 import io.jimble.util.log.Log;
 
 import java.io.ByteArrayInputStream;
@@ -233,6 +232,29 @@ public final class SqlCache {
 	 */
 	public static String key (String dataSource, String sql, List<Object> params) {
 
+		byte[] bytes = keySource(dataSource, sql, params);
+
+		/*
+		 * ハッシュだけだと衝突したときに<b>別のクエリの結果が返る</b>ので、128 bit にして長さも混ぜる。
+		 * SQL 全文をキーにできればいちばん確かだが、置き場の主キーに入らない（DB の置き場は varchar(64)。このキーは 40 文字）。
+		 *
+		 * 2.7.19 までは SipHash-2-4（64 bit）だった。キャッシュに当たる SELECT の CPU の 4 割がそこだったので、
+		 * XXH3-128 にした（2.8.0。800 byte で約 6 倍速い）。ハッシュにかける中身（keySource）は 2.7.4 から変えていない
+		 */
+		return io.jimble.util.hash.Hash.xxh3Hex128(bytes) + HEX.toHexDigits(bytes.length);
+
+	}
+
+	/**
+	 * キーにするもとの byte 列（名前空間・データソース・SQL・値を区切ってつないだ UTF-8。2.7.4 から変えていない）
+	 *
+	 * @param dataSource	データソースの名前
+	 * @param sql			SQL
+	 * @param params		バインドパラメータ
+	 * @return	byte 列
+	 */
+	static byte[] keySource (String dataSource, String sql, List<Object> params) {
+
 		StringBuilder builder = new StringBuilder((sql == null ? 0 : sql.length()) + KEY_EXTRA_CAPACITY)
 			.append(SqlCacheConf.namespace()).append(KEY_SEPARATOR)
 			.append(dataSource == null ? "" : dataSource).append(KEY_SEPARATOR)
@@ -258,16 +280,7 @@ public final class SqlCache {
 
 		}
 
-		byte[] bytes = builder.toString().getBytes(StandardCharsets.UTF_8);
-
-		/*
-		 * ハッシュだけだと衝突したときに<b>別のクエリの結果が返る</b>ので、長さも混ぜる。
-		 * SQL 全文をキーにできればいちばん確かだが、置き場の主キーに入らない。
-		 *
-		 * 2.7.4 までは "%016x%08x".formatted(Hash.sipHash(text), bytes.length) で、
-		 * UTF-8 にするのを 2 回（長さとハッシュ）していた。字面は同じ（2.7.5）
-		 */
-		return HEX.toHexDigits(Hash.sipHashOf(bytes)) + HEX.toHexDigits(bytes.length);
+		return builder.toString().getBytes(StandardCharsets.UTF_8);
 
 	}
 

@@ -284,7 +284,7 @@ Where there is no Redis you can use `DBLock`. Create the row beforehand, then
 take it **inside a transaction**.
 
 ```java
-DBLock.create(db, "daily");           // once only (does nothing if it exists)
+DBLock.create(db, "daily");           // fine to call on every startup (does nothing if it exists)
 ...
 db.transaction(tx -> {
 	DBLock.lock(db, "daily");         // SELECT ... FOR UPDATE
@@ -293,6 +293,10 @@ db.transaction(tx -> {
 ```
 
 Neither `create` nor `lock` returns anything. **Failures are exceptions.**
+
+> [!TRAP]
+> **In 2.8.0 the way the row key is made (the hash) changed.** Rows you `create`d with 2.7.19 or earlier are no longer used,
+> so call `create` again after upgrading. If you call `create` on every startup, there is nothing to do when you upgrade.
 
 | | What happens |
 | --- | --- |

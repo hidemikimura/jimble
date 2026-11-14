@@ -26,6 +26,9 @@ dependencies {
 	implementation("io.jimble:jimble-web:$jimbleVersion")
 	implementation("org.mariadb.jdbc:mariadb-java-client:4.0.0")
 
+	// SQL 結果キャッシュのキーのハッシュを比べるため（ベンチだけ。jimble の依存ではない）
+	implementation("com.dynatrace.hash4j:hash4j:0.31.0")
+
 	implementation("org.openjdk.jmh:jmh-core:1.37")
 	annotationProcessor("org.openjdk.jmh:jmh-generator-annprocess:1.37")
 }
@@ -35,11 +38,11 @@ application {
 }
 
 /*
- * template（SQL.template。2.8.0 から）を使うベンチは、それより前の公開版ではコンパイルできないので、
- * このリポジトリのソースで測るときだけ入れる
+ * 古い公開版ではコンパイルできないベンチは、このリポジトリのソースで測るときだけ入れる
+ * （template は 2.8.0 から、HashBench の Hash.sipHashOf は 2.7.5 から）
  */
 if (providers.gradleProperty("jimble.local").orNull != "true") {
 	sourceSets.main {
-		java.exclude("bench/Template*.java")
+		java.exclude("bench/Template*.java", "bench/HashBench.java")
 	}
 }

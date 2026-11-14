@@ -110,4 +110,20 @@ class SqlCacheKeyTest {
 
 	}
 
+	@Test
+	@DisplayName("2.8.0：キーは、もとの byte 列の XXH3-128（seed 0）と長さを 16 進でつないだ 40 文字")
+	void xxh3_128 () {
+
+		List<Object> params = List.of(1, "あ");
+		byte[] source = SqlCache.keySource("db", SQL, params);
+
+		String key = SqlCache.key("db", SQL, params);
+
+		assertEquals(40, key.length());
+		assertEquals(io.jimble.util.hash.Hash.xxh3Hex128(source) + java.util.HexFormat.of().toHexDigits(source.length), key);
+		// 2.7.19 までの形（SipHash）とは違う（上げた日にキャッシュは 1 回外れる）
+		assertNotEquals(SqlCacheKeys.legacy("db", SQL, params), key);
+
+	}
+
 }

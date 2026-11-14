@@ -107,7 +107,7 @@ class DbRateLimitStoreIntegrationTest {
 
 		try (DB db = DBUtil.getMainDB()) {
 			db.execute("INSERT INTO %s (rate_key, tokens, updated_at) VALUES (?, 1, 1000)".formatted(DbRateLimitStore.TABLE)
-				, Hash.sipHash("idle-" + UUID.randomUUID()));
+				, Hash.xxh3("idle-" + UUID.randomUUID()));
 		}
 
 		assertTrue(DbRateLimitStore.purgeIdle(System.currentTimeMillis() - 60_000) >= 1);
@@ -115,7 +115,7 @@ class DbRateLimitStoreIntegrationTest {
 		try (DB db = DBUtil.getMainDB()) {
 			assertEquals(0L, db.select("SELECT count(*) AS n FROM %s WHERE updated_at = 1000".formatted(DbRateLimitStore.TABLE))
 				.map(row -> row.getLong("n")).orElse(-1L));
-			assertEquals(1L, db.select("SELECT count(*) AS n FROM %s WHERE rate_key = ?".formatted(DbRateLimitStore.TABLE), Hash.sipHash(fresh))
+			assertEquals(1L, db.select("SELECT count(*) AS n FROM %s WHERE rate_key = ?".formatted(DbRateLimitStore.TABLE), Hash.xxh3(fresh))
 				.map(row -> row.getLong("n")).orElse(-1L), "いま数えた行まで消えた");
 		}
 

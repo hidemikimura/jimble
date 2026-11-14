@@ -316,7 +316,7 @@ To build one, `XmlBuilder.build(xmlData)` (it throws no checked exception).
 | Signatures (tamper detection) | `Signer.sign` / `unsign` (HMAC-SHA256) |
 | Encryption | **`Aead.encrypt` / `decrypt`** (AES-256-GCM) |
 | Short IDs | `Hashids` |
-| Hash values | `Hash.md5` / `sha256` / `sipHash` / `xxHash64` |
+| Hash values | `Hash.md5` / `sha256` / `sipHash` / `xxHash64` / `xxh3`, `xxh3Hex128` (XXH3, since 2.8.0; not a cryptographic hash) |
 
 > [!WARN]
 > **`CipherUtil` (AES/CBC) takes its IV from the configuration, so it is fixed.** The same plaintext

@@ -103,7 +103,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 				List<List<Object>> params = new ArrayList<>();
 
 				for (String tag : tags) {
-					params.add(List.of(Hash.sipHash(tag), key));
+					params.add(List.of(Hash.xxh3(tag), key));
 				}
 
 				db.executeBatch(
@@ -138,7 +138,7 @@ public final class DbSqlCacheStore implements SqlCacheStore {
 				places.append(", ");
 			}
 			places.append('?');
-			hashes.add(Hash.sipHash(tag));
+			hashes.add(Hash.xxh3(tag));
 		}
 
 		try (DB db = DBUtil.getMainDB().withoutSqlCache()) {

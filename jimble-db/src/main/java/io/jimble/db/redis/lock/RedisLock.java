@@ -144,7 +144,7 @@ public class RedisLock {
 	 */
 	private static RedisLockResult mark (DB db, String lockKey, RLock lock) {
 
-		long lockKeyHash = Hash.sipHash(lockKey);
+		long lockKeyHash = Hash.xxh3(lockKey);
 
 		boolean marked = db.select("""
 				SELECT
