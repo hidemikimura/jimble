@@ -1,7 +1,7 @@
 # SQL の組み立てと設定の読み出しの CPU
 
 要求ごとに払っていた CPU（SQL の組み立て・SQL 結果キャッシュのキー・Cookie と応答の設定の読み出し）を、
-Maven Central の公開版とこのリポジトリのソースで比べる。jimble 本体のビルドには入れない。
+公開版（2.7.11 からは jimble の置き場 `https://repo.jimble.io`、それより前は Maven Central）とこのリポジトリのソースで比べる。jimble 本体のビルドには入れない。
 
 ```
 ./benchmarks/sql-cpu/run.sh
@@ -15,6 +15,8 @@ Maven Central の公開版とこのリポジトリのソースで比べる。jim
 | `DbPathCpu` | DB の道（組み立て・バインド・ドライバ・結果の読み取り）のスレッドの CPU 時間。主キー 1 行の `select`、20 行・全列の `selectList`、キャッシュに当たる `selectListCached` |
 | `ProfileLoop` | JFR で内訳を見るために、1 本のスレッドで同じ SELECT を回し続ける（`pk` / `list` / `cached`） |
 | `HashBench` | SQL 結果キャッシュのキーなどに使うハッシュを、長さ 64〜4,000 byte で比べる（SipHash・値を変えずに書き直した SipHash・XXH3-64 / 128・rapidhash v3・komihash 5。後ろの 4 つは hash4j。`-Pjimble.local=true` のときだけビルドに入る） |
+| `DataReadBench.*` | 結果の行（表名で入れ子にした `Data`）から 12 個読む。列で読む（`row.getLong(Product.id)`）・表の `Data` を取ってから列名で読む・`flattenTable` してから読む |
+| `DriverParseBench.*` | MariaDB Connector/J が `prepareStatement` のたびに SQL の字面を解析する手間（`rewriteBatchedStatements=true` の `rewritableParts` と false の `parameterParts`、2.x の別名つきと 3.0 の別名なしの SQL） |
 | `SqlBench.pkBuild` | 主キー 1 行の SELECT（全列）の SQL とパラメータを作る |
 | `SqlBench.joinBuild` | JOIN・IN・IS NULL・ORDER BY・LIMIT / OFFSET の SELECT（全列）を作る |
 | `SqlBench.cachedSelect` | SQL 結果キャッシュ（メモリ）に当たる `selectListCached`。DB には行かない |

@@ -527,6 +527,28 @@ public class Table implements ITable, IFrom {
 	 */
 	public boolean selectAllSql (SqlWriter sb, boolean alias, List<String> labels) {
 
+		List<String> written = selectAllSql(sb, alias);
+		if (labels != null) {
+			labels.addAll(written);
+		}
+		return !written.isEmpty();
+
+	}
+
+	/**
+	 * 全列を SELECT 句に書き、結果のキーの一覧を返す（3.0.1）
+	 *
+	 * <p>
+	 * 生成物（列一覧を宣言したテーブル）は、表のクラスと方言ごとに覚えた<b>変えられない一覧をそのまま返す</b>（写さない）。
+	 * 3.0.0 は要求のたびに、渡されたリストへ写していた。
+	 * </p>
+	 *
+	 * @param sb		書き出し先
+	 * @param alias		{@code AS `表__列`} を付けるか
+	 * @return	書いた列ごとの結果のキー（1 列も書かなければ空。変えられない一覧のこともある）
+	 */
+	public List<String> selectAllSql (SqlWriter sb, boolean alias) {
+
 		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
 
 		SelectAllCache cache = SELECT_ALL.get(getClass());
@@ -536,21 +558,19 @@ public class Table implements ITable, IFrom {
 			SelectAll same = cache.sameSource(sb.dialect(), alias, declared);
 			if (same != null) {
 				sb.append(same.sql());
-				if (labels != null) {
-					labels.addAll(same.labels());
-				}
-				return true;
+				return same.labels();
 			}
 		}
 
 		if (declared == null || !isPlainColumns(declared)) {
 			List<Column> columns = getColumnList();
+			List<String> labels = new ArrayList<>(columns.size());
 			writeSelectAll(sb, columns, alias, labels);
-			return !columns.isEmpty();
+			return labels;
 		}
 
 		if (declared.isEmpty()) {
-			return false;
+			return List.of();
 		}
 
 		SelectAll cached = cache.byDialect(alias).get(sb.dialect());
@@ -567,11 +587,41 @@ public class Table implements ITable, IFrom {
 		cache.last(alias, cached);
 
 		sb.append(cached.sql());
-		if (labels != null) {
-			labels.addAll(cached.labels());
+
+		return cached.labels();
+
+	}
+
+	/**
+	 * 全列を SELECT 句に書いたとき、値（?）を含むか（3.0.1）
+	 *
+	 * <p>{@link #selectAllParameters(List)} が何か足すときに true。リストを作らずに答える（生成物はすぐ false）。</p>
+	 *
+	 * @return	含むなら true
+	 */
+	public boolean selectAllHasParameters () {
+
+		List<Column> declared = isGetColumnList ? null : declaredColumnsOrNull();
+
+		SelectAllCache cache = SELECT_ALL.get(getClass());
+		if (declared != null && IMMUTABLE_LISTS.contains(declared.getClass())
+			&& ((cache.last(false) instanceof SelectAll plain && plain.source() == declared)
+				|| (cache.last(true) instanceof SelectAll aliased && aliased.source() == declared))) {
+			return false;
 		}
 
-		return true;
+		if (declared != null && isPlainColumns(declared)) {
+			return false;
+		}
+
+		for (Column column : getColumnList()) {
+			if (column.getClass() != Column.class && column.getClass() != TemporaryColumn.class
+				&& column.as(column.getJoinSelectName()).hasParameter()) {
+				return true;
+			}
+		}
+
+		return false;
 
 	}
 

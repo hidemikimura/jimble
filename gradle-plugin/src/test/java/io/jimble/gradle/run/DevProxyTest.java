@@ -51,10 +51,13 @@ class DevProxyTest {
 	@BeforeEach
 	void start () throws IOException {
 
-		appPort = freePort();
-		proxyPort = freePort();
-
-		app = HttpServer.create(new InetSocketAddress("127.0.0.1", appPort), 0);
+		/*
+		 * アプリは 0 番で開き、OS が選んだポートをそのまま使う。
+		 * かつては空きポートを 2 つ続けて調べてから開き直していたので、調べてから開くまでのあいだに
+		 * ほかに取られる（同じ番号が 2 回返ることもある）と、CI で「Address already in use」になっていた
+		 */
+		app = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		appPort = app.getAddress().getPort();
 
 		// 受け取ったものを返す
 		app.createContext("/echo", exchange -> {
@@ -97,8 +100,34 @@ class DevProxyTest {
 
 		app.start();
 
-		proxy = new DevProxy("127.0.0.1", proxyPort, appPort, () -> BuildOutcome.OK, new RunLog());
-		proxy.start();
+		proxy = startProxy();
+
+	}
+
+	/**
+	 * プロキシを空きポートで起動する
+	 *
+	 * <p>
+	 * アプリが自分のポートを握ったまま空きポートを選ぶので、アプリと同じ番号にはならない。
+	 * 選んでから開くまでのあいだにほかに取られたら、別のポートで開き直す。
+	 * </p>
+	 */
+	private DevProxy startProxy () throws IOException {
+
+		java.net.BindException last = null;
+
+		for (int attempt = 0; attempt < 5; attempt++) {
+			proxyPort = freePort();
+			try {
+				DevProxy started = new DevProxy("127.0.0.1", proxyPort, appPort, () -> BuildOutcome.OK, new RunLog());
+				started.start();
+				return started;
+			} catch (java.net.BindException ex) {
+				last = ex;
+			}
+		}
+
+		throw last;
 
 	}
 

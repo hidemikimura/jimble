@@ -166,8 +166,16 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	private Data getTableData (IColumn column) {
 
-		if (containsKey(column.table().name())) {
-			return getData(column.table().name());
+		String table = column.table().name();
+
+		// 表の Data が入っていれば 1 回の get で返す（3.0.1。2.x は containsKey・isNull・get と同じキーを 3 回引いていた）
+		Object value = get(table);
+		if (value instanceof Data data) {
+			return data;
+		}
+
+		if (containsKey(table)) {
+			return getData(table);
 		}
 
 		return this;
@@ -296,11 +304,12 @@ public class Data extends LinkedHashMap<String, Object> {
 	 */
 	public Data getData (String key) {
 
-		if (isNull(key)) {
+		// 1 回の get で見る（3.0.1。無いキーも null の値も get は null を返すので、isNull と同じ）
+		Object object = get(key);
+
+		if (object == null) {
 			return null;
 		}
-
-		Object object = get(key);
 
 		if (object instanceof Data data) {
 			return data;

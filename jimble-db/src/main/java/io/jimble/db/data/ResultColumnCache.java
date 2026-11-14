@@ -14,10 +14,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * </p>
  *
  * <ul>
- *   <li>使う前に、<b>列の数・ビルダーが書いた位置ごとのキー・列ごとの JDBC の型</b>が覚えたときと同じか確かめ、違えば読み直す
- *       （JDBC の型を聞くのは、ドライバの中で文字列を作らない軽い呼び出し。重いのは列名と型名を聞くほう）</li>
+ *   <li>使う前に、<b>列の数とビルダーが書いた位置ごとのキー</b>が覚えたときと同じか確かめ、違えば読み直す。
+ *       列の型は聞き直さない（3.0.1。3.0.0 は実行のたびに全部の列の JDBC の型を聞いていた）</li>
  *   <li><b>SELECT 句が値（?）を含む結果は覚えない</b>（{@code SELECT ? AS v} は値で列の型が変わる）</li>
- *   <li>JDBC の型が同じまま型名だけが変わる DDL（MySQL の TEXT と JSON など）は、{@code DBUtil.load} で読み直すまで古い読み方のまま</li>
+ *   <li><b>DDL はアプリのマイグレーションで流す前提</b>。マイグレーション（{@code Migration.install}・{@code CodeMigration.execute}）を
+ *       当てたら全部忘れる。{@code DBUtil.load} でも忘れる。<b>アプリの外で DDL を流したら、アプリを起動し直す</b>
+ *       （そのままだと、型が変わった列を古い読み方で読み、読めない行が null になる）</li>
  *   <li>データソースごとに {@value #MAX_PER_SOURCE} 件まで。超えたら、そのデータソースの分を全部忘れて覚え直す（値はためない）</li>
  * </ul>
  */

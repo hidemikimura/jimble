@@ -11,6 +11,5 @@ import java.util.List;
  * @param types		列ごとの型の分け
  * @param plan		1 行を読む段取り（作らない結果なら null。そのときは {@link ResultSetConverter} で読む）
  * @param labels	作るときに渡された位置ごとのキー（ビルダーが書いたもの。無ければ null）
- * @param jdbcTypes	作るときの列ごとの JDBC の型（{@code ResultSetMetaData#getColumnType}。使う前に今の結果と比べる）
  */
-record ResultColumns (List<ResultSetIterator.KeyInfo> keys, List<Integer> types, RowPlan plan, List<String> labels, int[] jdbcTypes) {}
+record ResultColumns (List<ResultSetIterator.KeyInfo> keys, List<Integer> types, RowPlan plan, List<String> labels) {}
