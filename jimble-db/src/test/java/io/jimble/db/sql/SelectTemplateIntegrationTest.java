@@ -95,6 +95,13 @@ class SelectTemplateIntegrationTest {
 		.where(TplCustomer.id.in(Dsl.params("ids")))
 		.orderBy(TplCustomer.id.asc()));
 
+	private static final SelectTemplate CUSTOMERS_PAGE = SQL.template(SQL.select()
+		.from(TplCustomer.instance())
+		.where(TplCustomer.shop_id.eq(Dsl.param("shop")))
+		.orderBy(TplCustomer.id.asc())
+		.limit(Dsl.param("per"))
+		.offset(Dsl.param("skip")));
+
 	@BeforeAll
 	static void createTables () {
 
@@ -197,6 +204,36 @@ class SelectTemplateIntegrationTest {
 			assertEquals("い", actual.get().getData("tpl_customer").getString("name"));
 			assertEquals("ショップ1", actual.get().getData("tpl_shop").getString("name"));
 			assertTrue(db.select(CUSTOMER_BY_ID.bind("id", 999L)).isEmpty());
+
+		} catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
+
+	}
+
+	@Test
+	@DisplayName("LIMIT / OFFSET を印にして、ページごとに今のビルダーと同じ行が返る（3.0.2）")
+	void paging () {
+
+		try (DB db = DBUtil.getMainDB()) {
+
+			for (long skip = 0; skip <= 3; skip++) {
+				List<Data> expected = db.selectList(SQL.select().from(TplCustomer.instance())
+					.where(TplCustomer.shop_id.eq(1L))
+					.orderBy(TplCustomer.id.asc())
+					.limit(2).offset(skip));
+				assertEquals(json(expected), json(db.selectList(CUSTOMERS_PAGE.bind("shop", 1L, "per", 2, "skip", skip))), "skip=" + skip);
+			}
+
+			List<Data> second = db.selectList(CUSTOMERS_PAGE.bind("shop", 1L, "per", 2, "skip", 2));
+			assertEquals(1, second.size());
+			assertEquals(12L, second.get(0).getData("tpl_customer").getLong("id"));
+
+			// 件数は別の template（文書の書き方で読める）
+			SelectTemplate count = SQL.template(SQL.select(Dsl.count().as("cnt"))
+				.from(TplCustomer.instance())
+				.where(TplCustomer.shop_id.eq(Dsl.param("shop"))));
+			assertEquals(3L, db.select(count.bind("shop", 1L)).map(d -> d.getLong("cnt")).orElse(0L));
 
 		} catch (Exception ex) {
 			throw new IllegalStateException(ex);

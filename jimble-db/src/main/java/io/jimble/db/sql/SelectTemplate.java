@@ -77,6 +77,9 @@ public final class SelectTemplate {
 	/* 字面に出る値の並びの印の名前（現れた順） */
 	private final String[] listOrder;
 
+	/* LIMIT / OFFSET の場所か（slots と同じ添字。0 以上の整数を Long にして入れる。3.0.2） */
+	private final boolean[] countSlots;
+
 	/* 最後に使った方言の字面（方言はふつう 1 つなので、たいていここで当たる） */
 	private volatile Rendered last;
 
@@ -114,6 +117,7 @@ public final class SelectTemplate {
 		this.slots = prepared.slots();
 		this.names = prepared.names();
 		this.listOrder = prepared.listOrder();
+		this.countSlots = prepared.countSlots();
 
 		// 既定の方言の字面は作って覚えておく（印の置き場所の誤りもここで分かる）
 		Rendered rendered = prepared.rendered();
@@ -125,7 +129,7 @@ public final class SelectTemplate {
 	/**
 	 * 作るときに求めたもの
 	 */
-	private record Prepared (Object[] slots, Map<String, Boolean> names, String[] listOrder, Rendered rendered) {}
+	private record Prepared (Object[] slots, Map<String, Boolean> names, String[] listOrder, boolean[] countSlots, Rendered rendered) {}
 
 	/**
 	 * 字面とパラメータの並びを求め、印の置き方を確かめる
@@ -180,7 +184,39 @@ public final class SelectTemplate {
 
 		String[] listOrder = listParams.toArray(new String[0]);
 
-		return new Prepared(slots, names, listOrder, split(dialect, sql, listOrder, labelsOf(builder), builder.resultCacheable));
+		return new Prepared(slots, names, listOrder, countSlots(builder, slots.length),
+			split(dialect, sql, listOrder, labelsOf(builder), builder.resultCacheable));
+
+	}
+
+	/**
+	 * LIMIT / OFFSET の印の場所を求める（params() の最後に LIMIT、OFFSET の順で並ぶ。3.0.2）
+	 *
+	 * @param builder	形（書き出したあと）
+	 * @param length	パラメータの数
+	 * @return	slots と同じ添字で、LIMIT / OFFSET の印の場所なら true
+	 */
+	private static boolean[] countSlots (SelectBuilder builder, int length) {
+
+		boolean[] counts = new boolean[length];
+
+		if (!builder.writesLimit()) {
+			if (builder.offsetParam != null) {
+				throw new SqlBuildException(
+					"offset(Dsl.param(\"%s\")) を置きましたが LIMIT がありません。OFFSET は LIMIT があるときだけ SQL に出ます。limit(...) も置いてください"
+						.formatted(builder.offsetParam.name()));
+			}
+			return counts;
+		}
+
+		// LIMIT は OFFSET があれば最後から 2 番目、無ければ最後
+		boolean writesOffset = builder.writesOffset();
+		counts[writesOffset ? length - 2 : length - 1] = builder.limitParam != null;
+		if (writesOffset) {
+			counts[length - 1] = builder.offsetParam != null;
+		}
+
+		return counts;
 
 	}
 
@@ -386,10 +422,13 @@ public final class SelectTemplate {
 		}
 
 		List<Object> params = new ArrayList<>(slots.length + 8);
-		for (Object slot : slots) {
+		for (int i = 0; i < slots.length; i++) {
+			Object slot = slots[i];
 			if (slot instanceof TemplateParam param) {
 				if (param.isList()) {
 					params.addAll(lists.get(param.name()));
+				} else if (countSlots[i]) {
+					params.add(countValue(param.name(), given.get(param.name())));
 				} else {
 					params.add(given.get(param.name()));
 				}
@@ -422,6 +461,20 @@ public final class SelectTemplate {
 		Parameter.single(value);
 
 		rejectSqlPart(name, value);
+
+	}
+
+	/**
+	 * LIMIT / OFFSET の値を確かめて、Long にする（ビルダーの limit(long) と同じパラメータにする。3.0.2）
+	 */
+	private static Long countValue (String name, Object value) {
+
+		boolean integral = value instanceof Long || value instanceof Integer || value instanceof Short || value instanceof Byte;
+		if (!integral || ((Number) value).longValue() < 0) {
+			throw new SqlBuildException(
+				"LIMIT / OFFSET の値の印 %s には 0 以上の整数（long / int）を渡してください（%s が来ました）".formatted(name, value));
+		}
+		return ((Number) value).longValue();
 
 	}
 

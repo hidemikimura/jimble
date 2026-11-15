@@ -206,6 +206,8 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 		copy.orderByList.addAll(this.orderByList);
 		copy.limit = this.limit;
 		copy.offset = this.offset;
+		copy.limitParam = this.limitParam;
+		copy.offsetParam = this.offsetParam;
 		copy.paging = this.paging;
 		copy.forUpdate = this.forUpdate;
 		copy.forUpdateNoWait = this.forUpdateNoWait;
@@ -564,6 +566,9 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	/* LIMIT */
 	private long limit = -1;
 
+	/* LIMIT の値の印（template で値を差し替えるとき。3.0.2） */
+	TemplateParam limitParam = null;
+
 	/**
 	 * LIMIT
 	 *
@@ -573,12 +578,47 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	public SelectBuilder limit (long limit) {
 
 		this.limit = limit;
+		this.limitParam = null;
+		return this;
+
+	}
+
+	/**
+	 * LIMIT の値を、template で差し替える印にする（3.0.2）
+	 *
+	 * <pre>
+	 * static final SelectTemplate PRODUCTS = SQL.template(SQL.select()
+	 *     .from(Product.instance())
+	 *     .where(Product.shop_id.eq(Dsl.param("shop")))
+	 *     .orderBy(Product.id.asc())
+	 *     .limit(Dsl.param("per"))
+	 *     .offset(Dsl.param("skip")));
+	 *
+	 * db.selectList(PRODUCTS.bind("shop", shopId, "per", 20, "skip", 40));
+	 * </pre>
+	 *
+	 * <p>
+	 * SQL は数を入れたときと同じ {@code LIMIT ?} で、{@code bind} で 0 以上の整数を入れる。
+	 * {@link SQL#template(SelectBuilder)} の中でだけ使える。あとから {@link #limit(long)} を呼ぶと印は外れる。
+	 * </p>
+	 *
+	 * @param param	1 つの値の印（{@code Dsl.param}）
+	 * @return	このビルダー
+	 * @throws SqlBuildException	null か、値の並びの印（{@code Dsl.params}）のとき
+	 */
+	public SelectBuilder limit (TemplateParam param) {
+
+		this.limitParam = countParam(param, "limit");
+		this.limit = 0;
 		return this;
 
 	}
 
 	/* OFFSET */
 	private long offset = -1;
+
+	/* OFFSET の値の印（template で値を差し替えるとき。3.0.2） */
+	TemplateParam offsetParam = null;
 
 	/**
 	 * OFFSET
@@ -592,7 +632,43 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 		if (this.offset < 0) {
 			this.offset = 0;
 		}
+		this.offsetParam = null;
 		return this;
+
+	}
+
+	/**
+	 * OFFSET の値を、template で差し替える印にする（3.0.2）
+	 *
+	 * <p>
+	 * SQL は数を入れたときと同じ {@code OFFSET ?} で、{@code bind} で 0 以上の整数を入れる。
+	 * 今と同じく、LIMIT が無ければ OFFSET は SQL に出ない（template を作るときに断る）。
+	 * あとから {@link #offset(long)} を呼ぶと印は外れる。
+	 * </p>
+	 *
+	 * @param param	1 つの値の印（{@code Dsl.param}）
+	 * @return	このビルダー
+	 * @throws SqlBuildException	null か、値の並びの印（{@code Dsl.params}）のとき
+	 * @see #limit(TemplateParam)
+	 */
+	public SelectBuilder offset (TemplateParam param) {
+
+		this.offsetParam = countParam(param, "offset");
+		this.offset = 0;
+		return this;
+
+	}
+
+	/**
+	 * LIMIT / OFFSET に置ける印か確かめる
+	 */
+	private static TemplateParam countParam (TemplateParam param, String clause) {
+
+		if (param == null || param.isList()) {
+			throw new SqlBuildException(
+				"%s(...) には 1 つの値の印（Dsl.param）を渡してください（%s が来ました）".formatted(clause, param));
+		}
+		return param;
 
 	}
 
@@ -1290,13 +1366,26 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 
 		// LIMIT
 		if (limit >= 0) {
-			params.add(limit);
+			params.add(countParameter(limitParam, limit));
 			if (offset >= 0) {
-				params.add(offset);
+				params.add(countParameter(offsetParam, offset));
 			}
 		}
 
 		return params;
+
+	}
+
+	/**
+	 * LIMIT / OFFSET のパラメータ（印があれば印。template の外では断る）
+	 */
+	private static Object countParameter (TemplateParam param, long value) {
+
+		if (param == null) {
+			return value;
+		}
+		io.jimble.db.internal.sql.template.TemplateScope.requireBuilding(param);
+		return param;
 
 	}
 
@@ -1409,6 +1498,24 @@ public class SelectBuilder extends AbstractBuilder<SelectBuilder> {
 	public List<IWhere> whereList () {
 
 		return List.copyOf(whereList);
+
+	}
+
+	/**
+	 * SQL に LIMIT を書くか（params() の最後に LIMIT・OFFSET の順で値が並ぶ。3.0.2）
+	 */
+	boolean writesLimit () {
+
+		return limit >= 0;
+
+	}
+
+	/**
+	 * SQL に OFFSET を書くか（3.0.2）
+	 */
+	boolean writesOffset () {
+
+		return limit >= 0 && offset >= 0;
 
 	}
 

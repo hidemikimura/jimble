@@ -343,6 +343,31 @@ List<Data> posts    = db.selectListCached(POSTS_IN.bind("site", siteId, "ids", i
 
 **条件によって WHERE を足したり足さなかったりする文には向きません**（形が毎回変わります）。それは今までどおりビルダーで書きます。
 
+### ページングする一覧（`limit` / `offset` に印を置く）
+
+`limit` と `offset` にも `Dsl.param` を置けます（3.0.2）。SQL は数を入れたときと同じ `LIMIT ? OFFSET ?` です。
+
+```java
+static final SelectTemplate POSTS_PAGE = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site")))
+	.orderBy(Post.id.desc())
+	.limit(Dsl.param("per"))
+	.offset(Dsl.param("skip")));
+
+static final SelectTemplate POSTS_COUNT = SQL.template(SQL.select(Dsl.count().as("cnt"))
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site"))));
+
+List<Data> posts = db.selectList(POSTS_PAGE.bind("site", siteId, "per", paging.per(), "skip", paging.start() - 1));
+long total = db.select(POSTS_COUNT.bind("site", siteId)).map(d -> d.getLong("cnt")).orElse(0L);
+```
+
+- **`bind` には 0 以上の整数（`long` / `int`）を渡します。**負の数・小数・文字列・`null` は `SqlBuildException` です
+- **全件を出す（`LIMIT` を付けない）のは別の形です。**`paging.perAll()` のときに使う template を別に作ります
+- 件数は template では数えません（`selectListWithRowCount` は template を受けません）。件数の template を別に作ります
+- `offset` だけに印を置いて `limit` が無いと、`SQL.template(...)` で `SqlBuildException` です（今のビルダーでも、`LIMIT` が無いと `OFFSET` は SQL に出ません）
+
 ## 製品の違いで気をつけること
 
 **名前が同じでも意味が違う**ものは DSL が揃えます。

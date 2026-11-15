@@ -4,6 +4,16 @@
 
 ---
 
+## 3.0.2（未リリース）
+
+### 足したこと
+
+| | |
+|---|---|
+| **template で LIMIT / OFFSET の値を差し替えられるようにしました** | `SelectBuilder.limit(TemplateParam)`・`offset(TemplateParam)` を足しました。`SQL.template(SQL.select()...limit(Dsl.param("per")).offset(Dsl.param("skip")))` と書き、`bind("per", 20, "skip", 40)` で値を入れます。3.0.1 までは LIMIT / OFFSET が template を作ったときの値のまま決まっていたので、ページングする一覧を template にできませんでした。出る SQL（`LIMIT ? OFFSET ?`）とパラメータ（`Long`）は、ビルダーに数を入れたときと同じです。`bind` には 0 以上の整数を渡します（負の数・小数・文字列・`null` は `SqlBuildException`）。`limit(long)`・`offset(long)` はそのまま動き、あとから呼ぶと印は外れます |
+
+---
+
 ## 3.0.1（2026-11-15）
 
 ### 上げる前に見るところ

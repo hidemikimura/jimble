@@ -93,6 +93,7 @@ List<Data> posts    = db.selectListCached(POSTS_IN.bind("ids", ids));
 - **`Dsl.param` / `Dsl.params` は template の中でだけ。**印を置いたビルダーをそのまま投げると `SqlBuildException`
 - **`SQL.template(...)` に渡したビルダーはそのあと使わない**（FROM や条件の部品を分け合う）。`SQL.template(SQL.select()...)` とその場で組む
 - 条件で WHERE を足したり足さなかったりする文には使わない（形が毎回変わる）。ビルダーで書く
+- **ページングは `limit(Dsl.param("per"))`・`offset(Dsl.param("skip"))`**（3.0.2）。`bind` には 0 以上の整数（負・小数・文字列・`null` は `SqlBuildException`）。全件（`perAll()`）と件数（`Dsl.count()`）は別の template を作る。`offset` だけに印を置いて `limit` が無いと作るときに例外
 
 ## ページングとカーソル
 
