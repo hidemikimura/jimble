@@ -29,6 +29,8 @@ dependencies {
 	implementation("io.jimble:jimble-db:$jimbleVersion")
 	implementation("io.jimble:jimble-web:$jimbleVersion")
 	implementation("org.mariadb.jdbc:mariadb-java-client:4.0.0")
+	// ドライバの比べ（DriverCpu）だけで使う
+	implementation("com.mysql:mysql-connector-j:26.10.0")
 
 	// SQL 結果キャッシュのキーのハッシュを比べるため（ベンチだけ。jimble の依存ではない）
 	implementation("com.dynatrace.hash4j:hash4j:0.31.0")
