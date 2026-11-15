@@ -344,6 +344,31 @@ List<Data> posts    = db.selectListCached(POSTS_IN.bind("site", siteId, "ids", i
 
 **It does not suit statements that add WHERE conditions only sometimes** (the shape changes each time). Keep using a builder for those.
 
+### Paged lists (markers in `limit` / `offset`)
+
+`limit` and `offset` take a `Dsl.param` too (3.0.2). The SQL is the same `LIMIT ? OFFSET ?` as with numbers.
+
+```java
+static final SelectTemplate POSTS_PAGE = SQL.template(SQL.select()
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site")))
+	.orderBy(Post.id.desc())
+	.limit(Dsl.param("per"))
+	.offset(Dsl.param("skip")));
+
+static final SelectTemplate POSTS_COUNT = SQL.template(SQL.select(Dsl.count().as("cnt"))
+	.from(Post.instance())
+	.where(Post.site_id.eq(Dsl.param("site"))));
+
+List<Data> posts = db.selectList(POSTS_PAGE.bind("site", siteId, "per", paging.per(), "skip", paging.start() - 1));
+long total = db.select(POSTS_COUNT.bind("site", siteId)).map(d -> d.getLong("cnt")).orElse(0L);
+```
+
+- **Bind a non-negative integer (`long` / `int`).** A negative number, a decimal, a string or `null` is a `SqlBuildException`
+- **Listing everything (no `LIMIT`) is a different shape.** Build a separate template for `paging.perAll()`
+- A template does not count rows (`selectListWithRowCount` does not take a template). Build a separate count template
+- A marker in `offset` with no `limit` is a `SqlBuildException` from `SQL.template(...)` (with a builder too, `OFFSET` is only written when there is a `LIMIT`)
+
 ## Product differences to watch
 
 **Where the name is the same but the meaning is not**, the DSL lines them up.

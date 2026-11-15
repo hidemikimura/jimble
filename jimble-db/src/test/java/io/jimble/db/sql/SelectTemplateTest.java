@@ -343,6 +343,139 @@ class SelectTemplateTest {
 
 	}
 
+	@Nested
+	@DisplayName("LIMIT / OFFSET の値を差し替える（3.0.2）")
+	class Paging {
+
+		private static SelectBuilder shape () {
+
+			return SQL.select().from(GenProduct.instance())
+				.where(GenProduct.shop_id.eq(Dsl.param("shop")))
+				.orderBy(GenProduct.id.asc());
+
+		}
+
+		private final SelectTemplate template = SQL.template(shape().limit(Dsl.param("per")).offset(Dsl.param("skip")));
+
+		@Test
+		@DisplayName("ページごとに、値を入れたビルダーと同じ SQL・パラメータになる")
+		void sameAsBuilder () {
+
+			for (long page = 0; page < 3; page++) {
+				BoundSelect bound = template.bind("shop", 1L, "per", 20, "skip", page * 20);
+				for (Dialect dialect : DIALECTS) {
+					SelectBuilder builder = SQL.select().from(GenProduct.instance())
+						.where(GenProduct.shop_id.eq(1L)).orderBy(GenProduct.id.asc()).limit(20).offset(page * 20);
+					assertEquals(builder.sql(dialect), bound.sql(dialect), dialect.name());
+					assertEquals(builder.params(), bound.params(), dialect.name());
+				}
+			}
+
+		}
+
+		@Test
+		@DisplayName("LIMIT だけ印にして、OFFSET は決まった値でもよい")
+		void limitOnly () {
+
+			SelectTemplate limitOnly = SQL.template(shape().limit(Dsl.param("per")).offset(40));
+			SelectBuilder builder = SQL.select().from(GenProduct.instance())
+				.where(GenProduct.shop_id.eq(1L)).orderBy(GenProduct.id.asc()).limit(10).offset(40);
+
+			assertEquals(builder.sql(MYSQL), limitOnly.bind("shop", 1L, "per", 10L).sql(MYSQL));
+			assertEquals(builder.params(), limitOnly.bind("shop", 1L, "per", 10L).params());
+			assertEquals(List.of("shop", "per"), limitOnly.names());
+
+		}
+
+		@Test
+		@DisplayName("数は Long にそろえて送る（ビルダーの limit(long) と同じ）")
+		void countsAreLong () {
+
+			List<Object> params = template.bind("shop", 1L, "per", (short) 5, "skip", 0).params();
+
+			assertEquals(List.of(1L, 5L, 0L), params);
+			assertEquals(Long.class, params.get(1).getClass());
+			assertEquals(Long.class, params.get(2).getClass());
+
+		}
+
+		@Test
+		@DisplayName("数でない値・負の数・null・小数は断る")
+		void badCounts () {
+
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", -1, "skip", 0));
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", 20, "skip", -20L));
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", "20", "skip", 0));
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", 20.0, "skip", 0));
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", new BigDecimal("20"), "skip", 0));
+			assertThrows(SqlBuildException.class, () -> template.bind("shop", 1L, "per", List.of(20), "skip", 0));
+
+			Map<String, Object> values = new LinkedHashMap<>();
+			values.put("shop", 1L);
+			values.put("per", null);
+			values.put("skip", 0);
+			assertThrows(SqlBuildException.class, () -> template.bind(values));
+
+		}
+
+		@Test
+		@DisplayName("値の並びの印は LIMIT / OFFSET に置けない")
+		void listParam () {
+
+			assertThrows(SqlBuildException.class, () -> shape().limit(Dsl.params("per")));
+			assertThrows(SqlBuildException.class, () -> shape().offset(Dsl.params("skip")));
+			assertThrows(SqlBuildException.class, () -> shape().limit((TemplateParam) null));
+
+		}
+
+		@Test
+		@DisplayName("LIMIT が無いのに OFFSET だけ印にすると、template を作るときに断る（OFFSET が SQL に出ない）")
+		void offsetWithoutLimit () {
+
+			assertThrows(SqlBuildException.class, () -> SQL.template(shape().offset(Dsl.param("skip"))));
+
+		}
+
+		@Test
+		@DisplayName("印を置いたビルダーをそのまま組み立てると断る")
+		void outsideTemplate () {
+
+			SelectBuilder builder = SQL.select().from(GenProduct.instance()).limit(Dsl.param("per"));
+
+			assertThrows(SqlBuildException.class, builder::params);
+
+		}
+
+		@Test
+		@DisplayName("あとから limit(long)・offset(long)・paging で数を入れると、印は外れる")
+		void numberReplacesParam () {
+
+			SelectBuilder builder = SQL.select().from(GenProduct.instance())
+				.limit(Dsl.param("per")).offset(Dsl.param("skip")).limit(10).offset(5);
+
+			assertEquals(List.of(10L, 5L), builder.params());
+
+			SelectBuilder removed = SQL.select().from(GenProduct.instance())
+				.limit(Dsl.param("per")).offset(Dsl.param("skip")).offset(-1).limit(-1);
+
+			assertTrue(removed.sql(MYSQL).endsWith("`product`"), removed.sql(MYSQL));
+			assertEquals(List.of(), removed.params());
+
+		}
+
+		@Test
+		@DisplayName("写したビルダーにも印が移る")
+		void copied () {
+
+			SelectBuilder original = shape().limit(Dsl.param("per")).offset(Dsl.param("skip"));
+			SelectTemplate fromCopy = SQL.template(original.copy());
+
+			assertEquals(List.of("shop", "per", "skip"), fromCopy.names());
+
+		}
+
+	}
+
 	@Test
 	@DisplayName("template を作ったあとに元のビルダーへ足しても、template は変わらない")
 	void isolatedFromLaterChanges () {
