@@ -23,7 +23,7 @@ hash4j = "0.31.0"
 brotli = "0.1.2"
 jspecify = "1.0.1"
 hikaricp = "7.1.0"
-agroal = "3.2.1"
+agroal = "3.3"
 mariadb = "4.0.0"
 # メールアドレスの検査を、送る側（simplejavamail の既定）と比べるテストだけで使う
 jmail = "2.2.2"
